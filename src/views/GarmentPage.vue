@@ -1,0 +1,180 @@
+<script setup lang="ts">
+import { computed, onMounted, onUnmounted, reactive, ref, toRaw, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { ArrowLeftOutlined, CheckOutlined, DeleteOutlined, ReloadOutlined, RollbackOutlined, SaveOutlined, PictureOutlined, LoadingOutlined, PlusOutlined, StopOutlined, EyeOutlined, ArrowRightOutlined, ExclamationCircleOutlined } from '@ant-design/icons-vue'
+import { App as AntApp } from 'ant-design-vue'
+import { closetApi, fieldLabels, usingMocks, type Garment, type ClosetTask } from '../services/api'
+import { metadataPatch, rebaseMetadata, type MetadataField } from '../domain/metadata'
+import { isProcessing, blocksConfirmation, workflowSummary, generatedImages, imageLabels } from '../domain/workflow'
+import { useClosetStore } from '../stores/closet'
+import TaskProgress from '../components/TaskProgress.vue'
+
+const { modal } = AntApp.useApp()
+const route = useRoute(); const router = useRouter(); const closet = useClosetStore()
+const garment = ref<Garment | null>(null); const task = ref<ClosetTask | null>(null)
+const values = reactive<Record<string, string[]>>({}); const baseline = ref<Garment | null>(null)
+const loading = ref(true); const busy = ref(''); const error = ref(''); const connectionError = ref(''); const success = ref('')
+const viewedResultId = ref(''); const selectedAssetId = ref(''); const resetFields = ref<string[]>([]); const imageTab = ref('处理结果'); const now = ref(Date.now())
+const schema = ref<MetadataField[]>([])
+const fields = Object.keys(fieldLabels) as (keyof typeof fieldLabels)[]
+const dirty = computed(() => Boolean(baseline.value && (resetFields.value.length || selectedAssetId.value !== baseline.value.displayAssetId || fields.some(key => JSON.stringify(values[key] || []) !== JSON.stringify(baseline.value?.[key] || [])))))
+const title = computed(() => garment.value?.category[0] ? `${garment.value.primaryColor[0] || ''}${garment.value.category[0]}` : '新上传衣物')
+const processing = computed(() => isProcessing(task.value?.status) || isProcessing(garment.value?.taskStatus))
+const summary = computed(() => garment.value ? workflowSummary(garment.value, task.value) : null)
+const results = computed(() => generatedImages(task.value))
+const imageOptions = computed(() => {
+  const record = garment.value
+  if (!record) return []
+  const original = record.images.find(image => image.url === record.sourceUrl)
+  const current = record.images.find(image => image.id === record.displayAssetId)
+  const choices = [original, ...results.value, current].filter((image): image is Garment['images'][number] => Boolean(image))
+  return choices.filter((image, index) => choices.findIndex(other => other.id === image.id) === index)
+})
+const selectedImage = computed(() => imageOptions.value.find(image => image.id === selectedAssetId.value))
+const latestResult = computed(() => results.value.find(image => image.id === viewedResultId.value) || results.value[results.value.length - 1])
+const resultUrl = computed(() => imageTab.value === '上传原图' ? garment.value?.sourceUrl : latestResult.value?.url)
+const resultCaption = computed(() => imageTab.value === '上传原图' ? '上传原图' : imageLabels[latestResult.value?.kind || ''] || '本次处理结果')
+const blocked = computed(() => blocksConfirmation(garment.value?.assessment))
+const canConfirm = computed(() => !processing.value && schema.value.length > 0 && !connectionError.value && !blocked.value && Boolean(selectedAssetId.value))
+const latestTaskId = computed(() => String(route.query.task || garment.value?.taskId || ''))
+let timer = 0; let elapsedTimer = 0; let alive = false; let pollDelay = 2000; let generation = 0
+function syncForm(record: Garment) {
+  baseline.value = structuredClone(toRaw(record)); selectedAssetId.value = record.displayAssetId; resetFields.value = []
+  for (const key of fields) values[key] = [...record[key]]
+}
+async function load(reset = false) {
+  const epoch = generation
+  try {
+    const [record, definitions] = await Promise.all([closetApi.detail(String(route.params.id)), schema.value.length ? Promise.resolve(schema.value) : closetApi.metadataFields()])
+    const id = String(route.query.task || record.taskId || '')
+    const currentTask = id ? await closetApi.task(id) : null
+    if (!alive || epoch !== generation) return
+    const hadEdits = dirty.value
+    const wasProcessing = processing.value
+    garment.value = record; task.value = currentTask; schema.value = definitions
+    if (reset || !baseline.value || !hadEdits) syncForm(record)
+    connectionError.value = ''; pollDelay = 2000
+    if (reset || wasProcessing && !processing.value) void closet.refreshCounts()
+  } catch (cause) {
+    if (!alive || epoch !== generation) return
+    connectionError.value = cause instanceof Error ? cause.message : '无法获取服务端状态。'
+    pollDelay = Math.min(pollDelay * 2, 30000)
+  } finally { if (epoch === generation) loading.value = false }
+}
+function schedulePoll() {
+  window.clearTimeout(timer)
+  if (!alive || (!processing.value && !connectionError.value)) return
+  timer = window.setTimeout(async () => { await load(); schedulePoll() }, pollDelay)
+}
+function patchFromForm() { return metadataPatch(schema.value, values, baseline.value || {}, resetFields.value) }
+function editField(key: string, next: string[]) { values[key] = next; resetFields.value = resetFields.value.filter(field => field !== key) }
+function restoreAutomatic(key: string) { if (!resetFields.value.includes(key)) resetFields.value.push(key); values[key] = [...(garment.value?.automatic[key] || [])] }
+async function save(confirming = false) {
+  if (!garment.value || !baseline.value || !schema.value.length || busy.value || processing.value) return
+  busy.value = confirming ? 'confirm' : 'save'; error.value = ''; success.value = ''
+  try {
+    let record = confirming
+      ? await closetApi.confirm(garment.value.id, { revision: baseline.value.revision, assetId: selectedAssetId.value, fields: patchFromForm(), resetFields: [...resetFields.value] })
+      : await closetApi.update(garment.value.id, { revision: baseline.value.revision, fields: patchFromForm(), resetFields: [...resetFields.value] })
+    if (!confirming && selectedAssetId.value !== record.displayAssetId) record = await closetApi.chooseDisplay(record.id, selectedAssetId.value, record.revision)
+    garment.value = record; syncForm(record); success.value = confirming ? '已确认入柜，图片和信息已保存。' : '修改已保存。'
+    await closet.refreshCounts()
+  } catch (cause) { error.value = cause instanceof Error ? cause.message : '保存失败，你的输入仍保留。' }
+  finally { busy.value = '' }
+}
+function reconcile() {
+  modal.confirm({ title: '核对当前服务端版本', content: '保留你修改过的字段，更新未修改的字段。请核对服务端当前值后再主动保存。', okText: '保留输入并核对', cancelText: '返回编辑', onOk: async () => {
+    const previous = baseline.value
+    const input = Object.fromEntries(Object.entries(values).map(([key, value]) => [key, [...value]]))
+    const image = selectedAssetId.value; const resets = [...resetFields.value]
+    await load()
+    if (!garment.value || !previous || connectionError.value) return
+    Object.assign(values, rebaseMetadata(schema.value, input, previous, garment.value))
+    selectedAssetId.value = image === previous.displayAssetId ? garment.value.displayAssetId : image
+    resetFields.value = resets
+    for (const key of resets) values[key] = [...(garment.value.automatic[key] || [])]
+    baseline.value = structuredClone(toRaw(garment.value)); error.value = ''; success.value = '输入已保留，请核对服务端当前值后保存。'
+  } })
+}
+async function startRun(mode: 'recognize' | 'reprocess') {
+  if (!garment.value || busy.value || processing.value || usingMocks) return
+  if (dirty.value) { error.value = '请先保存当前修改，再提交新的处理任务。'; return }
+  modal.confirm({ title: mode === 'recognize' ? '重新识别衣物信息？' : '重新整理图片？', content: '会调用真实模型并使用 1 次 AI 任务额度。已有人工修改和图片会保留。', okText: '提交真实任务', cancelText: '取消', onOk: async () => {
+    busy.value = 'retry'; error.value = ''; success.value = ''
+    try { const next = await closetApi[mode](garment.value!.id); task.value = next; imageTab.value = '处理结果'; await router.replace({ path: route.path, query: { task: next.id } }); await load(); await closet.refreshCounts(); schedulePoll() }
+    catch (cause) { error.value = cause instanceof Error ? cause.message : '任务提交失败。' }
+    finally { busy.value = '' }
+  } })
+}
+function cancel() {
+  if (!task.value || busy.value) return
+  modal.confirm({ title: '取消这次处理？', content: '原图和已完成步骤的图片会保留。取消请求提交后，需要等待服务端终止任务。', okText: '取消处理', cancelText: '继续等待', onOk: async () => {
+    busy.value = 'cancel'
+    try { await closetApi.cancel(task.value!.id); await load(); schedulePoll() }
+    catch (cause) { error.value = cause instanceof Error ? cause.message : '取消失败。' }
+    finally { busy.value = '' }
+  } })
+}
+function remove() {
+  if (!garment.value || busy.value) return
+  modal.confirm({ title: '移入回收站？', content: processing.value ? '会先取消活动任务，等待终止后移入回收站。图片与历史保留，可以恢复。' : '图片与处理历史会保留，可以在回收站恢复。', okText: '移入回收站', cancelText: '取消', onOk: async () => {
+    busy.value = 'trash'
+    try { if (processing.value && garment.value!.taskId) await closetApi.cancelAndWait(garment.value!.taskId); const record = await closetApi.detail(garment.value!.id); await closetApi.trash(record.id, record.revision); await closet.refreshCounts(); await router.replace('/pending') }
+    catch (cause) { error.value = cause instanceof Error ? cause.message : '操作失败。' }
+    finally { busy.value = '' }
+  } })
+}
+async function restore() { if (!garment.value) return; busy.value = 'restore'; try { garment.value = await closetApi.restore(garment.value.id, 'DRAFT', garment.value.revision); syncForm(garment.value); await closet.refreshCounts() } catch (cause) { error.value = String(cause) } finally { busy.value = '' } }
+async function refresh() { await load(); schedulePoll() }
+onMounted(async () => { alive = true; await load(true); schedulePoll(); elapsedTimer = window.setInterval(() => { now.value = Date.now() }, 1000) })
+onUnmounted(() => { alive = false; generation++; window.clearTimeout(timer); window.clearInterval(elapsedTimer) })
+watch(() => route.params.id, async () => { generation++; window.clearTimeout(timer); baseline.value = null; task.value = null; garment.value = null; loading.value = true; await load(true); schedulePoll() })
+watch(() => route.query.task, async () => { await load(); schedulePoll() })
+</script>
+
+<template>
+  <div class="detail-page">
+    <div class="workspace-toolbar"><a-button type="text" @click="router.push(garment?.status === 'ACTIVE' ? '/wardrobe' : '/pending')"><ArrowLeftOutlined /> {{ garment?.status === 'ACTIVE' ? '返回衣柜' : '所有未入柜衣物' }}</a-button><a-button @click="router.push('/add')"><PlusOutlined /> 继续添加</a-button></div>
+    <a-skeleton v-if="loading" active :paragraph="{ rows: 8 }" />
+    <a-alert v-else-if="!garment" type="error" :message="connectionError" show-icon><template #action><a-button @click="refresh">重试</a-button></template></a-alert>
+    <template v-else>
+      <header class="page-heading workspace-heading"><div><h1>{{ garment.status === 'ACTIVE' ? title : '衣物处理工作台' }}</h1><p class="page-subtitle">{{ title }}<span v-if="task"> · {{ task.mode }}</span></p></div><span class="state-badge" :class="garment.status.toLowerCase()">{{ garment.status === 'ACTIVE' ? '已入柜' : garment.status === 'TRASHED' ? '回收站' : '尚未入柜' }}</span></header>
+      <div v-if="garment.status === 'DRAFT'" class="flow-rail"><span class="done"><CheckOutlined /> 照片已保存</span><ArrowRightOutlined /><span :class="{ current: processing, done: !processing }"><b>2</b> 处理与结果</span><ArrowRightOutlined /><span :class="{ current: !processing }"><b>3</b> 核对入柜</span></div>
+      <div v-if="summary" class="workflow-status" :class="summary.tone" role="status" aria-live="polite"><LoadingOutlined v-if="processing" spin /><CheckOutlined v-else-if="garment.status === 'ACTIVE'" /><ExclamationCircleOutlined v-else /><div><strong>{{ summary.title }}</strong><p>{{ summary.description }}</p></div><a-button v-if="processing" :disabled="busy !== '' || task?.status === 'CANCEL_REQUESTED'" :loading="busy === 'cancel'" @click="cancel"><StopOutlined /> 取消处理</a-button><a-button v-else-if="garment.status === 'DRAFT' && !blocked" type="primary" href="#review-fields">核对并入柜 <ArrowRightOutlined /></a-button></div>
+      <a-alert v-if="connectionError" type="warning" :message="`连接中断：${connectionError}。当前保留上次状态，正在重试。`" show-icon class="page-alert"><template #action><a-button @click="refresh">重新连接</a-button></template></a-alert>
+      <a-alert v-if="error" type="error" :message="error" description="你的图片选择和表单输入仍保留。" show-icon class="page-alert"><template #action><a-button @click="reconcile">核对最新版本</a-button></template></a-alert>
+      <a-alert v-if="success" type="success" :message="success" show-icon class="page-alert" />
+      <div class="workspace-grid">
+        <section class="result-panel">
+          <div class="panel-heading"><h2>图片结果</h2><a-segmented v-model:value="imageTab" :options="['处理结果', '上传原图']" /></div>
+          <div v-if="imageTab === '处理结果' && results.length > 1" class="result-choices"><a-button v-for="image in results" :key="image.id" :type="latestResult?.id === image.id ? 'primary' : 'text'" @click="viewedResultId = image.id">{{ imageLabels[image.kind] || '处理图片' }}</a-button></div><div class="result-canvas" :class="{ checkerboard: imageTab === '处理结果' && resultUrl }">
+            <img v-if="resultUrl" :src="resultUrl" :alt="resultCaption" />
+            <div v-else class="result-placeholder"><LoadingOutlined v-if="processing" spin /><PictureOutlined v-else /><h3>{{ processing ? '结果图片尚未返回' : task?.mode === '仅识别' ? '本次只识别信息' : '本次没有可用结果图' }}</h3><p>{{ processing ? '请查看右侧处理进度，模型返回后会显示在这里。' : task?.mode === '仅识别' ? '此模式不会生成新图片，请查看上传原图及下方识别信息。' : '原图已保留，你可以重新处理，或使用原图入柜。' }}</p><a-button v-if="!processing" @click="imageTab = '上传原图'">查看上传原图</a-button></div>
+            <span v-if="resultUrl" class="canvas-caption">{{ resultCaption }}</span>
+          </div>
+          <div class="result-bottom"><span>{{ imageTab === '处理结果' && resultUrl ? task?.mode === '本地贴纸' ? '本地图片处理结果，请检查衣物边缘和透明背景。' : '请对照原图检查款式、颜色与细节。' : '上传原图始终保留，不会被处理结果覆盖。' }}</span><a-button v-if="resultUrl" type="text" :href="resultUrl" target="_blank"><EyeOutlined /> 查看大图</a-button></div>
+          <p v-if="task?.steps.some(step => step.type === 'STICKER' && step.status === 'skipped')" class="paused-note">贴纸步骤已暂停，未生成贴纸。请检查现有结果，也可以选用原图入柜。</p>
+        </section>
+        <aside class="workspace-side"><TaskProgress v-if="task" :task="task" :now="now" /><section class="original-panel"><div class="panel-heading"><h2>上传原图</h2><span>已保存</span></div><button class="original-photo" aria-label="查看上传原图" @click="imageTab = '上传原图'"><img :src="garment.sourceUrl" alt="已保存的上传原图" /></button></section></aside>
+      </div>
+      <section id="review-fields" class="review-panel">
+        <div class="panel-heading"><div><h2>{{ garment.status === 'ACTIVE' ? '图片与衣物信息' : '核对并入柜' }}</h2><p>{{ processing ? '处理结束或取消后，即可选择展示图并编辑信息。' : '选择衣柜里的展示图片，检查识别信息。未知字段可以留空。' }}</p></div><span v-if="dirty" class="unsaved-indicator">有未保存修改</span></div>
+        <div class="review-grid">
+          <div class="display-picker"><h3>1. 选择展示图</h3><div class="candidate-grid"><button v-for="image in imageOptions" :key="image.id" class="candidate-option" :class="{ selected: image.id === selectedAssetId }" :disabled="processing || garment.status === 'TRASHED'" :aria-pressed="image.id === selectedAssetId" @click="selectedAssetId = image.id"><img :src="image.url" :alt="imageLabels[image.kind] || '处理图片'" /><span>{{ imageLabels[image.kind] || '处理图片' }}</span><CheckOutlined v-if="image.id === selectedAssetId" /></button></div><p v-if="selectedImage" class="muted">将使用：{{ imageLabels[selectedImage.kind] || '所选图片' }}</p><div class="detail-process-actions"><a-button :disabled="processing || dirty || usingMocks || garment.status === 'TRASHED'" :loading="busy === 'retry'" @click="startRun('reprocess')"><ReloadOutlined /> 重新整理图片</a-button><a-button :disabled="processing || dirty || usingMocks || garment.status === 'TRASHED'" @click="startRun('recognize')">重新识别信息</a-button></div></div>
+          <div class="metadata-panel"><h3>2. 核对衣物信息</h3><p v-if="!Object.keys(garment.automatic).length" class="muted">{{ processing ? '识别结果尚未返回，暂不填入任何自动值。' : '没有识别结果，可根据原图手动填写。' }}</p><a-alert v-for="(issue, index) in garment.issues" :key="index" type="warning" :message="issue.message" show-icon class="form-alert" /><div class="metadata-grid">
+            <div v-for="field in schema" :key="field.key" class="metadata-field">
+              <div class="metadata-label"><label :for="`field-${field.key}`">{{ field.label }}</label><button v-if="Object.hasOwn(garment.overrides, field.key) || resetFields.includes(field.key)" :disabled="processing" type="button" class="restore-field" @click="restoreAutomatic(field.key)"><RollbackOutlined /> 恢复自动值</button></div>
+              <a-select v-if="field.options.length || field.multiple" :id="`field-${field.key}`" :aria-label="field.label" :value="field.multiple ? values[field.key] || [] : values[field.key]?.[0]" :mode="field.multiple ? field.options.length ? 'multiple' : 'tags' : undefined" :options="field.options.map(value => ({ value, label: value }))" :disabled="processing || garment.status === 'TRASHED'" allow-clear show-search placeholder="未知，可留空" @update:value="editField(field.key, Array.isArray($event) ? $event : $event ? [$event] : [])" />
+              <a-input v-else :id="`field-${field.key}`" :aria-label="field.label" :value="values[field.key]?.[0] || ''" :disabled="processing || garment.status === 'TRASHED'" :maxlength="400" placeholder="未知，可留空" @update:value="editField(field.key, $event ? [$event] : [])" />
+              <small v-if="field.multiple && !field.options.length" class="field-latest">输入后按回车，可添加多项。</small>
+              <small v-if="error || success.includes('核对')" class="field-latest">服务端当前值：{{ garment[field.key as keyof typeof fieldLabels]?.join('、') || '未知' }}</small>
+            </div>
+          </div></div>
+        </div>
+        <div class="review-actions"><a-button danger type="text" :disabled="Boolean(busy)" @click="remove"><DeleteOutlined /> 移入回收站</a-button><div><a-button v-if="garment.status !== 'TRASHED'" :disabled="processing || !dirty || Boolean(busy)" :loading="busy === 'save'" @click="save(false)"><SaveOutlined /> {{ garment.status === 'DRAFT' ? '暂存修改' : '保存修改' }}</a-button><a-button v-if="garment.status === 'DRAFT'" type="primary" :disabled="!canConfirm || Boolean(busy)" :loading="busy === 'confirm'" @click="save(true)"><CheckOutlined /> 确认入柜</a-button><a-button v-if="garment.status === 'ACTIVE'" type="primary" @click="router.push('/wardrobe')">返回衣柜 <ArrowRightOutlined /></a-button><a-button v-if="garment.status === 'TRASHED'" type="primary" :loading="busy === 'restore'" @click="restore"><RollbackOutlined /> 恢复衣物</a-button></div></div>
+        <p v-if="blocked" class="blocked-hint">这张照片不满足单件衣物要求，请重新上传。</p>
+      </section>
+      <p class="workspace-footer">处理与入柜分别保存。处理结束后，只有你点击“确认入柜”，衣物才会出现在衣柜中。</p>
+    </template>
+  </div>
+</template>

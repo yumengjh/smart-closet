@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.vite/
+*.tsbuildinfo
+.playwright-cli/
+.local/
+.env
+.env.*
+!.env.example
+.DS_Store
+.idea/
+*.log
