@@ -3,7 +3,6 @@ import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { SearchOutlined, SlidersOutlined, PlusOutlined } from '@ant-design/icons-vue'
 import { useRouter } from 'vue-router'
 import { closetApi, type Garment, type ListQuery } from '../services/api'
-import type { MetadataField } from '../domain/metadata'
 import { useClosetStore } from '../stores/closet'
 import GarmentCard from '../components/GarmentCard.vue'
 
@@ -15,10 +14,10 @@ const total = ref(0)
 const loading = ref(false)
 const error = ref('')
 const pageCount = computed(() => Math.max(1, Math.ceil(total.value / query.size)))
-const schema = ref<MetadataField[]>([])
-const categories = computed(() => schema.value.find(field => field.key === 'category')?.options || [])
-const colors = computed(() => schema.value.find(field => field.key === 'primaryColor')?.options || [])
-const seasons = computed(() => schema.value.find(field => field.key === 'seasons')?.options || [])
+const options = ref<Record<string, string[]>>({})
+const categories = computed(() => options.value.category || [])
+const colors = computed(() => options.value.primaryColor || [])
+const seasons = computed(() => options.value.seasons || [])
 let searchTimer: number | undefined
 
 async function load() {
@@ -37,7 +36,7 @@ function debounceLoad() {
   searchTimer = window.setTimeout(load, 220)
 }
 function clearFilters() { query.q = ''; query.category = ''; query.color = ''; query.season = ''; debounceLoad() }
-onMounted(async () => { await Promise.all([load(), closet.refreshCounts(), closetApi.metadataFields().then(fields => { schema.value = fields }).catch(cause => { error.value = String(cause) })]) })
+onMounted(async () => { await Promise.all([load(), closet.refreshCounts(), closetApi.metadataOptions().then(values => { options.value = values }).catch(cause => { error.value = String(cause) })]) })
 onUnmounted(() => window.clearTimeout(searchTimer))
 watch(() => [query.category, query.color, query.season], debounceLoad)
 </script>

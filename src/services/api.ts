@@ -1,5 +1,7 @@
 import type { MetadataField } from '../domain/metadata'
 export type ClosetStatus = 'DRAFT' | 'ACTIVE' | 'TRASHED'
+export type ImageProcessing = { jobId: string; status: string; stickerRequired: boolean; stickerReady: boolean; stickerAssetId: string | null }
+export type TransparencyReport = { verdict: string; hasAlpha: boolean; transparentRatio: number; reasons: string[] }
 export type Garment = {
   id: string
   revision: number
@@ -27,6 +29,7 @@ export type Garment = {
   careInstructions: string[]
   visibleText: string[]
   sourceOrigin: 'USER_UPLOAD' | 'GENERATED' | 'UNKNOWN'
+  imageProcessing?: ImageProcessing | null
   assessment?: string
   issues?: { message: string }[]
   reviewMessage?: string
@@ -37,10 +40,11 @@ export type Garment = {
   images: { id: string; url: string; kind: string; reviewStatus: string }[]
 }
 
-export type TaskStep = { name: string; type?: string; status: 'completed' | 'running' | 'failed' | 'waiting' | 'review' | 'skipped'; startedAt?: string; finishedAt?: string; outputUrl?: string; error?: string }
+export type TaskStep = { name: string; type?: string; status: 'completed' | 'running' | 'failed' | 'waiting' | 'review' | 'skipped'; startedAt?: string; finishedAt?: string; inputUrl?: string; outputUrl?: string; error?: string; transparency?: { after: TransparencyReport } }
 export type ClosetTask = {
   id: string
   garmentId: string
+  parentJobId?: string
   title: string
   status: NonNullable<Garment['taskStatus']>
   mode: '识别并整理' | '仅识别' | '本地贴纸' | '图片整理'
@@ -146,13 +150,13 @@ type GarmentView = {
   id: string; revision: number; sourceAssetId: string; sourceUrl: string; sourceOrigin: Garment['sourceOrigin'];
   displayAssetId: string; displayUrl: string; images: Garment['images']; automatic: { assessment?: string; issues?: { message: string }[]; attributes?: Record<string, { values: string[] }> } | null; overrides: Record<string, string[]>; effective: Record<string, string[]>;
   latestRecognitionJobId: string | null; latestImageJobId: string | null; runs: { id: string; status: string; createdAtMs: number }[];
-  status: Garment['status']; createdAtMs: number; updatedAtMs: number;
+  imageProcessing?: ImageProcessing | null; status: Garment['status']; createdAtMs: number; updatedAtMs: number;
 }
 type WorkflowResponse = {
-  id: string; status: string; createdAt: string; updatedAt: string; inputUrl?: string; outputUrl?: string;
+  id: string; parentJobId?: string; status: string; createdAt: string; updatedAt: string; inputUrl?: string; outputUrl?: string;
   error?: { message: string } | null;
   request: { garmentId?: string; steps?: { type: string }[] };
-  steps: { type: string; status: string; startedAt?: string; finishedAt?: string; outputUrl?: string; error?: { message: string } }[];
+  steps: { type: string; status: string; startedAt?: string; finishedAt?: string; inputUrl?: string; outputUrl?: string; error?: { message: string }; transparency?: TaskStep['transparency'] }[];
   assets: Garment['images']; attempts?: ClosetTask['attempts'];
 }
 export const stepLabels: Record<string, string> = { RECOGNIZE: 'AI 识别衣物', GENERATE: 'AI 整理图片', SEGMENT: '本地抠图', ENSURE_TRANSPARENCY: '检查透明背景', STICKER: '制作贴纸' }
@@ -161,7 +165,8 @@ const colors: Record<string, string> = { '白色': '#e3e2dc', '奶油白': '#e6e
 function fromView(view: GarmentView): Garment {
   const status = view.status || 'ACTIVE'
   const latestId = [...(view.runs || [])].sort((a, b) => b.createdAtMs - a.createdAtMs)[0]?.id || view.latestRecognitionJobId || view.latestImageJobId
-  const latestStatus = view.runs.find((run) => run.id === latestId)?.status || ''
+  let latestStatus = view.runs.find((run) => run.id === latestId)?.status || ''
+  if (view.imageProcessing && ['QUEUED', 'RUNNING', 'CANCEL_REQUESTED'].includes(view.imageProcessing.status)) latestStatus = view.imageProcessing.status
   const taskStatus = latestStatus === 'QUEUED' ? 'QUEUED' : latestStatus === 'RUNNING' ? 'RUNNING' : latestStatus === 'CANCEL_REQUESTED' ? 'CANCEL_REQUESTED'
     : latestStatus === 'NEEDS_REVIEW' ? 'NEEDS_REVIEW' : latestStatus === 'FAILED' ? 'FAILED' : latestStatus === 'CANCELLED' ? 'CANCELLED'
       : latestStatus === 'SUCCEEDED' ? 'SUCCEEDED' : latestStatus === 'UNKNOWN' ? 'UNKNOWN' : undefined
@@ -174,23 +179,27 @@ function fromView(view: GarmentView): Garment {
     styles: view.effective.styles || [], seasons: view.effective.seasons || [], brand: view.effective.brand || [], size: view.effective.size || [],
     materialComposition: view.effective.materialComposition || [], careInstructions: view.effective.careInstructions || [], visibleText: view.effective.visibleText || [],
     sourceOrigin: view.sourceOrigin, imageColor: colors[view.effective.primaryColor?.[0] || ''] || '#d6d5cc',
-    taskStatus, taskId: latestId || undefined,
+    taskStatus, taskId: latestId || undefined, imageProcessing: view.imageProcessing,
   }
 }
 function fromJob(job: WorkflowResponse): ClosetTask {
   const status: ClosetTask['status'] = ['QUEUED', 'RUNNING', 'CANCEL_REQUESTED', 'SUCCEEDED', 'NEEDS_REVIEW', 'FAILED', 'CANCELLED', 'UNKNOWN'].includes(job.status)
     ? job.status as ClosetTask['status'] : 'UNKNOWN'
   const mode = job.steps.some((step) => step.type === 'GENERATE') ? job.steps.some((step) => step.type === 'RECOGNIZE') ? '识别并整理' : '图片整理' : job.steps.some((step) => step.type === 'RECOGNIZE') ? '仅识别' : '本地贴纸'
-  return { id: job.id, garmentId: job.request.garmentId || '', title: '衣物图片处理', status, mode, createdAt: job.createdAt, updatedAt: job.updatedAt,
+  return { id: job.id, parentJobId: job.parentJobId, garmentId: job.request.garmentId || '', title: '衣物图片处理', status, mode, createdAt: job.createdAt, updatedAt: job.updatedAt,
     inputUrl: job.inputUrl, outputUrl: job.outputUrl, assets: job.assets || [], attempts: job.attempts || [],
     steps: job.steps.map((step) => ({ name: stepLabels[step.type] || step.type, type: step.type,
-      startedAt: step.startedAt, finishedAt: step.finishedAt, outputUrl: step.outputUrl, error: step.error?.message,
+      startedAt: step.startedAt, finishedAt: step.finishedAt, inputUrl: step.inputUrl, outputUrl: step.outputUrl, error: step.error?.message, transparency: step.transparency,
       status: step.status === 'SUCCEEDED' ? 'completed' : step.status === 'RUNNING' ? 'running' : ['FAILED', 'UNKNOWN', 'INTERRUPTED'].includes(step.status) ? 'failed' : step.status === 'NEEDS_REVIEW' ? 'review' : step.status === 'SKIPPED' ? 'skipped' : 'waiting' })),
     note: job.error?.message,
   }
 }
 
 export const closetApi = {
+  async metadataOptions(): Promise<Record<string, string[]>> {
+    if (!usingMocks) return request<Record<string, string[]>>('/api/closet/metadata-options')
+    return Object.fromEntries(Object.keys(fieldLabels).map(key => [key, [...new Set(readMock().garments.filter(item => item.status === 'ACTIVE').flatMap(item => item[key as keyof typeof fieldLabels]))]]))
+  },
   async metadataFields(): Promise<MetadataField[]> {
     if (usingMocks) return Object.entries(fieldLabels).map(([key, label]) => ({ key, label, options: [], multiple: ['secondaryColors', 'patterns', 'closure', 'texture', 'styles', 'seasons', 'visibleText'].includes(key), suggestion: ['styles', 'seasons'].includes(key) }))
     return (await request<{ fields: MetadataField[] }>('/api/recognition/schema')).fields
@@ -255,10 +264,16 @@ export const closetApi = {
     return structuredClone(task)
   },
 
-  async confirm(id: string, patch: Partial<Garment> & { fields?: Record<string, string[]>; resetFields?: string[]; revision?: number; assetId?: string }) {
+  async continueSticker(taskId: string, assetId: string, policy: 'FORCE' | 'REVIEWED', key: string): Promise<ClosetTask> {
+    if (usingMocks) throw new Error('演示模式不执行图片处理。')
+    if (policy === 'REVIEWED') await request(`/api/workflows/${taskId}/assets/${assetId}/review`, { method: 'POST', body: JSON.stringify({ decision: 'APPROVED', note: '人工核对透明背景与完整衣物后继续制作贴纸' }) })
+    return fromJob(await request<WorkflowResponse>(`/api/workflows/${taskId}/continue`, { method: 'POST', headers: { 'Idempotency-Key': key }, body: JSON.stringify({ assetId, policy, method: 'U2NET' }) }))
+  },
+
+  async confirm(id: string, patch: Partial<Garment> & { fields?: Record<string, string[]>; resetFields?: string[]; revision?: number; assetId?: string; allowIncompleteSticker?: boolean }) {
     if (!usingMocks) {
       const view = await request<GarmentView>(`/api/garments/${id}`)
-      return fromView(await request<GarmentView>(`/api/closet/garments/${id}/confirm`, { method: 'POST', body: JSON.stringify({ revision: patch.revision ?? view.revision, assetId: patch.assetId ?? view.displayAssetId, fields: patch.fields || {}, resetFields: patch.resetFields || [] }) }))
+      return fromView(await request<GarmentView>(`/api/closet/garments/${id}/confirm`, { method: 'POST', body: JSON.stringify({ revision: patch.revision ?? view.revision, assetId: patch.assetId ?? view.displayAssetId, fields: patch.fields || {}, resetFields: patch.resetFields || [], allowIncompleteSticker: patch.allowIncompleteSticker || false }) }))
     }
     await delay()
     const state = readMock()

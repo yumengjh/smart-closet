@@ -7,7 +7,8 @@ import { useClosetStore } from '../stores/closet'
 import GarmentCard from '../components/GarmentCard.vue'
 const closet = useClosetStore(); const items = ref<Garment[]>([]); const loading = ref(true); const error = ref(''); const filter = ref('全部')
 const page = ref(1); const total = ref(0); let timer = 0; let alive = false; let delay = 2000
-const filtered = computed(() => items.value.filter(item => filter.value === '全部' || (filter.value === '处理中' ? isProcessing(item.taskStatus) : filter.value === '需处理' ? ['FAILED', 'UNKNOWN', 'CANCELLED'].includes(item.taskStatus || '') : !isProcessing(item.taskStatus) && !['FAILED', 'UNKNOWN', 'CANCELLED'].includes(item.taskStatus || ''))))
+const needsAction = (item: Garment) => !isProcessing(item.taskStatus) && (Boolean(item.imageProcessing?.stickerRequired && !item.imageProcessing.stickerReady) || ['FAILED', 'UNKNOWN', 'CANCELLED', 'NEEDS_REVIEW'].includes(item.taskStatus || ''))
+const filtered = computed(() => items.value.filter(item => filter.value === '全部' || (filter.value === '处理中' ? isProcessing(item.taskStatus) : filter.value === '需处理' ? needsAction(item) : !isProcessing(item.taskStatus) && !needsAction(item))))
 async function load() {
   try { const response = await closetApi.list({ status: 'DRAFT', q: '', category: '', color: '', season: '', page: page.value, size: 24 }); if (!alive) return; items.value = response.items; total.value = response.total; error.value = ''; delay = 2000 }
   catch (cause) { error.value = cause instanceof Error ? cause.message : '未入柜衣物暂时无法加载。'; delay = Math.min(30000, delay * 2) }

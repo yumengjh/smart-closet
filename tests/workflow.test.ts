@@ -21,3 +21,10 @@ test('adopting a result later never inflates the processing duration', () => {
   const task = { status: 'NEEDS_REVIEW', createdAt: '2026-09-30T10:00:00Z', updatedAt: '2026-09-30T10:30:00Z', steps: [{ finishedAt: '2026-09-30T10:01:09Z' }] } as ClosetTask
   assert.equal(processingSeconds(task), 69)
 })
+
+test('unfinished sticker remains actionable even for an already confirmed garment', () => {
+  const imageProcessing = { jobId: 'image-job', status: 'NEEDS_REVIEW', stickerRequired: true, stickerReady: false, stickerAssetId: null }
+  assert.match(workflowSummary({ ...draft, imageProcessing }).title, /贴纸尚未完成/)
+  assert.match(workflowSummary({ ...draft, status: 'ACTIVE', imageProcessing }).title, /已入柜，贴纸尚未完成/)
+  assert.match(workflowSummary({ ...draft, imageProcessing: { ...imageProcessing, stickerReady: true } }).title, /核对结果/)
+})
