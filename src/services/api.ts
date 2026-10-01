@@ -1,5 +1,8 @@
+import { normalizeScene, sceneWrite } from '../domain/outfit'
+import personCatalog from '../domain/person-stickers.json'
+import type { PersonCatalog } from '../domain/person-stickers'
 import type { MetadataField } from '../domain/metadata'
-import type { Outfit, OutfitScene, OutfitWriteElement } from '../domain/outfit'
+import type { Outfit, OutfitScene } from '../domain/outfit'
 export type ClosetStatus = 'DRAFT' | 'ACTIVE' | 'TRASHED'
 export type ImageProcessing = { jobId: string; status: string; stickerRequired: boolean; stickerReady: boolean; stickerAssetId: string | null }
 export type TransparencyReport = { verdict: string; hasAlpha: boolean; transparentRatio: number; reasons: string[] }
@@ -253,6 +256,10 @@ export const closetApi = {
     if (!found) throw new Error('找不到这件衣物。')
     return structuredClone(found)
   },
+  async personStickers(): Promise<PersonCatalog> {
+    if (!usingMocks) return request<PersonCatalog>('/api/person-stickers')
+    return { ...personCatalog, sets: personCatalog.sets.map(set => ({ ...set, parts: set.parts.map(part => ({ ...part, url: part.url.replace('/api/person-stickers/', '/person-stickers/') })) })) }
+  },
   async outfits(): Promise<Outfit[]> {
     if (!usingMocks) return request<Outfit[]>('/api/outfits')
     await delay()
@@ -265,17 +272,12 @@ export const closetApi = {
     return structuredClone(found)
   },
   async saveOutfit(id: string | null, revision: number | null, name: string, scene: OutfitScene): Promise<Outfit> {
-    const payload = { ...(id ? { revision } : {}), name, scene: {
-      version: scene.version,
-      elements: scene.elements.map(({ assetUrl: _url, imageWidth: _width, imageHeight: _height,
-        assetKind: _kind, garmentRevision: _garmentRevision, garmentStatus: _status,
-        garmentChanged: _changed, imageChanged: _imageChanged, ...element }) => element as OutfitWriteElement),
-    } }
+    const payload = { name, revision, scene: sceneWrite(normalizeScene(scene)) }
     if (!usingMocks) return id
       ? request<Outfit>(`/api/outfits/${id}`, { method: 'PUT', body: JSON.stringify(payload) })
       : request<Outfit>('/api/outfits', { method: 'POST', body: JSON.stringify(payload) })
     await delay()
-    const mockScene: OutfitScene = { version: scene.version, elements: scene.elements.map((element) => ({ ...element })) }
+    const mockScene: OutfitScene = normalizeScene(scene)
     const outfits = readMockOutfits()
     const now = Date.now()
     if (!id) {

@@ -1,0 +1,45 @@
+{
+  "tool": "built-in imagegen",
+  "status": "user-approved-and-integrated",
+  "items": [
+    {
+      "id": "chibi",
+      "label": "Q版",
+      "rows": [
+        0,
+        345,
+        718,
+        980,
+        1240
+      ],
+      "prompt": "Use case: stylized-concept. Asset type: ONE transparent character-part sticker atlas for a dress-up collage app. Exactly 4 columns by 4 rows of equally sized invisible square cells. True transparent RGBA background, NO grid, NO labels, NO text, NO shadow, NO full assembled person. One isolated sticker centered per occupied cell with generous transparent margins; never cross cell boundaries. Same charming clearly ADULT male character, warm peach skin, brown hair, friendly face. Flat front view, clean finished outlines, rounded smooth edges. Independent removable paper doll stickers, no mechanical joints or circles, no bones, no dissection, no gore. Whole arms include elbow forearm and a complete hand, whole legs include knee calf and a complete foot. The limb's proximal end is rounded for optional overlap. Anatomically complete, simplified hands with thumb and fingers, no missing extremities. Base torso wears a close-fitting ivory sleeveless undershirt; pelvis wears neutral gray fitted shorts. Pieces share a coherent style and intended body proportions. Strict row-major arrangement:\nrow1 col1 head WITH hair and ears facing forward; col2 small neck-and-shoulder skin connector WITHOUT head torso or arms; col3 front torso ivory sleeveless undershirt WITHOUT head arms pelvis; col4 front pelvis gray basic shorts WITHOUT torso legs.\nrow2 col1 whole arm on VIEWER LEFT extended downward with hand; col2 whole arm on VIEWER RIGHT extended downward with hand; col3 whole leg on VIEWER LEFT from thigh through foot pointing slightly left; col4 whole leg on VIEWER RIGHT from thigh through foot pointing slightly right.\nrow3 col1 alternative whole arm on VIEWER LEFT bent gently outward at elbow including hand; col2 alternative whole arm on VIEWER RIGHT bent outward including hand; col3 isolated left hand; col4 isolated right hand.\nrow4 col1 isolated left bare foot; col2 isolated right bare foot; col3 EMPTY TRANSPARENT; col4 EMPTY TRANSPARENT.\nHead approximately width 65% of cell; torso 55%; pelvis 50%; long limbs no more than 85% cell height, narrow. Do not include any connected full character or extra copies. Asset quality: crisp cute sticker illustrations without white sticker-border.\nStyle: stylish chibi caricature of an adult, large expressive head, compact body, softly rounded limbs, warm subtle flat shading, contemporary kawaii illustration, NOT a child. Head-to-total-body ratio approximately 1:4.",
+      "source": "/Users/yaopinxin/.codex/generated_images/01a0f550-dbb1-7661-b080-57233438c0e6/exec-214a0618-c737-4bed-992a-87872829dcc0.png"
+    },
+    {
+      "id": "cartoon",
+      "label": "清爽卡通",
+      "rows": [
+        0,
+        314,
+        667,
+        974,
+        1242
+      ],
+      "prompt": "Use case: stylized-concept. Asset type: ONE transparent character-part sticker atlas for a dress-up collage app. Exactly 4 columns by 4 rows of equally sized invisible square cells. True transparent RGBA background, NO grid, NO labels, NO text, NO shadow, NO full assembled person. One isolated sticker centered per occupied cell with generous transparent margins; never cross cell boundaries. Same charming clearly ADULT male character, warm peach skin, brown hair, friendly face. Flat front view, clean finished outlines, rounded smooth edges. Independent removable paper doll stickers, no mechanical joints or circles, no bones, no dissection, no gore. Whole arms include elbow forearm and a complete hand, whole legs include knee calf and a complete foot. The limb's proximal end is rounded for optional overlap. Anatomically complete, simplified hands with thumb and fingers, no missing extremities. Base torso wears a close-fitting ivory sleeveless undershirt; pelvis wears neutral gray fitted shorts. Pieces share a coherent style and intended body proportions. Strict row-major arrangement:\nrow1 col1 head WITH hair and ears facing forward; col2 small neck-and-shoulder skin connector WITHOUT head torso or arms; col3 front torso ivory sleeveless undershirt WITHOUT head arms pelvis; col4 front pelvis gray basic shorts WITHOUT torso legs.\nrow2 col1 whole arm on VIEWER LEFT extended downward with hand; col2 whole arm on VIEWER RIGHT extended downward with hand; col3 whole leg on VIEWER LEFT from thigh through foot pointing slightly left; col4 whole leg on VIEWER RIGHT from thigh through foot pointing slightly right.\nrow3 col1 alternative whole arm on VIEWER LEFT bent gently outward at elbow including hand; col2 alternative whole arm on VIEWER RIGHT bent outward including hand; col3 isolated left hand; col4 isolated right hand.\nrow4 col1 isolated left bare foot; col2 isolated right bare foot; col3 EMPTY TRANSPARENT; col4 EMPTY TRANSPARENT.\nHead approximately width 65% of cell; torso 55%; pelvis 50%; long limbs no more than 85% cell height, narrow. Do not include any connected full character or extra copies. Asset quality: crisp cute sticker illustrations without white sticker-border.\nStyle: fresh attractive modern 2D cartoon adult, medium sized expressive head, simple clean shapes, gently rounded limbs, restrained cel shading. Head-to-body ratio approximately 1:6. Not realistic anatomy, not anime muscle rendering.",
+      "source": "/Users/yaopinxin/.codex/generated_images/01a0f550-dbb1-7661-b080-57233438c0e6/exec-b1e44dc0-cd7b-4ebb-a2f0-1ba9f4781dad.png"
+    },
+    {
+      "id": "sketch",
+      "label": "手绘简笔画",
+      "rows": [
+        0,
+        335,
+        708,
+        1005,
+        1242
+      ],
+      "prompt": "Edit this transparent 4x4 character-part sticker atlas. Keep EXACTLY the same 14 isolated parts, same row and column placement, same transparent background, complete hands and feet, ivory undershirt and gray basic shorts. Change ONLY the visual style to an unmistakable minimal hand-drawn doodle / simple children's-picture-book line illustration of a clearly ADULT man: very thin charcoal wobbly outline, flat very pale peach skin fills, NO realistic muscle lines, NO anatomical shading, NO gradients, NO lifelike anime eyes, NO detailed rendering, NO watercolor noise or texture outside shapes. Face has tiny dot eyes, a small curved smiling mouth and a simple brown scribbled hair silhouette. Rounded simplified hands, simple rounded feet. One confident sparse sketch line per contour. Think whimsical pen-and-flat-pastel cut-paper illustration, deliberately much simpler than the current detailed anime rendering. Distinct style, not a softened version of the same anime. Preserve true transparent alpha. No grid lines, captions, decorations, whole character or additional pieces.",
+      "source": "/Users/yaopinxin/.codex/generated_images/01a0f550-dbb1-7661-b080-57233438c0e6/exec-37150a2a-69c4-4c4e-8f59-055608b5b5b9.png"
+    }
+  ]
+}

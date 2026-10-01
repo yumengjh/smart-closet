@@ -12,11 +12,14 @@ import {
 } from '@ant-design/icons-vue'
 import { useClosetStore } from '../stores/closet'
 import { closetApi, type Garment } from '../services/api'
-import { OUTFIT_HEIGHT, OUTFIT_VERSION, OUTFIT_WIDTH, outfitDropPosition, outfitRoleOptions, reorderOutfitElements, restoreOutfitDraft, roleFromGarment, type Outfit, type OutfitDraft, type OutfitElement, type OutfitLayerMove, type OutfitRole, type OutfitScene } from '../domain/outfit'
+import { dropOutfitLayer, elementKey, normalizeScene, stickerLimit, copySticker, OUTFIT_HEIGHT, OUTFIT_VERSION, OUTFIT_WIDTH, outfitDropPosition, outfitRoleOptions, reorderOutfitElements, restoreOutfitDraft, roleFromGarment, type Outfit, type OutfitDraft, type OutfitElement, type OutfitLayerMove, type OutfitRole, type OutfitScene } from '../domain/outfit'
 import { artworkForGarment, createOutfitElement, downloadOutfitPng, loadOutfitImage } from '../domain/outfit-images'
 import OutfitThumbnail from '../components/OutfitThumbnail.vue'
 import OutfitGarmentPicker from '../components/OutfitGarmentPicker.vue'
+import OutfitMultiInspector from '../components/OutfitMultiInspector.vue'
 import OutfitInspector from '../components/OutfitInspector.vue'
+import OutfitPersonPicker from '../components/OutfitPersonPicker.vue'
+import { createPersonElement, type PersonCatalog, type PersonPart } from '../domain/person-stickers'
 import OutfitLayers from '../components/OutfitLayers.vue'
 import { MIN_VIEW_ZOOM, MAX_VIEW_ZOOM, outfitViewGeometry, outfitWheelZoom } from '../domain/outfit-view'
 
@@ -35,6 +38,11 @@ const librarySearch = ref('')
 const displayedOutfits = computed(() => saved.value.filter(item => item.name.toLocaleLowerCase().includes(librarySearch.value.trim().toLocaleLowerCase())))
 const inspectorTab = ref('properties')
 const garments = ref<Garment[]>([])
+const materialTab = ref('garments')
+const personCatalog = ref<PersonCatalog | null>(null)
+const loadingPeople = ref(false)
+const peopleError = ref('')
+const dragPart = ref<PersonPart | null>(null)
 const loadingGarments = ref(false)
 const garmentError = ref('')
 const search = ref('')
@@ -71,6 +79,8 @@ let pinchPoint = { x: .5, y: .5 }
 let pinchMoveRevision = 0
 const replacementTarget = ref<string | null>(null)
 const selectedId = ref('')
+const selectedIds = ref<string[]>([])
+const selectedItems = computed(() => elements.value.filter(item => selectedIds.value.includes(elementKey(item))))
 const failedImage = ref('')
 const imageMap = ref<Record<string, HTMLImageElement>>({})
 const outfitId = ref('')
@@ -102,24 +112,24 @@ const filteredGarments = computed(() => activeGarments.value.filter((item) => {
   return (!search.value || category.includes(search.value.trim().toLocaleLowerCase()))
     && (roleFilter.value === 'ALL' || roleFromGarment(item) === roleFilter.value)
 }))
-const pickedIds = computed(() => new Set(elements.value.map((item) => item.garmentId)))
+const pickedIds = computed(() => new Set(elements.value.filter(item => item.kind !== 'PERSON_PART').map(item => item.garmentId)))
 const viewGeometry = computed(() => outfitViewGeometry(availableWidth.value, availableHeight.value, zoom.value, compact.value ? 24 : 48))
 const canvasScale = computed(() => viewGeometry.value.scale)
 const stageWidth = computed(() => viewGeometry.value.stageWidth)
 const stageHeight = computed(() => viewGeometry.value.stageHeight)
 const focusedView = computed(() => !pickerVisible.value && !inspectorVisible.value)
 const scene = computed<OutfitScene>(() => ({ version: OUTFIT_VERSION, elements: elements.value }))
-const currentItem = computed(() => elements.value.find((item) => item.garmentId === selectedId.value) || null)
-const selectedIndex = computed(() => elements.value.findIndex(item => item.garmentId === selectedId.value))
+const currentItem = computed(() => elements.value.find((item) => elementKey(item) === selectedId.value) || null)
+const selectedIndex = computed(() => elements.value.findIndex(item => elementKey(item) === selectedId.value))
 const canForward = computed(() => selectedIndex.value >= 0 && selectedIndex.value < elements.value.length - 1)
 const canBackward = computed(() => selectedIndex.value > 0)
-const contextItem = computed(() => elements.value.find(item => item.garmentId === contextTarget.value))
+const contextItem = computed(() => elements.value.find(item => elementKey(item) === contextTarget.value))
 const contextGarment = computed(() => garments.value.find(item => item.id === contextTarget.value))
 const hasChanges = computed(() => JSON.stringify({ name: name.value, elements: elements.value }) !== baselineSignature)
 const saveState = computed(() => localDraftNotice.value ? '草稿已保存在此设备' : !isNew.value && !hasChanges.value ? '已保存至账号' : '修改会自动保留在此设备')
 const dirty = computed(() => elements.value.length > 0)
 const roleNames = Object.fromEntries(outfitRoleOptions.map((option) => [option.value, option.label])) as Record<OutfitRole, string>
-const sceneLabel = computed(() => elements.value.length === 1 ? '1 件衣物' : `${elements.value.length} 件衣物`)
+const sceneLabel = computed(() => `${elements.value.length} 张贴纸`)
 const draftKey = computed(() => `yixu.outfit-draft.v1:${draftOwner.value || closet.user?.username || 'anonymous'}:${route.params.id || 'new'}`)
 
 function getDraft() {
@@ -183,7 +193,7 @@ async function loadPage() {
     revision.value = null
     draftRevision = null
     name.value = draft?.name || '未命名搭配'
-    elements.value = draft?.scene?.version === OUTFIT_VERSION ? draft.scene.elements : []
+    elements.value = draft?.scene && [1, OUTFIT_VERSION].includes(draft.scene.version) ? normalizeScene(draft.scene).elements : []
     undoStack.value = []; redoStack.value = []
     baselineSignature = JSON.stringify({ name: '未命名搭配', elements: [] })
     localDraftNotice.value = Boolean(draft)
@@ -197,7 +207,7 @@ async function loadPage() {
     outfitId.value = outfit.id
     revision.value = outfit.revision
     draftRevision = outfit.revision
-    baselineSignature = JSON.stringify({ name: outfit.name, elements: outfit.scene.elements })
+    baselineSignature = JSON.stringify({ name: outfit.name, elements: normalizeScene(outfit.scene).elements })
     undoStack.value = []; redoStack.value = []
     const draft = getDraft()
     const restored = restoreOutfitDraft(outfit, draft)
@@ -249,43 +259,78 @@ function redo() {
   scheduleDraft()
 }
 
+async function loadPeople() {
+  loadingPeople.value = true; peopleError.value = ''
+  try { personCatalog.value = await closetApi.personStickers() }
+  catch (cause) { peopleError.value = cause instanceof Error ? cause.message : '人物贴纸暂时无法加载。' }
+  finally { loadingPeople.value = false }
+}
+async function selectPerson(part: PersonPart, position?: { x: number; y: number }) {
+  const request = loadRevision
+  const limit = stickerLimit(elements.value, 'PERSON_PART')
+  if (limit) { message.warning(limit); return }
+  try {
+    await loadOutfitImage(part.url)
+    if (request !== loadRevision) return
+    const laterLimit = stickerLimit(elements.value, 'PERSON_PART')
+    if (laterLimit) { message.warning(laterLimit); return }
+    const candidate = createPersonElement(part, elements.value.length, position)
+    recordChange([...elements.value, candidate]); selectElement(elementKey(candidate))
+  } catch (cause) { message.error(cause instanceof Error ? cause.message : '人物贴纸无法加载。') }
+}
 async function selectGarment(garment: Garment, position?: { x: number; y: number }) {
   if (addingGarments.has(garment.id)) return
-  if (pickedIds.value.has(garment.id) && !replacementTarget.value) {
-    if (position) recordChange(elements.value.map(item => item.garmentId === garment.id ? { ...item, ...position } : item))
-    selectedId.value = garment.id
-    await attachTransformer()
-    return
+  const existing = elements.value.find(item => item.kind !== 'PERSON_PART' && item.garmentId === garment.id)
+  if (existing && !replacementTarget.value) {
+    if (position) recordChange(elements.value.map(item => elementKey(item) === elementKey(existing) ? { ...item, ...position } : item))
+    selectElement(elementKey(existing)); return
   }
-  if (replacementTarget.value && pickedIds.value.has(garment.id) && replacementTarget.value !== garment.id) {
-    message.info('这件衣物已经在画板上，请选择其他单品。')
-    return
-  }
-  addingGarments.add(garment.id)
   const target = replacementTarget.value
-  const old = target ? elements.value.find((item) => item.garmentId === target) : null
+  const old = target ? elements.value.find(item => elementKey(item) === target) : null
+  if (!old) { const limit = stickerLimit(elements.value, 'GARMENT'); if (limit) { message.warning(limit); return } }
+  addingGarments.add(garment.id)
   try {
-    const candidate = await createOutfitElement(garment, target ? elements.value.filter((item) => item.garmentId !== target) : elements.value)
+    const candidate = await createOutfitElement(garment, old ? elements.value.filter(item => elementKey(item) !== target) : elements.value)
+    if (!old) { const limit = stickerLimit(elements.value, 'GARMENT'); if (limit) { message.warning(limit); return } }
     const next = [...elements.value]
     if (old) {
-      const index = next.findIndex((item) => item.garmentId === target)
-      next[index] = { ...candidate, role: old.role, x: old.x, y: old.y, width: old.width, height: old.height, rotation: old.rotation, zIndex: old.zIndex }
+      const index = next.findIndex(item => elementKey(item) === target)
+      if (index < 0) return
+      next[index] = { ...candidate, elementId: old.elementId, role: old.role, x: old.x, y: old.y, width: old.width, height: old.height, rotation: old.rotation, zIndex: old.zIndex, flipX: old.flipX, freeStretch: old.freeStretch }
     } else next.push({ ...candidate, ...position })
     recordChange(next.sort((a, b) => a.zIndex - b.zIndex))
-    selectedId.value = garment.id
+    selectedId.value = old ? elementKey(old) : elementKey(candidate)
     replacementTarget.value = null
     if (old) pickerOpen.value = false
-    await refreshImages()
-    await attachTransformer()
+    await refreshImages(); await attachTransformer()
     message.success(old ? '已替换衣物，保留原来的布局。' : `${candidate.garmentLabel}已加入画板。`, 1.4)
-  } catch (cause) {
-    message.error(cause instanceof Error ? cause.message : '衣物图片暂时无法加载。')
-  } finally { addingGarments.delete(garment.id) }
+  } catch (cause) { message.error(cause instanceof Error ? cause.message : '衣物图片暂时无法加载。') }
+  finally { addingGarments.delete(garment.id) }
 }
+function patchSelected(patch: Partial<OutfitElement>) {
+  recordChange(elements.value.map(item => elementKey(item) === selectedId.value ? { ...item, ...patch } : item))
+}
+function duplicateSelected() {
+  if (!selectedItems.value.length) return
+  const next = [...elements.value], copies: OutfitElement[] = []
+  for (const item of selectedItems.value) {
+    const limit = stickerLimit(next, item.kind || 'GARMENT')
+    if (limit) { message.warning(limit); return }
+    const copy = copySticker(item, next.length)
+    copies.push(copy); next.push(copy)
+  }
+  recordChange(next)
+  selectedIds.value = copies.map(elementKey); selectedId.value = selectedIds.value.at(-1) || ''
+  void attachTransformer()
+}
+function flipSelected() { batchFlip() }
+function stretchSelected(value: boolean) { batchUpdate(item => ({ ...item, freeStretch: value })) }
+function heightSelected(value: number) { if (currentItem.value?.freeStretch) patchSelected({ height: Math.max(24, Math.min(2700, value)) }) }
+function cropSelected(crop: { x: number; y: number; width: number; height: number }) { patchSelected({ cropX: crop.x, cropY: crop.y, cropWidth: crop.width, cropHeight: crop.height }) }
 
 function removeSelected() {
   if (!selectedId.value) return
-  recordChange(elements.value.filter((item) => item.garmentId !== selectedId.value))
+  recordChange(elements.value.filter((item) => !selectedIds.value.includes(elementKey(item))))
   selectedId.value = ''
   replacementTarget.value = null
   inspectorOpen.value = false
@@ -297,7 +342,7 @@ function moveLayer(direction: OutfitLayerMove) {
 }
 function changeRole(value: OutfitRole) {
   if (!currentItem.value) return
-  recordChange(elements.value.map((item) => item.garmentId === selectedId.value ? { ...item, role: value } : item))
+  recordChange(elements.value.map((item) => elementKey(item) === selectedId.value ? { ...item, role: value } : item))
 }
 function scaleSelected(factor: number) {
   if (!currentItem.value) return
@@ -306,18 +351,21 @@ function scaleSelected(factor: number) {
 function resizeSelected(width: number) {
   if (!currentItem.value) return
   const item = currentItem.value
+  if (item.freeStretch) { patchSelected({ width: Math.max(24, Math.min(2160, width)) }); return }
   const factor = Math.max(24 / Math.min(item.width, item.height), Math.min(width / item.width, 2160 / item.width, 2700 / item.height))
-  recordChange(elements.value.map(value => value.garmentId === selectedId.value ? { ...value, width: value.width * factor, height: value.height * factor } : value))
+  recordChange(elements.value.map(value => elementKey(value) === selectedId.value ? { ...value, width: value.width * factor, height: value.height * factor } : value))
 }
 function rotateSelected(degrees: number) {
   if (!currentItem.value) return
-  recordChange(elements.value.map((item) => item.garmentId === selectedId.value
+  recordChange(elements.value.map((item) => elementKey(item) === selectedId.value
     ? { ...item, rotation: ((degrees % 360) + 360) % 360 } : item))
 }
 function positionSelected(axis: 'x' | 'y', value: number) {
-  recordChange(elements.value.map(item => item.garmentId === selectedId.value ? { ...item, [axis]: Math.max(0, Math.min(axis === 'x' ? OUTFIT_WIDTH : OUTFIT_HEIGHT, value)) } : item))
+  recordChange(elements.value.map(item => elementKey(item) === selectedId.value ? { ...item, [axis]: Math.max(0, Math.min(axis === 'x' ? OUTFIT_WIDTH : OUTFIT_HEIGHT, value)) } : item))
 }
 function startReplacement() {
+  if (currentItem.value?.kind === 'PERSON_PART') return
+  materialTab.value = 'garments'
   pickerVisible.value = true
   replacementTarget.value = selectedId.value
   inspectorOpen.value = false
@@ -334,37 +382,62 @@ function startGarmentDrag(event: DragEvent, garment: Garment) {
   if (event.dataTransfer) event.dataTransfer.effectAllowed = pickedIds.value.has(garment.id) ? 'move' : 'copy'
   closeContextMenu()
 }
-function endGarmentDrag() { dragGarmentId.value = ''; dragOver.value = false }
+function startPersonDrag(event: DragEvent, part: PersonPart) {
+  dragPart.value = part; dragGarmentId.value = ''
+  event.dataTransfer?.setData('application/x-person-sticker', part.id)
+  if (event.dataTransfer) event.dataTransfer.effectAllowed = 'copy'
+}
+function endGarmentDrag() { dragPart.value = null; dragGarmentId.value = ''; dragOver.value = false }
 function dragOverCanvas(event: DragEvent) {
-  if (!dragGarmentId.value) return
+  if (!dragGarmentId.value && !dragPart.value) return
   event.preventDefault()
   dragOver.value = true
-  if (event.dataTransfer) event.dataTransfer.dropEffect = pickedIds.value.has(dragGarmentId.value) ? 'move' : 'copy'
+  if (event.dataTransfer) event.dataTransfer.dropEffect = !dragPart.value && pickedIds.value.has(dragGarmentId.value) ? 'move' : 'copy'
 }
 function dropGarment(event: DragEvent) {
   event.preventDefault()
   event.stopPropagation()
   const garment = garments.value.find(item => item.id === dragGarmentId.value)
+  const part = dragPart.value
   const bounds = stageFrame.value?.getBoundingClientRect()
   const position = bounds && outfitDropPosition(event.clientX, event.clientY, bounds)
   endGarmentDrag()
-  if (garment && position) void selectGarment(garment, position)
+  if (part && position) void selectPerson(part, position)
+  else if (part) message.info('请将贴纸放到白色画板内。')
+  else if (garment && position) void selectGarment(garment, position)
   else if (garment) message.info('请将衣物放到白色画板内。')
   else if (event.dataTransfer?.files.length) message.info('先将照片录入衣柜，再加入搭配。')
 }
+
+function dropLayer(source: string, target: string, above: boolean) {
+  const next = dropOutfitLayer(elements.value, source, target, above)
+  if (next !== elements.value) recordChange(next)
+}
+const shiftHeld = ref(false)
+function transformKeys(event: KeyboardEvent) { shiftHeld.value = event.shiftKey }
 
 function closeContextMenu() { contextTarget.value = '' }
 function openContextMenu(event: MouseEvent, id: string) {
   event.preventDefault()
   if (compact.value) { selectElement(id); inspectorOpen.value = true; return }
-  if (pickedIds.value.has(id)) selectElement(id)
-  contextTarget.value = id
-  contextPosition.value = { x: Math.max(8, Math.min(event.clientX, window.innerWidth - 248)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 400)) }
-  void nextTick(() => contextMenu.value?.querySelector<HTMLElement>('.ant-menu-item')?.focus())
+  const instance = elements.value.find(item => elementKey(item) === id || (item.kind !== 'PERSON_PART' && item.garmentId === id))
+  if (instance) {
+    if (!selectedIds.value.includes(elementKey(instance))) selectElement(elementKey(instance))
+    else selectedId.value = elementKey(instance)
+  }
+  contextTarget.value = instance ? elementKey(instance) : id
+  contextPosition.value = { x: Math.max(8, Math.min(event.clientX, window.innerWidth - 192)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 340)) }
+  void nextTick(() => {
+    const menu = contextMenu.value
+    if (!menu) return
+    const bounds = menu.getBoundingClientRect()
+    contextPosition.value = { x: Math.max(8, Math.min(event.clientX, window.innerWidth - bounds.width - 8)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - bounds.height - 8)) }
+    menu.querySelector<HTMLElement>('.ant-menu-item')?.focus()
+  })
 }
 function canvasContextMenu(event: Konva.KonvaEventObject<MouseEvent>, item: OutfitElement) {
   event.cancelBubble = true
-  openContextMenu(event.evt, item.garmentId)
+  openContextMenu(event.evt, elementKey(item))
 }
 function contextMenuClick(event: { key: string | number }) { contextAction(event.key) }
 function contextAction(key: string | number) {
@@ -373,12 +446,17 @@ function contextAction(key: string | number) {
   closeContextMenu()
   if (key === 'info') { void showInfo(id); return }
   if (key === 'add' && garment) { void selectGarment(garment); return }
-  selectElement(id)
+  if (!selectedIds.value.includes(id)) selectElement(id)
   if (key === 'remove') removeSelected()
   else if (key === 'replace') startReplacement()
+  else if (key === 'duplicate') duplicateSelected()
+  else if (key === 'flip') flipSelected()
   else moveLayer(key as OutfitLayerMove)
 }
 async function showInfo(id = selectedId.value) {
+  const item = elements.value.find(item => elementKey(item) === id)
+  if (item?.kind === 'PERSON_PART') return
+  id = item?.garmentId || id
   infoOpen.value = true
   infoLoading.value = true
   infoError.value = ''
@@ -394,7 +472,7 @@ function cancelLongPress() { window.clearTimeout(touchTimer) }
 function beginTouch(event: Konva.KonvaEventObject<TouchEvent>, item: OutfitElement) {
   cancelLongPress()
   if (event.evt.touches.length !== 1) return
-  selectElement(item.garmentId)
+  if (!selectedIds.value.includes(elementKey(item))) selectElement(elementKey(item))
   touchTimer = window.setTimeout(() => { inspectorOpen.value = true; event.target.stopDrag() }, 500)
 }
 function touchStart(event: TouchEvent) {
@@ -433,7 +511,7 @@ function touchEnd(event: TouchEvent) {
   pinching.value = false
 }
 function showHelp() {
-  modal.info({ title: '画板操作', content: compact.value ? '点选衣物后拖动，拖动四角等比缩放。双指缩放或移动查看画板，双击或长按衣物打开调整抽屉。点击适应屏幕可恢复完整画板。' : '普通滚轮移动视图，Shift + 滚轮横向移动，Ctrl/⌘ + 滚轮以鼠标位置缩放。按住空格或鼠标中键拖动视图，也可切换手形工具。衣柜与属性面板可分别收起，专注画板可同时收起两栏。右键管理衣物，方向键微调；Ctrl/⌘ + Z 撤销，Ctrl/⌘ + S 保存，Delete 移除。', okText: '知道了' })
+  modal.info({ title: '画板操作', content: compact.value ? '点选贴纸后拖动，拖动四角等比缩放。双指缩放或移动查看画板，双击或长按贴纸打开调整抽屉。点击适应屏幕可恢复完整画板。' : '拖动四角等比缩放，拖动边缘调整宽高；Shift 临时切换等比与自由拉伸，Alt 从中心缩放。拖动顶部圆点旋转，Shift 按 15° 吸附。Shift / Ctrl / ⌘ 点击贴纸可多选，图层勾选可多选，Ctrl/⌘ + A 全选。图层拖动把手可排序，把手聚焦后用上下键排序。普通滚轮移动视图，Shift + 滚轮横向移动，Ctrl/⌘ + 滚轮以鼠标位置缩放。按住空格或鼠标中键拖动视图，也可切换手形工具。衣柜与属性面板可分别收起，专注画板可同时收起两栏。右键管理贴纸，方向键微调；Ctrl/⌘ + Z 撤销，Ctrl/⌘ + S 保存，Delete 移除。', okText: '知道了' })
 }
 
 function toggleFocus() {
@@ -505,23 +583,50 @@ function endViewDrag(event: PointerEvent) {
   draggingView.value = false
   if (canvasArea.value?.hasPointerCapture(event.pointerId)) canvasArea.value.releasePointerCapture(event.pointerId)
 }
-function resetViewDrag() { panOrigin = null; draggingView.value = false; spacePressed.value = false }
-function keyUp(event: KeyboardEvent) { if (event.code === 'Space') spacePressed.value = false }
+function resetViewDrag() { shiftHeld.value = false; panOrigin = null; draggingView.value = false; spacePressed.value = false }
+function keyUp(event: KeyboardEvent) { transformKeys(event); if (event.code === 'Space') spacePressed.value = false }
 
 function bindNode(id: string, node: unknown) {
   nodeRefs[id] = node as { getNode: () => Konva.Group } | null
 }
 async function attachTransformer() {
   await nextTick()
-  const node = selectedId.value ? nodeRefs[selectedId.value]?.getNode() : null
   const tool = transformer.value?.getNode()
-  if (tool) { tool.nodes(node ? [node] : []); tool.getLayer()?.batchDraw() }
+  if (tool) { tool.nodes(selectedIds.value.map(id => nodeRefs[id]?.getNode()).filter((value): value is Konva.Group => !!value)); tool.getLayer()?.batchDraw() }
 }
 function detachTransformer() {
   const tool = transformer.value?.getNode()
   if (tool) { tool.nodes([]); tool.getLayer()?.batchDraw() }
 }
-function selectElement(id: string) { selectedId.value = id; void attachTransformer() }
+function selectElement(id: string, additive = false, range = false) {
+  if (range && selectedId.value) {
+    const keys = elements.value.map(elementKey), a = keys.indexOf(selectedId.value), b = keys.indexOf(id)
+    selectedIds.value = [...new Set([...selectedIds.value, ...keys.slice(Math.min(a, b), Math.max(a, b) + 1)])]
+  } else if (additive) selectedIds.value = selectedIds.value.includes(id) ? selectedIds.value.filter(key => key !== id) : [...selectedIds.value, id]
+  else selectedIds.value = [id]
+  selectedId.value = selectedIds.value.includes(id) ? id : selectedIds.value.at(-1) || ''
+  void attachTransformer()
+}
+function clearSelection() { selectedIds.value = []; selectedId.value = ''; detachTransformer() }
+function selectAll() { selectedIds.value = elements.value.map(elementKey); selectedId.value = selectedIds.value.at(-1) || ''; void attachTransformer() }
+function selectLayer(id: string, additive = false, range = false) { selectElement(id, additive, range) }
+function batchUpdate(update: (item: OutfitElement) => OutfitElement) {
+  recordChange(elements.value.map(item => selectedIds.value.includes(elementKey(item)) ? update(item) : item))
+}
+function batchRotate(angle: number, relative = false) { batchUpdate(item => ({ ...item, rotation: (((relative ? item.rotation + angle : angle) % 360) + 360) % 360 })) }
+function batchScale(factor: number) {
+  const safe = Math.max(...selectedItems.value.map(item => 24 / Math.min(item.width, item.height)), Math.min(factor, ...selectedItems.value.flatMap(item => [2160 / item.width, 2700 / item.height])))
+  batchUpdate(item => ({ ...item, width: item.width * safe, height: item.height * safe }))
+}
+function batchOffset(x: number, y: number) {
+  const items = selectedItems.value
+  if (!items.length) return
+  x = Math.max(-Math.min(...items.map(item => item.x)), Math.min(x, OUTFIT_WIDTH - Math.max(...items.map(item => item.x))))
+  y = Math.max(-Math.min(...items.map(item => item.y)), Math.min(y, OUTFIT_HEIGHT - Math.max(...items.map(item => item.y))))
+  batchUpdate(item => ({ ...item, x: item.x + x, y: item.y + y }))
+}
+function batchFlip() { batchUpdate(item => ({ ...item, flipX: !item.flipX })) }
+
 function stageClick(event: { target: Konva.Node; targetNode?: Konva.Node; evt?: MouseEvent | TouchEvent }) {
   // Konva also emits click for the right button, after opening the context menu.
   if (event.evt && 'button' in event.evt && event.evt.button !== 0) return
@@ -532,25 +637,53 @@ function stageClick(event: { target: Konva.Node; targetNode?: Konva.Node; evt?: 
 function clampPosition(position: { x: number; y: number }) {
   return { x: Math.max(0, Math.min(stageWidth.value, position.x)), y: Math.max(0, Math.min(stageHeight.value, position.y)) }
 }
+let dragOrigins: { id: string; x: number; y: number }[] = []
+function startSelectionDrag(event: { target: Konva.Group }, item: OutfitElement) {
+  cancelLongPress()
+  if (!selectedIds.value.includes(elementKey(item))) selectElement(elementKey(item))
+  dragOrigins = selectedItems.value.map(value => ({ id: elementKey(value), x: value.x * canvasScale.value, y: value.y * canvasScale.value }))
+}
+function moveSelectionDrag(event: { target: Konva.Group }, item: OutfitElement) {
+  const origin = dragOrigins.find(value => value.id === elementKey(item))
+  if (!origin) return
+  const dx = Math.max(-Math.min(...dragOrigins.map(value => value.x)), Math.min(event.target.x() - origin.x, stageWidth.value - Math.max(...dragOrigins.map(value => value.x))))
+  const dy = Math.max(-Math.min(...dragOrigins.map(value => value.y)), Math.min(event.target.y() - origin.y, stageHeight.value - Math.max(...dragOrigins.map(value => value.y))))
+  for (const value of dragOrigins) nodeRefs[value.id]?.getNode().position({ x: value.x + dx, y: value.y + dy })
+}
 function dragEnd(event: { target: Konva.Group }, item: OutfitElement) {
   cancelLongPress()
-  const node = event.target
-  const unit = canvasScale.value
-  recordChange(elements.value.map((value) => value.garmentId === item.garmentId
-    ? { ...value, x: Math.min(OUTFIT_WIDTH, Math.max(0, node.x() / unit)), y: Math.min(OUTFIT_HEIGHT, Math.max(0, node.y() / unit)) } : value))
+  moveSelectionDrag(event, item)
+  const ids = dragOrigins.map(value => value.id)
+  recordChange(elements.value.map(value => {
+    const node = nodeRefs[elementKey(value)]?.getNode()
+    return ids.includes(elementKey(value)) && node ? { ...value, x: node.x() / canvasScale.value, y: node.y() / canvasScale.value } : value
+  }))
+  dragOrigins = []
 }
-function transformEnd(event: { target: Konva.Group }, item: OutfitElement) {
-  const node = event.target
-  const unit = canvasScale.value
-  const scaleX = Math.max(0.15, node.scaleX()), scaleY = Math.max(0.15, node.scaleY())
-  node.scaleX(1); node.scaleY(1)
-  recordChange(elements.value.map((value) => value.garmentId === item.garmentId
-    ? { ...value, x: Math.min(OUTFIT_WIDTH, Math.max(0, node.x() / unit)), y: Math.min(OUTFIT_HEIGHT, Math.max(0, node.y() / unit)),
-        width: Math.min(2160, Math.max(24, value.width * scaleX)), height: Math.min(2700, Math.max(24, value.height * scaleY)),
-        rotation: ((node.rotation() % 360) + 360) % 360 } : value))
-  void attachTransformer()
+function previewRotation(angle: number) {
+  const node = nodeRefs[selectedId.value]?.getNode()
+  if (node) { node.rotation(angle); node.getLayer()?.batchDraw() }
 }
-function styleTransformAnchor(anchor: Konva.Rect) { anchor.hitStrokeWidth(compact.value ? 24 : 8) }
+let committingTransform = false
+function transformEnd(_event: { target: Konva.Group }, _item: OutfitElement) {
+  // Konva emits one event per selected node; capture all nodes before resetting any scale.
+  if (committingTransform) return
+  committingTransform = true
+  const next = elements.value.map(value => {
+    const node = nodeRefs[elementKey(value)]?.getNode()
+    if (!node || !selectedIds.value.includes(elementKey(value))) return value
+    return { ...value, x: Math.min(OUTFIT_WIDTH, Math.max(0, node.x() / canvasScale.value)), y: Math.min(OUTFIT_HEIGHT, Math.max(0, node.y() / canvasScale.value)),
+      width: Math.min(2160, Math.max(24, value.width * node.scaleX())), height: Math.min(2700, Math.max(24, value.height * node.scaleY())),
+      rotation: ((node.rotation() % 360) + 360) % 360 }
+  })
+  for (const id of selectedIds.value) nodeRefs[id]?.getNode().scale({ x: 1, y: 1 })
+  recordChange(next)
+  void nextTick(() => { committingTransform = false; void attachTransformer() })
+}
+function styleTransformAnchor(anchor: Konva.Rect) {
+  anchor.hitStrokeWidth(compact.value ? 24 : 8)
+  if (anchor.hasName('rotater')) { anchor.cornerRadius(12); anchor.fill('#3f6ff5') }
+}
 
 async function refreshImages() {
   const request = ++imageLoadRevision
@@ -569,8 +702,8 @@ function retryImage(url: string) {
 
 async function saveOutfit() {
   if (!name.value.trim() || name.value.trim().length > 100) { message.warning('搭配名称需为 1 到 100 个字符。'); return }
-  if (!elements.value.length) { message.warning('先从衣柜加入一件衣物。'); return }
-  if (failedImage.value) { message.error('请先重新加载无法打开的衣物图片，再保存。'); return }
+  if (!elements.value.length) { message.warning('先加入一张衣物或人物贴纸。'); return }
+  if (failedImage.value) { message.error('请先重新加载无法打开的贴纸图片，再保存。'); return }
   persistDraft()
   saving.value = true
   try {
@@ -632,9 +765,9 @@ function confirmDelete(outfit: Outfit) {
   })
 }
 async function exportPng() {
-  if (!elements.value.length || failedImage.value) { message.warning('先加载全部衣物图片，再导出穿搭图。'); return }
+  if (!elements.value.length || failedImage.value) { message.warning('先加载全部贴纸图片，再导出穿搭图。'); return }
   exporting.value = true
-  try { await downloadOutfitPng(scene.value, name.value); message.success('穿搭图片已导出。') }
+  try { await downloadOutfitPng({ elements: sceneSnapshot() }, name.value); message.success('穿搭图片已导出。') }
   catch (cause) { message.error(cause instanceof Error ? cause.message : '穿搭图片导出失败。') }
   finally { exporting.value = false }
 }
@@ -642,7 +775,7 @@ async function resetLayout() {
   if (!elements.value.length) return
   const next: OutfitElement[] = []
   for (const element of elements.value) {
-    const garment = activeGarments.value.find((item) => item.id === element.garmentId)
+    const garment = activeGarments.value.find((item) => element.kind !== 'PERSON_PART' && item.id === element.garmentId)
     if (!garment) { next.push(element); continue }
     try {
       const layout = await createOutfitElement(garment, next.filter((item) => item.role === element.role))
@@ -655,6 +788,7 @@ async function resetLayout() {
 }
 
 function handleKeyboard(event: KeyboardEvent) {
+  transformKeys(event)
   if (!editing.value) return
   if (event.key === 'Escape') {
     if (contextTarget.value) { closeContextMenu(); return }
@@ -666,6 +800,7 @@ function handleKeyboard(event: KeyboardEvent) {
     return
   }
   const modifier = event.metaKey || event.ctrlKey
+  if (modifier && event.key.toLowerCase() === 'a' && !(event.target as HTMLElement)?.closest('input,textarea,[contenteditable="true"]')) { event.preventDefault(); selectAll(); return }
   if (modifier && event.key.toLowerCase() === 's') { event.preventDefault(); if (!saving.value && !remoteConflict.value) void saveOutfit(); return }
   if (event.code === 'Space' && hoveringView.value && !(event.target as HTMLElement)?.closest('input,textarea,select,[contenteditable="true"],[role="combobox"]') && !pickerOpen.value && !inspectorOpen.value && !layersOpen.value && !infoOpen.value) {
     event.preventDefault(); spacePressed.value = true; return
@@ -676,10 +811,10 @@ function handleKeyboard(event: KeyboardEvent) {
   if (modifier && event.key.toLowerCase() === 'z') { event.preventDefault(); event.shiftKey ? redo() : undo() }
   else if (modifier && event.key.toLowerCase() === 'y') { event.preventDefault(); redo() }
   else if (event.key === 'Delete' || event.key === 'Backspace') { event.preventDefault(); removeSelected() }
-  else if (event.key === 'ArrowLeft') { event.preventDefault(); if (currentItem.value) recordChange(elements.value.map((item) => item.garmentId === selectedId.value ? { ...item, x: Math.max(0, item.x - (event.shiftKey ? 10 : 2)) } : item)) }
-  else if (event.key === 'ArrowRight') { event.preventDefault(); if (currentItem.value) recordChange(elements.value.map((item) => item.garmentId === selectedId.value ? { ...item, x: Math.min(OUTFIT_WIDTH, item.x + (event.shiftKey ? 10 : 2)) } : item)) }
-  else if (event.key === 'ArrowUp') { event.preventDefault(); if (currentItem.value) recordChange(elements.value.map((item) => item.garmentId === selectedId.value ? { ...item, y: Math.max(0, item.y - (event.shiftKey ? 10 : 2)) } : item)) }
-  else if (event.key === 'ArrowDown') { event.preventDefault(); if (currentItem.value) recordChange(elements.value.map((item) => item.garmentId === selectedId.value ? { ...item, y: Math.min(OUTFIT_HEIGHT, item.y + (event.shiftKey ? 10 : 2)) } : item)) }
+  else if (event.key === 'ArrowLeft') { event.preventDefault(); batchOffset(-(event.shiftKey ? 10 : 2), 0) }
+  else if (event.key === 'ArrowRight') { event.preventDefault(); batchOffset((event.shiftKey ? 10 : 2), 0) }
+  else if (event.key === 'ArrowUp') { event.preventDefault(); batchOffset(0, -(event.shiftKey ? 10 : 2)) }
+  else if (event.key === 'ArrowDown') { event.preventDefault(); batchOffset(0, (event.shiftKey ? 10 : 2)) }
 }
 
 function measureCanvas() {
@@ -712,8 +847,11 @@ watch(() => JSON.stringify({ name: name.value, elements: elements.value }), (sig
   scheduleDraft()
 })
 watch(() => elements.value.map((item) => item.assetUrl).join('|'), () => { void refreshImages() }, { immediate: true })
-watch(selectedId, () => { void attachTransformer() })
+watch(selectedId, id => { if (!id) selectedIds.value = []; else if (!selectedIds.value.includes(id)) selectedIds.value = [id]; void attachTransformer() })
+watch(selectedIds, () => { void attachTransformer() })
 watch(elements, () => {
+  selectedIds.value = selectedIds.value.filter(id => elements.value.some(item => elementKey(item) === id))
+  if (!selectedIds.value.includes(selectedId.value)) selectedId.value = selectedIds.value.at(-1) || ''
   if (selectedId.value && !currentItem.value) { selectedId.value = ''; inspectorOpen.value = false }
   void attachTransformer()
 }, { deep: true })
@@ -728,7 +866,7 @@ watch(canvasArea, (area, previous) => {
 onMounted(() => {
   if (route.params.id) void loadPage()
   else void loadLibrary()
-  if (closet.isSignedIn) void loadGarments()
+  if (closet.isSignedIn) { void loadGarments(); void loadPeople() }
   window.addEventListener('keydown', handleKeyboard)
   window.addEventListener('keyup', keyUp)
   window.addEventListener('blur', resetViewDrag)
@@ -762,7 +900,7 @@ onUnmounted(() => {
       <div class="outfit-library-toolbar"><a-input v-model:value="librarySearch" allow-clear placeholder="搜索搭配名称" aria-label="搜索搭配"><template #prefix><SearchOutlined /></template></a-input><span class="muted">{{ displayedOutfits.length }} 套搭配 · 最近更新</span></div>
       <section v-if="displayedOutfits.length" class="outfit-library-grid" aria-label="已保存的穿搭">
         <article v-for="outfit in displayedOutfits" :key="outfit.id" class="outfit-card">
-          <RouterLink :to="`/outfits/${outfit.id}`" class="outfit-card-preview"><OutfitThumbnail :scene="outfit.scene" :title="outfit.name" /><a-tag class="outfit-card-count">{{ outfit.scene.elements.length }} 件单品</a-tag><a-tag v-if="outfit.scene.elements.some(item => item.garmentChanged || item.garmentStatus === 'TRASHED')" color="orange" class="outfit-card-status">衣物有更新</a-tag></RouterLink>
+          <RouterLink :to="`/outfits/${outfit.id}`" class="outfit-card-preview"><OutfitThumbnail :scene="outfit.scene" :title="outfit.name" /><a-tag class="outfit-card-count">{{ outfit.scene.elements.length }} 张贴纸</a-tag><a-tag v-if="outfit.scene.elements.some(item => item.garmentChanged || item.garmentStatus === 'TRASHED')" color="orange" class="outfit-card-status">衣物有更新</a-tag></RouterLink>
           <div class="outfit-card-details"><div><RouterLink :to="`/outfits/${outfit.id}`" class="outfit-card-name">{{ outfit.name }}</RouterLink><span>{{ new Date(outfit.updatedAtMs).toLocaleDateString() }} 更新</span></div><a-dropdown :trigger="['click']"><a-button type="text" aria-label="搭配更多操作"><MoreOutlined /></a-button><template #overlay><a-menu><a-menu-item @click="router.push(`/outfits/${outfit.id}`)">编辑搭配</a-menu-item><a-menu-item @click="startCopy(outfit)"><CopyOutlined /> 复制搭配</a-menu-item><a-menu-divider /><a-menu-item danger @click="confirmDelete(outfit)"><DeleteOutlined /> 删除搭配</a-menu-item></a-menu></template></a-dropdown></div>
         </article>
       </section>
@@ -781,7 +919,7 @@ onUnmounted(() => {
     <a-alert v-if="remoteConflict" type="warning" show-icon message="另一处已更新这套搭配，你的草稿仍保留。" class="outfit-alert"><template #action><div class="outfit-conflict-actions"><a-button @click="loadLatest">重新加载</a-button><a-button type="primary" @click="saveConflictAsCopy">另存副本</a-button></div></template></a-alert>
     <a-alert v-else-if="error" type="error" show-icon closable :message="error" class="outfit-alert" @close="error = ''" />
     <div class="outfit-editor-layout">
-      <aside v-show="pickerVisible" class="outfit-picker-panel" aria-label="选择衣物"><div class="outfit-panel-heading"><h2>我的衣柜</h2><a-tag>{{ activeGarments.length }} 件</a-tag></div><OutfitGarmentPicker v-model:search="search" v-model:role="roleFilter" :garments="filteredGarments" :loading="loadingGarments" :error="garmentError" :picked-ids="pickedIds" :selected-id="selectedId" :replacing="!!replacementTarget" @select="selectGarment" @context="(event, garment) => openContextMenu(event, garment.id)" @dragstart="startGarmentDrag" @dragend="endGarmentDrag" @cancel="replacementTarget = null" @retry="loadGarments" /></aside>
+      <aside v-show="pickerVisible" class="outfit-picker-panel" aria-label="选择贴纸"><div class="outfit-panel-heading"><h2>贴纸素材</h2><a-tag>{{ materialTab === 'people' ? (personCatalog?.sets.reduce((count, set) => count + set.parts.length, 0) || 0) : activeGarments.length }} 张</a-tag></div><a-segmented v-model:value="materialTab" block :disabled="!!replacementTarget" :options="[{ value: 'garments', label: '我的衣物' }, { value: 'people', label: '人物贴纸' }]" class="outfit-material-tabs" /><OutfitPersonPicker v-if="materialTab === 'people'" :catalog="personCatalog" :loading="loadingPeople" :error="peopleError" :mobile="compact" @select="selectPerson" @dragstart="startPersonDrag" @dragend="endGarmentDrag" @retry="loadPeople" /><OutfitGarmentPicker v-else v-model:search="search" v-model:role="roleFilter" :garments="filteredGarments" :loading="loadingGarments" :error="garmentError" :picked-ids="pickedIds" :selected-id="currentItem?.garmentId || ''" :replacing="!!replacementTarget" @select="selectGarment" @context="(event, garment) => openContextMenu(event, garment.id)" @dragstart="startGarmentDrag" @dragend="endGarmentDrag" @cancel="replacementTarget = null" @retry="loadGarments" /></aside>
 
       <section class="outfit-canvas-area" aria-label="搭配画板" @contextmenu.prevent @dragover.prevent="dragOverCanvas" @drop="dropGarment">
         <div class="outfit-editor-toolbar">
@@ -807,28 +945,28 @@ onUnmounted(() => {
           <v-stage :config="{ width: stageWidth, height: stageHeight }" @click="stageClick" @tap="stageClick">
             <v-layer>
               <v-rect :config="{ x: 0, y: 0, width: stageWidth, height: stageHeight, fill: '#ffffff', listening: false }" />
-              <v-group v-for="item in elements" :key="item.garmentId" :ref="(node: unknown) => bindNode(item.garmentId, node)" :config="{ x: item.x * canvasScale, y: item.y * canvasScale, rotation: item.rotation, draggable: !pinching, name: `outfit-${item.garmentId}`, dragBoundFunc: clampPosition }"
-                @click="selectElement(item.garmentId)" @tap="selectElement(item.garmentId)" @dbltap="selectElement(item.garmentId); inspectorOpen = true" @contextmenu="canvasContextMenu($event, item)" @touchstart="beginTouch($event, item)" @touchmove="cancelLongPress" @touchend="cancelLongPress" @dragstart="cancelLongPress(); selectElement(item.garmentId)" @dragend="dragEnd($event, item)" @transformend="transformEnd($event, item)">
-                <v-image :config="{ image: imageMap[item.assetUrl], x: -item.width * canvasScale / 2, y: -item.height * canvasScale / 2, width: item.width * canvasScale, height: item.height * canvasScale, crop: { x: item.cropX * item.imageWidth, y: item.cropY * item.imageHeight, width: item.cropWidth * item.imageWidth, height: item.cropHeight * item.imageHeight }, visible: Boolean(imageMap[item.assetUrl]) }" />
+              <v-group v-for="item in elements" :key="elementKey(item)" :ref="(node: unknown) => bindNode(elementKey(item), node)" :config="{ x: item.x * canvasScale, y: item.y * canvasScale, rotation: item.rotation, draggable: !pinching, name: `outfit-${elementKey(item)}`, dragBoundFunc: clampPosition }"
+                @click="selectElement(elementKey(item), $event.evt.shiftKey || $event.evt.ctrlKey || $event.evt.metaKey, $event.evt.shiftKey)" @tap="selectElement(elementKey(item))" @dbltap="selectElement(elementKey(item)); inspectorOpen = true" @contextmenu="canvasContextMenu($event, item)" @touchstart="beginTouch($event, item)" @touchmove="cancelLongPress" @touchend="cancelLongPress" @dragstart="startSelectionDrag($event, item)" @dragmove="moveSelectionDrag($event, item)" @dragend="dragEnd($event, item)" @transformend="transformEnd($event, item)">
+                <v-image :config="{ image: imageMap[item.assetUrl], scaleX: item.flipX ? -1 : 1, x: (item.flipX ? 1 : -1) * item.width * canvasScale / 2, y: -item.height * canvasScale / 2, width: item.width * canvasScale, height: item.height * canvasScale, crop: { x: item.cropX * item.imageWidth, y: item.cropY * item.imageHeight, width: item.cropWidth * item.imageWidth, height: item.cropHeight * item.imageHeight }, visible: Boolean(imageMap[item.assetUrl]) }" />
               </v-group>
-              <v-transformer ref="transformer" :config="{ keepRatio: true, rotateEnabled: true, flipEnabled: false, enabledAnchors: ['top-left', 'top-right', 'bottom-left', 'bottom-right'], anchorSize: compact ? 22 : 12, anchorCornerRadius: 3, anchorStyleFunc: styleTransformAnchor, borderStroke: '#3f6ff5', anchorStroke: '#3f6ff5', anchorFill: '#ffffff', rotateAnchorOffset: compact ? 32 : 24, padding: 6 }" />
+              <v-transformer ref="transformer" :config="{ keepRatio: !currentItem?.freeStretch, shiftBehavior: currentItem?.freeStretch ? 'default' : 'inverted', rotationSnaps: shiftHeld ? Array.from({ length: 24 }, (_, i) => i * 15) : [], rotationSnapTolerance: 8, rotateEnabled: true, flipEnabled: false, enabledAnchors: ['top-left', 'top-center', 'top-right', 'middle-left', 'middle-right', 'bottom-left', 'bottom-center', 'bottom-right'], anchorSize: compact ? 22 : 12, anchorCornerRadius: 3, anchorStyleFunc: styleTransformAnchor, borderStroke: '#3f6ff5', anchorStroke: '#3f6ff5', anchorFill: '#ffffff', rotateAnchorOffset: compact ? 32 : 24, padding: 6 }" />
             </v-layer>
           </v-stage>
-          <div v-if="!elements.length && !dragOver" class="outfit-board-empty"><PictureOutlined /><strong>选一件单品，开始搭配</strong><span>{{ compact ? '从底部打开衣柜，点选加入' : '从左侧点击加入，或直接拖到这里' }}</span><a-button v-if="compact" @click="pickerOpen = true"><PlusOutlined /> 选择衣物</a-button></div>
+          <div v-if="!elements.length && !dragOver" class="outfit-board-empty"><PictureOutlined /><strong>选一张贴纸，开始搭配</strong><span>{{ compact ? '从底部打开素材栏，点选加入' : '从左侧点击加入，或直接拖到这里' }}</span><a-button v-if="compact" @click="pickerOpen = true"><PlusOutlined /> 选择贴纸</a-button></div>
           <div v-if="dragOver" class="outfit-drop-feedback">松手放到这里</div>
         </div></div></div>
-        <div class="outfit-canvas-status" aria-live="polite"><template v-if="currentItem"><span class="outfit-selection-name"><span class="outfit-selection-dot"></span>{{ currentItem.garmentLabel }}</span><a-button v-if="compact" type="link" @click="inspectorOpen = true">调整衣物</a-button><span v-else class="muted">滚轮移动 · Ctrl/⌘ + 滚轮缩放 · 空格拖动</span></template><span v-else class="muted">{{ compact ? '双指缩放 / 平移 · 长按衣物调整' : '滚轮移动 · Ctrl/⌘ + 滚轮缩放 · 空格 / 中键拖动' }}</span></div>
-        <a-alert v-if="failedImage" type="warning" show-icon message="有衣物图片未能加载，草稿仍会保留。" class="outfit-image-warning"><template #action><a-button @click="retryImage(failedImage)"><ReloadOutlined /> 重试</a-button></template></a-alert>
+        <div class="outfit-canvas-status" aria-live="polite"><template v-if="currentItem"><span class="outfit-selection-name"><span class="outfit-selection-dot"></span>{{ selectedIds.length > 1 ? `已选 ${selectedIds.length} 张贴纸` : currentItem.garmentLabel }}</span><a-button v-if="compact" type="link" @click="inspectorOpen = true">调整贴纸</a-button><span v-else class="muted">Shift 切换比例 / 15°旋转 · Alt 中心缩放</span></template><span v-else class="muted">{{ compact ? '双指缩放 / 平移 · 长按贴纸调整' : '四角缩放 · 边缘拉伸 · 顶部旋转 · Shift 切换比例 / 15°旋转 · Alt 中心缩放' }}</span></div>
+        <a-alert v-if="failedImage" type="warning" show-icon message="有贴纸图片未能加载，草稿仍会保留。" class="outfit-image-warning"><template #action><a-button @click="retryImage(failedImage)"><ReloadOutlined /> 重试</a-button></template></a-alert>
       </section>
 
-      <aside v-show="inspectorVisible" class="outfit-inspector" aria-label="所选衣物操作"><div class="outfit-panel-heading"><h2>衣物调整</h2><span class="muted">{{ sceneLabel }}</span></div><a-segmented v-model:value="inspectorTab" block :options="[{ value: 'properties', label: '属性' }, { value: 'layers', label: '单品层级' }]" class="outfit-inspector-tabs" /><div class="outfit-inspector-body"><OutfitLayers v-if="inspectorTab === 'layers'" :elements="elements" :selected-id="selectedId" @select="selectElement" @context="openContextMenu" /><OutfitInspector v-else-if="currentItem" :item="currentItem" :can-forward="canForward" :can-backward="canBackward" @role="changeRole" @resize="resizeSelected" @rotate="rotateSelected" @scale="scaleSelected" @position="positionSelected" @layer="moveLayer" @replace="startReplacement" @remove="removeSelected" @info="showInfo()" /><div v-else class="outfit-inspector-empty"><a-empty :image="Empty.PRESENTED_IMAGE_SIMPLE" description="点选画板上的衣物"><p>调整大小、角度和位置，或切换到单品层级。</p></a-empty></div></div><div class="outfit-inspector-footer"><a-button block :disabled="!elements.length" @click="resetLayout"><ReloadOutlined /> 重新排版</a-button></div></aside>
+      <aside v-show="inspectorVisible" class="outfit-inspector" aria-label="所选贴纸操作"><div class="outfit-panel-heading"><h2>贴纸调整</h2><span class="muted">{{ sceneLabel }}</span></div><a-segmented v-model:value="inspectorTab" block :options="[{ value: 'properties', label: '属性' }, { value: 'layers', label: '图层' }]" class="outfit-inspector-tabs" /><div class="outfit-inspector-body"><OutfitLayers v-if="inspectorTab === 'layers'" :elements="elements" :selected-id="selectedId" :selected-ids="selectedIds" @all="selectAll" @clear="clearSelection" @select="selectLayer" @reorder="dropLayer" @context="openContextMenu" /><OutfitMultiInspector v-else-if="selectedIds.length > 1" :count="selectedIds.length" @rotate="batchRotate" @scale="batchScale" @offset="batchOffset" @flip="batchFlip" @stretch="stretchSelected" @remove="removeSelected" /><OutfitInspector v-else-if="currentItem" :item="currentItem" :can-forward="canForward" :can-backward="canBackward" @flip="flipSelected" @duplicate="duplicateSelected" @stretch="stretchSelected" @height="heightSelected" @crop="cropSelected" @role="changeRole" @resize="resizeSelected" @rotate="rotateSelected" @rotate-preview="previewRotation" @scale="scaleSelected" @position="positionSelected" @layer="moveLayer" @replace="startReplacement" @remove="removeSelected" @info="showInfo()" /><div v-else class="outfit-inspector-empty"><a-empty :image="Empty.PRESENTED_IMAGE_SIMPLE" description="点选画板上的贴纸"><p>调整大小、角度和位置，或切换到图层。</p></a-empty></div></div><div class="outfit-inspector-footer"><a-button block :disabled="!elements.length" @click="resetLayout"><ReloadOutlined /> 整理衣物排版</a-button></div></aside>
     </div>
-    <nav class="outfit-mobile-controls" aria-label="画板编辑操作"><a-button type="text" @click="replacementTarget = null; pickerOpen = true"><PlusOutlined /><span>选衣物</span></a-button><a-button type="text" :disabled="!currentItem" @click="inspectorOpen = true"><ControlOutlined /><span>调整</span></a-button><a-button type="text" :disabled="!elements.length" @click="layersOpen = true"><MenuOutlined /><span>单品层级</span></a-button><a-dropdown :trigger="['click']" placement="topRight"><a-button type="text"><MoreOutlined /><span>更多</span></a-button><template #overlay><a-menu><a-menu-item :disabled="!dirty || !!failedImage || exporting" @click="exportPng"><DownloadOutlined /> 导出 PNG 图片</a-menu-item><a-menu-item :disabled="!elements.length" @click="resetLayout"><ReloadOutlined /> 重新排版</a-menu-item><a-menu-divider /><a-menu-item @click="showHelp"><QuestionCircleOutlined /> 操作帮助</a-menu-item></a-menu></template></a-dropdown></nav>
+    <nav class="outfit-mobile-controls" aria-label="画板编辑操作"><a-button type="text" @click="replacementTarget = null; pickerOpen = true"><PlusOutlined /><span>选贴纸</span></a-button><a-button type="text" :disabled="!currentItem" @click="inspectorOpen = true"><ControlOutlined /><span>调整</span></a-button><a-button type="text" :disabled="!elements.length" @click="layersOpen = true"><MenuOutlined /><span>图层</span></a-button><a-dropdown :trigger="['click']" placement="topRight"><a-button type="text"><MoreOutlined /><span>更多</span></a-button><template #overlay><a-menu><a-menu-item :disabled="!dirty || !!failedImage || exporting" @click="exportPng"><DownloadOutlined /> 导出 PNG 图片</a-menu-item><a-menu-item :disabled="!elements.length" @click="resetLayout"><ReloadOutlined /> 整理衣物排版</a-menu-item><a-menu-divider /><a-menu-item @click="showHelp"><QuestionCircleOutlined /> 操作帮助</a-menu-item></a-menu></template></a-dropdown></nav>
   </div>
 
-  <a-drawer v-if="compact" v-model:open="pickerOpen" :title="replacementTarget ? '替换衣物' : '从衣柜选择'" placement="bottom" height="min(80dvh, 740px)" root-class-name="outfit-mobile-drawer" :body-style="{ padding: 0, overflow: 'hidden' }"><OutfitGarmentPicker v-model:search="search" v-model:role="roleFilter" :garments="filteredGarments" :loading="loadingGarments" :error="garmentError" :picked-ids="pickedIds" :selected-id="selectedId" :replacing="!!replacementTarget" mobile @select="selectGarment" @context="(_event, garment) => showInfo(garment.id)" @cancel="replacementTarget = null" @retry="loadGarments" /><template #footer><a-button type="primary" block @click="pickerOpen = false; replacementTarget = null">完成选择 · {{ sceneLabel }}</a-button></template></a-drawer>
-  <a-drawer v-if="compact" v-model:open="inspectorOpen" :title="currentItem ? `调整：${currentItem.garmentLabel}` : '调整衣物'" placement="bottom" height="min(84dvh, 800px)" root-class-name="outfit-mobile-drawer"><OutfitInspector v-if="currentItem" :item="currentItem" :can-forward="canForward" :can-backward="canBackward" @role="changeRole" @resize="resizeSelected" @rotate="rotateSelected" @scale="scaleSelected" @position="positionSelected" @layer="moveLayer" @replace="startReplacement" @remove="removeSelected" @info="showInfo()" /><template #footer><a-button type="primary" block @click="inspectorOpen = false">完成调整</a-button></template></a-drawer>
-  <a-drawer v-if="compact" v-model:open="layersOpen" title="单品层级" placement="bottom" height="min(70dvh, 620px)" root-class-name="outfit-mobile-drawer"><OutfitLayers :elements="elements" :selected-id="selectedId" @select="id => { selectElement(id); layersOpen = false; inspectorOpen = true }" @context="(_event, id) => { selectElement(id); layersOpen = false; inspectorOpen = true }" /></a-drawer>
+  <a-drawer v-if="compact" v-model:open="pickerOpen" :title="replacementTarget ? '替换衣物' : '选择贴纸素材'" placement="bottom" height="min(80dvh, 740px)" root-class-name="outfit-mobile-drawer outfit-material-drawer" :body-style="{ padding: 0, overflow: 'hidden' }"><a-segmented v-model:value="materialTab" block :disabled="!!replacementTarget" :options="[{ value: 'garments', label: '我的衣物' }, { value: 'people', label: '人物贴纸' }]" class="outfit-material-tabs" /><OutfitPersonPicker v-if="materialTab === 'people'" :catalog="personCatalog" :loading="loadingPeople" :error="peopleError" :mobile="compact" @select="selectPerson" @dragstart="startPersonDrag" @dragend="endGarmentDrag" @retry="loadPeople" /><OutfitGarmentPicker v-else v-model:search="search" v-model:role="roleFilter" :garments="filteredGarments" :loading="loadingGarments" :error="garmentError" :picked-ids="pickedIds" :selected-id="currentItem?.garmentId || ''" :replacing="!!replacementTarget" mobile @select="selectGarment" @context="(_event, garment) => showInfo(garment.id)" @cancel="replacementTarget = null" @retry="loadGarments" /><template #footer><a-button type="primary" block @click="pickerOpen = false; replacementTarget = null">完成选择 · {{ sceneLabel }}</a-button></template></a-drawer>
+  <a-drawer v-if="compact" v-model:open="inspectorOpen" :title="selectedIds.length > 1 ? `批量调整 ${selectedIds.length} 张贴纸` : currentItem ? `调整：${currentItem.garmentLabel}` : '调整贴纸'" placement="bottom" height="min(84dvh, 800px)" root-class-name="outfit-mobile-drawer"><OutfitMultiInspector v-if="selectedIds.length > 1" :count="selectedIds.length" @rotate="batchRotate" @scale="batchScale" @offset="batchOffset" @flip="batchFlip" @stretch="stretchSelected" @remove="removeSelected" /><OutfitInspector v-else-if="currentItem" :item="currentItem" :can-forward="canForward" :can-backward="canBackward" @flip="flipSelected" @duplicate="duplicateSelected" @stretch="stretchSelected" @height="heightSelected" @crop="cropSelected" @role="changeRole" @resize="resizeSelected" @rotate="rotateSelected" @rotate-preview="previewRotation" @scale="scaleSelected" @position="positionSelected" @layer="moveLayer" @replace="startReplacement" @remove="removeSelected" @info="showInfo()" /><template #footer><a-button type="primary" block @click="inspectorOpen = false">完成调整</a-button></template></a-drawer>
+  <a-drawer v-if="compact" v-model:open="layersOpen" title="图层" placement="bottom" height="min(70dvh, 620px)" root-class-name="outfit-mobile-drawer"><OutfitLayers :elements="elements" :selected-id="selectedId" :selected-ids="selectedIds" @all="selectAll" @clear="clearSelection" @reorder="dropLayer" @select="selectLayer" @context="(_event, id) => { selectElement(id); layersOpen = false; inspectorOpen = true }" /></a-drawer>
   <a-drawer v-model:open="infoOpen" title="衣物信息" :placement="compact ? 'bottom' : 'right'" :width="420" :height="compact ? 'min(80dvh, 720px)' : undefined" :root-class-name="compact ? 'outfit-mobile-drawer' : undefined"><a-skeleton v-if="infoLoading" active /><a-alert v-else-if="infoError" type="error" show-icon :message="infoError" /><template v-else-if="infoGarment"><div class="outfit-information-image"><img :src="artworkForGarment(infoGarment).url" :alt="infoGarment.category.join(' ')" /></div><a-descriptions :column="1" bordered size="small"><a-descriptions-item label="品类">{{ infoGarment.category.join('、') || '待确认' }}</a-descriptions-item><a-descriptions-item label="颜色">{{ infoGarment.primaryColor.join('、') || '待确认' }}</a-descriptions-item><a-descriptions-item label="品牌">{{ infoGarment.brand.join('、') || '未填写' }}</a-descriptions-item><a-descriptions-item label="季节">{{ infoGarment.seasons.join('、') || '未填写' }}</a-descriptions-item><a-descriptions-item label="风格">{{ infoGarment.styles.join('、') || '未填写' }}</a-descriptions-item><a-descriptions-item label="衣柜状态">{{ infoGarment.status === 'ACTIVE' ? '已入柜' : infoGarment.status === 'TRASHED' ? '回收站' : '未入柜' }}</a-descriptions-item></a-descriptions><p class="outfit-information-note">这里展示衣柜的最新信息。搭配中的图片仅在主动替换时更新。</p><RouterLink :to="`/garment/${infoGarment.id}`" @click="infoOpen = false"><a-button block>在衣柜中打开</a-button></RouterLink></template></a-drawer>
-  <Teleport to="body"><div v-if="contextTarget" ref="contextMenu" class="outfit-context-menu" :style="{ left: `${contextPosition.x}px`, top: `${contextPosition.y}px` }" @contextmenu.prevent><a-menu :selectable="false" aria-label="衣物操作" @click="contextMenuClick"><a-menu-item v-if="!contextItem" key="add"><PlusOutlined /> 加入画板</a-menu-item><template v-else><a-menu-item key="forward" :disabled="contextItem.zIndex === elements.length - 1"><ArrowUpOutlined /> 前移一层</a-menu-item><a-menu-item key="backward" :disabled="contextItem.zIndex === 0"><ArrowDownOutlined /> 后移一层</a-menu-item><a-menu-item key="front" :disabled="contextItem.zIndex === elements.length - 1"><VerticalAlignTopOutlined /> 置于顶层</a-menu-item><a-menu-item key="back" :disabled="contextItem.zIndex === 0"><VerticalAlignBottomOutlined /> 置于底层</a-menu-item><a-menu-divider /><a-menu-item key="replace" :disabled="contextItem.garmentStatus === 'TRASHED'"><SwapOutlined /> 替换衣物</a-menu-item></template><a-menu-item key="info"><InfoCircleOutlined /> 查看衣物信息</a-menu-item><a-menu-divider v-if="contextItem" /><a-menu-item v-if="contextItem" key="remove" danger><DeleteOutlined /> 从搭配移除</a-menu-item></a-menu></div></Teleport>
+  <Teleport to="body"><div v-if="contextTarget" ref="contextMenu" class="outfit-context-menu" :style="{ left: `${contextPosition.x}px`, top: `${contextPosition.y}px` }" @contextmenu.prevent><a-menu :selectable="false" aria-label="贴纸操作" @click="contextMenuClick"><a-menu-item v-if="!contextItem" key="add"><PlusOutlined /> 加入画板</a-menu-item><template v-else><a-menu-item key="forward" :disabled="contextItem.zIndex === elements.length - 1"><ArrowUpOutlined /> 前移一层</a-menu-item><a-menu-item key="backward" :disabled="contextItem.zIndex === 0"><ArrowDownOutlined /> 后移一层</a-menu-item><a-menu-item key="front" :disabled="contextItem.zIndex === elements.length - 1"><VerticalAlignTopOutlined /> 置于顶层</a-menu-item><a-menu-item key="back" :disabled="contextItem.zIndex === 0"><VerticalAlignBottomOutlined /> 置于底层</a-menu-item><a-menu-item key="duplicate">复制贴纸</a-menu-item><a-menu-item key="flip">水平翻转</a-menu-item><a-menu-divider /><a-menu-item v-if="contextItem.kind !== 'PERSON_PART'" key="replace" :disabled="contextItem.garmentStatus === 'TRASHED'"><SwapOutlined /> 替换衣物</a-menu-item></template><a-menu-item v-if="contextItem?.kind !== 'PERSON_PART'" key="info"><InfoCircleOutlined /> 查看衣物信息</a-menu-item><a-menu-divider v-if="contextItem" /><a-menu-item v-if="contextItem" key="remove" danger><DeleteOutlined /> 从搭配移除</a-menu-item></a-menu></div></Teleport>
 </template>

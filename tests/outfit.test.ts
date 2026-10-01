@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { normalizeScene, nextElementPosition, outfitDropPosition, reorderOutfitElements, restoreOutfitDraft, roleFromGarment, sceneWrite, type Outfit, type OutfitElement, type OutfitScene } from '../src/domain/outfit.ts'
+import { dropOutfitLayer, copySticker, stickerLimit, elementKey, normalizeScene, nextElementPosition, outfitDropPosition, reorderOutfitElements, restoreOutfitDraft, roleFromGarment, sceneWrite, type Outfit, type OutfitElement, type OutfitScene } from '../src/domain/outfit.ts'
 
 const minimal = (overrides: Partial<OutfitElement> = {}): OutfitElement => ({
   garmentId: 'garment-1', assetId: 'asset-1', role: 'TOP', x: 420, y: 320, width: 440, height: 580,
@@ -81,4 +81,55 @@ test('restores matching local drafts and flags drafts based on a different cloud
   const obsolete = restoreOutfitDraft(outfit, { name: '旧版草稿', revision: 4, scene: { version: 99, elements: [] } })
   assert.equal(obsolete.name, outfit.name)
   assert.equal(obsolete.restored, false)
+})
+
+
+test('legacy scenes upgrade without moving garments or changing layer order', () => {
+  const source = { version: 1, elements: [minimal({ x: 250, zIndex: 1 }), minimal({ garmentId: 'other', y: 810, zIndex: 0 })] }
+  const upgraded = normalizeScene(source)
+  assert.equal(upgraded.version, 2)
+  assert.deepEqual(upgraded.elements.map(item => [elementKey(item), item.x, item.y]), [['other', 420, 810], ['garment-1', 250, 320]])
+  assert.ok(upgraded.elements.every(item => item.kind === 'GARMENT' && !item.flipX && !item.freeStretch))
+  assert.equal(source.version, 1)
+})
+test('copies and layers address instances even when they share one source', () => {
+  const item = minimal({ elementId: 'instance-1', kind: 'PERSON_PART', stickerId: 'chibi/head', flipX: true, freeStretch: true, cropWidth: .8 })
+  const copy = copySticker(item, 1)
+  assert.notEqual(copy.elementId, item.elementId)
+  assert.equal(copy.stickerId, item.stickerId)
+  assert.deepEqual([copy.flipX, copy.freeStretch, copy.cropWidth, copy.x, copy.y], [true, true, .8, 450, 350])
+  const ordered = reorderOutfitElements([item, copy], elementKey(copy), 'back')
+  assert.deepEqual(ordered.map(elementKey), [elementKey(copy), elementKey(item)])
+  assert.equal(item.zIndex, 0)
+})
+test('v2 person writes contain a versioned source but no garment reference or image URL', () => {
+  const person = minimal({ elementId: 'person-1', kind: 'PERSON_PART', stickerId: 'sketch/head', stickerVersion: 1, flipX: true })
+  const payload = sceneWrite({ version: 2, elements: [person] }).elements[0]
+  assert.equal(payload.kind, 'PERSON_PART')
+  assert.equal(payload.stickerVersion, 1)
+  assert.ok(!('garmentId' in payload) && !('assetId' in payload) && !('assetUrl' in payload))
+  assert.equal(payload.flipX, true)
+})
+test('total and garment limits apply independently to mixed collages', () => {
+  const garments = Array.from({ length: 32 }, () => minimal({ kind: 'GARMENT' }))
+  assert.ok(stickerLimit(garments, 'GARMENT'))
+  assert.equal(stickerLimit(garments, 'PERSON_PART'), null)
+  const mixed = [...garments, ...Array.from({ length: 32 }, () => minimal({ kind: 'PERSON_PART' }))]
+  assert.ok(stickerLimit(mixed, 'PERSON_PART'))
+  assert.equal(stickerLimit(mixed.slice(1), 'GARMENT'), null)
+})
+
+
+test('dragged layers insert above or below targets without changing geometry or the undo source', () => {
+  const items = [minimal({ elementId: 'a' }), minimal({ elementId: 'b', zIndex: 1 }), minimal({ elementId: 'c', zIndex: 2 })]
+  const before = structuredClone(items)
+  const above = dropOutfitLayer(items, 'a', 'c', true)
+  assert.deepEqual(above.map(elementKey), ['b', 'c', 'a'])
+  assert.deepEqual(above.map(item => item.zIndex), [0, 1, 2])
+  assert.deepEqual(dropOutfitLayer(items, 'c', 'b', false).map(elementKey), ['a', 'c', 'b'])
+  assert.deepEqual(above[2], { ...items[0], zIndex: 2 })
+  assert.deepEqual(items, before)
+  assert.strictEqual(dropOutfitLayer(items, 'a', 'a', true), items)
+  assert.strictEqual(dropOutfitLayer(items, 'a', 'missing', true), items)
+  assert.strictEqual(dropOutfitLayer(items, 'c', 'b', true), items)
 })

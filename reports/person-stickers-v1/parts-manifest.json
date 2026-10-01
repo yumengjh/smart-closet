@@ -1,0 +1,230 @@
+[
+  {
+    "id": "chibi",
+    "count": 14,
+    "parts": [
+      {
+        "id": "head",
+        "width": 271,
+        "height": 307
+      },
+      {
+        "id": "neck",
+        "width": 232,
+        "height": 105
+      },
+      {
+        "id": "torso",
+        "width": 228,
+        "height": 269
+      },
+      {
+        "id": "pelvis",
+        "width": 214,
+        "height": 187
+      },
+      {
+        "id": "left-arm",
+        "width": 112,
+        "height": 354
+      },
+      {
+        "id": "right-arm",
+        "width": 108,
+        "height": 355
+      },
+      {
+        "id": "left-leg",
+        "width": 145,
+        "height": 353
+      },
+      {
+        "id": "right-leg",
+        "width": 158,
+        "height": 352
+      },
+      {
+        "id": "left-bent-arm",
+        "width": 177,
+        "height": 232
+      },
+      {
+        "id": "right-bent-arm",
+        "width": 174,
+        "height": 230
+      },
+      {
+        "id": "left-hand",
+        "width": 187,
+        "height": 200
+      },
+      {
+        "id": "right-hand",
+        "width": 185,
+        "height": 200
+      },
+      {
+        "id": "left-foot",
+        "width": 159,
+        "height": 225
+      },
+      {
+        "id": "right-foot",
+        "width": 159,
+        "height": 225
+      }
+    ]
+  },
+  {
+    "id": "cartoon",
+    "count": 14,
+    "parts": [
+      {
+        "id": "head",
+        "width": 223,
+        "height": 282
+      },
+      {
+        "id": "neck",
+        "width": 230,
+        "height": 122
+      },
+      {
+        "id": "torso",
+        "width": 202,
+        "height": 263
+      },
+      {
+        "id": "pelvis",
+        "width": 207,
+        "height": 189
+      },
+      {
+        "id": "left-arm",
+        "width": 110,
+        "height": 332
+      },
+      {
+        "id": "right-arm",
+        "width": 106,
+        "height": 332
+      },
+      {
+        "id": "left-leg",
+        "width": 138,
+        "height": 322
+      },
+      {
+        "id": "right-leg",
+        "width": 138,
+        "height": 322
+      },
+      {
+        "id": "left-bent-arm",
+        "width": 139,
+        "height": 284
+      },
+      {
+        "id": "right-bent-arm",
+        "width": 175,
+        "height": 273
+      },
+      {
+        "id": "left-hand",
+        "width": 120,
+        "height": 182
+      },
+      {
+        "id": "right-hand",
+        "width": 123,
+        "height": 184
+      },
+      {
+        "id": "left-foot",
+        "width": 176,
+        "height": 170
+      },
+      {
+        "id": "right-foot",
+        "width": 182,
+        "height": 171
+      }
+    ]
+  },
+  {
+    "id": "sketch",
+    "count": 14,
+    "parts": [
+      {
+        "id": "head",
+        "width": 251,
+        "height": 287
+      },
+      {
+        "id": "neck",
+        "width": 245,
+        "height": 114
+      },
+      {
+        "id": "torso",
+        "width": 201,
+        "height": 270
+      },
+      {
+        "id": "pelvis",
+        "width": 232,
+        "height": 205
+      },
+      {
+        "id": "left-arm",
+        "width": 144,
+        "height": 357
+      },
+      {
+        "id": "right-arm",
+        "width": 132,
+        "height": 360
+      },
+      {
+        "id": "left-leg",
+        "width": 154,
+        "height": 359
+      },
+      {
+        "id": "right-leg",
+        "width": 169,
+        "height": 359
+      },
+      {
+        "id": "left-bent-arm",
+        "width": 241,
+        "height": 280
+      },
+      {
+        "id": "right-bent-arm",
+        "width": 244,
+        "height": 280
+      },
+      {
+        "id": "left-hand",
+        "width": 137,
+        "height": 200
+      },
+      {
+        "id": "right-hand",
+        "width": 137,
+        "height": 200
+      },
+      {
+        "id": "left-foot",
+        "width": 185,
+        "height": 190
+      },
+      {
+        "id": "right-foot",
+        "width": 186,
+        "height": 190
+      }
+    ]
+  }
+]

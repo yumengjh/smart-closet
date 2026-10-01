@@ -7,7 +7,7 @@ const imagePromises = new Map<string, Promise<HTMLImageElement>>()
 export type GarmentArtwork = { assetId: string; url: string; kind: string; hasBackground: boolean }
 
 function mockArtwork(garment: Garment, role: OutfitRole): string {
-  const color = encodeURIComponent(garment.imageColor || '#b9b9b3')
+  const color = /^#[0-9a-f]{6}$/i.test(garment.imageColor || '') ? garment.imageColor : '#b9b9b3'
   const silhouette = role === 'BOTTOM'
     ? '<path d="M28 12h44l-5 75-12 1-5-44-5 44-12-1z"/>'
     : role === 'HAT'
@@ -39,7 +39,7 @@ export function loadOutfitImage(url: string): Promise<HTMLImageElement> {
     const image = new Image()
     image.crossOrigin = 'anonymous'
     image.onload = () => resolve(image)
-    image.onerror = () => reject(new Error('衣物图片暂时无法加载，请重试。'))
+    image.onerror = () => reject(new Error('贴纸图片暂时无法加载，请重试。'))
     image.src = url
   })
   imagePromises.set(url, promise)
@@ -89,6 +89,7 @@ export async function createOutfitElement(garment: Garment, current: OutfitEleme
   const x = Math.max(width / 2 + 16, Math.min(OUTFIT_WIDTH - width / 2 - 16, position.x))
   const y = Math.max(height / 2 + 16, Math.min(OUTFIT_HEIGHT - height / 2 - 16, position.y))
   return {
+    elementId: crypto.randomUUID(), kind: 'GARMENT', flipX: false, freeStretch: false,
     garmentId: garment.id, assetId: artwork.assetId, role,
     x, y, width, height, rotation: 0, zIndex: current.length,
     garmentLabel: formatGarmentLabel(garment), cropX: crop.x, cropY: crop.y,
@@ -115,6 +116,7 @@ export async function drawOutfit(scene: { elements: OutfitElement[] }, width: nu
     context.save()
     context.translate(element.x * scaleX, element.y * scaleY)
     context.rotate(element.rotation * Math.PI / 180)
+    context.scale(element.flipX ? -1 : 1, 1)
     context.drawImage(image, element.cropX * image.naturalWidth, element.cropY * image.naturalHeight,
       sw, sh, -element.width * scaleX / 2, -element.height * scaleY / 2,
       element.width * scaleX, element.height * scaleY)

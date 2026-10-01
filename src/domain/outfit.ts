@@ -2,11 +2,17 @@ import type { Garment } from '../services/api'
 
 export const OUTFIT_WIDTH = 1080
 export const OUTFIT_HEIGHT = 1350
-export const OUTFIT_VERSION = 1
+export const OUTFIT_VERSION = 2
 
 export type OutfitRole = 'TOP' | 'OUTER' | 'BOTTOM' | 'ONE_PIECE' | 'SHOES' | 'HAT' | 'BAG' | 'ACCESSORY' | 'OTHER'
 export type OutfitCrop = { x: number; y: number; width: number; height: number }
 export type OutfitElement = {
+  elementId?: string
+  kind?: 'GARMENT' | 'PERSON_PART'
+  stickerId?: string
+  stickerVersion?: number
+  flipX?: boolean
+  freeStretch?: boolean
   garmentId: string
   assetId: string
   role: OutfitRole
@@ -43,8 +49,10 @@ export function outfitDropPosition(clientX: number, clientY: number, bounds: { l
   return { x: (clientX - bounds.left) / bounds.width * OUTFIT_WIDTH, y: (clientY - bounds.top) / bounds.height * OUTFIT_HEIGHT }
 }
 
+export function elementKey(item: OutfitElement) { return item.elementId || item.garmentId }
+
 export function reorderOutfitElements(elements: OutfitElement[], garmentId: string, direction: OutfitLayerMove) {
-  const index = elements.findIndex(item => item.garmentId === garmentId)
+  const index = elements.findIndex(item => elementKey(item) === garmentId)
   if (index < 0) return elements
   const target = direction === 'front' ? elements.length - 1 : direction === 'back' ? 0
     : Math.max(0, Math.min(elements.length - 1, index + (direction === 'forward' ? 1 : -1)))
@@ -53,6 +61,17 @@ export function reorderOutfitElements(elements: OutfitElement[], garmentId: stri
   const item = next.splice(index, 1)[0]
   next.splice(target, 0, item)
   return next.map((element, zIndex) => ({ ...element, zIndex }))
+}
+
+// The list is displayed top first; "above" inserts after the target in paint order.
+export function dropOutfitLayer(elements: OutfitElement[], sourceId: string, targetId: string, above: boolean) {
+  if (sourceId === targetId || !elements.some(item => elementKey(item) === sourceId) || !elements.some(item => elementKey(item) === targetId)) return elements
+  const source = elements.find(item => elementKey(item) === sourceId)!
+  const next = elements.filter(item => elementKey(item) !== sourceId)
+  const target = next.findIndex(item => elementKey(item) === targetId)
+  next.splice(target + (above ? 1 : 0), 0, source)
+  if (next.every((item, index) => item === elements[index])) return elements
+  return next.map((item, zIndex) => ({ ...item, zIndex }))
 }
 
 export const outfitRoleOptions: OutfitRoleOption[] = [
@@ -102,7 +121,14 @@ export function sceneWrite(scene: OutfitScene) {
     version: scene.version,
     elements: scene.elements.map(({ assetUrl: _assetUrl, imageWidth: _imageWidth, imageHeight: _imageHeight,
       assetKind: _assetKind, garmentRevision: _garmentRevision, garmentStatus: _garmentStatus,
-      garmentChanged: _garmentChanged, imageChanged: _imageChanged, ...element }) => element),
+      garmentChanged: _garmentChanged, imageChanged: _imageChanged, ...element }) => {
+        if (scene.version === 1) return element
+        if (element.kind === 'PERSON_PART') {
+          const { garmentId: _garmentId, assetId: _assetId, ...person } = element
+          return person
+        }
+        return element
+      }),
   }
 }
 
@@ -110,17 +136,26 @@ export function normalizeScene(scene: OutfitScene): OutfitScene {
   return {
     version: OUTFIT_VERSION,
     elements: [...scene.elements].sort((a, b) => a.zIndex - b.zIndex)
-      .map((element, zIndex) => ({ ...element, zIndex, rotation: ((element.rotation % 360) + 360) % 360 })),
+      .map((element, zIndex) => ({ ...element, elementId: elementKey(element), kind: element.kind || 'GARMENT', flipX: element.flipX || false, freeStretch: element.freeStretch || false, zIndex, rotation: ((element.rotation % 360) + 360) % 360 })),
   }
 }
 
 export function restoreOutfitDraft(outfit: Pick<Outfit, 'name' | 'revision' | 'scene'>, draft: OutfitDraft | null) {
-  const valid = draft?.scene?.version === OUTFIT_VERSION && Array.isArray(draft.scene.elements)
-  if (!draft || !valid) return { name: outfit.name, scene: outfit.scene, restored: false, conflict: false }
+  const valid = [1, OUTFIT_VERSION].includes(draft?.scene?.version || 0) && Array.isArray(draft?.scene.elements)
+  if (!draft || !valid) return { name: outfit.name, scene: normalizeScene(outfit.scene), restored: false, conflict: false }
   return {
     name: draft.name,
     scene: normalizeScene(draft.scene),
     restored: true,
     conflict: draft.revision !== outfit.revision,
   }
+}
+
+export function stickerLimit(elements: OutfitElement[], kind: 'GARMENT' | 'PERSON_PART'): string | null {
+  if (elements.length >= 64) return '画板最多放入 64 张贴纸。'
+  if (kind === 'GARMENT' && elements.filter(item => item.kind !== 'PERSON_PART').length >= 32) return '画板最多放入 32 件衣物。'
+  return null
+}
+export function copySticker(item: OutfitElement, zIndex: number): OutfitElement {
+  return { ...item, elementId: crypto.randomUUID(), x: Math.min(1080, item.x + 30), y: Math.min(1350, item.y + 30), zIndex }
 }

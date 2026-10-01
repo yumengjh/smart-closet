@@ -8,6 +8,11 @@ import { router } from './router'
 import './style.css'
 import './styles/outfit.css'
 
+// Remove only abandoned mannequin experiment settings, preserving outfits and drafts.
+try {
+  Object.keys(localStorage).filter(key => key.startsWith('yixu.outfit-base.v1:') || key.startsWith('yixu.outfit-rig.v1:')).forEach(key => localStorage.removeItem(key))
+} catch { /* Storage access is optional. */ }
+
 const app = createApp(App).use(createPinia()).use(router).use(VueKonva)
 for (const [name, component] of Object.entries({
   'a-alert': Alert, 'a-app': AntApp, 'a-button': Button, 'a-config-provider': ConfigProvider,
