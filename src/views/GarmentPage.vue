@@ -8,6 +8,7 @@ import { metadataChoices, matchesMetadataOption, metadataPatch, rebaseMetadata, 
 import { isProcessing, blocksConfirmation, workflowSummary, generatedImages, imageLabels } from '../domain/workflow'
 import { useClosetStore } from '../stores/closet'
 import TaskProgress from '../components/TaskProgress.vue'
+import { playSound } from '../services/sound'
 
 const { modal } = AntApp.useApp()
 const route = useRoute(); const router = useRouter(); const closet = useClosetStore()
@@ -100,8 +101,9 @@ async function save(confirming = false, originalFallback = false) {
       : await closetApi.update(garment.value.id, { revision: baseline.value.revision, fields: patchFromForm(), resetFields: [...resetFields.value] })
     if (!confirming && selectedAssetId.value !== record.displayAssetId) record = await closetApi.chooseDisplay(record.id, selectedAssetId.value, record.revision)
     garment.value = record; syncForm(record); success.value = confirming ? originalFallback ? '已暂用原图入柜，贴纸仍未完成，可稍后继续制作。' : '已确认入柜，图片和信息已保存。' : '修改已保存。'
+    playSound('success')
     await closet.refreshCounts()
-  } catch (cause) { error.value = cause instanceof Error ? cause.message : '保存失败，你的输入仍保留。' }
+  } catch (cause) { playSound('denied'); error.value = cause instanceof Error ? cause.message : '保存失败，你的输入仍保留。' }
   finally { busy.value = '' }
 }
 function useOriginal() {

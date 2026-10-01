@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@ant-design/icons-vue": "^7.0.1",
+    "@foleyjs/core": "^2.9.0",
     "ant-design-vue": "^4.2.6",
     "konva": "^10.7.0",
     "pinia": "^3.0.3",

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onUnmounted, watch } from 'vue'
+import { computed, onMounted, onUnmounted, watch } from 'vue'
 import zhCN from 'ant-design-vue/es/locale/zh_CN'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import {
@@ -8,6 +8,8 @@ import {
 } from '@ant-design/icons-vue'
 import { useClosetStore } from '../stores/closet'
 import { usingMocks } from '../services/api'
+import SoundToggle from './SoundToggle.vue'
+import { installInteractionSounds, unlockSound } from '../services/sound'
 
 const route = useRoute()
 const router = useRouter()
@@ -39,6 +41,10 @@ function passwordRequired() { if (closet.user) closet.user.mustChangePassword = 
 window.addEventListener('closet-session-expired', sessionExpired)
 window.addEventListener('closet-password-change-required', passwordRequired)
 onUnmounted(() => { window.removeEventListener('closet-session-expired', sessionExpired); window.removeEventListener('closet-password-change-required', passwordRequired) })
+
+let removeInteractionSounds: (() => void) | undefined
+onMounted(() => { removeInteractionSounds = installInteractionSounds(); window.addEventListener('pointerdown', unlockSound, { capture: true }); window.addEventListener('keydown', unlockSound, { capture: true }) })
+onUnmounted(() => { removeInteractionSounds?.(); window.removeEventListener('pointerdown', unlockSound, true); window.removeEventListener('keydown', unlockSound, true) })
 
 async function signOut() {
   await closet.signOut()
@@ -73,7 +79,7 @@ async function signOut() {
         </aside>
         <main class="main-area">
           <div v-if="usingMocks" class="mock-banner"><span class="mock-pulse"></span><span>界面演示 · 示例数据不是 AI 结果，演示模式禁止提交模型任务</span><span class="mock-banner-end">{{ closet.user?.username }} 的衣橱</span></div>
-          <header class="topbar"><span>衣序 <span class="topbar-divider">/</span> {{ route.path === '/add' ? '添加衣物' : route.path.startsWith('/garment') ? '衣物工作台' : route.path.startsWith('/outfits') ? '组合台' : navItems.find(item => item.path === route.path)?.label || '回收站' }}</span><RouterLink v-if="!closet.user?.mustChangePassword" to="/tasks" class="topbar-tasks"><HistoryOutlined /> 任务记录<span v-if="closet.taskCount" class="nav-count">{{ closet.taskCount }}</span></RouterLink></header>
+          <header class="topbar"><span>衣序 <span class="topbar-divider">/</span> {{ route.path === '/add' ? '添加衣物' : route.path.startsWith('/garment') ? '衣物工作台' : route.path.startsWith('/outfits') ? '组合台' : navItems.find(item => item.path === route.path)?.label || '回收站' }}</span><div class="topbar-actions"><SoundToggle /><RouterLink v-if="!closet.user?.mustChangePassword" to="/tasks" class="topbar-tasks"><HistoryOutlined /> 任务记录<span v-if="closet.taskCount" class="nav-count">{{ closet.taskCount }}</span></RouterLink></div></header>
           <section class="route-content"><RouterView /></section>
         </main>
         <nav v-if="!closet.user?.mustChangePassword" class="mobile-nav" aria-label="移动端主导航">

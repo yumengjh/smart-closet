@@ -95,3 +95,6 @@ h3 { font-size: 15px; line-height: 1.5; font-weight: 600; }
 .previous-progress { border: 1px solid var(--line); border-radius: 12px; background: var(--surface); overflow: hidden; }
 .previous-progress summary { padding: 14px 16px; min-height: 44px; font-size: 12px; color: var(--muted); cursor: pointer; line-height: 1.8; }
 .previous-progress .progress-panel { border: 0; box-shadow: none; }
+
+.topbar-actions { display: flex; align-items: center; gap: 12px; }
+@media (max-width: 767px) { .topbar-actions { gap: 4px; } }

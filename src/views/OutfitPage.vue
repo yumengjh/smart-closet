@@ -21,6 +21,9 @@ import OutfitInspector from '../components/OutfitInspector.vue'
 import OutfitPersonPicker from '../components/OutfitPersonPicker.vue'
 import { createPersonElement, type PersonCatalog, type PersonPart } from '../domain/person-stickers'
 import OutfitLayers from '../components/OutfitLayers.vue'
+import SoundToggle from '../components/SoundToggle.vue'
+import { playSound } from '../services/sound'
+import type { CueName } from '@foleyjs/core'
 import { MIN_VIEW_ZOOM, MAX_VIEW_ZOOM, outfitViewGeometry, outfitWheelZoom } from '../domain/outfit-view'
 
 const route = useRoute()
@@ -235,11 +238,12 @@ async function loadLibrary() {
 }
 
 function sceneSnapshot() { return elements.value.map((item) => ({ ...item })) }
-function recordChange(next: OutfitElement[]) {
+function recordChange(next: OutfitElement[], cue: CueName = 'tap') {
   if (JSON.stringify(next) === JSON.stringify(elements.value)) return
   undoStack.value = [...undoStack.value.slice(-79), sceneSnapshot()]
   redoStack.value = []
   elements.value = next.map((item, index) => ({ ...item, zIndex: index }))
+  playSound(cue)
   scheduleDraft()
 }
 function undo() {
@@ -248,6 +252,7 @@ function undo() {
   redoStack.value = [...redoStack.value, sceneSnapshot()]
   undoStack.value = undoStack.value.slice(0, -1)
   elements.value = previous
+  playSound('tap')
   scheduleDraft()
 }
 function redo() {
@@ -256,6 +261,7 @@ function redo() {
   undoStack.value = [...undoStack.value, sceneSnapshot()]
   redoStack.value = redoStack.value.slice(0, -1)
   elements.value = next
+  playSound('tap')
   scheduleDraft()
 }
 
@@ -268,14 +274,14 @@ async function loadPeople() {
 async function selectPerson(part: PersonPart, position?: { x: number; y: number }) {
   const request = loadRevision
   const limit = stickerLimit(elements.value, 'PERSON_PART')
-  if (limit) { message.warning(limit); return }
+  if (limit) { playSound('denied'); message.warning(limit); return }
   try {
     await loadOutfitImage(part.url)
     if (request !== loadRevision) return
     const laterLimit = stickerLimit(elements.value, 'PERSON_PART')
-    if (laterLimit) { message.warning(laterLimit); return }
+    if (laterLimit) { playSound('denied'); message.warning(laterLimit); return }
     const candidate = createPersonElement(part, elements.value.length, position)
-    recordChange([...elements.value, candidate]); selectElement(elementKey(candidate))
+    recordChange([...elements.value, candidate], 'pop'); selectElement(elementKey(candidate))
   } catch (cause) { message.error(cause instanceof Error ? cause.message : '人物贴纸无法加载。') }
 }
 async function selectGarment(garment: Garment, position?: { x: number; y: number }) {
@@ -287,18 +293,18 @@ async function selectGarment(garment: Garment, position?: { x: number; y: number
   }
   const target = replacementTarget.value
   const old = target ? elements.value.find(item => elementKey(item) === target) : null
-  if (!old) { const limit = stickerLimit(elements.value, 'GARMENT'); if (limit) { message.warning(limit); return } }
+  if (!old) { const limit = stickerLimit(elements.value, 'GARMENT'); if (limit) { playSound('denied'); message.warning(limit); return } }
   addingGarments.add(garment.id)
   try {
     const candidate = await createOutfitElement(garment, old ? elements.value.filter(item => elementKey(item) !== target) : elements.value)
-    if (!old) { const limit = stickerLimit(elements.value, 'GARMENT'); if (limit) { message.warning(limit); return } }
+    if (!old) { const limit = stickerLimit(elements.value, 'GARMENT'); if (limit) { playSound('denied'); message.warning(limit); return } }
     const next = [...elements.value]
     if (old) {
       const index = next.findIndex(item => elementKey(item) === target)
       if (index < 0) return
       next[index] = { ...candidate, elementId: old.elementId, role: old.role, x: old.x, y: old.y, width: old.width, height: old.height, rotation: old.rotation, zIndex: old.zIndex, flipX: old.flipX, freeStretch: old.freeStretch }
     } else next.push({ ...candidate, ...position })
-    recordChange(next.sort((a, b) => a.zIndex - b.zIndex))
+    recordChange(next.sort((a, b) => a.zIndex - b.zIndex), 'pop')
     selectedId.value = old ? elementKey(old) : elementKey(candidate)
     replacementTarget.value = null
     if (old) pickerOpen.value = false
@@ -315,7 +321,7 @@ function duplicateSelected() {
   const next = [...elements.value], copies: OutfitElement[] = []
   for (const item of selectedItems.value) {
     const limit = stickerLimit(next, item.kind || 'GARMENT')
-    if (limit) { message.warning(limit); return }
+    if (limit) { playSound('denied'); message.warning(limit); return }
     const copy = copySticker(item, next.length)
     copies.push(copy); next.push(copy)
   }
@@ -338,7 +344,7 @@ function removeSelected() {
 }
 function moveLayer(direction: OutfitLayerMove) {
   const next = reorderOutfitElements(elements.value, selectedId.value, direction)
-  if (next !== elements.value) recordChange(next)
+  if (next !== elements.value) recordChange(next, 'drop')
 }
 function changeRole(value: OutfitRole) {
   if (!currentItem.value) return
@@ -411,13 +417,14 @@ function dropGarment(event: DragEvent) {
 
 function dropLayer(source: string, target: string, above: boolean) {
   const next = dropOutfitLayer(elements.value, source, target, above)
-  if (next !== elements.value) recordChange(next)
+  if (next !== elements.value) recordChange(next, 'drop')
 }
 const shiftHeld = ref(false)
 function transformKeys(event: KeyboardEvent) { shiftHeld.value = event.shiftKey }
 
 function closeContextMenu() { contextTarget.value = '' }
 function openContextMenu(event: MouseEvent, id: string) {
+  playSound('switch')
   event.preventDefault()
   if (compact.value) { selectElement(id); inspectorOpen.value = true; return }
   const instance = elements.value.find(item => elementKey(item) === id || (item.kind !== 'PERSON_PART' && item.garmentId === id))
@@ -632,7 +639,7 @@ function stageClick(event: { target: Konva.Node; targetNode?: Konva.Node; evt?: 
   if (event.evt && 'button' in event.evt && event.evt.button !== 0) return
   closeContextMenu()
   const target = event.targetNode || event.target
-  if (target === target.getStage()) { selectedId.value = ''; detachTransformer() }
+  if (target === target.getStage()) { if (selectedId.value) playSound('tick'); selectedId.value = ''; detachTransformer() }
 }
 function clampPosition(position: { x: number; y: number }) {
   return { x: Math.max(0, Math.min(stageWidth.value, position.x)), y: Math.max(0, Math.min(stageHeight.value, position.y)) }
@@ -657,7 +664,7 @@ function dragEnd(event: { target: Konva.Group }, item: OutfitElement) {
   recordChange(elements.value.map(value => {
     const node = nodeRefs[elementKey(value)]?.getNode()
     return ids.includes(elementKey(value)) && node ? { ...value, x: node.x() / canvasScale.value, y: node.y() / canvasScale.value } : value
-  }))
+  }), 'drop')
   dragOrigins = []
 }
 function previewRotation(angle: number) {
@@ -721,11 +728,13 @@ async function saveOutfit() {
     remoteConflict.value = false
     if (isNew.value) await router.replace(`/outfits/${result.id}`)
     else loaded = true
+    playSound('success')
     message.success('搭配已保存，可在手机和电脑继续编辑。')
   } catch (cause) {
     const text = cause instanceof Error ? cause.message : '搭配暂时无法保存。'
     if (/已在另一处更新|版本|conflict/i.test(text)) remoteConflict.value = true
     error.value = text
+    playSound('denied')
     message.error(text)
   } finally { saving.value = false }
 }
@@ -759,7 +768,7 @@ function confirmDelete(outfit: Outfit) {
     content: '搭配会从列表中移除，衣柜中的衣物和图片不会受影响。',
     okText: '删除搭配', cancelText: '保留搭配', okButtonProps: { danger: true },
     onOk: async () => {
-      try { await closetApi.deleteOutfit(outfit.id, outfit.revision); saved.value = saved.value.filter((item) => item.id !== outfit.id); message.success('搭配已删除。') }
+      try { await closetApi.deleteOutfit(outfit.id, outfit.revision); saved.value = saved.value.filter((item) => item.id !== outfit.id); playSound('tap'); message.success('搭配已删除。') }
       catch (cause) { message.error(cause instanceof Error ? cause.message : '搭配暂时无法删除。') }
     },
   })
@@ -767,8 +776,8 @@ function confirmDelete(outfit: Outfit) {
 async function exportPng() {
   if (!elements.value.length || failedImage.value) { message.warning('先加载全部贴纸图片，再导出穿搭图。'); return }
   exporting.value = true
-  try { await downloadOutfitPng({ elements: sceneSnapshot() }, name.value); message.success('穿搭图片已导出。') }
-  catch (cause) { message.error(cause instanceof Error ? cause.message : '穿搭图片导出失败。') }
+  try { await downloadOutfitPng({ elements: sceneSnapshot() }, name.value); playSound('complete'); message.success('穿搭图片已导出。') }
+  catch (cause) { playSound('denied'); message.error(cause instanceof Error ? cause.message : '穿搭图片导出失败。') }
   finally { exporting.value = false }
 }
 async function resetLayout() {
@@ -800,7 +809,7 @@ function handleKeyboard(event: KeyboardEvent) {
     return
   }
   const modifier = event.metaKey || event.ctrlKey
-  if (modifier && event.key.toLowerCase() === 'a' && !(event.target as HTMLElement)?.closest('input,textarea,[contenteditable="true"]')) { event.preventDefault(); selectAll(); return }
+  if (modifier && event.key.toLowerCase() === 'a' && !(event.target as HTMLElement)?.closest('input,textarea,[contenteditable="true"]')) { event.preventDefault(); selectAll(); playSound('tick'); return }
   if (modifier && event.key.toLowerCase() === 's') { event.preventDefault(); if (!saving.value && !remoteConflict.value) void saveOutfit(); return }
   if (event.code === 'Space' && hoveringView.value && !(event.target as HTMLElement)?.closest('input,textarea,select,[contenteditable="true"],[role="combobox"]') && !pickerOpen.value && !inspectorOpen.value && !layersOpen.value && !infoOpen.value) {
     event.preventDefault(); spacePressed.value = true; return
@@ -900,7 +909,7 @@ onUnmounted(() => {
       <div class="outfit-library-toolbar"><a-input v-model:value="librarySearch" allow-clear placeholder="搜索搭配名称" aria-label="搜索搭配"><template #prefix><SearchOutlined /></template></a-input><span class="muted">{{ displayedOutfits.length }} 套搭配 · 最近更新</span></div>
       <section v-if="displayedOutfits.length" class="outfit-library-grid" aria-label="已保存的穿搭">
         <article v-for="outfit in displayedOutfits" :key="outfit.id" class="outfit-card">
-          <RouterLink :to="`/outfits/${outfit.id}`" class="outfit-card-preview"><OutfitThumbnail :scene="outfit.scene" :title="outfit.name" /><a-tag class="outfit-card-count">{{ outfit.scene.elements.length }} 张贴纸</a-tag><a-tag v-if="outfit.scene.elements.some(item => item.garmentChanged || item.garmentStatus === 'TRASHED')" color="orange" class="outfit-card-status">衣物有更新</a-tag></RouterLink>
+          <RouterLink :to="`/outfits/${outfit.id}`" class="outfit-card-preview" @click="playSound('tap')"><OutfitThumbnail :scene="outfit.scene" :title="outfit.name" /><a-tag class="outfit-card-count">{{ outfit.scene.elements.length }} 张贴纸</a-tag><a-tag v-if="outfit.scene.elements.some(item => item.garmentChanged || item.garmentStatus === 'TRASHED')" color="orange" class="outfit-card-status">衣物有更新</a-tag></RouterLink>
           <div class="outfit-card-details"><div><RouterLink :to="`/outfits/${outfit.id}`" class="outfit-card-name">{{ outfit.name }}</RouterLink><span>{{ new Date(outfit.updatedAtMs).toLocaleDateString() }} 更新</span></div><a-dropdown :trigger="['click']"><a-button type="text" aria-label="搭配更多操作"><MoreOutlined /></a-button><template #overlay><a-menu><a-menu-item @click="router.push(`/outfits/${outfit.id}`)">编辑搭配</a-menu-item><a-menu-item @click="startCopy(outfit)"><CopyOutlined /> 复制搭配</a-menu-item><a-menu-divider /><a-menu-item danger @click="confirmDelete(outfit)"><DeleteOutlined /> 删除搭配</a-menu-item></a-menu></template></a-dropdown></div>
         </article>
       </section>
@@ -914,7 +923,7 @@ onUnmounted(() => {
   <div v-else class="outfit-editor-page">
     <header class="outfit-editor-header">
       <div class="outfit-editor-title"><a-tooltip title="返回搭配列表，草稿会自动保留"><a-button aria-label="返回搭配列表" @click="router.push('/outfits')"><ArrowLeftOutlined /></a-button></a-tooltip><div class="outfit-title-field"><a-input v-model:value="name" maxlength="100" aria-label="搭配名称" placeholder="给搭配起个名字" /></div><a-tooltip :title="saveState"><span class="outfit-save-state" role="status"><CheckOutlined v-if="localDraftNotice || (!isNew && !hasChanges)" />{{ localDraftNotice ? '本机草稿' : !isNew && !hasChanges ? '已保存' : '未保存' }}</span></a-tooltip></div>
-      <div class="outfit-header-actions"><a-button class="outfit-desktop-export" :loading="exporting" :disabled="!dirty || !!failedImage" @click="exportPng"><DownloadOutlined /> 导出图片</a-button><a-button type="primary" aria-label="保存搭配" :loading="saving" :disabled="!dirty || remoteConflict" @click="saveOutfit"><SaveOutlined /><span>{{ compact ? '保存' : '保存搭配' }}</span></a-button></div>
+      <div class="outfit-header-actions"><SoundToggle /><a-button class="outfit-desktop-export" :loading="exporting" :disabled="!dirty || !!failedImage" @click="exportPng"><DownloadOutlined /> 导出图片</a-button><a-button type="primary" aria-label="保存搭配" :loading="saving" :disabled="!dirty || remoteConflict" @click="saveOutfit"><SaveOutlined /><span>{{ compact ? '保存' : '保存搭配' }}</span></a-button></div>
     </header>
     <a-alert v-if="remoteConflict" type="warning" show-icon message="另一处已更新这套搭配，你的草稿仍保留。" class="outfit-alert"><template #action><div class="outfit-conflict-actions"><a-button @click="loadLatest">重新加载</a-button><a-button type="primary" @click="saveConflictAsCopy">另存副本</a-button></div></template></a-alert>
     <a-alert v-else-if="error" type="error" show-icon closable :message="error" class="outfit-alert" @close="error = ''" />
@@ -946,7 +955,7 @@ onUnmounted(() => {
             <v-layer>
               <v-rect :config="{ x: 0, y: 0, width: stageWidth, height: stageHeight, fill: '#ffffff', listening: false }" />
               <v-group v-for="item in elements" :key="elementKey(item)" :ref="(node: unknown) => bindNode(elementKey(item), node)" :config="{ x: item.x * canvasScale, y: item.y * canvasScale, rotation: item.rotation, draggable: !pinching, name: `outfit-${elementKey(item)}`, dragBoundFunc: clampPosition }"
-                @click="selectElement(elementKey(item), $event.evt.shiftKey || $event.evt.ctrlKey || $event.evt.metaKey, $event.evt.shiftKey)" @tap="selectElement(elementKey(item))" @dbltap="selectElement(elementKey(item)); inspectorOpen = true" @contextmenu="canvasContextMenu($event, item)" @touchstart="beginTouch($event, item)" @touchmove="cancelLongPress" @touchend="cancelLongPress" @dragstart="startSelectionDrag($event, item)" @dragmove="moveSelectionDrag($event, item)" @dragend="dragEnd($event, item)" @transformend="transformEnd($event, item)">
+                @click="playSound('tick'); selectElement(elementKey(item), $event.evt.shiftKey || $event.evt.ctrlKey || $event.evt.metaKey, $event.evt.shiftKey)" @tap="playSound('tick'); selectElement(elementKey(item))" @dbltap="selectElement(elementKey(item)); inspectorOpen = true" @contextmenu="canvasContextMenu($event, item)" @touchstart="beginTouch($event, item)" @touchmove="cancelLongPress" @touchend="cancelLongPress" @dragstart="startSelectionDrag($event, item)" @dragmove="moveSelectionDrag($event, item)" @dragend="dragEnd($event, item)" @transformend="transformEnd($event, item)">
                 <v-image :config="{ image: imageMap[item.assetUrl], scaleX: item.flipX ? -1 : 1, x: (item.flipX ? 1 : -1) * item.width * canvasScale / 2, y: -item.height * canvasScale / 2, width: item.width * canvasScale, height: item.height * canvasScale, crop: { x: item.cropX * item.imageWidth, y: item.cropY * item.imageHeight, width: item.cropWidth * item.imageWidth, height: item.cropHeight * item.imageHeight }, visible: Boolean(imageMap[item.assetUrl]) }" />
               </v-group>
               <v-transformer ref="transformer" :config="{ keepRatio: !currentItem?.freeStretch, shiftBehavior: currentItem?.freeStretch ? 'default' : 'inverted', rotationSnaps: shiftHeld ? Array.from({ length: 24 }, (_, i) => i * 15) : [], rotationSnapTolerance: 8, rotateEnabled: true, flipEnabled: false, enabledAnchors: ['top-left', 'top-center', 'top-right', 'middle-left', 'middle-right', 'bottom-left', 'bottom-center', 'bottom-right'], anchorSize: compact ? 22 : 12, anchorCornerRadius: 3, anchorStyleFunc: styleTransformAnchor, borderStroke: '#3f6ff5', anchorStroke: '#3f6ff5', anchorFill: '#ffffff', rotateAnchorOffset: compact ? 32 : 24, padding: 6 }" />

@@ -260,3 +260,5 @@
 .outfit-layer-check:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
 @media (pointer: coarse) { .outfit-layer-check { width: 22px; height: 22px; margin-inline: 8px; } }
 .outfit-layer-select small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.outfit-header-actions .sound-toggle.ant-btn { min-width: 44px; width: 44px; padding: 0; }
