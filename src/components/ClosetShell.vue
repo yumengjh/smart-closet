@@ -9,6 +9,7 @@ import {
 import { useClosetStore } from '../stores/closet'
 import { usingMocks } from '../services/api'
 import SoundToggle from './SoundToggle.vue'
+import AssistantPanel from '../agent/AssistantPanel.vue'
 import { installInteractionSounds, unlockSound } from '../services/sound'
 
 const route = useRoute()
@@ -81,6 +82,7 @@ async function signOut() {
           <div v-if="usingMocks" class="mock-banner"><span class="mock-pulse"></span><span>界面演示 · 示例数据不是 AI 结果，演示模式禁止提交模型任务</span><span class="mock-banner-end">{{ closet.user?.username }} 的衣橱</span></div>
           <header class="topbar"><span>衣序 <span class="topbar-divider">/</span> {{ route.path === '/add' ? '添加衣物' : route.path.startsWith('/garment') ? '衣物工作台' : route.path.startsWith('/outfits') ? '组合台' : navItems.find(item => item.path === route.path)?.label || '回收站' }}</span><div class="topbar-actions"><SoundToggle /><RouterLink v-if="!closet.user?.mustChangePassword" to="/tasks" class="topbar-tasks"><HistoryOutlined /> 任务记录<span v-if="closet.taskCount" class="nav-count">{{ closet.taskCount }}</span></RouterLink></div></header>
           <section class="route-content"><RouterView /></section>
+          <AssistantPanel v-if="!closet.user?.mustChangePassword" :key="closet.user?.username" />
         </main>
         <nav v-if="!closet.user?.mustChangePassword" class="mobile-nav" aria-label="移动端主导航">
           <RouterLink v-for="item in (closet.user?.mustChangePassword ? navItems.filter(item => item.path === '/settings') : navItems)" :key="item.path" :to="item.path" :class="{ active: route.path === item.path || (item.path === '/wardrobe' && route.path.startsWith('/garment')) || (item.path === '/outfits' && route.path.startsWith('/outfits')) }"><component :is="item.icon" /><span>{{ item.label }}</span><i v-if="item.path === '/pending' && closet.pendingCount"></i></RouterLink>

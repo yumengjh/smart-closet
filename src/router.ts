@@ -12,6 +12,7 @@ export const router = createRouter({
     { path: '/tasks', component: () => import('./views/TasksPage.vue') },
     { path: '/outfits', component: () => import('./views/OutfitPage.vue') },
     { path: '/outfits/:id', component: () => import('./views/OutfitPage.vue') },
+    { path: '/help', component: () => import('./views/HelpPage.vue') },
     { path: '/settings', component: () => import('./views/SettingsPage.vue') },
     { path: '/add', component: () => import('./views/AddGarmentPage.vue') },
     { path: '/garment/:id', component: () => import('./views/GarmentPage.vue') },

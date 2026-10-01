@@ -22,6 +22,7 @@ import OutfitPersonPicker from '../components/OutfitPersonPicker.vue'
 import { createPersonElement, type PersonCatalog, type PersonPart } from '../domain/person-stickers'
 import OutfitLayers from '../components/OutfitLayers.vue'
 import SoundToggle from '../components/SoundToggle.vue'
+import { canvasBridge } from '../agent/bridge'
 import { playSound } from '../services/sound'
 import type { CueName } from '@foleyjs/core'
 import { MIN_VIEW_ZOOM, MAX_VIEW_ZOOM, outfitViewGeometry, outfitWheelZoom } from '../domain/outfit-view'
@@ -133,7 +134,7 @@ const saveState = computed(() => localDraftNotice.value ? '草稿已保存在此
 const dirty = computed(() => elements.value.length > 0)
 const roleNames = Object.fromEntries(outfitRoleOptions.map((option) => [option.value, option.label])) as Record<OutfitRole, string>
 const sceneLabel = computed(() => `${elements.value.length} 张贴纸`)
-const draftKey = computed(() => `yixu.outfit-draft.v1:${draftOwner.value || closet.user?.username || 'anonymous'}:${route.params.id || 'new'}`)
+const draftKey = computed(() => `yixu.outfit-draft.v1:${draftOwner.value || closet.user?.username || 'anonymous'}:${route.params.id || 'new'}${isNew.value && typeof route.query.draft === 'string' ? ':' + route.query.draft : ''}`)
 
 function getDraft() {
   try { return JSON.parse(localStorage.getItem(draftKey.value) || 'null') as OutfitDraft | null }
@@ -841,7 +842,7 @@ function measureCanvas() {
 function screenChanged() { compact.value = window.matchMedia('(max-width: 1023px)').matches; closeContextMenu(); measureCanvas() }
 onBeforeRouteLeave(() => { persistDraft(); loaded = false })
 onBeforeRouteUpdate(() => { persistDraft() })
-watch(() => route.params.id, async () => {
+watch(() => [route.params.id, route.query.draft], async () => {
   if (route.params.id) await loadPage()
   else await loadLibrary()
 })
@@ -876,6 +877,11 @@ onMounted(() => {
   if (route.params.id) void loadPage()
   else void loadLibrary()
   if (closet.isSignedIn) { void loadGarments(); void loadPeople() }
+  canvasBridge.value = {
+    context: () => ({ route: route.path, outfitId: String(route.params.id || ''), name: name.value, revision: revision.value, selectedIds: [...selectedIds.value], ...(currentItem.value?.kind !== 'PERSON_PART' && currentItem.value?.garmentId ? { garmentId: currentItem.value.garmentId } : {}), ...(editing.value && !pageLoading.value ? { scene: scene.value } : {}) }),
+    apply: (next, title) => { if (!loaded || !editing.value) throw new Error('画布尚未就绪。'); recordChange(next.elements.map(item => ({ ...item }))); if (title) name.value = title; persistDraft() },
+    save: async () => { error.value = ''; await saveOutfit(); if (error.value || remoteConflict.value) throw new Error(error.value || '搭配版本冲突。') },
+  }
   window.addEventListener('keydown', handleKeyboard)
   window.addEventListener('keyup', keyUp)
   window.addEventListener('blur', resetViewDrag)
@@ -886,6 +892,7 @@ onMounted(() => {
   measureCanvas()
 })
 onUnmounted(() => {
+  canvasBridge.value = null
   window.clearTimeout(draftTimer)
   cancelLongPress()
   if (loaded) persistDraft()
