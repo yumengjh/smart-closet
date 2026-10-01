@@ -22,24 +22,33 @@
 .outfit-empty p { max-width: 340px; margin-bottom: 20px; color: var(--muted); line-height: 1.8; }
 .outfit-alert { margin: 12px 0; }
 .outfit-editor-error { display: grid; min-height: 50vh; align-content: center; justify-items: center; gap: 20px; }
-.outfit-editor-page { display: flex; min-width: 0; flex-direction: column; }
-.outfit-editor-header { display: flex; flex: none; align-items: flex-start; justify-content: space-between; gap: 16px; min-height: 80px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
-.outfit-editor-title { display: flex; min-width: 0; align-items: flex-start; gap: 12px; }
+.outfit-editing.app-frame { position: fixed; inset: 0; height: 100dvh; min-height: 0; overflow: hidden; }
+.outfit-editing .sidebar, .outfit-editing .topbar, .outfit-editing .mobile-nav { display: none; }
+.outfit-editing .main-area { display: flex; height: 100%; min-height: 0; margin-left: 0; flex-direction: column; }
+.outfit-editing .route-content { flex: 1; min-height: 0; padding: 0; overflow: hidden; }
+.outfit-editor-page { display: flex; height: 100%; min-width: 0; min-height: 0; flex-direction: column; }
+.outfit-editor-header { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 16px; height: 56px; padding: 0 12px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.outfit-editor-title { display: flex; min-width: 0; align-items: center; gap: 8px; }
 .outfit-editor-title > .ant-btn { flex: none; width: 44px; }
-.outfit-title-field { min-width: 0; width: 300px; }
-.outfit-title-field .ant-input { font-size: 16px; font-weight: 500; }
-.outfit-save-state { display: flex; align-items: center; gap: 6px; min-height: 20px; margin-top: 4px; color: var(--muted); font-size: 12px; }
+.outfit-title-field { min-width: 0; width: 260px; }
+.outfit-title-field .ant-input { font-size: 16px; font-weight: 500; border-color: transparent; background: transparent; }
+.outfit-title-field .ant-input:hover, .outfit-title-field .ant-input:focus { border-color: var(--line); }
+.outfit-save-state { display: flex; flex: none; align-items: center; gap: 4px; color: var(--muted); font-size: 12px; white-space: nowrap; }
 .outfit-save-state .anticon { color: #25815d; }
 .outfit-header-actions, .outfit-conflict-actions { display: flex; flex: none; gap: 8px; }
-.outfit-editor-toolbar { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 12px; height: 56px; }
+.outfit-editor-toolbar { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 8px; height: 48px; padding: 0 8px; border-bottom: 1px solid var(--line); background: #f7f8fa; }
+.outfit-desktop-view-tools { display: flex; align-items: center; margin-left: 8px; padding-left: 8px; border-left: 1px solid var(--line); }
+.outfit-editor-toolbar .ant-btn.is-active { color: var(--link); background: #e7edfc; }
 .outfit-history-actions, .outfit-zoom-controls { display: flex; align-items: center; gap: 4px; }
 .outfit-history-actions .ant-btn, .outfit-zoom-controls .ant-btn { width: 44px; padding: 0; }
 .outfit-stage-hint { margin-left: 8px; color: var(--muted); font-size: 13px; }
 .outfit-zoom-controls > span { min-width: 44px; color: var(--muted); font-size: 13px; text-align: center; font-variant-numeric: tabular-nums; }
-.outfit-editor-layout { display: grid; min-width: 0; height: max(580px, calc(100dvh - 250px)); max-height: 900px; grid-template-columns: 240px minmax(0, 1fr) 272px; gap: 16px; }
-.outfit-picker-panel, .outfit-inspector, .outfit-canvas-area { min-width: 0; min-height: 0; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.outfit-editor-layout { display: flex; flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
+.outfit-picker-panel, .outfit-inspector, .outfit-canvas-area { min-width: 0; min-height: 0; background: var(--surface); }
+.outfit-picker-panel { flex: 0 0 232px; border-right: 1px solid var(--line); }
+.outfit-inspector { flex: 0 0 272px; border-left: 1px solid var(--line); }
 .outfit-picker-panel, .outfit-inspector { display: flex; flex-direction: column; overflow: hidden; }
-.outfit-panel-heading { display: flex; flex: none; height: 56px; align-items: center; justify-content: space-between; gap: 8px; padding: 0 16px; border-bottom: 1px solid var(--line); }
+.outfit-panel-heading { display: flex; flex: none; height: 48px; align-items: center; justify-content: space-between; gap: 8px; padding: 0 16px; border-bottom: 1px solid var(--line); }
 .outfit-panel-heading h2 { font-size: 15px; }
 .outfit-panel-heading .ant-tag { margin: 0; }
 .outfit-picker-content { display: flex; flex: 1; min-height: 0; flex-direction: column; height: 100%; }
@@ -68,11 +77,15 @@
 .outfit-picker-empty p { font-size: 13px; }
 .outfit-picker-footer { display: grid; flex: none; gap: 4px; padding: 12px 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
 .outfit-picker-footer > span:first-child { color: var(--ink); font-size: 13px; }
-.outfit-canvas-area { position: relative; display: flex; flex-direction: column; overflow: hidden; background: #eef0f4; }
+.outfit-canvas-area { position: relative; display: flex; flex: 1; flex-direction: column; overflow: hidden; background: #eef0f4; }
 .outfit-canvas-caption { display: flex; flex: none; min-height: 44px; align-items: center; justify-content: space-between; gap: 8px; padding: 0 16px; color: var(--muted); font-size: 12px; }
 .outfit-canvas-caption > span:first-child { color: var(--ink); font-weight: 500; }
-.outfit-canvas-scroll { display: flex; flex: 1; min-width: 0; min-height: 0; overflow: auto; padding: 16px; overscroll-behavior: contain; }
-.outfit-stage-frame { position: relative; flex: none; overflow: hidden; margin: auto; background: var(--surface); box-shadow: 0 2px 12px #25262b12; touch-action: none; }
+.outfit-canvas-scroll { flex: 1; min-width: 0; min-height: 0; overflow: auto; overscroll-behavior: contain; touch-action: none; }
+.outfit-canvas-scroll:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
+.outfit-canvas-space { display: grid; place-items: center; }
+.outfit-canvas-scroll.pan-ready, .outfit-canvas-scroll.pan-ready canvas { cursor: grab; }
+.outfit-canvas-scroll.is-panning, .outfit-canvas-scroll.is-panning canvas { cursor: grabbing; }
+.outfit-stage-frame { position: relative; overflow: hidden; background: var(--surface); box-shadow: 0 2px 12px #25262b12; touch-action: none; }
 .outfit-stage-frame.is-drop-target { outline: 2px solid var(--blue); outline-offset: 3px; }
 .outfit-stage-frame canvas { display: block; }
 .outfit-board-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 20px; color: var(--muted); text-align: center; pointer-events: none; }
@@ -81,7 +94,7 @@
 .outfit-board-empty > span { max-width: 220px; font-size: 13px; line-height: 1.7; }
 .outfit-board-empty .ant-btn { margin-top: 4px; pointer-events: auto; }
 .outfit-drop-feedback { position: absolute; left: 50%; top: 24px; padding: 10px 16px; border-radius: 8px; color: white; background: var(--link); font-size: 14px; pointer-events: none; transform: translateX(-50%); white-space: nowrap; }
-.outfit-canvas-status { display: flex; flex: none; min-height: 48px; align-items: center; justify-content: space-between; gap: 12px; padding: 0 16px; border-top: 1px solid #e1e4eb; background: #f7f8fa; font-size: 13px; }
+.outfit-canvas-status { display: flex; flex: none; height: 32px; align-items: center; justify-content: space-between; gap: 12px; padding: 0 12px; border-top: 1px solid #e1e4eb; background: #f7f8fa; font-size: 12px; }
 .outfit-selection-name { display: flex; min-width: 0; align-items: center; gap: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .outfit-selection-dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--blue); }
 .outfit-canvas-status > .ant-btn { color: var(--link); flex: none; padding-inline: 0; }
@@ -136,7 +149,8 @@
 .outfit-mobile-drawer .ant-drawer-footer { padding: 12px 20px calc(12px + env(safe-area-inset-bottom)); }
 .outfit-mobile-drawer .outfit-inspector-content { padding: 0; }
 @media (max-width: 1279px) and (min-width: 1024px) {
-  .outfit-editor-layout { grid-template-columns: 200px minmax(0, 1fr) 240px; gap: 12px; }
+  .outfit-picker-panel { flex-basis: 216px; }
+  .outfit-inspector { flex-basis: 248px; }
   .outfit-stage-hint { display: none; }
   .outfit-title-field { width: 250px; }
   .outfit-garment-option.ant-btn { gap: 8px; padding: 8px; }
@@ -146,14 +160,14 @@
 }
 @media (max-width: 1023px) {
   .outfit-editing .topbar, .outfit-editing .mobile-nav { display: none; }
-  .outfit-editing .route-content { padding: 12px 16px calc(88px + env(safe-area-inset-bottom)); }
-  .outfit-editor-page { min-height: calc(100dvh - 112px - env(safe-area-inset-bottom)); }
-  .outfit-editor-header { min-height: 76px; gap: 12px; }
+  .outfit-editing .route-content { padding: 0; }
+  .outfit-editor-page { padding-bottom: calc(68px + env(safe-area-inset-bottom)); }
+  .outfit-editor-header { gap: 8px; padding: 0 8px; }
   .outfit-title-field { width: min(360px, calc(100vw - 184px)); }
-  .outfit-desktop-export, .outfit-picker-panel, .outfit-inspector { display: none; }
-  .outfit-editor-layout { flex: 1; height: auto; max-height: none; min-height: 340px; grid-template-columns: minmax(0, 1fr); }
-  .outfit-canvas-area { min-height: 340px; }
-  .outfit-mobile-controls { position: fixed; z-index: 30; inset: auto 0 0; display: flex; align-items: center; justify-content: space-around; padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--surface); }
+  .outfit-desktop-export, .outfit-picker-panel, .outfit-inspector, .outfit-desktop-view-tools, .outfit-desktop-help { display: none; }
+  .outfit-editor-layout { min-height: 0; }
+  .outfit-canvas-area { min-height: 0; }
+  .outfit-mobile-controls { position: fixed; z-index: 30; inset: auto 0 0; display: flex; align-items: center; justify-content: space-around; padding: 4px 12px calc(4px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--surface); }
   .outfit-mobile-controls > .ant-btn { display: flex; width: 25%; height: 60px; min-height: 44px; flex-direction: column; gap: 6px; align-items: center; justify-content: center; padding: 6px; border-radius: 10px; font-size: 13px; }
   .outfit-mobile-controls .anticon { font-size: 20px; }
   .outfit-mobile-controls .ant-btn > .anticon + span { margin-inline-start: 0; }
@@ -187,12 +201,13 @@
   .outfit-card-details span { font-size: 12px; }
   .outfit-card-name { font-size: 14px; }
   .outfit-card-details .ant-btn { width: 44px; margin-top: -8px; }
-  .outfit-editing .route-content { padding-inline: 12px; }
+  .outfit-editing .route-content { padding-inline: 0; }
   .outfit-editor-title { flex: 1; gap: 8px; }
   .outfit-title-field { flex: 1; width: auto; }
   .outfit-save-state { font-size: 12px; }
+  .outfit-save-state { display: none; }
   .outfit-header-actions .ant-btn { min-width: 80px; padding: 0 12px; }
-  .outfit-editor-toolbar { height: 52px; gap: 0; }
+  .outfit-editor-toolbar { height: 44px; gap: 0; padding-inline: 4px; }
   .outfit-history-actions, .outfit-zoom-controls { gap: 0; }
   .outfit-stage-hint { display: none; }
   .outfit-zoom-controls .ant-btn, .outfit-history-actions .ant-btn { width: 44px; min-height: 44px; }
@@ -203,7 +218,7 @@
   .outfit-alert .ant-alert-content { min-width: 0; }
 }
 @media (max-width: 359px) {
-  .outfit-zoom-controls .ant-btn:last-child { display: none; }
+  .outfit-title-field .ant-input { padding-inline: 4px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .outfit-card-preview, .outfit-garment-option { transition: none; }

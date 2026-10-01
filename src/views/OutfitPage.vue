@@ -8,7 +8,7 @@ import {
   ArrowLeftOutlined, CheckOutlined, ControlOutlined, CopyOutlined, DeleteOutlined, DownloadOutlined,
   ArrowDownOutlined, ArrowUpOutlined, ExpandOutlined, InfoCircleOutlined, MenuOutlined, MinusOutlined, MoreOutlined, PictureOutlined, PlusOutlined,
   QuestionCircleOutlined, RedoOutlined, ReloadOutlined, SaveOutlined, SearchOutlined, SwapOutlined, UndoOutlined,
-  VerticalAlignBottomOutlined, VerticalAlignTopOutlined,
+  VerticalAlignBottomOutlined, VerticalAlignTopOutlined, DragOutlined, FullscreenOutlined,
 } from '@ant-design/icons-vue'
 import { useClosetStore } from '../stores/closet'
 import { closetApi, type Garment } from '../services/api'
@@ -18,6 +18,7 @@ import OutfitThumbnail from '../components/OutfitThumbnail.vue'
 import OutfitGarmentPicker from '../components/OutfitGarmentPicker.vue'
 import OutfitInspector from '../components/OutfitInspector.vue'
 import OutfitLayers from '../components/OutfitLayers.vue'
+import { MIN_VIEW_ZOOM, MAX_VIEW_ZOOM, outfitViewGeometry, outfitWheelZoom } from '../domain/outfit-view'
 
 const route = useRoute()
 const router = useRouter()
@@ -46,6 +47,15 @@ const infoLoading = ref(false)
 const infoError = ref('')
 const infoGarment = ref<Garment | null>(null)
 const compact = ref(window.matchMedia('(max-width: 1023px)').matches)
+const pickerVisible = ref(true)
+const inspectorVisible = ref(window.innerWidth >= 1280)
+const panTool = ref(false)
+const spacePressed = ref(false)
+const hoveringView = ref(false)
+const draggingView = ref(false)
+let panOrigin: { id: number; x: number; y: number; left: number; top: number } | null = null
+let measuredViewport: HTMLElement | null = null
+let viewRevision = 0
 const dragGarmentId = ref('')
 const dragOver = ref(false)
 const stageFrame = ref<HTMLElement | null>(null)
@@ -93,9 +103,11 @@ const filteredGarments = computed(() => activeGarments.value.filter((item) => {
     && (roleFilter.value === 'ALL' || roleFromGarment(item) === roleFilter.value)
 }))
 const pickedIds = computed(() => new Set(elements.value.map((item) => item.garmentId)))
-const canvasScale = computed(() => Math.max(.12, Math.min((availableWidth.value - 32) / OUTFIT_WIDTH, (availableHeight.value - 32) / OUTFIT_HEIGHT, .6)) * zoom.value)
-const stageWidth = computed(() => Math.round(OUTFIT_WIDTH * canvasScale.value))
-const stageHeight = computed(() => Math.round(OUTFIT_HEIGHT * canvasScale.value))
+const viewGeometry = computed(() => outfitViewGeometry(availableWidth.value, availableHeight.value, zoom.value, compact.value ? 24 : 48))
+const canvasScale = computed(() => viewGeometry.value.scale)
+const stageWidth = computed(() => viewGeometry.value.stageWidth)
+const stageHeight = computed(() => viewGeometry.value.stageHeight)
+const focusedView = computed(() => !pickerVisible.value && !inspectorVisible.value)
 const scene = computed<OutfitScene>(() => ({ version: OUTFIT_VERSION, elements: elements.value }))
 const currentItem = computed(() => elements.value.find((item) => item.garmentId === selectedId.value) || null)
 const selectedIndex = computed(() => elements.value.findIndex(item => item.garmentId === selectedId.value))
@@ -306,6 +318,7 @@ function positionSelected(axis: 'x' | 'y', value: number) {
   recordChange(elements.value.map(item => item.garmentId === selectedId.value ? { ...item, [axis]: Math.max(0, Math.min(axis === 'x' ? OUTFIT_WIDTH : OUTFIT_HEIGHT, value)) } : item))
 }
 function startReplacement() {
+  pickerVisible.value = true
   replacementTarget.value = selectedId.value
   inspectorOpen.value = false
   pickerOpen.value = true
@@ -404,7 +417,7 @@ function touchMove(event: TouchEvent) {
   event.preventDefault()
   event.stopPropagation()
   const [a, b] = Array.from(event.touches)
-  zoom.value = Math.max(.5, Math.min(2, pinchZoom * Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) / pinchDistance))
+  zoom.value = Math.max(MIN_VIEW_ZOOM, Math.min(MAX_VIEW_ZOOM, pinchZoom * Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) / pinchDistance))
   const midpoint = { x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2 }
   const request = ++pinchMoveRevision
   void nextTick(() => {
@@ -420,8 +433,80 @@ function touchEnd(event: TouchEvent) {
   pinching.value = false
 }
 function showHelp() {
-  modal.info({ title: '画板操作', content: compact.value ? '点选衣物后拖动，拖动四角等比缩放。双指缩放或移动查看画板，双击或长按衣物打开调整抽屉，也可用底部按钮精调。' : '从左侧拖入画板指定位置，右键衣物管理层级。方向键微调位置，Shift + 方向键移动 10px；Ctrl/⌘ + Z 撤销，Ctrl/⌘ + Shift + Z 重做，Ctrl/⌘ + S 保存，Delete 移除选中衣物。', okText: '知道了' })
+  modal.info({ title: '画板操作', content: compact.value ? '点选衣物后拖动，拖动四角等比缩放。双指缩放或移动查看画板，双击或长按衣物打开调整抽屉。点击适应屏幕可恢复完整画板。' : '普通滚轮移动视图，Shift + 滚轮横向移动，Ctrl/⌘ + 滚轮以鼠标位置缩放。按住空格或鼠标中键拖动视图，也可切换手形工具。衣柜与属性面板可分别收起，专注画板可同时收起两栏。右键管理衣物，方向键微调；Ctrl/⌘ + Z 撤销，Ctrl/⌘ + S 保存，Delete 移除。', okText: '知道了' })
 }
+
+function toggleFocus() {
+  const show = focusedView.value
+  pickerVisible.value = show
+  inspectorVisible.value = show
+}
+function viewAnchor(x?: number, y?: number) {
+  const area = canvasArea.value, frame = stageFrame.value
+  if (!area || !frame) return null
+  const viewport = area.getBoundingClientRect(), board = frame.getBoundingClientRect()
+  const clientX = x ?? viewport.left + area.clientWidth / 2
+  const clientY = y ?? viewport.top + area.clientHeight / 2
+  return { clientX, clientY, x: (clientX - board.left) / board.width, y: (clientY - board.top) / board.height }
+}
+async function restoreViewAnchor(anchor: ReturnType<typeof viewAnchor>) {
+  const request = ++viewRevision
+  await nextTick()
+  if (!anchor || request !== viewRevision || !canvasArea.value || !stageFrame.value) return
+  const bounds = stageFrame.value.getBoundingClientRect()
+  canvasArea.value.scrollLeft += bounds.left + bounds.width * anchor.x - anchor.clientX
+  canvasArea.value.scrollTop += bounds.top + bounds.height * anchor.y - anchor.clientY
+}
+function zoomView(value: number, x?: number, y?: number) {
+  const anchor = viewAnchor(x, y)
+  zoom.value = Math.max(MIN_VIEW_ZOOM, Math.min(MAX_VIEW_ZOOM, value))
+  void restoreViewAnchor(anchor)
+}
+async function fitView() {
+  ++viewRevision
+  zoom.value = 1
+  await nextTick()
+  if (canvasArea.value) {
+    canvasArea.value.scrollLeft = (viewGeometry.value.spaceWidth - canvasArea.value.clientWidth) / 2
+    canvasArea.value.scrollTop = (viewGeometry.value.spaceHeight - canvasArea.value.clientHeight) / 2
+  }
+}
+function canvasWheel(event: WheelEvent) {
+  if (event.ctrlKey || event.metaKey) {
+    event.preventDefault()
+    zoomView(outfitWheelZoom(zoom.value, event.deltaY, event.deltaMode, availableHeight.value), event.clientX, event.clientY)
+  } else if (event.shiftKey && canvasArea.value) {
+    event.preventDefault()
+    const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? availableWidth.value : 1
+    canvasArea.value.scrollLeft += (event.deltaX || event.deltaY) * unit
+  }
+}
+function beginViewDrag(event: PointerEvent) {
+  if (event.pointerType !== 'mouse' || !(event.button === 1 || (event.button === 0 && (panTool.value || spacePressed.value))) || !canvasArea.value) return
+  event.preventDefault()
+  event.stopPropagation()
+  closeContextMenu()
+  panOrigin = { id: event.pointerId, x: event.clientX, y: event.clientY, left: canvasArea.value.scrollLeft, top: canvasArea.value.scrollTop }
+  draggingView.value = true
+  canvasArea.value.setPointerCapture(event.pointerId)
+}
+function moveViewDrag(event: PointerEvent) {
+  if (!panOrigin || event.pointerId !== panOrigin.id || !canvasArea.value) return
+  event.preventDefault()
+  event.stopPropagation()
+  canvasArea.value.scrollLeft = panOrigin.left - event.clientX + panOrigin.x
+  canvasArea.value.scrollTop = panOrigin.top - event.clientY + panOrigin.y
+}
+function endViewDrag(event: PointerEvent) {
+  if (!panOrigin || event.pointerId !== panOrigin.id) return
+  event.preventDefault()
+  event.stopPropagation()
+  panOrigin = null
+  draggingView.value = false
+  if (canvasArea.value?.hasPointerCapture(event.pointerId)) canvasArea.value.releasePointerCapture(event.pointerId)
+}
+function resetViewDrag() { panOrigin = null; draggingView.value = false; spacePressed.value = false }
+function keyUp(event: KeyboardEvent) { if (event.code === 'Space') spacePressed.value = false }
 
 function bindNode(id: string, node: unknown) {
   nodeRefs[id] = node as { getNode: () => Konva.Group } | null
@@ -582,8 +667,12 @@ function handleKeyboard(event: KeyboardEvent) {
   }
   const modifier = event.metaKey || event.ctrlKey
   if (modifier && event.key.toLowerCase() === 's') { event.preventDefault(); if (!saving.value && !remoteConflict.value) void saveOutfit(); return }
+  if (event.code === 'Space' && hoveringView.value && !(event.target as HTMLElement)?.closest('input,textarea,select,[contenteditable="true"],[role="combobox"]') && !pickerOpen.value && !inspectorOpen.value && !layersOpen.value && !infoOpen.value) {
+    event.preventDefault(); spacePressed.value = true; return
+  }
   if ((event.target as HTMLElement)?.closest('input,textarea,select,button,[contenteditable="true"],[role="combobox"],[role="slider"],[role="menu"]')) return
   if (pickerOpen.value || inspectorOpen.value || layersOpen.value || infoOpen.value) return
+  if (event.code === 'Space') { event.preventDefault(); spacePressed.value = true; return }
   if (modifier && event.key.toLowerCase() === 'z') { event.preventDefault(); event.shiftKey ? redo() : undo() }
   else if (modifier && event.key.toLowerCase() === 'y') { event.preventDefault(); redo() }
   else if (event.key === 'Delete' || event.key === 'Backspace') { event.preventDefault(); removeSelected() }
@@ -595,8 +684,15 @@ function handleKeyboard(event: KeyboardEvent) {
 
 function measureCanvas() {
   if (!canvasArea.value) return
-  const bounds = canvasArea.value.getBoundingClientRect()
-  if (bounds.width && bounds.height) { availableWidth.value = bounds.width; availableHeight.value = bounds.height }
+  const area = canvasArea.value
+  if (!area.clientWidth || !area.clientHeight) return
+  const first = measuredViewport !== area
+  const anchor = viewAnchor()
+  availableWidth.value = area.clientWidth
+  availableHeight.value = area.clientHeight
+  measuredViewport = area
+  if (first || zoom.value === 1) void fitView()
+  else void restoreViewAnchor(anchor)
 }
 function screenChanged() { compact.value = window.matchMedia('(max-width: 1023px)').matches; closeContextMenu(); measureCanvas() }
 onBeforeRouteLeave(() => { persistDraft(); loaded = false })
@@ -634,6 +730,8 @@ onMounted(() => {
   else void loadLibrary()
   if (closet.isSignedIn) void loadGarments()
   window.addEventListener('keydown', handleKeyboard)
+  window.addEventListener('keyup', keyUp)
+  window.addEventListener('blur', resetViewDrag)
   window.addEventListener('pagehide', persistDraft)
   window.addEventListener('resize', screenChanged)
   window.addEventListener('pointerdown', outsideMenu)
@@ -646,6 +744,8 @@ onUnmounted(() => {
   if (loaded) persistDraft()
   resizeObserver?.disconnect()
   window.removeEventListener('keydown', handleKeyboard)
+  window.removeEventListener('keyup', keyUp)
+  window.removeEventListener('blur', resetViewDrag)
   window.removeEventListener('pagehide', persistDraft)
   window.removeEventListener('resize', screenChanged)
   window.removeEventListener('pointerdown', outsideMenu)
@@ -675,21 +775,35 @@ onUnmounted(() => {
   <div v-else-if="error && !loaded" class="outfit-editor-error"><a-alert type="error" show-icon :message="error" /><a-button @click="loadPage"><ReloadOutlined /> 重新加载画板</a-button><RouterLink to="/outfits"><a-button type="link">返回搭配列表</a-button></RouterLink></div>
   <div v-else class="outfit-editor-page">
     <header class="outfit-editor-header">
-      <div class="outfit-editor-title"><a-tooltip title="返回搭配列表，草稿会自动保留"><a-button aria-label="返回搭配列表" @click="router.push('/outfits')"><ArrowLeftOutlined /></a-button></a-tooltip><div class="outfit-title-field"><a-input v-model:value="name" maxlength="100" aria-label="搭配名称" placeholder="给搭配起个名字" /><span class="outfit-save-state" role="status"><CheckOutlined v-if="localDraftNotice || (!isNew && !hasChanges)" />{{ saveState }}</span></div></div>
+      <div class="outfit-editor-title"><a-tooltip title="返回搭配列表，草稿会自动保留"><a-button aria-label="返回搭配列表" @click="router.push('/outfits')"><ArrowLeftOutlined /></a-button></a-tooltip><div class="outfit-title-field"><a-input v-model:value="name" maxlength="100" aria-label="搭配名称" placeholder="给搭配起个名字" /></div><a-tooltip :title="saveState"><span class="outfit-save-state" role="status"><CheckOutlined v-if="localDraftNotice || (!isNew && !hasChanges)" />{{ localDraftNotice ? '本机草稿' : !isNew && !hasChanges ? '已保存' : '未保存' }}</span></a-tooltip></div>
       <div class="outfit-header-actions"><a-button class="outfit-desktop-export" :loading="exporting" :disabled="!dirty || !!failedImage" @click="exportPng"><DownloadOutlined /> 导出图片</a-button><a-button type="primary" aria-label="保存搭配" :loading="saving" :disabled="!dirty || remoteConflict" @click="saveOutfit"><SaveOutlined /><span>{{ compact ? '保存' : '保存搭配' }}</span></a-button></div>
     </header>
     <a-alert v-if="remoteConflict" type="warning" show-icon message="另一处已更新这套搭配，你的草稿仍保留。" class="outfit-alert"><template #action><div class="outfit-conflict-actions"><a-button @click="loadLatest">重新加载</a-button><a-button type="primary" @click="saveConflictAsCopy">另存副本</a-button></div></template></a-alert>
     <a-alert v-else-if="error" type="error" show-icon closable :message="error" class="outfit-alert" @close="error = ''" />
-    <div class="outfit-editor-toolbar">
-      <div class="outfit-history-actions"><a-tooltip title="撤销 · Ctrl/⌘ + Z"><a-button type="text" :disabled="!undoStack.length" aria-label="撤销" @click="undo"><UndoOutlined /></a-button></a-tooltip><a-tooltip title="重做 · Ctrl/⌘ + Shift + Z"><a-button type="text" :disabled="!redoStack.length" aria-label="重做" @click="redo"><RedoOutlined /></a-button></a-tooltip><span class="outfit-stage-hint">{{ sceneLabel }} · 4:5 白底画板</span></div>
-      <div class="outfit-zoom-controls"><a-button type="text" :disabled="zoom <= .5" aria-label="缩小画板" @click="zoom = Math.max(.5, zoom - .1)"><MinusOutlined /></a-button><span>{{ Math.round(zoom * 100) }}%</span><a-button type="text" :disabled="zoom >= 2" aria-label="放大画板" @click="zoom = Math.min(2, zoom + .1)"><PlusOutlined /></a-button><a-tooltip title="适应屏幕"><a-button type="text" aria-label="适应屏幕" @click="zoom = 1"><ExpandOutlined /></a-button></a-tooltip><a-tooltip title="操作帮助"><a-button type="text" aria-label="画板操作帮助" @click="showHelp"><QuestionCircleOutlined /></a-button></a-tooltip></div>
-    </div>
     <div class="outfit-editor-layout">
-      <aside class="outfit-picker-panel" aria-label="选择衣物"><div class="outfit-panel-heading"><h2>我的衣柜</h2><a-tag>{{ activeGarments.length }} 件</a-tag></div><OutfitGarmentPicker v-model:search="search" v-model:role="roleFilter" :garments="filteredGarments" :loading="loadingGarments" :error="garmentError" :picked-ids="pickedIds" :selected-id="selectedId" :replacing="!!replacementTarget" @select="selectGarment" @context="(event, garment) => openContextMenu(event, garment.id)" @dragstart="startGarmentDrag" @dragend="endGarmentDrag" @cancel="replacementTarget = null" @retry="loadGarments" /></aside>
+      <aside v-show="pickerVisible" class="outfit-picker-panel" aria-label="选择衣物"><div class="outfit-panel-heading"><h2>我的衣柜</h2><a-tag>{{ activeGarments.length }} 件</a-tag></div><OutfitGarmentPicker v-model:search="search" v-model:role="roleFilter" :garments="filteredGarments" :loading="loadingGarments" :error="garmentError" :picked-ids="pickedIds" :selected-id="selectedId" :replacing="!!replacementTarget" @select="selectGarment" @context="(event, garment) => openContextMenu(event, garment.id)" @dragstart="startGarmentDrag" @dragend="endGarmentDrag" @cancel="replacementTarget = null" @retry="loadGarments" /></aside>
 
       <section class="outfit-canvas-area" aria-label="搭配画板" @contextmenu.prevent @dragover.prevent="dragOverCanvas" @drop="dropGarment">
-        <div class="outfit-canvas-caption"><span>穿搭画板</span><span>{{ compact ? '拖动衣物 · 双指查看画板' : '拖动调整 · 右键管理衣物' }}</span></div>
-        <div ref="canvasArea" class="outfit-canvas-scroll"><div ref="stageFrame" class="outfit-stage-frame" :class="{ 'is-drop-target': dragOver }" :style="{ width: `${stageWidth}px`, height: `${stageHeight}px` }" @dragover="dragOverCanvas" @dragleave="dragOver = false" @drop="dropGarment" @touchstart.capture="touchStart" @touchmove.capture="touchMove" @touchend.capture="touchEnd" @touchcancel.capture="touchEnd">
+        <div class="outfit-editor-toolbar">
+          <div class="outfit-history-actions">
+            <a-tooltip title="撤销 · Ctrl/⌘ + Z"><a-button type="text" :disabled="!undoStack.length" aria-label="撤销" @click="undo"><UndoOutlined /></a-button></a-tooltip>
+            <a-tooltip title="重做 · Ctrl/⌘ + Shift + Z"><a-button type="text" :disabled="!redoStack.length" aria-label="重做" @click="redo"><RedoOutlined /></a-button></a-tooltip>
+            <div class="outfit-desktop-view-tools">
+              <a-tooltip :title="pickerVisible ? '收起衣柜' : '展开衣柜'"><a-button type="text" :class="{ 'is-active': pickerVisible }" aria-label="切换衣柜面板" :aria-pressed="pickerVisible" @click="pickerVisible = !pickerVisible"><PictureOutlined /></a-button></a-tooltip>
+              <a-tooltip :title="inspectorVisible ? '收起属性' : '展开属性'"><a-button type="text" :class="{ 'is-active': inspectorVisible }" aria-label="切换属性面板" :aria-pressed="inspectorVisible" @click="inspectorVisible = !inspectorVisible"><ControlOutlined /></a-button></a-tooltip>
+              <a-tooltip title="专注画板"><a-button type="text" :class="{ 'is-active': focusedView }" aria-label="专注画板" :aria-pressed="focusedView" @click="toggleFocus"><FullscreenOutlined /></a-button></a-tooltip>
+              <a-tooltip title="移动视图 · 空格 / 鼠标中键"><a-button type="text" :class="{ 'is-active': panTool }" aria-label="移动视图工具" :aria-pressed="panTool" @click="panTool = !panTool"><DragOutlined /></a-button></a-tooltip>
+            </div>
+          </div>
+          <div class="outfit-zoom-controls">
+            <a-button type="text" :disabled="zoom <= MIN_VIEW_ZOOM" aria-label="缩小画板" @click="zoomView(zoom / 1.2)"><MinusOutlined /></a-button>
+            <a-tooltip title="相对适应屏幕的缩放比例"><span>{{ Math.round(zoom * 100) }}%</span></a-tooltip>
+            <a-button type="text" :disabled="zoom >= MAX_VIEW_ZOOM" aria-label="放大画板" @click="zoomView(zoom * 1.2)"><PlusOutlined /></a-button>
+            <a-tooltip title="适应屏幕并居中"><a-button type="text" aria-label="适应屏幕" @click="fitView"><ExpandOutlined /></a-button></a-tooltip>
+            <a-tooltip title="操作帮助"><a-button class="outfit-desktop-help" type="text" aria-label="画板操作帮助" @click="showHelp"><QuestionCircleOutlined /></a-button></a-tooltip>
+          </div>
+        </div>
+        <div ref="canvasArea" class="outfit-canvas-scroll" :class="{ 'pan-ready': panTool || spacePressed, 'is-panning': draggingView }" tabindex="0" aria-label="画板视图，可滚动或使用 Ctrl/⌘ 加滚轮缩放" @pointerenter="hoveringView = true" @pointerleave="hoveringView = false" @wheel="canvasWheel" @touchstart.capture="touchStart" @touchmove.capture="touchMove" @touchend.capture="touchEnd" @touchcancel.capture="touchEnd" @pointerdown.capture="beginViewDrag" @pointermove.capture="moveViewDrag" @pointerup.capture="endViewDrag" @pointercancel.capture="endViewDrag" @lostpointercapture="panOrigin = null; draggingView = false"><div class="outfit-canvas-space" :style="{ width: `${viewGeometry.spaceWidth}px`, height: `${viewGeometry.spaceHeight}px` }"><div ref="stageFrame" class="outfit-stage-frame" :class="{ 'is-drop-target': dragOver }" :style="{ width: `${stageWidth}px`, height: `${stageHeight}px` }" @dragover="dragOverCanvas" @dragleave="dragOver = false" @drop="dropGarment">
           <v-stage :config="{ width: stageWidth, height: stageHeight }" @click="stageClick" @tap="stageClick">
             <v-layer>
               <v-rect :config="{ x: 0, y: 0, width: stageWidth, height: stageHeight, fill: '#ffffff', listening: false }" />
@@ -702,12 +816,12 @@ onUnmounted(() => {
           </v-stage>
           <div v-if="!elements.length && !dragOver" class="outfit-board-empty"><PictureOutlined /><strong>选一件单品，开始搭配</strong><span>{{ compact ? '从底部打开衣柜，点选加入' : '从左侧点击加入，或直接拖到这里' }}</span><a-button v-if="compact" @click="pickerOpen = true"><PlusOutlined /> 选择衣物</a-button></div>
           <div v-if="dragOver" class="outfit-drop-feedback">松手放到这里</div>
-        </div></div>
-        <div class="outfit-canvas-status" aria-live="polite"><template v-if="currentItem"><span class="outfit-selection-name"><span class="outfit-selection-dot"></span>{{ currentItem.garmentLabel }}</span><a-button v-if="compact" type="link" @click="inspectorOpen = true">调整衣物</a-button><span v-else class="muted">方向键微调 · Delete 移除</span></template><span v-else class="muted">{{ elements.length ? '点选画板上的衣物进行调整' : '新加入的单品不会改变已有布局' }}</span></div>
+        </div></div></div>
+        <div class="outfit-canvas-status" aria-live="polite"><template v-if="currentItem"><span class="outfit-selection-name"><span class="outfit-selection-dot"></span>{{ currentItem.garmentLabel }}</span><a-button v-if="compact" type="link" @click="inspectorOpen = true">调整衣物</a-button><span v-else class="muted">滚轮移动 · Ctrl/⌘ + 滚轮缩放 · 空格拖动</span></template><span v-else class="muted">{{ compact ? '双指缩放 / 平移 · 长按衣物调整' : '滚轮移动 · Ctrl/⌘ + 滚轮缩放 · 空格 / 中键拖动' }}</span></div>
         <a-alert v-if="failedImage" type="warning" show-icon message="有衣物图片未能加载，草稿仍会保留。" class="outfit-image-warning"><template #action><a-button @click="retryImage(failedImage)"><ReloadOutlined /> 重试</a-button></template></a-alert>
       </section>
 
-      <aside class="outfit-inspector" aria-label="所选衣物操作"><div class="outfit-panel-heading"><h2>衣物调整</h2><span class="muted">{{ sceneLabel }}</span></div><a-segmented v-model:value="inspectorTab" block :options="[{ value: 'properties', label: '属性' }, { value: 'layers', label: '单品层级' }]" class="outfit-inspector-tabs" /><div class="outfit-inspector-body"><OutfitLayers v-if="inspectorTab === 'layers'" :elements="elements" :selected-id="selectedId" @select="selectElement" @context="openContextMenu" /><OutfitInspector v-else-if="currentItem" :item="currentItem" :can-forward="canForward" :can-backward="canBackward" @role="changeRole" @resize="resizeSelected" @rotate="rotateSelected" @scale="scaleSelected" @position="positionSelected" @layer="moveLayer" @replace="startReplacement" @remove="removeSelected" @info="showInfo()" /><div v-else class="outfit-inspector-empty"><a-empty :image="Empty.PRESENTED_IMAGE_SIMPLE" description="点选画板上的衣物"><p>调整大小、角度和位置，或切换到单品层级。</p></a-empty></div></div><div class="outfit-inspector-footer"><a-button block :disabled="!elements.length" @click="resetLayout"><ReloadOutlined /> 重新排版</a-button></div></aside>
+      <aside v-show="inspectorVisible" class="outfit-inspector" aria-label="所选衣物操作"><div class="outfit-panel-heading"><h2>衣物调整</h2><span class="muted">{{ sceneLabel }}</span></div><a-segmented v-model:value="inspectorTab" block :options="[{ value: 'properties', label: '属性' }, { value: 'layers', label: '单品层级' }]" class="outfit-inspector-tabs" /><div class="outfit-inspector-body"><OutfitLayers v-if="inspectorTab === 'layers'" :elements="elements" :selected-id="selectedId" @select="selectElement" @context="openContextMenu" /><OutfitInspector v-else-if="currentItem" :item="currentItem" :can-forward="canForward" :can-backward="canBackward" @role="changeRole" @resize="resizeSelected" @rotate="rotateSelected" @scale="scaleSelected" @position="positionSelected" @layer="moveLayer" @replace="startReplacement" @remove="removeSelected" @info="showInfo()" /><div v-else class="outfit-inspector-empty"><a-empty :image="Empty.PRESENTED_IMAGE_SIMPLE" description="点选画板上的衣物"><p>调整大小、角度和位置，或切换到单品层级。</p></a-empty></div></div><div class="outfit-inspector-footer"><a-button block :disabled="!elements.length" @click="resetLayout"><ReloadOutlined /> 重新排版</a-button></div></aside>
     </div>
     <nav class="outfit-mobile-controls" aria-label="画板编辑操作"><a-button type="text" @click="replacementTarget = null; pickerOpen = true"><PlusOutlined /><span>选衣物</span></a-button><a-button type="text" :disabled="!currentItem" @click="inspectorOpen = true"><ControlOutlined /><span>调整</span></a-button><a-button type="text" :disabled="!elements.length" @click="layersOpen = true"><MenuOutlined /><span>单品层级</span></a-button><a-dropdown :trigger="['click']" placement="topRight"><a-button type="text"><MoreOutlined /><span>更多</span></a-button><template #overlay><a-menu><a-menu-item :disabled="!dirty || !!failedImage || exporting" @click="exportPng"><DownloadOutlined /> 导出 PNG 图片</a-menu-item><a-menu-item :disabled="!elements.length" @click="resetLayout"><ReloadOutlined /> 重新排版</a-menu-item><a-menu-divider /><a-menu-item @click="showHelp"><QuestionCircleOutlined /> 操作帮助</a-menu-item></a-menu></template></a-dropdown></nav>
   </div>
