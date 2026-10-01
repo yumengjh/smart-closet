@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, onUnmounted, watch } from 'vue'
+import zhCN from 'ant-design-vue/es/locale/zh_CN'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import {
-  AppstoreOutlined, CheckCircleOutlined, HistoryOutlined, PlusOutlined,
+  AppstoreOutlined, CheckCircleOutlined, HistoryOutlined, PictureOutlined, PlusOutlined,
   SettingOutlined, LogoutOutlined, CloudOutlined,
 } from '@ant-design/icons-vue'
 import { useClosetStore } from '../stores/closet'
@@ -13,7 +14,7 @@ const router = useRouter()
 const closet = useClosetStore()
 const closetTheme = {
   token: {
-    colorPrimary: '#202124', colorInfo: '#3f6ff5', colorSuccess: '#25815d',
+    colorPrimary: '#202124', colorInfo: '#3f6ff5', colorLink: '#2958cc', colorSuccess: '#25815d',
     colorWarning: '#ac721c', colorError: '#c74747', borderRadius: 10,
     controlHeight: 44, fontSize: 14,
     fontFamily: '"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif',
@@ -24,10 +25,11 @@ const closetTheme = {
   },
 }
 const isLogin = computed(() => route.path === '/login')
+const isOutfitEditor = computed(() => route.path.startsWith('/outfits/'))
 const navItems = [
   { path: '/wardrobe', label: '我的衣柜', icon: AppstoreOutlined },
   { path: '/pending', label: '未入柜', icon: CheckCircleOutlined },
-  { path: '/tasks', label: '任务记录', icon: HistoryOutlined },
+  { path: '/outfits', label: '组合台', icon: PictureOutlined },
   { path: '/settings', label: '我的', icon: SettingOutlined },
 ]
 
@@ -45,10 +47,10 @@ async function signOut() {
 </script>
 
 <template>
-  <a-config-provider :theme="closetTheme">
+  <a-config-provider :theme="closetTheme" :locale="zhCN">
     <a-app>
       <div v-if="isLogin" class="login-frame"><RouterView /></div>
-      <div v-else-if="closet.isSignedIn && (!closet.user?.mustChangePassword || route.path === '/settings')" class="app-frame">
+      <div v-else-if="closet.isSignedIn && (!closet.user?.mustChangePassword || route.path === '/settings')" class="app-frame" :class="{ 'outfit-editing': isOutfitEditor }">
         <aside class="sidebar">
           <RouterLink :to="closet.user?.mustChangePassword ? '/settings' : '/wardrobe'" class="brand-lockup" aria-label="衣序首页">
             <span class="brand-mark"><span></span><span></span><span></span></span>
@@ -56,7 +58,7 @@ async function signOut() {
           </RouterLink>
           <RouterLink v-if="!closet.user?.mustChangePassword" to="/add" class="sidebar-add"><PlusOutlined /> 添加衣物</RouterLink><p class="nav-label">我的空间</p>
           <nav class="main-nav" aria-label="主导航">
-            <RouterLink v-for="item in (closet.user?.mustChangePassword ? navItems.filter(item => item.path === '/settings') : navItems)" :key="item.path" :to="item.path" class="nav-link" :class="{ active: route.path === item.path || (item.path === '/wardrobe' && route.path.startsWith('/garment')) }">
+            <RouterLink v-for="item in (closet.user?.mustChangePassword ? navItems.filter(item => item.path === '/settings') : navItems)" :key="item.path" :to="item.path" class="nav-link" :class="{ active: route.path === item.path || (item.path === '/wardrobe' && route.path.startsWith('/garment')) || (item.path === '/outfits' && route.path.startsWith('/outfits')) }">
               <component :is="item.icon" /><span>{{ item.label }}</span>
               <span v-if="item.path === '/pending' && closet.pendingCount" class="nav-count">{{ closet.pendingCount }}</span>
               <span v-if="item.path === '/tasks' && closet.taskCount" class="nav-count quiet">{{ closet.taskCount }}</span>
@@ -71,11 +73,11 @@ async function signOut() {
         </aside>
         <main class="main-area">
           <div v-if="usingMocks" class="mock-banner"><span class="mock-pulse"></span><span>界面演示 · 示例数据不是 AI 结果，演示模式禁止提交模型任务</span><span class="mock-banner-end">{{ closet.user?.username }} 的衣橱</span></div>
-          <header class="topbar"><span>衣序 <span class="topbar-divider">/</span> {{ route.path === '/add' ? '添加衣物' : route.path.startsWith('/garment') ? '衣物工作台' : navItems.find(item => item.path === route.path)?.label || '回收站' }}</span><RouterLink v-if="!closet.user?.mustChangePassword" to="/tasks" class="topbar-tasks"><HistoryOutlined /> 任务记录<span v-if="closet.taskCount" class="nav-count">{{ closet.taskCount }}</span></RouterLink></header>
+          <header class="topbar"><span>衣序 <span class="topbar-divider">/</span> {{ route.path === '/add' ? '添加衣物' : route.path.startsWith('/garment') ? '衣物工作台' : route.path.startsWith('/outfits') ? '组合台' : navItems.find(item => item.path === route.path)?.label || '回收站' }}</span><RouterLink v-if="!closet.user?.mustChangePassword" to="/tasks" class="topbar-tasks"><HistoryOutlined /> 任务记录<span v-if="closet.taskCount" class="nav-count">{{ closet.taskCount }}</span></RouterLink></header>
           <section class="route-content"><RouterView /></section>
         </main>
         <nav v-if="!closet.user?.mustChangePassword" class="mobile-nav" aria-label="移动端主导航">
-          <RouterLink v-for="item in (closet.user?.mustChangePassword ? navItems.filter(item => item.path === '/settings') : navItems)" :key="item.path" :to="item.path" :class="{ active: route.path === item.path || (item.path === '/wardrobe' && route.path.startsWith('/garment')) }"><component :is="item.icon" /><span>{{ item.label }}</span><i v-if="item.path === '/pending' && closet.pendingCount"></i></RouterLink>
+          <RouterLink v-for="item in (closet.user?.mustChangePassword ? navItems.filter(item => item.path === '/settings') : navItems)" :key="item.path" :to="item.path" :class="{ active: route.path === item.path || (item.path === '/wardrobe' && route.path.startsWith('/garment')) || (item.path === '/outfits' && route.path.startsWith('/outfits')) }"><component :is="item.icon" /><span>{{ item.label }}</span><i v-if="item.path === '/pending' && closet.pendingCount"></i></RouterLink>
           <RouterLink to="/add" class="mobile-add"><PlusOutlined /><span>添加</span></RouterLink>
         </nav>
       </div>

@@ -1,7 +1,7 @@
 :root {
   font-family: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', system-ui, sans-serif;
   color: #25262b; background: #f7f8fa; font-synthesis: none; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased;
-  --ink: #25262b; --muted: #737680; --line: #e8e9ee; --blue: #3f6ff5; --surface: #fff; --paper: #f7f8fa;
+  --ink: #25262b; --muted: #666b76; --line: #e8e9ee; --blue: #3f6ff5; --link: #2958cc; --surface: #fff; --paper: #f7f8fa;
 }
 * { box-sizing: border-box; }
 html, body, #app { min-width: 320px; min-height: 100%; margin: 0; }

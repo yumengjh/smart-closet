@@ -1,10 +1,12 @@
 import type { MetadataField } from '../domain/metadata'
+import type { Outfit, OutfitScene, OutfitWriteElement } from '../domain/outfit'
 export type ClosetStatus = 'DRAFT' | 'ACTIVE' | 'TRASHED'
 export type ImageProcessing = { jobId: string; status: string; stickerRequired: boolean; stickerReady: boolean; stickerAssetId: string | null }
 export type TransparencyReport = { verdict: string; hasAlpha: boolean; transparentRatio: number; reasons: string[] }
 export type Garment = {
   id: string
   revision: number
+  sourceAssetId: string
   displayAssetId: string
   status: ClosetStatus
   updatedAt: string
@@ -79,7 +81,7 @@ function now(offset = 0) {
 function garment(id: string, category: string, primaryColor: string, color: string, extra: Partial<Garment> = {}): Garment {
   const ageInDays = Number(id)
   const item: Garment = {
-    id, revision: 0, displayAssetId: `asset-${id}`, images: [], status: 'ACTIVE', updatedAt: now(Number.isFinite(ageInDays) ? ageInDays : 0), displayUrl: '', sourceUrl: '', category: [category], primaryColor: [primaryColor],
+    id, revision: 0, sourceAssetId: `source-${id}`, displayAssetId: `asset-${id}`, images: [], status: 'ACTIVE', updatedAt: now(Number.isFinite(ageInDays) ? ageInDays : 0), displayUrl: '', sourceUrl: '', category: [category], primaryColor: [primaryColor],
     automatic: {}, overrides: {},
     secondaryColors: [], patterns: ['纯色'], neckline: ['圆领'], sleeveLength: ['长袖'], garmentLength: ['常规'], closure: ['套头'],
     texture: ['针织'], styles: ['休闲'], seasons: ['春季', '秋季'], brand: [], size: [], materialComposition: [], careInstructions: [], visibleText: [],
@@ -125,6 +127,14 @@ function readMock(): MockState {
   return state
 }
 function writeMock(state: MockState) { localStorage.setItem(`${MOCK_KEY}:${localStorage.getItem('yixu.mock-user') || 'anonymous'}`, JSON.stringify(state)) }
+function readMockOutfits(): Outfit[] {
+  const key = `${MOCK_KEY}:outfits:${localStorage.getItem('yixu.mock-user') || 'anonymous'}`
+  try { return JSON.parse(localStorage.getItem(key) || '[]') as Outfit[] }
+  catch { return [] }
+}
+function writeMockOutfits(outfits: Outfit[]) {
+  localStorage.setItem(`${MOCK_KEY}:outfits:${localStorage.getItem('yixu.mock-user') || 'anonymous'}`, JSON.stringify(outfits))
+}
 const delay = (ms = 160) => new Promise((resolve) => setTimeout(resolve, ms))
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -171,7 +181,7 @@ function fromView(view: GarmentView): Garment {
     : latestStatus === 'NEEDS_REVIEW' ? 'NEEDS_REVIEW' : latestStatus === 'FAILED' ? 'FAILED' : latestStatus === 'CANCELLED' ? 'CANCELLED'
       : latestStatus === 'SUCCEEDED' ? 'SUCCEEDED' : latestStatus === 'UNKNOWN' ? 'UNKNOWN' : undefined
   return {
-    id: view.id, revision: view.revision, displayAssetId: view.displayAssetId, images: view.images || [], assessment: view.automatic?.assessment, issues: view.automatic?.issues || [], status, updatedAt: new Date(view.updatedAtMs).toISOString(), displayUrl: view.displayUrl, sourceUrl: view.sourceUrl,
+    id: view.id, revision: view.revision, sourceAssetId: view.sourceAssetId, displayAssetId: view.displayAssetId, images: view.images || [], assessment: view.automatic?.assessment, issues: view.automatic?.issues || [], status, updatedAt: new Date(view.updatedAtMs).toISOString(), displayUrl: view.displayUrl, sourceUrl: view.sourceUrl,
     automatic: Object.fromEntries(Object.entries(view.automatic?.attributes || {}).map(([key, attribute]) => [key, attribute.values])), overrides: view.overrides || {},
     category: view.effective.category || [], primaryColor: view.effective.primaryColor || [], secondaryColors: view.effective.secondaryColors || [],
     patterns: view.effective.patterns || [], neckline: view.effective.neckline || [], sleeveLength: view.effective.sleeveLength || [],
@@ -242,6 +252,50 @@ export const closetApi = {
     const found = readMock().garments.find((item) => item.id === id)
     if (!found) throw new Error('找不到这件衣物。')
     return structuredClone(found)
+  },
+  async outfits(): Promise<Outfit[]> {
+    if (!usingMocks) return request<Outfit[]>('/api/outfits')
+    await delay()
+    return structuredClone(readMockOutfits().sort((a, b) => b.updatedAtMs - a.updatedAtMs))
+  },
+  async outfit(id: string): Promise<Outfit> {
+    if (!usingMocks) return request<Outfit>(`/api/outfits/${id}`)
+    const found = readMockOutfits().find((outfit) => outfit.id === id)
+    if (!found) throw new Error('找不到这套搭配。')
+    return structuredClone(found)
+  },
+  async saveOutfit(id: string | null, revision: number | null, name: string, scene: OutfitScene): Promise<Outfit> {
+    const payload = { ...(id ? { revision } : {}), name, scene: {
+      version: scene.version,
+      elements: scene.elements.map(({ assetUrl: _url, imageWidth: _width, imageHeight: _height,
+        assetKind: _kind, garmentRevision: _garmentRevision, garmentStatus: _status,
+        garmentChanged: _changed, imageChanged: _imageChanged, ...element }) => element as OutfitWriteElement),
+    } }
+    if (!usingMocks) return id
+      ? request<Outfit>(`/api/outfits/${id}`, { method: 'PUT', body: JSON.stringify(payload) })
+      : request<Outfit>('/api/outfits', { method: 'POST', body: JSON.stringify(payload) })
+    await delay()
+    const mockScene: OutfitScene = { version: scene.version, elements: scene.elements.map((element) => ({ ...element })) }
+    const outfits = readMockOutfits()
+    const now = Date.now()
+    if (!id) {
+      const created: Outfit = { id: crypto.randomUUID(), name, revision: 0, createdAtMs: now, updatedAtMs: now, scene: mockScene }
+      outfits.unshift(created); writeMockOutfits(outfits); return structuredClone(created)
+    }
+    const index = outfits.findIndex((outfit) => outfit.id === id)
+    if (index < 0) throw new Error('这套搭配已被删除，请返回列表查看。')
+    const current = outfits[index]
+    if (current.revision !== revision) throw new Error('这套搭配已在另一处更新；你的修改尚未提交。请重新加载或另存副本。')
+    outfits[index] = { ...current, name, revision: current.revision + 1, updatedAtMs: now, scene: mockScene }
+    writeMockOutfits(outfits)
+    return structuredClone(outfits[index])
+  },
+  async deleteOutfit(id: string, revision: number): Promise<void> {
+    if (!usingMocks) return request<void>(`/api/outfits/${id}?revision=${revision}`, { method: 'DELETE' })
+    await delay()
+    const outfits = readMockOutfits()
+    if (!outfits.some((outfit) => outfit.id === id && outfit.revision === revision)) throw new Error('这套搭配已更新，请刷新列表后重试。')
+    writeMockOutfits(outfits.filter((outfit) => outfit.id !== id))
   },
   async tasks(): Promise<ClosetTask[]> {
     if (!usingMocks) return (await request<ClosetTask[]>('/api/closet/tasks?page=1&size=50')).map(task => ({ ...task, steps: task.steps.map(step => ({ ...step, name: stepLabels[step.name] || step.name })) }))
