@@ -54,7 +54,7 @@ function dotAttrs(dot: BotFrame['dots'][number]) {
     :data-bloub-state="props.state"
     :data-bloub-animated="running"
     role="img"
-    :aria-label="'衣序蓝色小助手'"
+    :aria-label="'鱼搭蓝色小助手'"
   >
     <defs>
       <!--

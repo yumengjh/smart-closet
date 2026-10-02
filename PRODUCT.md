@@ -1,4 +1,4 @@
-# 衣序产品约定
+# 鱼搭产品约定
 
 ## Register
 
@@ -14,7 +14,7 @@ product
 
 ## Brand Personality
 
-清晰、克制、可靠。参考即梦的工作台组织、细节文字和图标；使用 Ant Design Vue 统一交互。
+品牌名为“鱼搭”，使用项目公共资源 `public/yuda-logo.png` 作为标志。品牌表达清晰、克制、可靠；参考即梦的工作台组织、细节文字和图标，使用 Ant Design Vue 统一交互。
 
 ## Anti-references
 

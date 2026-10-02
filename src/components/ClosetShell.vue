@@ -59,9 +59,9 @@ async function signOut() {
       <div v-if="isLogin" class="login-frame"><RouterView /></div>
       <div v-else-if="closet.isSignedIn && (!closet.user?.mustChangePassword || route.path === '/settings')" class="app-frame" :class="{ 'outfit-editing': isOutfitEditor }">
         <aside class="sidebar">
-          <RouterLink :to="closet.user?.mustChangePassword ? '/settings' : '/wardrobe'" class="brand-lockup" aria-label="衣序首页">
-            <span class="brand-mark"><span></span><span></span><span></span></span>
-            <span><strong>衣序</strong><small>数字衣橱</small></span>
+          <RouterLink :to="closet.user?.mustChangePassword ? '/settings' : '/wardrobe'" class="brand-lockup" aria-label="鱼搭首页">
+            <img class="brand-logo" src="/yuda-logo.png" alt="" />
+            <span><strong>鱼搭</strong><small>数字衣橱</small></span>
           </RouterLink>
           <RouterLink v-if="!closet.user?.mustChangePassword" to="/add" class="sidebar-add"><PlusOutlined /> 添加衣物</RouterLink><p class="nav-label">我的空间</p>
           <nav class="main-nav" aria-label="主导航">
@@ -80,7 +80,7 @@ async function signOut() {
         </aside>
         <main class="main-area">
           <div v-if="usingMocks" class="mock-banner"><span class="mock-pulse"></span><span>界面演示 · 示例数据不是 AI 结果，演示模式禁止提交模型任务</span><span class="mock-banner-end">{{ closet.user?.username }} 的衣橱</span></div>
-          <header class="topbar"><span>衣序 <span class="topbar-divider">/</span> {{ route.path === '/add' ? '添加衣物' : route.path.startsWith('/garment') ? '衣物工作台' : route.path.startsWith('/outfits') ? '组合台' : navItems.find(item => item.path === route.path)?.label || '回收站' }}</span><div class="topbar-actions"><SoundToggle /><RouterLink v-if="!closet.user?.mustChangePassword" to="/tasks" class="topbar-tasks"><HistoryOutlined /> 任务记录<span v-if="closet.taskCount" class="nav-count">{{ closet.taskCount }}</span></RouterLink></div></header>
+          <header class="topbar"><span>鱼搭 <span class="topbar-divider">/</span> {{ route.path === '/add' ? '添加衣物' : route.path.startsWith('/garment') ? '衣物工作台' : route.path.startsWith('/outfits') ? '组合台' : navItems.find(item => item.path === route.path)?.label || '回收站' }}</span><div class="topbar-actions"><SoundToggle /><RouterLink v-if="!closet.user?.mustChangePassword" to="/tasks" class="topbar-tasks"><HistoryOutlined /> 任务记录<span v-if="closet.taskCount" class="nav-count">{{ closet.taskCount }}</span></RouterLink></div></header>
           <section class="route-content"><RouterView /></section>
           <AssistantPanel v-if="!closet.user?.mustChangePassword" :key="closet.user?.username" />
         </main>
@@ -89,7 +89,7 @@ async function signOut() {
           <RouterLink to="/add" class="mobile-add"><PlusOutlined /><span>添加</span></RouterLink>
         </nav>
       </div>
-      <div v-else class="boot-screen"><span class="brand-mark"><span></span><span></span><span></span></span><p>正在打开衣橱…</p></div>
+      <div v-else class="boot-screen"><img class="brand-logo boot-logo" src="/yuda-logo.png" alt="鱼搭" /><p>正在打开衣橱…</p></div>
     </a-app>
   </a-config-provider>
 </template>

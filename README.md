@@ -1,4 +1,4 @@
-# 衣序 · 数字衣柜
+# 鱼搭 · 数字衣柜
 
 Vue 3、TypeScript、Vite、Vue Router、Pinia 和 Ant Design Vue 4 构成的数字衣柜界面。项目按手机与桌面同时设计，包含登录/首次改密、衣柜、单件录入、待确认、衣物详情、任务、我的和回收站。
 
