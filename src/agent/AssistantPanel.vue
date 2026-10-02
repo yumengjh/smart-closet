@@ -7,7 +7,9 @@ import { usingMocks } from '../services/api'
 import { agentRequest, streamMessage, type AgentSession, type AgentMessage, type Models, type Memory, type Quota } from './api'
 import { pageContext } from './bridge'
 import AgentProposal from './AgentProposal.vue'
-import { handleCanvasCommand, failCanvasExecution } from './canvas-runtime'
+import { handleCanvasCommand, failCanvasExecution, canvasExecution } from './canvas-runtime'
+import LatticeLoader from './effects/LatticeLoader.vue'
+import ThoughtLine from './effects/ThoughtLine.vue'
 import AgentWorkspaceResult from './AgentWorkspaceResult.vue'
 import AssistantOrb from './AssistantOrb.vue'
 import AssistantFace from './AssistantFace.vue'
@@ -17,6 +19,9 @@ import { useClosetStore } from '../stores/closet'
 import { useFloatingPosition } from './useFloatingPosition'
 const route = useRoute(); const router = useRouter(); const { modal, message } = App.useApp()
 const open = ref(false); const busy = ref(false); const loading = ref(false); const status = ref(''); const error = ref(''); const input = ref('')
+const activityPhase = ref<'thinking' | 'operating' | 'responding'>('thinking')
+const isOperating = computed(() => busy.value && (activityPhase.value === 'operating' || !!canvasExecution.runId))
+const operationSteps = computed(() => messages.value.at(-1)?.events.filter(e => e.event === 'operation_result').slice(-6).map(e => ({ text: e.data.label + (e.data.message ? ` · ${e.data.message}` : ''), success: e.data.success })) || [])
 const sessions = ref<AgentSession[]>([]); const selected = ref(''); const messages = ref<AgentMessage[]>([])
 const models = ref<Models>({ defaultModel: '', models: [], configured: false }); const personalModel = ref(''); const quota = ref<Quota | null>(null)
 const imageConsent = ref(false); const personalConsent = ref(false); const compact = ref(window.innerWidth < 1024)
@@ -77,7 +82,7 @@ async function undoMemory(memory: Memory) { try { await agentRequest(`/memories/
 async function scrollBottom() { await nextTick(); if (transcript.value) transcript.value.scrollTop = transcript.value.scrollHeight }
 async function send() {
   if (busy.value || !input.value.trim() || !models.value.configured) return
-  error.value = ''; busy.value = true; status.value = '正在提交'; playSound('bubble'); let reply: AgentMessage | undefined
+  error.value = ''; busy.value = true; activityPhase.value = 'thinking'; status.value = '正在理解你的请求'; playSound('bubble'); let reply: AgentMessage | undefined
   const body = { requestId: crypto.randomUUID(), content: input.value.trim(), context: context.value, imageConsent: imageConsent.value, personalMemoryConsent: personalConsent.value }
   try {
     if (!selected.value) await createSession()
@@ -86,9 +91,9 @@ async function send() {
     input.value = ''; imageConsent.value = false; personalConsent.value = false; abort = new AbortController(); await scrollBottom()
     await streamMessage(selected.value, body, event => {
       const follow = nearBottom()
-      if (event.event === 'token') reply!.content += event.data.text
-      else if (event.event === 'status') status.value = event.data.text
-      else if (event.event === 'canvas_operation') { handleCanvasCommand(event.data) }
+      if (event.event === 'token') { reply!.content += event.data.text; activityPhase.value = 'responding' }
+      else if (event.event === 'status') { status.value = event.data.text; activityPhase.value = event.data.phase === 'operating' ? 'operating' : 'thinking' }
+      else if (event.event === 'canvas_operation') { activityPhase.value = 'operating'; status.value = event.data.label; handleCanvasCommand(event.data) }
       else if (event.event === 'done') { reply!.status = 'COMPLETE'; quota.value = event.data.quota; celebrate(); playSound('complete') }
       else if (event.event === 'error') { failCanvasExecution(); error.value = event.data.message; reply!.status = 'FAILED'; playSound('error') }
       else {
@@ -149,7 +154,7 @@ onUnmounted(() => { abort?.abort(); clearTimeout(delightTimer); window.removeEve
               <div v-else-if="event.event === 'sources' && event.data.articles?.length" class="assistant-sources"><RouterLink v-for="article in event.data.articles" :key="article.id" :to="article.href" @click="showPage">{{ article.title }} ↗</RouterLink></div>
             </template>
           </article>
-          <p v-if="busy" class="assistant-run-status" role="status"><span />{{ status || '正在回复' }}</p>
+          <div v-if="busy && (isOperating || activityPhase !== 'responding')" class="assistant-activity"><ThoughtLine v-if="isOperating" :label="canvasExecution.runId ? canvasExecution.label || status : status || '正在操作'" :steps="operationSteps" /><LatticeLoader v-else :label="status || '正在思考'" /></div>
         </div>
         <footer class="assistant-composer">
           <a-alert v-if="error" type="error" :message="error" show-icon closable @close="error = ''" />
