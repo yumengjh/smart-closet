@@ -1,4 +1,5 @@
 import { shallowRef } from 'vue'
+import { arrangeOutfit } from '../domain/outfit-layout'
 import { closetApi } from '../services/api'
 import { createOutfitElement } from '../domain/outfit-images'
 import { elementKey, normalizeScene, OUTFIT_VERSION, stickerLimit, type OutfitElement, type OutfitScene } from '../domain/outfit'
@@ -23,7 +24,7 @@ export async function candidateScene(candidate: Candidate, people: OutfitElement
     const limit = stickerLimit(elements, 'GARMENT'); if (limit) throw new Error(limit)
     elements.push(await createOutfitElement(garment, elements))
   }
-  return normalizeScene({ version: OUTFIT_VERSION, elements })
+  return arrangeOutfit(normalizeScene({ version: OUTFIT_VERSION, elements }))
 }
 export async function editedScene(proposal: Proposal): Promise<OutfitScene> {
   let elements = proposal.context.scene?.elements.map(item => ({ ...item })) || []

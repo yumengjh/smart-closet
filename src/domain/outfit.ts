@@ -98,9 +98,9 @@ export function formatGarmentLabel(garment: Pick<Garment, 'category' | 'primaryC
 }
 
 const defaultPositions: Record<OutfitRole, { x: number; y: number; width: number }> = {
-  TOP: { x: 425, y: 340, width: 500 }, OUTER: { x: 710, y: 360, width: 480 },
-  BOTTOM: { x: 555, y: 885, width: 430 }, ONE_PIECE: { x: 540, y: 690, width: 530 },
-  SHOES: { x: 805, y: 1190, width: 330 }, HAT: { x: 205, y: 175, width: 230 },
+  TOP: { x: 540, y: 340, width: 500 }, OUTER: { x: 540, y: 360, width: 480 },
+  BOTTOM: { x: 540, y: 885, width: 430 }, ONE_PIECE: { x: 540, y: 690, width: 530 },
+  SHOES: { x: 540, y: 1190, width: 330 }, HAT: { x: 205, y: 175, width: 230 },
   BAG: { x: 195, y: 1005, width: 275 }, ACCESSORY: { x: 880, y: 920, width: 210 }, OTHER: { x: 245, y: 620, width: 310 },
 }
 

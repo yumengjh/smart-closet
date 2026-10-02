@@ -22,12 +22,15 @@ import OutfitPersonPicker from '../components/OutfitPersonPicker.vue'
 import { createPersonElement, type PersonCatalog, type PersonPart } from '../domain/person-stickers'
 import OutfitLayers from '../components/OutfitLayers.vue'
 import SoundToggle from '../components/SoundToggle.vue'
+import { arrangeOutfit } from '../domain/outfit-layout'
 import { canvasBridge } from '../agent/bridge'
 import { playSound } from '../services/sound'
 import type { CueName } from '@foleyjs/core'
 import { MIN_VIEW_ZOOM, MAX_VIEW_ZOOM, outfitViewGeometry, outfitWheelZoom } from '../domain/outfit-view'
 
-const route = useRoute()
+const props = defineProps<{ board?: import('../domain/outfit-workspace').WorkspaceBoard; saveBoard?: () => Promise<void> }>()
+const actualRoute = useRoute()
+const route = new Proxy(actualRoute, { get(target, key) { if (props.board && key === 'params') return { id: props.board.outfitId || 'new' }; return Reflect.get(target, key) } })
 const router = useRouter()
 const closet = useClosetStore()
 const { message, modal } = App.useApp()
@@ -109,6 +112,7 @@ let resizeObserver: ResizeObserver | undefined
 let loaded = false
 let baselineSignature = ''
 let draftRevision: number | null = null
+let synchronizingBoard = false
 
 const activeGarments = computed(() => garments.value.filter((item) => item.status === 'ACTIVE'))
 const filteredGarments = computed(() => activeGarments.value.filter((item) => {
@@ -129,7 +133,7 @@ const canForward = computed(() => selectedIndex.value >= 0 && selectedIndex.valu
 const canBackward = computed(() => selectedIndex.value > 0)
 const contextItem = computed(() => elements.value.find(item => elementKey(item) === contextTarget.value))
 const contextGarment = computed(() => garments.value.find(item => item.id === contextTarget.value))
-const hasChanges = computed(() => JSON.stringify({ name: name.value, elements: elements.value }) !== baselineSignature)
+const hasChanges = computed(() => props.board ? JSON.stringify({ name: props.board.name, scene: props.board.scene }) !== props.board.savedSignature : JSON.stringify({ name: name.value, elements: elements.value }) !== baselineSignature)
 const saveState = computed(() => localDraftNotice.value ? '草稿已保存在此设备' : !isNew.value && !hasChanges.value ? '已保存至账号' : '修改会自动保留在此设备')
 const dirty = computed(() => elements.value.length > 0)
 const roleNames = Object.fromEntries(outfitRoleOptions.map((option) => [option.value, option.label])) as Record<OutfitRole, string>
@@ -142,6 +146,15 @@ function getDraft() {
 }
 function persistDraft() {
   if (!loaded || !editing.value) return
+  if (props.board) {
+    if (synchronizingBoard || props.board.locked) return
+    const board = props.board
+    board.undo = undoStack.value; board.redo = redoStack.value; board.selectedIds = [...selectedIds.value]; board.zoom = zoom.value
+    if (JSON.stringify(board.scene.elements) !== JSON.stringify(elements.value) || board.name !== name.value) {
+      board.scene = normalizeScene(scene.value); board.name = name.value; board.contentVersion++
+    }
+    return
+  }
   if (JSON.stringify({ name: name.value, elements: elements.value }) === baselineSignature) {
     localStorage.removeItem(draftKey.value)
     localDraftNotice.value = false
@@ -190,6 +203,13 @@ async function loadPage() {
     saved.value = []
     pageLoading.value = false
     return
+  }
+  if (props.board) {
+    const board = props.board
+    name.value = board.name; elements.value = board.scene.elements.map(e => ({ ...e })); outfitId.value = board.outfitId || ''; revision.value = board.revision
+    undoStack.value = board.undo; redoStack.value = board.redo; selectedIds.value = [...board.selectedIds]; selectedId.value = selectedIds.value.at(-1) || ''; zoom.value = board.zoom
+    baselineSignature = board.savedSignature; localDraftNotice.value = !board.savedSignature
+    await nextTick(); loaded = true; pageLoading.value = false; return
   }
   if (isNew.value) {
     const draft = getDraft()
@@ -240,6 +260,7 @@ async function loadLibrary() {
 
 function sceneSnapshot() { return elements.value.map((item) => ({ ...item })) }
 function recordChange(next: OutfitElement[], cue: CueName = 'tap') {
+  if (props.board?.locked) return
   if (JSON.stringify(next) === JSON.stringify(elements.value)) return
   undoStack.value = [...undoStack.value.slice(-79), sceneSnapshot()]
   redoStack.value = []
@@ -305,7 +326,7 @@ async function selectGarment(garment: Garment, position?: { x: number; y: number
       if (index < 0) return
       next[index] = { ...candidate, elementId: old.elementId, role: old.role, x: old.x, y: old.y, width: old.width, height: old.height, rotation: old.rotation, zIndex: old.zIndex, flipX: old.flipX, freeStretch: old.freeStretch }
     } else next.push({ ...candidate, ...position })
-    recordChange(next.sort((a, b) => a.zIndex - b.zIndex), 'pop')
+    recordChange((!old && !position && !outfitId.value ? arrangeOutfit({ version: OUTFIT_VERSION, elements: next }).elements : next.sort((a, b) => a.zIndex - b.zIndex)), 'pop')
     selectedId.value = old ? elementKey(old) : elementKey(candidate)
     replacementTarget.value = null
     if (old) pickerOpen.value = false
@@ -709,6 +730,7 @@ function retryImage(url: string) {
 }
 
 async function saveOutfit() {
+  if (props.board) { persistDraft(); await props.saveBoard?.(); return }
   if (!name.value.trim() || name.value.trim().length > 100) { message.warning('搭配名称需为 1 到 100 个字符。'); return }
   if (!elements.value.length) { message.warning('先加入一张衣物或人物贴纸。'); return }
   if (failedImage.value) { message.error('请先重新加载无法打开的贴纸图片，再保存。'); return }
@@ -782,24 +804,14 @@ async function exportPng() {
   finally { exporting.value = false }
 }
 async function resetLayout() {
-  if (!elements.value.length) return
-  const next: OutfitElement[] = []
-  for (const element of elements.value) {
-    const garment = activeGarments.value.find((item) => element.kind !== 'PERSON_PART' && item.id === element.garmentId)
-    if (!garment) { next.push(element); continue }
-    try {
-      const layout = await createOutfitElement(garment, next.filter((item) => item.role === element.role))
-      next.push({ ...element, x: layout.x, y: layout.y, rotation: 0, zIndex: next.length })
-    } catch { next.push(element) }
-  }
-  recordChange(next)
-  selectedId.value = ''
-  detachTransformer()
+  if (!elements.value.length || props.board?.locked) return
+  recordChange(arrangeOutfit(scene.value).elements)
+  clearSelection()
 }
 
 function handleKeyboard(event: KeyboardEvent) {
   transformKeys(event)
-  if (!editing.value) return
+  if (!editing.value || props.board?.locked) return
   if (event.key === 'Escape') {
     if (contextTarget.value) { closeContextMenu(); return }
     if (infoOpen.value) { infoOpen.value = false; return }
@@ -843,11 +855,13 @@ function screenChanged() { compact.value = window.matchMedia('(max-width: 1023px
 onBeforeRouteLeave(() => { persistDraft(); loaded = false })
 onBeforeRouteUpdate(() => { persistDraft() })
 watch(() => [route.params.id, route.query.draft], async () => {
+  if (props.board) return
   if (route.params.id) await loadPage()
   else await loadLibrary()
 })
 watch(() => JSON.stringify({ name: name.value, elements: elements.value }), (signature) => {
   if (!loaded) return
+  if (props.board) { persistDraft(); return }
   if (signature === baselineSignature) {
     window.clearTimeout(draftTimer)
     localStorage.removeItem(draftKey.value)
@@ -877,7 +891,7 @@ onMounted(() => {
   if (route.params.id) void loadPage()
   else void loadLibrary()
   if (closet.isSignedIn) { void loadGarments(); void loadPeople() }
-  canvasBridge.value = {
+  if (!props.board) canvasBridge.value = {
     context: () => ({ route: route.path, outfitId: String(route.params.id || ''), name: name.value, revision: revision.value, selectedIds: [...selectedIds.value], ...(currentItem.value?.kind !== 'PERSON_PART' && currentItem.value?.garmentId ? { garmentId: currentItem.value.garmentId } : {}), ...(editing.value && !pageLoading.value ? { scene: scene.value } : {}) }),
     apply: (next, title) => { if (!loaded || !editing.value) throw new Error('画布尚未就绪。'); recordChange(next.elements.map(item => ({ ...item }))); if (title) name.value = title; persistDraft() },
     save: async () => { error.value = ''; await saveOutfit(); if (error.value || remoteConflict.value) throw new Error(error.value || '搭配版本冲突。') },
@@ -892,7 +906,7 @@ onMounted(() => {
   measureCanvas()
 })
 onUnmounted(() => {
-  canvasBridge.value = null
+  if (!props.board) canvasBridge.value = null
   window.clearTimeout(draftTimer)
   cancelLongPress()
   if (loaded) persistDraft()
@@ -905,11 +919,25 @@ onUnmounted(() => {
   window.removeEventListener('pointerdown', outsideMenu)
   window.removeEventListener('scroll', closeContextMenu, true)
 })
+watch(() => [props.board?.contentVersion, props.board?.locked, props.board?.savedSignature], () => {
+  if (!props.board || !loaded) return
+  const board = props.board
+  synchronizingBoard = true
+  if (JSON.stringify(board.scene.elements) !== JSON.stringify(elements.value)) {
+    elements.value = board.scene.elements.map(e => ({ ...e })); undoStack.value = board.undo; redoStack.value = board.redo
+  }
+  name.value = board.name; outfitId.value = board.outfitId || ''; revision.value = board.revision
+  undoStack.value = board.undo; redoStack.value = board.redo
+  localDraftNotice.value = !board.savedSignature || JSON.stringify({ name: board.name, scene: board.scene }) !== board.savedSignature
+  void nextTick(() => { synchronizingBoard = false })
+}, { flush: 'sync' })
+watch([selectedIds, zoom], () => { if (props.board && loaded) persistDraft() }, { deep: true })
+defineExpose({ flush: persistDraft, exportPng })
 </script>
 
 <template>
   <div v-if="!editing" class="outfit-library-page">
-    <div class="page-heading outfit-library-heading"><div><h1>穿搭组合台</h1><p class="page-subtitle">从自己的衣柜选单品，保存一套随时可以穿的搭配。</p></div><a-button type="primary" @click="router.push('/outfits/new')"><PlusOutlined /> 新建搭配</a-button></div>
+    <div class="page-heading outfit-library-heading"><div><h1>穿搭组合台</h1><p class="page-subtitle">从自己的衣柜选单品，保存一套随时可以穿的搭配。</p></div><div><a-button @click="router.push('/outfits/workspace')">打开多画板工作区</a-button><a-button type="primary" @click="router.push('/outfits/new')"><PlusOutlined /> 新建搭配</a-button></div></div>
     <a-alert v-if="error" type="error" show-icon :message="error" class="outfit-alert"><template #action><a-button @click="loadLibrary">重新加载</a-button></template></a-alert>
     <a-skeleton v-if="pageLoading" active :paragraph="{ rows: 7 }" />
     <template v-else-if="saved.length">
@@ -927,9 +955,9 @@ onUnmounted(() => {
 
   <a-skeleton v-else-if="pageLoading" active :paragraph="{ rows: 10 }" />
   <div v-else-if="error && !loaded" class="outfit-editor-error"><a-alert type="error" show-icon :message="error" /><a-button @click="loadPage"><ReloadOutlined /> 重新加载画板</a-button><RouterLink to="/outfits"><a-button type="link">返回搭配列表</a-button></RouterLink></div>
-  <div v-else class="outfit-editor-page">
-    <header class="outfit-editor-header">
-      <div class="outfit-editor-title"><a-tooltip title="返回搭配列表，草稿会自动保留"><a-button aria-label="返回搭配列表" @click="router.push('/outfits')"><ArrowLeftOutlined /></a-button></a-tooltip><div class="outfit-title-field"><a-input v-model:value="name" maxlength="100" aria-label="搭配名称" placeholder="给搭配起个名字" /></div><a-tooltip :title="saveState"><span class="outfit-save-state" role="status"><CheckOutlined v-if="localDraftNotice || (!isNew && !hasChanges)" />{{ localDraftNotice ? '本机草稿' : !isNew && !hasChanges ? '已保存' : '未保存' }}</span></a-tooltip></div>
+  <div v-else class="outfit-editor-page" :inert="props.board?.locked ? true : undefined">
+    <header v-if="!props.board" class="outfit-editor-header">
+      <div class="outfit-editor-title"><a-tooltip v-if="!props.board" title="返回搭配列表，草稿会自动保留"><a-button aria-label="返回搭配列表" @click="router.push('/outfits')"><ArrowLeftOutlined /></a-button></a-tooltip><div class="outfit-title-field"><a-input v-model:value="name" maxlength="100" aria-label="搭配名称" placeholder="给搭配起个名字" /></div><a-tooltip :title="saveState"><span class="outfit-save-state" role="status"><CheckOutlined v-if="localDraftNotice || (!isNew && !hasChanges)" />{{ localDraftNotice ? '本机草稿' : !isNew && !hasChanges ? '已保存' : '未保存' }}</span></a-tooltip></div>
       <div class="outfit-header-actions"><SoundToggle /><a-button class="outfit-desktop-export" :loading="exporting" :disabled="!dirty || !!failedImage" @click="exportPng"><DownloadOutlined /> 导出图片</a-button><a-button type="primary" aria-label="保存搭配" :loading="saving" :disabled="!dirty || remoteConflict" @click="saveOutfit"><SaveOutlined /><span>{{ compact ? '保存' : '保存搭配' }}</span></a-button></div>
     </header>
     <a-alert v-if="remoteConflict" type="warning" show-icon message="另一处已更新这套搭配，你的草稿仍保留。" class="outfit-alert"><template #action><div class="outfit-conflict-actions"><a-button @click="loadLatest">重新加载</a-button><a-button type="primary" @click="saveConflictAsCopy">另存副本</a-button></div></template></a-alert>
@@ -975,9 +1003,9 @@ onUnmounted(() => {
         <a-alert v-if="failedImage" type="warning" show-icon message="有贴纸图片未能加载，草稿仍会保留。" class="outfit-image-warning"><template #action><a-button @click="retryImage(failedImage)"><ReloadOutlined /> 重试</a-button></template></a-alert>
       </section>
 
-      <aside v-show="inspectorVisible" class="outfit-inspector" aria-label="所选贴纸操作"><div class="outfit-panel-heading"><h2>贴纸调整</h2><span class="muted">{{ sceneLabel }}</span></div><a-segmented v-model:value="inspectorTab" block :options="[{ value: 'properties', label: '属性' }, { value: 'layers', label: '图层' }]" class="outfit-inspector-tabs" /><div class="outfit-inspector-body"><OutfitLayers v-if="inspectorTab === 'layers'" :elements="elements" :selected-id="selectedId" :selected-ids="selectedIds" @all="selectAll" @clear="clearSelection" @select="selectLayer" @reorder="dropLayer" @context="openContextMenu" /><OutfitMultiInspector v-else-if="selectedIds.length > 1" :count="selectedIds.length" @rotate="batchRotate" @scale="batchScale" @offset="batchOffset" @flip="batchFlip" @stretch="stretchSelected" @remove="removeSelected" /><OutfitInspector v-else-if="currentItem" :item="currentItem" :can-forward="canForward" :can-backward="canBackward" @flip="flipSelected" @duplicate="duplicateSelected" @stretch="stretchSelected" @height="heightSelected" @crop="cropSelected" @role="changeRole" @resize="resizeSelected" @rotate="rotateSelected" @rotate-preview="previewRotation" @scale="scaleSelected" @position="positionSelected" @layer="moveLayer" @replace="startReplacement" @remove="removeSelected" @info="showInfo()" /><div v-else class="outfit-inspector-empty"><a-empty :image="Empty.PRESENTED_IMAGE_SIMPLE" description="点选画板上的贴纸"><p>调整大小、角度和位置，或切换到图层。</p></a-empty></div></div><div class="outfit-inspector-footer"><a-button block :disabled="!elements.length" @click="resetLayout"><ReloadOutlined /> 整理衣物排版</a-button></div></aside>
+      <aside v-show="inspectorVisible" class="outfit-inspector" aria-label="所选贴纸操作"><div class="outfit-panel-heading"><h2>贴纸调整</h2><span class="muted">{{ sceneLabel }}</span></div><a-segmented v-model:value="inspectorTab" block :options="[{ value: 'properties', label: '属性' }, { value: 'layers', label: '图层' }]" class="outfit-inspector-tabs" /><div class="outfit-inspector-body"><OutfitLayers v-if="inspectorTab === 'layers'" :elements="elements" :selected-id="selectedId" :selected-ids="selectedIds" @all="selectAll" @clear="clearSelection" @select="selectLayer" @reorder="dropLayer" @context="openContextMenu" /><OutfitMultiInspector v-else-if="selectedIds.length > 1" :count="selectedIds.length" @rotate="batchRotate" @scale="batchScale" @offset="batchOffset" @flip="batchFlip" @stretch="stretchSelected" @remove="removeSelected" /><OutfitInspector v-else-if="currentItem" :item="currentItem" :can-forward="canForward" :can-backward="canBackward" @flip="flipSelected" @duplicate="duplicateSelected" @stretch="stretchSelected" @height="heightSelected" @crop="cropSelected" @role="changeRole" @resize="resizeSelected" @rotate="rotateSelected" @rotate-preview="previewRotation" @scale="scaleSelected" @position="positionSelected" @layer="moveLayer" @replace="startReplacement" @remove="removeSelected" @info="showInfo()" /><div v-else class="outfit-inspector-empty"><a-empty :image="Empty.PRESENTED_IMAGE_SIMPLE" description="点选画板上的贴纸"><p>调整大小、角度和位置，或切换到图层。</p></a-empty></div></div><div class="outfit-inspector-footer"><a-button block :disabled="!elements.length" @click="resetLayout"><ReloadOutlined /> 整理穿搭</a-button></div></aside>
     </div>
-    <nav class="outfit-mobile-controls" aria-label="画板编辑操作"><a-button type="text" @click="replacementTarget = null; pickerOpen = true"><PlusOutlined /><span>选贴纸</span></a-button><a-button type="text" :disabled="!currentItem" @click="inspectorOpen = true"><ControlOutlined /><span>调整</span></a-button><a-button type="text" :disabled="!elements.length" @click="layersOpen = true"><MenuOutlined /><span>图层</span></a-button><a-dropdown :trigger="['click']" placement="topRight"><a-button type="text"><MoreOutlined /><span>更多</span></a-button><template #overlay><a-menu><a-menu-item :disabled="!dirty || !!failedImage || exporting" @click="exportPng"><DownloadOutlined /> 导出 PNG 图片</a-menu-item><a-menu-item :disabled="!elements.length" @click="resetLayout"><ReloadOutlined /> 整理衣物排版</a-menu-item><a-menu-divider /><a-menu-item @click="showHelp"><QuestionCircleOutlined /> 操作帮助</a-menu-item></a-menu></template></a-dropdown></nav>
+    <nav class="outfit-mobile-controls" aria-label="画板编辑操作"><a-button type="text" @click="replacementTarget = null; pickerOpen = true"><PlusOutlined /><span>选贴纸</span></a-button><a-button type="text" :disabled="!currentItem" @click="inspectorOpen = true"><ControlOutlined /><span>调整</span></a-button><a-button type="text" :disabled="!elements.length" @click="layersOpen = true"><MenuOutlined /><span>图层</span></a-button><a-dropdown :trigger="['click']" placement="topRight"><a-button type="text"><MoreOutlined /><span>更多</span></a-button><template #overlay><a-menu><a-menu-item :disabled="!dirty || !!failedImage || exporting" @click="exportPng"><DownloadOutlined /> 导出 PNG 图片</a-menu-item><a-menu-item :disabled="!elements.length" @click="resetLayout"><ReloadOutlined /> 整理穿搭</a-menu-item><a-menu-divider /><a-menu-item @click="showHelp"><QuestionCircleOutlined /> 操作帮助</a-menu-item></a-menu></template></a-dropdown></nav>
   </div>
 
   <a-drawer v-if="compact" v-model:open="pickerOpen" :title="replacementTarget ? '替换衣物' : '选择贴纸素材'" placement="bottom" height="min(80dvh, 740px)" root-class-name="outfit-mobile-drawer outfit-material-drawer" :body-style="{ padding: 0, overflow: 'hidden' }"><a-segmented v-model:value="materialTab" block :disabled="!!replacementTarget" :options="[{ value: 'garments', label: '我的衣物' }, { value: 'people', label: '人物贴纸' }]" class="outfit-material-tabs" /><OutfitPersonPicker v-if="materialTab === 'people'" :catalog="personCatalog" :loading="loadingPeople" :error="peopleError" :mobile="compact" @select="selectPerson" @dragstart="startPersonDrag" @dragend="endGarmentDrag" @retry="loadPeople" /><OutfitGarmentPicker v-else v-model:search="search" v-model:role="roleFilter" :garments="filteredGarments" :loading="loadingGarments" :error="garmentError" :picked-ids="pickedIds" :selected-id="currentItem?.garmentId || ''" :replacing="!!replacementTarget" mobile @select="selectGarment" @context="(_event, garment) => showInfo(garment.id)" @cancel="replacementTarget = null" @retry="loadGarments" /><template #footer><a-button type="primary" block @click="pickerOpen = false; replacementTarget = null">完成选择 · {{ sceneLabel }}</a-button></template></a-drawer>

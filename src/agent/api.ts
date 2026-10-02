@@ -2,7 +2,7 @@ import { readAgentStream } from './sse'
 import { usingMocks } from '../services/api'
 import type { OutfitScene } from '../domain/outfit'
 
-export type AgentContext = { route: string; garmentId?: string; outfitId?: string; name?: string; revision?: number | null; selectedIds?: string[]; scene?: OutfitScene }
+export type AgentContext = { route: string; workspaceId?: string; boardId?: string; contentVersion?: number; boardCount?: number; garmentId?: string; outfitId?: string; name?: string; revision?: number | null; selectedIds?: string[]; scene?: OutfitScene }
 export type AgentSession = { id: string; title: string; model: string | null; updatedAt: number }
 export type Memory = { id: string; content: string; category: string; updatedAt: number }
 export type Candidate = { name: string; reason: string; garmentIds: string[] }

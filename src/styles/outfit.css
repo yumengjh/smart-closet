@@ -167,7 +167,7 @@
   .outfit-desktop-export, .outfit-picker-panel, .outfit-inspector, .outfit-desktop-view-tools, .outfit-desktop-help { display: none; }
   .outfit-editor-layout { min-height: 0; }
   .outfit-canvas-area { min-height: 0; }
-  .outfit-mobile-controls { position: fixed; z-index: 30; inset: auto 0 0; display: flex; align-items: center; justify-content: space-around; padding: 4px 12px calc(4px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--surface); }
+  .outfit-mobile-controls { position: fixed; z-index: 30; inset: auto 0 0; display: flex; align-items: center; justify-content: space-around; padding: 4px 88px calc(4px + env(safe-area-inset-bottom)) 8px; border-top: 1px solid var(--line); background: var(--surface); }
   .outfit-mobile-controls > .ant-btn { display: flex; width: 25%; height: 60px; min-height: 44px; flex-direction: column; gap: 6px; align-items: center; justify-content: center; padding: 6px; border-radius: 10px; font-size: 13px; }
   .outfit-mobile-controls .anticon { font-size: 20px; }
   .outfit-mobile-controls .ant-btn > .anticon + span { margin-inline-start: 0; }
@@ -262,3 +262,8 @@
 .outfit-layer-select small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .outfit-header-actions .sound-toggle.ant-btn { min-width: 44px; width: 44px; padding: 0; }
+
+@media (max-width: 380px) {
+  .outfit-editor-toolbar { gap: 8px; padding-inline: 8px; }
+  .outfit-zoom-controls > span { display: none; }
+}

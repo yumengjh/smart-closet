@@ -7,6 +7,8 @@ import { usingMocks } from '../services/api'
 import { agentRequest, streamMessage, type AgentSession, type AgentMessage, type Models, type Memory, type Quota } from './api'
 import { pageContext } from './bridge'
 import AgentProposal from './AgentProposal.vue'
+import { handleCanvasCommand, failCanvasExecution } from './canvas-runtime'
+import AgentWorkspaceResult from './AgentWorkspaceResult.vue'
 import AssistantOrb from './AssistantOrb.vue'
 import AssistantFace from './AssistantFace.vue'
 import SoundToggle from '../components/SoundToggle.vue'
@@ -86,8 +88,9 @@ async function send() {
       const follow = nearBottom()
       if (event.event === 'token') reply!.content += event.data.text
       else if (event.event === 'status') status.value = event.data.text
+      else if (event.event === 'canvas_operation') { handleCanvasCommand(event.data) }
       else if (event.event === 'done') { reply!.status = 'COMPLETE'; quota.value = event.data.quota; celebrate(); playSound('complete') }
-      else if (event.event === 'error') { error.value = event.data.message; reply!.status = 'FAILED'; playSound('error') }
+      else if (event.event === 'error') { failCanvasExecution(); error.value = event.data.message; reply!.status = 'FAILED'; playSound('error') }
       else {
         reply!.events.push(event)
         if (event.event === 'memory') window.dispatchEvent(new Event('closet-agent-memory-changed'))
@@ -95,7 +98,7 @@ async function send() {
       }
       if (follow) void scrollBottom()
     }, abort.signal)
-  } catch (e) { error.value = e instanceof Error ? e.message : '回复未完成。'; if (reply) reply.status = 'FAILED' }
+  } catch (e) { failCanvasExecution(); error.value = e instanceof Error ? e.message : '回复未完成。'; if (reply) reply.status = 'FAILED' }
   finally { busy.value = false; status.value = ''; abort = undefined; try { await refreshSessions(); quota.value = await agentRequest<Quota>('/quota') } catch {} }
 }
 function showPage() { if (compact.value) open.value = false }
@@ -138,8 +141,10 @@ onUnmounted(() => { abort?.abort(); clearTimeout(delightTimer); window.removeEve
         <div ref="transcript" class="assistant-transcript" aria-label="聊天记录" aria-live="polite" :aria-busy="busy">
           <div v-if="!messages.length" class="assistant-welcome"><AssistantFace mood="happy" /><p class="eyebrow">从你的衣柜开始</p><h2>今天想怎么穿？</h2><p>告诉我场景，或选中一件衣物。<br />平台怎么用，也可以问我。</p><a-button block @click="input = '帮我组合三套通勤穿搭'; textarea?.focus()">帮我搭三套通勤穿搭</a-button><a-button block @click="input = '组合台怎么使用？'; textarea?.focus()">了解组合台怎么使用</a-button></div>
           <article v-for="item in messages" :key="item.id" class="assistant-message" :class="item.role"><small>{{ item.role === 'user' ? '你' : '衣序助手' }}</small><p v-if="item.content" class="assistant-text">{{ item.content }}</p><span v-if="item.status === 'FAILED'" class="assistant-interrupted">回复未完成</span>
+            <a-collapse v-if="item.events.some(e => e.event === 'operation_result')" ghost class="assistant-operation-record"><a-collapse-panel key="steps" header="查看搭台操作记录"><ol><li v-for="event in item.events.filter(e => e.event === 'operation_result')" :key="event.data.operationId">{{ event.data.success ? '✓' : '!' }} {{ event.data.label }}<small v-if="event.data.message"> · {{ event.data.message }}</small></li></ol></a-collapse-panel></a-collapse>
             <template v-for="(event, index) in item.events" :key="index">
-              <AgentProposal v-if="event.event === 'proposal'" :proposal="event.data" @applied="showPage" />
+              <AgentWorkspaceResult v-if="event.event === 'workspace_result'" :result="event.data" @open="showPage" />
+              <AgentProposal v-else-if="event.event === 'proposal'" :proposal="event.data" @applied="showPage" />
               <div v-else-if="event.event === 'memory'" class="assistant-memory-notice"><span>{{ event.data.revoked ? '已撤销' : '已记住' }}：{{ event.data.content }}</span><a-button v-if="!event.data.revoked" type="link" size="small" @click="undoMemory(event.data)">撤销记忆</a-button></div>
               <div v-else-if="event.event === 'sources' && event.data.articles?.length" class="assistant-sources"><RouterLink v-for="article in event.data.articles" :key="article.id" :to="article.href" @click="showPage">{{ article.title }} ↗</RouterLink></div>
             </template>
