@@ -5,7 +5,7 @@ import { theme as antTheme } from 'ant-design-vue'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import {
   AppstoreOutlined, CheckCircleOutlined, HistoryOutlined, PictureOutlined, PlusOutlined,
-  SettingOutlined, LogoutOutlined, CloudOutlined,
+  SettingOutlined, LogoutOutlined,
 } from '@ant-design/icons-vue'
 import { useClosetStore } from '../stores/closet'
 import { useThemeStore } from '../stores/theme'
@@ -89,16 +89,15 @@ async function signOut() {
               <span v-if="item.path === '/tasks' && closet.taskCount" class="nav-count quiet">{{ closet.taskCount }}</span>
             </RouterLink>
           </nav>
-          <div class="sidebar-note"><CloudOutlined /><div><strong>{{ usingMocks ? '界面演示' : closet.user?.mustChangePassword ? '请先设置新密码' : '已连接真实后端' }}</strong><p>{{ usingMocks ? '未调用 AI，不提供模拟提交' : closet.user?.mustChangePassword ? '完成后即可开始整理衣柜' : '上传后可随时查看任务和结果' }}</p></div></div>
           <div class="profile-row">
             <span class="avatar">{{ closet.user?.username?.slice(0, 1).toUpperCase() }}</span>
             <span class="profile-name"><strong>{{ closet.user?.username }}</strong><small>我的衣橱</small></span>
-            <a-button type="text" class="sign-out" title="退出登录" aria-label="退出登录" @click="signOut"><LogoutOutlined /></a-button>
+            <a-button type="text" danger class="sign-out" title="退出登录" aria-label="退出登录" @click="signOut"><LogoutOutlined /> <span>退出</span></a-button>
           </div>
         </aside>
         <main class="main-area">
           <div v-if="usingMocks" class="mock-banner"><span class="mock-pulse"></span><span>界面演示 · 示例数据不是 AI 结果，演示模式禁止提交模型任务</span><span class="mock-banner-end">{{ closet.user?.username }} 的衣橱</span></div>
-          <header class="topbar"><span>鱼搭 <span class="topbar-divider">/</span> {{ route.path === '/add' ? '添加衣物' : route.path.startsWith('/garment') ? '衣物工作台' : route.path.startsWith('/outfits') ? '组合台' : navItems.find(item => item.path === route.path)?.label || '回收站' }}</span><div class="topbar-actions"><ThemeToggle /><SoundToggle /><RouterLink v-if="!closet.user?.mustChangePassword" to="/tasks" class="topbar-tasks"><HistoryOutlined /> 任务记录<span v-if="closet.taskCount" class="nav-count">{{ closet.taskCount }}</span></RouterLink></div></header>
+          <header class="topbar"><div class="topbar-actions"><ThemeToggle /><SoundToggle /><RouterLink v-if="!closet.user?.mustChangePassword" to="/tasks" class="topbar-tasks"><HistoryOutlined /> 任务记录<span v-if="closet.taskCount" class="nav-count">{{ closet.taskCount }}</span></RouterLink></div></header>
           <section class="route-content"><RouterView /></section>
           <AssistantPanel v-if="!closet.user?.mustChangePassword" :key="closet.user?.username" />
         </main>

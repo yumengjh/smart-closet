@@ -46,7 +46,6 @@ async function submit() {
           <p v-if="usingMocks" class="login-hint">界面演示：示例内容并非 AI 结果，不能提交真实任务。</p>
         </form>
       </div>
-      <small class="login-footer">照片与 AI 任务按账号独立保存。</small>
     </div>
   </div>
 </template>
