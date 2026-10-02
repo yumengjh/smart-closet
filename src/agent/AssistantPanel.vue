@@ -12,13 +12,16 @@ import LatticeLoader from './effects/LatticeLoader.vue'
 import ThoughtLine from './effects/ThoughtLine.vue'
 import AgentWorkspaceResult from './AgentWorkspaceResult.vue'
 import AssistantOrb from './AssistantOrb.vue'
-import AssistantFace from './AssistantFace.vue'
+import BloubAvatar from './BloubAvatar.vue'
+import { applyAvatarMode, validCue, type AvatarCue } from './avatar'
 import SoundToggle from '../components/SoundToggle.vue'
 import { playSound } from '../services/sound'
 import { useClosetStore } from '../stores/closet'
 import { useFloatingPosition } from './useFloatingPosition'
 const route = useRoute(); const router = useRouter(); const { modal, message } = App.useApp()
 const open = ref(false); const busy = ref(false); const loading = ref(false); const status = ref(''); const error = ref(''); const input = ref('')
+const avatarCue=ref<AvatarCue|null>(null); const activityTool=ref('')
+const taskFailed=ref(false)
 const activityPhase = ref<'thinking' | 'operating' | 'responding'>('thinking')
 const isOperating = computed(() => busy.value && (activityPhase.value === 'operating' || !!canvasExecution.runId))
 const operationSteps = computed(() => messages.value.at(-1)?.events.filter(e => e.event === 'operation_result').slice(-6).map(e => ({ text: e.data.label + (e.data.message ? ` · ${e.data.message}` : ''), success: e.data.success })) || [])
@@ -29,14 +32,14 @@ const textarea = ref<{ focus: () => void } | null>(null); const transcript = ref
 let abort: AbortController | undefined
 const closet = useClosetStore()
 const historyOpen = ref(false); const renameOpen = ref(false); const renameTitle = ref(''); const renaming = ref(false)
-const optionsOpen = ref(false); const expression = ref('auto'); const delighted = ref(false)
+const optionsOpen = ref(false); const delighted = ref(false)
 const pinned = ref(true); const viewport = ref({ width: window.innerWidth, height: window.innerHeight })
 const pinKey = computed(() => `yixu.assistant-pin.v1:${closet.user?.username || 'local'}`)
 const panelKey = computed(() => `yixu.assistant-panel.v1:${closet.user?.username || 'local'}`)
 const dimensions = computed(() => ({ width: Math.min(420, viewport.value.width - 16), height: Math.min(720, viewport.value.height - 112) }))
 const floating = useFloatingPosition(panelKey, dimensions, () => 100)
 const panelStyle = computed(() => compact.value || pinned.value ? undefined : { ...floating.style.value, width: `${dimensions.value.width}px`, height: `${dimensions.value.height}px` })
-const mood = computed(() => busy.value ? 'thinking' : error.value ? 'concern' : delighted.value ? 'happy' : expression.value === 'auto' ? 'idle' : expression.value)
+const mood = computed(() => busy.value ? 'thinking' : (error.value||taskFailed.value) ? 'concern' : delighted.value ? 'happy' : 'idle')
 const modelOptions = computed(() => [{ value: '', label: `个人默认 · ${personalModel.value || models.value.defaultModel}` }, ...models.value.models.map(value => ({ value, label: value }))])
 let delightTimer: ReturnType<typeof setTimeout> | undefined
 function celebrate() { delighted.value = true; clearTimeout(delightTimer); delightTimer = setTimeout(() => { delighted.value = false }, 2400) }
@@ -52,7 +55,7 @@ async function refreshSessions() { sessions.value = await agentRequest<AgentSess
 async function load() {
   if (usingMocks) { error.value = '界面演示不调用模型，请连接真实后端使用助手。'; return }
   loading.value = true; error.value = ''
-  try { const [modelList, preferences, usage] = await Promise.all([agentRequest<Models>('/models'), agentRequest<{ model: string }>('/preferences'), agentRequest<Quota>('/quota')]); models.value = modelList; personalModel.value = preferences.model; quota.value = usage; await refreshSessions(); if (!selected.value && sessions.value.length) { selected.value = sessions.value[0].id; await selectSession() } }
+  try { const [modelList, preferences, usage] = await Promise.all([agentRequest<Models>('/models'), agentRequest<{ model: string; avatarMode: string }>('/preferences'), agentRequest<Quota>('/quota')]); models.value = modelList; personalModel.value = preferences.model; applyAvatarMode(preferences.avatarMode); quota.value = usage; await refreshSessions(); if (!selected.value && sessions.value.length) { selected.value = sessions.value[0].id; await selectSession() } }
   catch (e) { error.value = e instanceof Error ? e.message : '助手无法加载。' }
   finally { loading.value = false }
 }
@@ -82,7 +85,7 @@ async function undoMemory(memory: Memory) { try { await agentRequest(`/memories/
 async function scrollBottom() { await nextTick(); if (transcript.value) transcript.value.scrollTop = transcript.value.scrollHeight }
 async function send() {
   if (busy.value || !input.value.trim() || !models.value.configured) return
-  error.value = ''; busy.value = true; activityPhase.value = 'thinking'; status.value = '正在理解你的请求'; playSound('bubble'); let reply: AgentMessage | undefined
+  avatarCue.value=null;taskFailed.value=false;activityTool.value=''; error.value = ''; busy.value = true; activityPhase.value = 'thinking'; status.value = '正在理解你的请求'; playSound('bubble'); let reply: AgentMessage | undefined
   const body = { requestId: crypto.randomUUID(), content: input.value.trim(), context: context.value, imageConsent: imageConsent.value, personalMemoryConsent: personalConsent.value }
   try {
     if (!selected.value) await createSession()
@@ -92,12 +95,14 @@ async function send() {
     await streamMessage(selected.value, body, event => {
       const follow = nearBottom()
       if (event.event === 'token') { reply!.content += event.data.text; activityPhase.value = 'responding' }
-      else if (event.event === 'status') { status.value = event.data.text; activityPhase.value = event.data.phase === 'operating' ? 'operating' : 'thinking' }
+      else if(event.event==='avatar'){ if(validCue(event.data)&&event.data.requestId===body.requestId)avatarCue.value=event.data }
+      else if (event.event === 'status') { activityTool.value=event.data.tool||'';status.value = event.data.text; activityPhase.value = event.data.phase === 'operating' ? 'operating' : 'thinking' }
       else if (event.event === 'canvas_operation') { activityPhase.value = 'operating'; status.value = event.data.label; handleCanvasCommand(event.data) }
-      else if (event.event === 'done') { reply!.status = 'COMPLETE'; quota.value = event.data.quota; celebrate(); playSound('complete') }
+      else if (event.event === 'done') { reply!.status = 'COMPLETE'; quota.value = event.data.quota; if(!taskFailed.value)celebrate(); playSound('complete') }
       else if (event.event === 'error') { failCanvasExecution(); error.value = event.data.message; reply!.status = 'FAILED'; playSound('error') }
       else {
         reply!.events.push(event)
+        if(event.event==='workspace_result'&&event.data.status==='FAILED')taskFailed.value=true
         if (event.event === 'memory') window.dispatchEvent(new Event('closet-agent-memory-changed'))
         if (event.event === 'navigation') { void router.push(event.data.path); showPage() }
       }
@@ -121,19 +126,20 @@ function keyboard(e: KeyboardEvent) {
   }
 }
 function resize() { compact.value = window.innerWidth < 1024; viewport.value = { width: window.innerWidth, height: window.innerHeight } }
+watch(() => closet.user?.username, async username=>{avatarCue.value=null;applyAvatarMode('personal');if(username&&!usingMocks){try{const p=await agentRequest<{avatarMode:string}>('/preferences');if(closet.user?.username===username)applyAvatarMode(p.avatarMode)}catch{}}},{immediate:true})
 watch(() => route.path, () => { imageConsent.value = false; personalConsent.value = false })
 watch([open, compact], ([visible, mobile]) => document.documentElement.classList.toggle('assistant-mobile-open', visible && mobile))
 onMounted(() => { try { pinned.value = localStorage.getItem(pinKey.value) !== 'false' } catch {}; window.addEventListener('resize', resize); window.addEventListener('keydown', keyboard) })
 onUnmounted(() => { abort?.abort(); clearTimeout(delightTimer); window.removeEventListener('resize', resize); window.removeEventListener('keydown', keyboard); document.documentElement.classList.remove('assistant-mobile-open') })
 </script>
 <template>
-  <AssistantOrb ref="launcher" :open="open" :mood="mood" :busy="busy" @toggle="toggle" />
+  <AssistantOrb ref="launcher" :open="open" :mood="mood" :busy="busy" :phase="isOperating?'operating':activityPhase" :tool="activityTool" :cue="avatarCue" @toggle="toggle" />
   <Teleport to="body">
     <Transition name="assistant-scrim"><div v-if="open && compact" class="assistant-scrim" @click="close" /></Transition>
     <Transition name="assistant-window">
       <aside v-if="open" id="closet-assistant" ref="panel" class="assistant-panel" :class="{ pinned, floating: !pinned, dragging: floating.dragging.value }" :style="panelStyle" :role="compact ? 'dialog' : 'complementary'" :aria-modal="compact || undefined" aria-label="个人助手">
         <header class="assistant-header" @pointerdown="startPanelDrag" @pointermove="floating.move" @pointerup="floating.end" @pointercancel="floating.end" @lostpointercapture="floating.end">
-          <div class="assistant-identity"><AssistantFace :mood="mood" /><div><strong>衣序助手</strong><small :title="session?.title">{{ session?.title || '今天也一起好好穿衣' }}</small></div></div>
+          <div class="assistant-identity"><BloubAvatar class="assistant-face" :size="38" :expression="error?'concern':busy?'attentive':'neutral'" /><div><strong>衣序助手</strong><small :title="session?.title">{{ session?.title || '今天也一起好好穿衣' }}</small></div></div>
           <div class="assistant-header-actions" data-no-drag>
             <a-tooltip title="新建对话"><a-button type="text" aria-label="新建对话" :disabled="busy || usingMocks" @click="newSession"><PlusOutlined /></a-button></a-tooltip>
             <a-tooltip title="聊天记录"><a-button type="text" aria-label="聊天记录" :disabled="busy || loading" @click="historyOpen = true"><HistoryOutlined /></a-button></a-tooltip>
@@ -144,7 +150,7 @@ onUnmounted(() => { abort?.abort(); clearTimeout(delightTimer); window.removeEve
         </header>
         <div class="assistant-context"><span class="assistant-context-dot" /><span :title="contextName">{{ contextName }}</span><small>随页面更新</small></div>
         <div ref="transcript" class="assistant-transcript" aria-label="聊天记录" aria-live="polite" :aria-busy="busy">
-          <div v-if="!messages.length" class="assistant-welcome"><AssistantFace mood="happy" /><p class="eyebrow">从你的衣柜开始</p><h2>今天想怎么穿？</h2><p>告诉我场景，或选中一件衣物。<br />平台怎么用，也可以问我。</p><a-button block @click="input = '帮我组合三套通勤穿搭'; textarea?.focus()">帮我搭三套通勤穿搭</a-button><a-button block @click="input = '组合台怎么使用？'; textarea?.focus()">了解组合台怎么使用</a-button></div>
+          <div v-if="!messages.length" class="assistant-welcome"><BloubAvatar class="assistant-face" :size="74" expression="happy" /><p class="eyebrow">从你的衣柜开始</p><h2>今天想怎么穿？</h2><p>告诉我场景，或选中一件衣物。<br />平台怎么用，也可以问我。</p><a-button block @click="input = '帮我组合三套通勤穿搭'; textarea?.focus()">帮我搭三套通勤穿搭</a-button><a-button block @click="input = '组合台怎么使用？'; textarea?.focus()">了解组合台怎么使用</a-button></div>
           <article v-for="item in messages" :key="item.id" class="assistant-message" :class="item.role"><small>{{ item.role === 'user' ? '你' : '衣序助手' }}</small><p v-if="item.content" class="assistant-text">{{ item.content }}</p><span v-if="item.status === 'FAILED'" class="assistant-interrupted">回复未完成</span>
             <a-collapse v-if="item.events.some(e => e.event === 'operation_result')" ghost class="assistant-operation-record"><a-collapse-panel key="steps" header="查看搭台操作记录"><ol><li v-for="event in item.events.filter(e => e.event === 'operation_result')" :key="event.data.operationId">{{ event.data.success ? '✓' : '!' }} {{ event.data.label }}<small v-if="event.data.message"> · {{ event.data.message }}</small></li></ol></a-collapse-panel></a-collapse>
             <template v-for="(event, index) in item.events" :key="index">
@@ -164,7 +170,7 @@ onUnmounted(() => { abort?.abort(); clearTimeout(delightTimer); window.removeEve
             <a-button type="primary" html-type="submit" shape="circle" aria-label="发送消息" data-sound="off" :loading="busy" :disabled="busy || !input.trim() || !models.configured"><SendOutlined /></a-button>
           </form>
           <div class="assistant-composer-tools">
-            <div><SoundToggle /><a-popover v-model:open="optionsOpen" title="本次对话选项" trigger="click" placement="topLeft" overlay-class-name="assistant-options-popover"><a-button type="text" aria-label="助手对话选项" :aria-expanded="optionsOpen"><SettingOutlined /></a-button><template #content><div class="assistant-options"><label>本会话模型</label><a-select :value="session?.model || ''" aria-label="本会话模型" :options="modelOptions" :disabled="!selected || busy" @change="setModel" /><small v-if="!selected">发送消息或新建对话后可设置会话模型。</small><a-checkbox v-if="context.garmentId" v-model:checked="imageConsent" :disabled="busy">发送当前衣物图片到模型（仅本条）</a-checkbox><a-checkbox v-model:checked="personalConsent" :disabled="busy">同意保存本条的尺码 / 身材信息</a-checkbox><label>小助手的表情</label><a-segmented v-model:value="expression" :options="[{ value: 'auto', label: '随心' }, { value: 'idle', label: '乖巧' }, { value: 'happy', label: '开心' }, { value: 'sleep', label: '困困' }]" /><small>处理消息时会自动切换工作表情。</small></div></template></a-popover><span v-if="imageConsent || personalConsent" class="assistant-consent-badge">本条已授权</span></div>
+            <div><SoundToggle /><a-popover v-model:open="optionsOpen" title="本次对话选项" trigger="click" placement="topLeft" overlay-class-name="assistant-options-popover"><a-button type="text" aria-label="助手对话选项" :aria-expanded="optionsOpen"><SettingOutlined /></a-button><template #content><div class="assistant-options"><label>本会话模型</label><a-select :value="session?.model || ''" aria-label="本会话模型" :options="modelOptions" :disabled="!selected || busy" @change="setModel" /><small v-if="!selected">发送消息或新建对话后可设置会话模型。</small><a-checkbox v-if="context.garmentId" v-model:checked="imageConsent" :disabled="busy">发送当前衣物图片到模型（仅本条）</a-checkbox><a-checkbox v-model:checked="personalConsent" :disabled="busy">同意保存本条的尺码 / 身材信息</a-checkbox><RouterLink to="/settings" @click="optionsOpen=false;showPage()">设置角色动效与预览 ↗</RouterLink></div></template></a-popover><span v-if="imageConsent || personalConsent" class="assistant-consent-badge">本条已授权</span></div>
             <small>{{ quota ? `今日剩余 ${Math.max(0, quota.limit - quota.used)} 条` : '正在读取额度' }}</small>
           </div>
         </footer>

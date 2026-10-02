@@ -752,7 +752,7 @@ async function saveOutfit() {
     if (isNew.value) await router.replace(`/outfits/${result.id}`)
     else loaded = true
     playSound('success')
-    message.success('搭配已保存，可在手机和电脑继续编辑。')
+    window.dispatchEvent(new Event('closet-outfit-saved')); message.success('搭配已保存，可在手机和电脑继续编辑。')
   } catch (cause) {
     const text = cause instanceof Error ? cause.message : '搭配暂时无法保存。'
     if (/已在另一处更新|版本|conflict/i.test(text)) remoteConflict.value = true

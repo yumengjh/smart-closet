@@ -61,7 +61,7 @@ async function writeBoard(board: WorkspaceBoard, overwrite = false, copy = false
   const revision = overwrite ? board.sourceRevision : board.revision
   const result = await closetApi.saveOutfit(id || null, id ? revision ?? null : null, board.name.trim(), board.scene)
   board.outfitId = result.id; board.revision = result.revision; board.scene = normalizeScene(result.scene); board.contentVersion++
-  board.savedSignature = boardSignature(board); board.status = '已保存'; board.error = ''; board.sourceOutfitId = undefined; board.sourceRevision = undefined
+  window.dispatchEvent(new Event('closet-outfit-saved')); board.savedSignature = boardSignature(board); board.status = '已保存'; board.error = ''; board.sourceOutfitId = undefined; board.sourceRevision = undefined
 }
 function confirmSave(boards = selection.value) {
   editor.value?.flush()
