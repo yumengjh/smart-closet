@@ -38,7 +38,8 @@ const pinKey = computed(() => `yixu.assistant-pin.v1:${closet.user?.username || 
 const panelKey = computed(() => `yixu.assistant-panel.v1:${closet.user?.username || 'local'}`)
 const dimensions = computed(() => ({ width: Math.min(420, viewport.value.width - 16), height: Math.min(720, viewport.value.height - 112) }))
 const floating = useFloatingPosition(panelKey, dimensions, () => 100)
-const panelStyle = computed(() => compact.value || pinned.value ? undefined : { ...floating.style.value, width: `${dimensions.value.width}px`, height: `${dimensions.value.height}px` })
+const mobileViewport = ref({ height: window.visualViewport?.height ?? window.innerHeight, top: window.visualViewport?.offsetTop ?? 0 })
+const panelStyle = computed(() => compact.value ? { top: `${mobileViewport.value.top}px`, height: `${mobileViewport.value.height}px` } : pinned.value ? undefined : { ...floating.style.value, width: `${dimensions.value.width}px`, height: `${dimensions.value.height}px` })
 const mood = computed(() => busy.value ? 'thinking' : (error.value||taskFailed.value) ? 'concern' : delighted.value ? 'happy' : 'idle')
 const modelOptions = computed(() => [{ value: '', label: `个人默认 · ${personalModel.value || models.value.defaultModel}` }, ...models.value.models.map(value => ({ value, label: value }))])
 let delightTimer: ReturnType<typeof setTimeout> | undefined
@@ -113,7 +114,7 @@ async function send() {
 }
 function showPage() { if (compact.value) open.value = false }
 function enter(e: KeyboardEvent) { if (e.isComposing) return; e.preventDefault(); void send() }
-async function toggle() { if (open.value) { close(); return } open.value = true; playSound('pop'); await load(); await nextTick(); await scrollBottom(); textarea.value?.focus() }
+async function toggle() { if (open.value) { close(); return } open.value = true; playSound('pop'); await load(); await nextTick(); await scrollBottom(); if (compact.value) panel.value?.focus({ preventScroll: true }); else textarea.value?.focus() }
 function keyboard(e: KeyboardEvent) {
   if (!open.value || [...document.querySelectorAll('.ant-modal-wrap')].some(el => el.getClientRects().length)) return
   if (e.key === 'Escape' && [...document.querySelectorAll('.ant-dropdown, .ant-select-dropdown')].some(el => el.getClientRects().length && getComputedStyle(el).display !== 'none')) return
@@ -125,19 +126,41 @@ function keyboard(e: KeyboardEvent) {
     else if (!e.shiftKey && document.activeElement === elements.at(-1)) { e.preventDefault(); elements[0]?.focus() }
   }
 }
-function resize() { compact.value = window.innerWidth < 1024; viewport.value = { width: window.innerWidth, height: window.innerHeight } }
+function resize() { compact.value = window.innerWidth < 1024; viewport.value = { width: window.innerWidth, height: window.innerHeight }; resizeMobileViewport() }
+function resizeMobileViewport() { mobileViewport.value = { height: window.visualViewport?.height ?? window.innerHeight, top: window.visualViewport?.offsetTop ?? 0 } }
 watch(() => closet.user?.username, async username=>{avatarCue.value=null;applyAvatarMode('personal');if(username&&!usingMocks){try{const p=await agentRequest<{avatarMode:string}>('/preferences');if(closet.user?.username===username)applyAvatarMode(p.avatarMode)}catch{}}},{immediate:true})
 watch(() => route.path, () => { imageConsent.value = false; personalConsent.value = false })
-watch([open, compact], ([visible, mobile]) => document.documentElement.classList.toggle('assistant-mobile-open', visible && mobile))
-onMounted(() => { try { pinned.value = localStorage.getItem(pinKey.value) !== 'false' } catch {}; window.addEventListener('resize', resize); window.addEventListener('keydown', keyboard) })
-onUnmounted(() => { abort?.abort(); clearTimeout(delightTimer); window.removeEventListener('resize', resize); window.removeEventListener('keydown', keyboard); document.documentElement.classList.remove('assistant-mobile-open') })
+// Fix the body as well as hiding overflow, so iOS cannot scroll the page beneath the dialog.
+let scrollLock: { x: number; y: number; styles: [string, string, string][]; app: HTMLElement | null; inert: boolean } | undefined
+function lockBackground(lock: boolean) {
+  if (lock === !!scrollLock) return
+  const body = document.body
+  if (lock) {
+    const app = document.getElementById('app')
+    scrollLock = { x: window.scrollX, y: window.scrollY, styles: ['position', 'top', 'left', 'width', 'overflow'].map(name => [name, body.style.getPropertyValue(name), body.style.getPropertyPriority(name)]), app, inert: app?.inert ?? false }
+    body.style.position = 'fixed'; body.style.top = `${-scrollLock.y}px`; body.style.left = `${-scrollLock.x}px`; body.style.width = '100%'; body.style.overflow = 'hidden'
+    if (app) app.inert = true
+    document.documentElement.classList.add('assistant-mobile-open')
+    resizeMobileViewport()
+  } else if (scrollLock) {
+    const saved = scrollLock; scrollLock = undefined
+    for (const [name, value, priority] of saved.styles) { if (value) body.style.setProperty(name, value, priority); else body.style.removeProperty(name) }
+    if (saved.app) saved.app.inert = saved.inert
+    document.documentElement.classList.remove('assistant-mobile-open')
+    // Instant restoration avoids a page-wide smooth-scroll animation when closing.
+    window.scrollTo({ left: saved.x, top: saved.y, behavior: 'instant' })
+  }
+}
+watch([open, compact], ([visible, mobile]) => lockBackground(visible && mobile), { flush: 'post' })
+onMounted(() => { try { pinned.value = localStorage.getItem(pinKey.value) !== 'false' } catch {}; window.addEventListener('resize', resize); window.addEventListener('keydown', keyboard); window.visualViewport?.addEventListener('resize', resizeMobileViewport); window.visualViewport?.addEventListener('scroll', resizeMobileViewport) })
+onUnmounted(() => { abort?.abort(); clearTimeout(delightTimer); window.removeEventListener('resize', resize); window.removeEventListener('keydown', keyboard); window.visualViewport?.removeEventListener('resize', resizeMobileViewport); window.visualViewport?.removeEventListener('scroll', resizeMobileViewport); lockBackground(false) })
 </script>
 <template>
   <AssistantOrb ref="launcher" :open="open" :mood="mood" :busy="busy" :phase="isOperating?'operating':activityPhase" :tool="activityTool" :cue="avatarCue" @toggle="toggle" />
   <Teleport to="body">
     <Transition name="assistant-scrim"><div v-if="open && compact" class="assistant-scrim" @click="close" /></Transition>
     <Transition name="assistant-window">
-      <aside v-if="open" id="closet-assistant" ref="panel" class="assistant-panel" :class="{ pinned, floating: !pinned, dragging: floating.dragging.value }" :style="panelStyle" :role="compact ? 'dialog' : 'complementary'" :aria-modal="compact || undefined" aria-label="个人助手">
+      <aside v-if="open" id="closet-assistant" ref="panel" tabindex="-1" class="assistant-panel" :class="{ pinned, floating: !pinned, dragging: floating.dragging.value }" :style="panelStyle" :role="compact ? 'dialog' : 'complementary'" :aria-modal="compact || undefined" aria-label="个人助手">
         <header class="assistant-header" @pointerdown="startPanelDrag" @pointermove="floating.move" @pointerup="floating.end" @pointercancel="floating.end" @lostpointercapture="floating.end">
           <div class="assistant-identity"><BloubAvatar class="assistant-face" :size="38" :expression="error?'concern':busy?'attentive':'neutral'" /><div><strong>衣序助手</strong><small :title="session?.title">{{ session?.title || '今天也一起好好穿衣' }}</small></div></div>
           <div class="assistant-header-actions" data-no-drag>
