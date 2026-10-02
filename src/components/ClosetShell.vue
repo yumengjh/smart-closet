@@ -92,7 +92,9 @@ async function signOut() {
           <div class="profile-row">
             <span class="avatar">{{ closet.user?.username?.slice(0, 1).toUpperCase() }}</span>
             <span class="profile-name"><strong>{{ closet.user?.username }}</strong><small>我的衣橱</small></span>
-            <a-button type="text" danger class="sign-out" title="退出登录" aria-label="退出登录" @click="signOut"><LogoutOutlined /> <span>退出</span></a-button>
+            <a-tooltip title="退出登录">
+              <a-button type="text" shape="circle" danger class="sign-out" aria-label="退出登录" @click="signOut"><template #icon><LogoutOutlined /></template></a-button>
+            </a-tooltip>
           </div>
         </aside>
         <main class="main-area">
