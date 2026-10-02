@@ -63,7 +63,9 @@ function leave(e:PointerEvent){if(!e.relatedTarget&&!pressed.value)resetGaze()}
 function hide(){visible.value=!document.hidden;if(!visible.value)resetGaze()}
 function preference(){reduced.value=media.matches}
 function saved(){if(!props.busy)play('burst','happy')}
-defineExpose({focus:()=>control.value?.$el.focus()})
+const appearance=computed(()=>({state:state.value,expression:expression.value,animate:enabled.value,repeat:props.busy&&props.phase!=='responding',look:state.value==='idle'?look.value:null}))
+const responding=computed(()=>enabled.value&&props.busy&&props.phase==='responding'&&!local.value)
+defineExpose({focus:()=>control.value?.$el.focus(),appearance,responding})
 onMounted(()=>{schedule();document.addEventListener('visibilitychange',hide);window.addEventListener('pointermove',pointer);document.addEventListener('pointerout',leave);window.addEventListener('blur',resetGaze);media.addEventListener('change',preference);window.addEventListener('closet-outfit-saved',saved)})
 onUnmounted(()=>{clearTimeout(idleTimer);clearTimeout(actionTimer);document.removeEventListener('visibilitychange',hide);window.removeEventListener('pointermove',pointer);document.removeEventListener('pointerout',leave);window.removeEventListener('blur',resetGaze);media.removeEventListener('change',preference);window.removeEventListener('closet-outfit-saved',saved)})
 </script>
@@ -71,7 +73,7 @@ onUnmounted(()=>{clearTimeout(idleTimer);clearTimeout(actionTimer);document.remo
 <Teleport to="body">
 <a-tooltip :title="position.dragging.value?'':open?'收起助手 · 拖动可以移动':'找我聊聊 · 拖动可以移动'" placement="left">
 <a-button ref="control" class="assistant-orb bloub-orb" shape="circle" :class="{dragging:position.dragging.value,active:open}" :style="position.style.value" :data-avatar-state="state" :data-avatar-mode="avatarPreferences.mode" data-sound="off" :aria-label="open?'收起个人助手':'打开个人助手'" :aria-expanded="open" aria-controls="closet-assistant" @pointerdown="down" @pointermove="move" @pointerup="end" @pointercancel="end" @lostpointercapture="end" @keydown="position.keyboard" @click="activate" @pointerenter="hovered=true" @pointerleave="hovered=false">
-<span class="bloub-orb-shape" :class="{'bloub-responding':enabled&&busy&&phase==='responding'&&!local}" :style="{transform:deformation}"><BloubAvatar :state="state" :expression="expression" :size="80" :animate="enabled" :repeat="busy&&phase!=='responding'" :look="state==='idle'?look:null" /></span>
+<span class="bloub-orb-shape" :class="{'bloub-responding':responding}" :style="{transform:deformation}"><BloubAvatar v-bind="appearance" :size="80" /></span>
 </a-button>
 </a-tooltip>
 </Teleport>

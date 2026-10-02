@@ -28,7 +28,7 @@ const operationSteps = computed(() => messages.value.at(-1)?.events.filter(e => 
 const sessions = ref<AgentSession[]>([]); const selected = ref(''); const messages = ref<AgentMessage[]>([])
 const models = ref<Models>({ defaultModel: '', models: [], configured: false }); const personalModel = ref(''); const quota = ref<Quota | null>(null)
 const imageConsent = ref(false); const personalConsent = ref(false); const compact = ref(window.innerWidth < 1024)
-const textarea = ref<{ focus: () => void } | null>(null); const transcript = ref<HTMLDivElement | null>(null); const panel = ref<HTMLElement | null>(null); const launcher = ref<{ focus: () => void } | null>(null)
+const textarea = ref<{ focus: () => void } | null>(null); const transcript = ref<HTMLDivElement | null>(null); const panel = ref<HTMLElement | null>(null); const launcher = ref<InstanceType<typeof AssistantOrb> | null>(null)
 let abort: AbortController | undefined
 const closet = useClosetStore()
 const historyOpen = ref(false); const renameOpen = ref(false); const renameTitle = ref(''); const renaming = ref(false)
@@ -162,7 +162,7 @@ onUnmounted(() => { abort?.abort(); clearTimeout(delightTimer); window.removeEve
     <Transition name="assistant-window">
       <aside v-if="open" id="closet-assistant" ref="panel" tabindex="-1" class="assistant-panel" :class="{ pinned, floating: !pinned, dragging: floating.dragging.value }" :style="panelStyle" :role="compact ? 'dialog' : 'complementary'" :aria-modal="compact || undefined" aria-label="个人助手">
         <header class="assistant-header" @pointerdown="startPanelDrag" @pointermove="floating.move" @pointerup="floating.end" @pointercancel="floating.end" @lostpointercapture="floating.end">
-          <div class="assistant-identity"><BloubAvatar class="assistant-face" :size="38" :expression="error?'concern':busy?'attentive':'neutral'" /><div><strong>鱼搭助手</strong><small :title="session?.title">{{ session?.title || '今天也一起好好穿衣' }}</small></div></div>
+          <div class="assistant-identity"><span class="assistant-face assistant-header-avatar" :class="{'bloub-responding':launcher?.responding}"><BloubAvatar v-bind="launcher?.appearance" :size="48" /></span><div><strong>鱼搭助手</strong><small :title="session?.title">{{ session?.title || '今天也一起好好穿衣' }}</small></div></div>
           <div class="assistant-header-actions" data-no-drag>
             <a-tooltip title="新建对话"><a-button type="text" aria-label="新建对话" :disabled="busy || usingMocks" @click="newSession"><PlusOutlined /></a-button></a-tooltip>
             <a-tooltip title="聊天记录"><a-button type="text" aria-label="聊天记录" :disabled="busy || loading" @click="historyOpen = true"><HistoryOutlined /></a-button></a-tooltip>
@@ -190,7 +190,7 @@ onUnmounted(() => { abort?.abort(); clearTimeout(delightTimer); window.removeEve
           <p v-if="!models.configured && !loading" class="assistant-not-configured">{{ usingMocks ? '演示模式不调用助手' : '助手尚未配置，请联系平台维护者。' }}</p>
           <form class="assistant-input-box" @submit.prevent="send">
             <a-textarea ref="textarea" v-model:value="input" aria-label="发送给助手的消息" :maxlength="4000" :auto-size="{ minRows: 1, maxRows: 4 }" placeholder="想怎么搭？或者问问平台用法…" :bordered="false" :disabled="busy || !models.configured" @keydown.enter.exact="enter" />
-            <a-button type="primary" html-type="submit" shape="circle" aria-label="发送消息" data-sound="off" :loading="busy" :disabled="busy || !input.trim() || !models.configured"><SendOutlined /></a-button>
+            <a-button type="primary" html-type="submit" shape="circle" aria-label="发送消息" data-sound="off" :loading="busy" :disabled="busy || !input.trim() || !models.configured"><template #icon><SendOutlined /></template></a-button>
           </form>
           <div class="assistant-composer-tools">
             <div><SoundToggle /><a-popover v-model:open="optionsOpen" title="本次对话选项" trigger="click" placement="topLeft" overlay-class-name="assistant-options-popover"><a-button type="text" aria-label="助手对话选项" :aria-expanded="optionsOpen"><SettingOutlined /></a-button><template #content><div class="assistant-options"><label>本会话模型</label><a-select :value="session?.model || ''" aria-label="本会话模型" :options="modelOptions" :disabled="!selected || busy" @change="setModel" /><small v-if="!selected">发送消息或新建对话后可设置会话模型。</small><a-checkbox v-if="context.garmentId" v-model:checked="imageConsent" :disabled="busy">发送当前衣物图片到模型（仅本条）</a-checkbox><a-checkbox v-model:checked="personalConsent" :disabled="busy">同意保存本条的尺码 / 身材信息</a-checkbox><RouterLink to="/settings" @click="optionsOpen=false;showPage()">设置角色动效与预览 ↗</RouterLink></div></template></a-popover><span v-if="imageConsent || personalConsent" class="assistant-consent-badge">本条已授权</span></div>
