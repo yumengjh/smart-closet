@@ -96,5 +96,14 @@ h3 { font-size: 15px; line-height: 1.5; font-weight: 600; }
 .previous-progress summary { padding: 14px 16px; min-height: 44px; font-size: 12px; color: var(--muted); cursor: pointer; line-height: 1.8; }
 .previous-progress .progress-panel { border: 0; box-shadow: none; }
 
+.portable-login-card { grid-column: 1 / -1; }
+.portable-login-card .settings-hint { margin-top: 0; }
+.portable-link-result { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 8px; margin-top: 18px; }
+.portable-link-result label { grid-column: 1 / -1; font-size: 13px; color: #626774; }
+.portable-link-result .ant-input { min-width: 0; font-size: 12px; }
+.portable-message { margin-top: 14px; }
+.portable-pending-links { margin-top: 20px; }
+.portable-pending-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 12px; color: #737680; }
+
 .topbar-actions { display: flex; align-items: center; gap: 12px; }
 @media (max-width: 767px) { .topbar-actions { gap: 4px; } }

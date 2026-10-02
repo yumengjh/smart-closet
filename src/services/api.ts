@@ -151,7 +151,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
   const response = await fetch(path, { ...init, headers, credentials: 'same-origin' })
   if (!response.ok) {
-    if (response.status === 401 && path !== '/api/auth/login') window.dispatchEvent(new Event('closet-session-expired'))
+    if (response.status === 401 && !['/api/auth/login', '/api/auth/portable-login', '/api/auth/me'].includes(path)) window.dispatchEvent(new Event('closet-session-expired'))
     const data = await response.json().catch(() => ({})) as { code?: string; message?: string; detail?: string }
     if (response.status === 403 && data.code === 'PASSWORD_CHANGE_REQUIRED') window.dispatchEvent(new Event('closet-password-change-required'))
     throw new Error(data.message || data.detail || `请求失败 (${response.status})`)
@@ -208,6 +208,8 @@ function fromJob(job: WorkflowResponse): ClosetTask {
   }
 }
 
+export type PortableLoginLink = { id: string; createdAt: number; expiresAt: number; sessionExpiresAt: number | null; status: 'PENDING' | 'USED' | 'EXPIRED' | 'REVOKED' }
+export type PortableLoginGrant = { id: string; token: string; expiresAt: number }
 export const closetApi = {
   async metadataOptions(): Promise<Record<string, string[]>> {
     if (!usingMocks) return request<Record<string, string[]>>('/api/closet/metadata-options')
@@ -436,15 +438,33 @@ export const closetApi = {
     return { limit: 20, used: state.quotaUsed, resetAt: new Date(new Date().setHours(24, 0, 0, 0)).toISOString() }
   },
   async login(username: string, password: string) {
-    if (!usingMocks) { const result = await request<{ username: string; mustChangePassword: boolean }>('/api/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }); csrfToken = ''; return result }
+    if (!usingMocks) { const result = await request<{ username: string; mustChangePassword: boolean; portableLogin?: boolean }>('/api/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }); csrfToken = ''; return result }
     await delay(250)
     if (!username.trim() || !password.trim()) throw new Error('请输入用户名和密码。')
     localStorage.setItem('yixu.mock-user', username.trim())
     localStorage.setItem('yixu.mock-first-login', password === 'welcome123' ? '1' : '0')
     return { username: username.trim(), mustChangePassword: password === 'welcome123' }
   },
+  async createPortableLoginLink(currentPassword: string) {
+    if (usingMocks) throw new Error('演示模式不支持便携登录。')
+    return request<PortableLoginGrant>('/api/auth/portable-links', { method: 'POST', body: JSON.stringify({ currentPassword }) })
+  },
+  async portableLoginLinks() {
+    if (usingMocks) return [] as PortableLoginLink[]
+    return request<PortableLoginLink[]>('/api/auth/portable-links')
+  },
+  async revokePortableLoginLink(id: string) {
+    if (!usingMocks) await request<void>(`/api/auth/portable-links/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  },
+  async consumePortableLogin(token: string) {
+    if (window.location.protocol !== 'https:' && !['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname)) throw new Error('便携登录需要 HTTPS。')
+    if (usingMocks) throw new Error('演示模式不支持便携登录。')
+    const user = await request<{ username: string; mustChangePassword: boolean; portableLogin?: boolean }>('/api/auth/portable-login', { method: 'POST', body: JSON.stringify({ token }) })
+    csrfToken = ''
+    return user
+  },
   async currentUser() {
-    if (!usingMocks) return request<{ username: string; mustChangePassword: boolean }>('/api/auth/me')
+    if (!usingMocks) return request<{ username: string; mustChangePassword: boolean; portableLogin?: boolean }>('/api/auth/me')
     const username = localStorage.getItem('yixu.mock-user')
     return username ? { username, mustChangePassword: localStorage.getItem('yixu.mock-first-login') === '1' } : null
   },

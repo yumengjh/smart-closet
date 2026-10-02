@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useClosetStore } from './stores/closet'
 import { sessionRedirect } from './domain/session'
+import { closetApi } from './services/api'
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -25,6 +26,17 @@ export const router = createRouter({
 
 router.beforeEach(async (to) => {
   const closet = useClosetStore()
+  const hashParams = new URLSearchParams(window.location.hash.slice(1))
+  const portableToken = hashParams.get('portable-login')
+  if (portableToken) {
+    window.history.replaceState(window.history.state, '', window.location.pathname + window.location.search)
+    try {
+      closet.user = await closetApi.consumePortableLogin(portableToken)
+      await closet.refreshUser()
+      return { path: to.path, query: to.query, hash: '', replace: true }
+    }
+    catch { return { path: '/login', query: { portableLink: 'invalid' }, replace: true } }
+  }
   await closet.ensureUser()
   const destination = sessionRedirect(to.path, closet.user)
   if (destination) return { ...router.resolve(destination), replace: true }

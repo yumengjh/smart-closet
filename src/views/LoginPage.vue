@@ -1,15 +1,17 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { onMounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useClosetStore } from '../stores/closet'
 import { closetApi, usingMocks } from '../services/api'
 
 const router = useRouter()
+const route = useRoute()
 const closet = useClosetStore()
 const username = ref('')
 const password = ref('')
 const busy = ref(false)
 const error = ref('')
+onMounted(() => { if (route.query.portableLink === 'invalid') error.value = '便携登录链接无效、已使用或已过期，请让分享者重新生成。' })
 
 async function submit() {
   if (busy.value) return

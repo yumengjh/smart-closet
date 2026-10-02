@@ -1,4 +1,4 @@
-export type SessionUser = { username: string; mustChangePassword: boolean }
+export type SessionUser = { username: string; mustChangePassword: boolean; portableLogin?: boolean }
 
 export function sessionRedirect(path: string, user: SessionUser | null) {
   if (!user) return path === '/login' ? undefined : '/login'
