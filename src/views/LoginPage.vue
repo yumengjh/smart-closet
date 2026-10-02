@@ -1,13 +1,16 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useClosetStore } from '../stores/closet'
+import { useThemeStore } from '../stores/theme'
 import ThemeToggle from '../components/ThemeToggle.vue'
 import { closetApi, usingMocks } from '../services/api'
 
 const router = useRouter()
 const route = useRoute()
 const closet = useClosetStore()
+const appearance = useThemeStore()
+const loginIllustration = computed(() => appearance.isDark ? '/illustrations/yuda-login-dark.svg' : '/illustrations/yuda-login-light.svg')
 const username = ref('')
 const password = ref('')
 const busy = ref(false)
@@ -29,8 +32,7 @@ async function submit() {
 <template>
   <div class="login-page">
     <div class="login-art" aria-hidden="true">
-      <div class="login-sun"></div><div class="login-capsule cap-one"></div><div class="login-capsule cap-two"></div>
-      <img class="login-hero-logo" src="/yuda-logo.png" alt="鱼搭" /><p class="art-caption">从照片，<br /><em>到你的数字衣柜。</em></p>
+      <img class="login-hero-illustration" :src="loginIllustration" alt="" /><p class="art-caption">从照片，<br /><em>到你的数字衣柜。</em></p>
     </div>
     <div class="login-side">
       <div class="login-brand-row"><RouterLink to="/login" class="brand-lockup login-brand"><img class="brand-logo" src="/yuda-logo.png" alt="" /><span><strong>鱼搭</strong><small>数字衣橱</small></span></RouterLink><ThemeToggle /></div>
