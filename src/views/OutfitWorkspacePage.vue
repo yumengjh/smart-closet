@@ -38,6 +38,7 @@ function moreAction({ key }: { key: string | number }) {
   else if (key === 'overwrite' && active.value) overwriteSource(active.value)
   else if (key === 'export') void editor.value?.exportPng()
   else if (key === 'sound') toggleSound()
+  else if (key === 'discard-temporary') discardTemporaryWorkspace()
 }
 const currentRun = computed(() => canvasExecution.workspaceId === space.value.id && !!canvasExecution.runId)
 const selection = computed(() => checked.value.length ? space.value.boards.filter(b => checked.value.includes(b.id)) : active.value ? [active.value] : [])
@@ -83,6 +84,45 @@ function confirmSave(boards = selection.value) {
 function saveCopy(board: WorkspaceBoard) { editor.value?.flush(); modal.confirm({ title: '另存为新搭配？', content: '保留当前草稿并保存为独立搭配，原搭配不变。', okText: '另存新搭配', cancelText: '取消', async onOk() { try { await writeBoard(board, false, true); message.success('已另存新搭配。'); playSound('success') } catch (e) { board.error = String(e); message.error(String(e)); throw e } } }) }
 function overwriteSource(board: WorkspaceBoard) { editor.value?.flush(); modal.confirm({ title: '确认覆盖原搭配？', content: '将用这块临时画板替换原搭配。版本冲突时不会覆盖，草稿仍保留。', okText: '确认覆盖', cancelText: '取消', async onOk() { try { await writeBoard(board, true); playSound('success'); message.success('原搭配已更新。') } catch (e) { board.error = String(e); message.error(String(e)); throw e } } }) }
 function toggleChecked(id: string, selected: boolean) { checked.value = selected ? [...new Set([...checked.value, id])] : checked.value.filter(value => value !== id) }
+const manageableBoards = computed(() => space.value.boards.filter(board => !board.locked))
+const allManageableChecked = computed(() => manageableBoards.value.length > 0 && manageableBoards.value.every(board => checked.value.includes(board.id)))
+function toggleAllBoards(selected: boolean) { checked.value = selected ? manageableBoards.value.map(board => board.id) : [] }
+function discardBoards(boards = checked.value.length ? space.value.boards.filter(board => checked.value.includes(board.id)) : []) {
+  editor.value?.flush()
+  if (!boards.length) { message.info('请先勾选要丢弃的画板。'); return }
+  const removable = boards.filter(board => !board.locked)
+  if (!removable.length) { message.info('所选画板正在操作，暂时不能丢弃。'); return }
+  modal.confirm({
+    title: `丢弃所选 ${removable.length} 块画板？`,
+    content: '未保存的本机草稿会被移除。已保存到搭配库的搭配仍会保留。',
+    okText: '丢弃所选画板', cancelText: '继续保留', okButtonProps: { danger: true },
+    onOk() {
+      const ready = removable.filter(board => !board.locked)
+      if (!ready.length) { message.warning('所选画板已开始 Agent 操作，未作丢弃。'); return }
+      const ids = new Set(ready.map(board => board.id))
+      space.value.boards = space.value.boards.filter(board => !ids.has(board.id))
+      checked.value = checked.value.filter(id => !ids.has(id))
+      if (ids.has(space.value.activeId)) space.value.activeId = space.value.boards[0]?.id || ''
+      playSound('pop'); message.success(`已丢弃 ${ready.length} 块画板。`)
+    },
+  })
+}
+function discardTemporaryWorkspace() {
+  editor.value?.flush()
+  if (space.value.boards.some(board => board.locked)) { message.warning('Agent 正在操作画板，请等待完成或先停止操作。'); return }
+  const count = space.value.boards.length
+  if (!count) { message.info('当前临时搭台已经是空的。'); return }
+  modal.confirm({
+    title: '丢弃整个临时搭台？',
+    content: `将移除此对话中的 ${count} 块本机画板和未保存草稿。已经保存到搭配库的搭配会保留。`,
+    okText: '丢弃整个临时搭台', cancelText: '继续搭配', okButtonProps: { danger: true },
+    async onOk() {
+      if (space.value.boards.some(board => board.locked)) { message.warning('Agent 已开始操作，临时搭台仍然保留。'); return }
+      space.value.boards = []; space.value.activeId = ''; checked.value = []
+      playSound('pop'); await router.push('/outfits'); message.success('临时搭台已清空。')
+    },
+  })
+}
 function userCamera() { if (currentRun.value) canvasExecution.following = false }
 function wheel(event: WheelEvent) {
   userCamera()
@@ -169,7 +209,7 @@ onUnmounted(() => { endGlowPreview(); window.removeEventListener('resize', resiz
           <a-menu-item key="export" :disabled="!focus || !active?.scene.elements.length || !!active?.locked"><DownloadOutlined /> 导出当前搭配</a-menu-item>
           <a-menu-item v-if="active?.outfitId" key="copy" :disabled="!!active.locked">另存副本…</a-menu-item>
           <a-menu-item v-if="active?.sourceOutfitId && !active.outfitId" key="overwrite" :disabled="!!active.locked">覆盖原搭配…</a-menu-item>
-          <a-menu-divider /><a-menu-item key="preview"><AimOutlined /> 预览 AI 光晕</a-menu-item><a-menu-item key="sound"><SoundOutlined v-if="soundEnabled" /><AudioMutedOutlined v-else />{{ soundEnabled ? '关闭音效' : '开启音效' }}</a-menu-item>
+          <a-menu-item v-if="sessionId" key="discard-temporary" danger :disabled="!space.boards.length || !!currentRun"><CloseOutlined /> 丢弃整个临时搭台…</a-menu-item><a-menu-divider /><a-menu-item key="preview"><AimOutlined /> 预览 AI 光晕</a-menu-item><a-menu-item key="sound"><SoundOutlined v-if="soundEnabled" /><AudioMutedOutlined v-else />{{ soundEnabled ? '关闭音效' : '开启音效' }}</a-menu-item>
         </a-menu></template></a-dropdown>
         <a-button type="primary" class="workspace-save" :loading="saving" :disabled="!selection.length || selection.every(b => !!b.locked || !b.scene.elements.length)" @click="confirmSave().catch(() => {})"><SaveOutlined /><span>{{ checked.length ? `保存 ${checked.length} 套` : '保存' }}</span></a-button>
       </div>
@@ -185,7 +225,7 @@ onUnmounted(() => { endGlowPreview(); window.removeEventListener('resize', resiz
     <div v-else ref="viewport" class="workspace-viewport" aria-label="多画板工作平面" @wheel.prevent="wheel" @pointerdown="startPan" @pointermove="movePan" @pointerup="endPan" @pointercancel="endPan">
       <div class="workspace-surface" :style="surfaceStyle">
         <article v-for="(board, index) in space.boards" :key="board.id" class="workspace-artboard" :class="{ selected: active?.id === board.id, 'agent-operating': !!board.locked }" :style="{ left: `${index % 3 * 300}px`, top: `${Math.floor(index / 3) * 430}px` }">
-          <header><span>0{{ index + 1 }} · {{ board.name }}</span><a-checkbox :checked="checked.includes(board.id)" :disabled="!!board.locked" :aria-label="`选择保存 ${board.name}`" @change="toggleChecked(board.id, $event.target.checked)" /></header>
+          <header><span>0{{ index + 1 }} · {{ board.name }}</span><a-checkbox :checked="checked.includes(board.id)" :disabled="!!board.locked" :aria-label="`选择画板 ${board.name}`" @change="toggleChecked(board.id, $event.target.checked)" /></header>
           <a-button class="workspace-artboard-preview" @click="selectBoard(board, true)" :aria-label="`编辑 ${board.name}`"><OutfitThumbnail :scene="board.scene" :title="board.name" :resolution="420" /></a-button>
           <footer><span>{{ board.status }}</span><a-button type="text" :disabled="!!board.locked" :aria-label="`关闭画板 ${board.name}`" @click="closeBoard(board)"><CloseOutlined /></a-button></footer>
           <div v-if="board.locked" class="workspace-aurora workspace-aurora-board" aria-hidden="true" />
@@ -196,14 +236,15 @@ onUnmounted(() => { endGlowPreview(); window.removeEventListener('resize', resiz
     </div>
     <div v-if="currentRun || glowPreview" class="workspace-aurora workspace-aurora-area" aria-hidden="true" />
     <a-drawer v-model:open="boardsOpen" title="工作区画板" placement="left" :width="Math.min(360, windowWidth)" root-class-name="workspace-board-drawer">
-      <p class="workspace-drawer-note">{{ space.boards.length }} / 12 块 · {{ sessionId ? '临时方案满意后再保存' : '草稿自动保留在此设备' }}</p>
+      <p class="workspace-drawer-note">{{ space.boards.length }} / 12 块 · {{ checked.length ? `已选择 ${checked.length} 块` : sessionId ? '临时方案满意后再保存' : '草稿自动保留在此设备' }}</p>
+      <a-checkbox :checked="allManageableChecked" :indeterminate="checked.length > 0 && !allManageableChecked" :disabled="!manageableBoards.length" @change="toggleAllBoards($event.target.checked)">全选可管理画板</a-checkbox>
       <nav class="workspace-board-nav" aria-label="工作区画板"><div v-for="(board, index) in space.boards" :key="board.id" :class="{ active: active?.id === board.id }">
-        <a-checkbox :checked="checked.includes(board.id)" :aria-label="`选择保存 ${board.name}`" :disabled="!!board.locked" @change="toggleChecked(board.id, $event.target.checked)" />
+        <a-checkbox :checked="checked.includes(board.id)" :aria-label="`选择画板 ${board.name}`" :disabled="!!board.locked" @change="toggleChecked(board.id, $event.target.checked)" />
         <a-button type="text" class="workspace-board-choice" @click="selectFromDrawer(board)"><span>{{ index + 1 }} · {{ board.name }}</span><small>{{ board.locked ? '搭配中' : boardSignature(board) === board.savedSignature ? '已保存' : '本机草稿' }}</small></a-button>
         <a-button type="text" :disabled="!!board.locked" :aria-label="`关闭画板 ${board.name}`" @click="closeBoard(board)"><CloseOutlined /></a-button>
       </div></nav>
       <a-empty v-if="!space.boards.length" description="新建画板，开始一套搭配" />
-      <template #footer><div class="workspace-drawer-actions"><a-button :disabled="space.boards.length >= 12" @click="newBoard"><PlusOutlined /> 新画板</a-button><a-button type="primary" :loading="saving" :disabled="!checked.length" @click="confirmSave().catch(() => {})">保存所选 {{ checked.length }} 套</a-button></div></template>
+      <template #footer><div class="workspace-drawer-actions"><a-button :disabled="space.boards.length >= 12" @click="newBoard"><PlusOutlined /> 新画板</a-button><a-button danger :disabled="!checked.length || !selection.some(board => checked.includes(board.id) && !board.locked)" @click="discardBoards()"><CloseOutlined /> 丢弃所选 {{ checked.length }} 块</a-button><a-button type="primary" :loading="saving" :disabled="!selection.length" @click="confirmSave().catch(() => {})"><SaveOutlined /> 保存所选 {{ checked.length || (active ? 1 : 0) }} 套</a-button><a-button v-if="sessionId" danger block :disabled="!space.boards.length || !!currentRun" @click="discardTemporaryWorkspace">丢弃整个临时搭台</a-button></div></template>
     </a-drawer>
     <a-drawer v-model:open="boardInfo" title="搭配说明" :width="Math.min(380, windowWidth)">
       <template v-if="active"><h2 class="workspace-info-title">{{ active.name }}</h2><a-tag>{{ boardSignature(active) === active.savedSignature ? '已保存至搭配库' : '本机草稿' }}</a-tag><p>{{ active.reason || active.status }}</p><p>{{ sessionId ? '临时搭台不会自动保存到账号，请确认满意后保存。' : '草稿自动保留在当前设备，保存后才能在其他设备查看。' }}</p><a-alert v-if="active.scene.elements.some(e => ['INPUT','GENERATE','DISPLAY'].includes(e.assetKind))" type="info" message="原图含背景，穿搭衔接仅供参考。" show-icon /><a-alert v-if="active.error" type="error" :message="active.error" show-icon /></template>
@@ -236,8 +277,9 @@ onUnmounted(() => { endGlowPreview(); window.removeEventListener('resize', resiz
 .workspace-board-nav .ant-checkbox-wrapper { padding: 12px 0; }
 .workspace-board-nav .ant-btn:last-child { width: 44px; height: 44px; padding: 0; flex: none; }
 .workspace-drawer-note { margin-bottom: 16px; color: var(--muted); font-size: 13px; }
-.workspace-drawer-actions { display: flex; gap: 8px; }
-.workspace-drawer-actions .ant-btn { flex: 1; }
+.workspace-drawer-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.workspace-drawer-actions .ant-btn { flex: 1 1 auto; min-width: 0; }
+.workspace-drawer-actions .ant-btn-block { flex-basis: 100%; }
 .workspace-info-title { font-size: 18px; margin-bottom: 12px; }
 .workspace-notice { position: absolute; z-index: 40; top: 64px; left: 12px; right: 12px; }
 .workspace-runbar { position: absolute; z-index: 40; top: 64px; left: 248px; right: 288px; display: flex; align-items: center; gap: 8px; padding: 4px 8px 4px 14px; border: 1px solid #d1dcfa; border-radius: 10px; background: #edf2ff; box-shadow: 0 4px 16px #202a4010; font-size: 12px; }
