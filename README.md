@@ -2,6 +2,8 @@
 
 Vue 3、TypeScript、Vite、Vue Router、Pinia 和 Ant Design Vue 4 构成的数字衣柜界面。项目按手机与桌面同时设计，包含登录/首次改密、衣柜、单件录入、待确认、衣物详情、任务、我的和回收站。
 
+登录页与应用内支持浅色/深色主题切换，选择保存在当前浏览器。穿搭画板导出的图片不受界面主题影响。
+
 [页面流程与状态说明](docs/INTERACTION.md) · [后端运行与接口文档](../smart-closet-server/docs/CLOSET_PRODUCT.md) · [联调验证记录](../smart-closet-server/reports/closet/README.md)。
 
 ## 启动真实界面

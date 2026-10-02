@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useClosetStore } from '../stores/closet'
+import ThemeToggle from '../components/ThemeToggle.vue'
 import { closetApi, usingMocks } from '../services/api'
 
 const router = useRouter()
@@ -32,7 +33,7 @@ async function submit() {
       <img class="login-hero-logo" src="/yuda-logo.png" alt="鱼搭" /><p class="art-caption">从照片，<br /><em>到你的数字衣柜。</em></p>
     </div>
     <div class="login-side">
-      <RouterLink to="/login" class="brand-lockup login-brand"><img class="brand-logo" src="/yuda-logo.png" alt="" /><span><strong>鱼搭</strong><small>数字衣橱</small></span></RouterLink>
+      <div class="login-brand-row"><RouterLink to="/login" class="brand-lockup login-brand"><img class="brand-logo" src="/yuda-logo.png" alt="" /><span><strong>鱼搭</strong><small>数字衣橱</small></span></RouterLink><ThemeToggle /></div>
       <div class="login-form-wrap">
         <p class="eyebrow">专属衣橱</p><h1>登录你的衣柜</h1><p class="login-intro">使用受邀账号登录，查看你的照片、任务和衣物。</p>
         <form class="login-form" @submit.prevent="submit">

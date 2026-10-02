@@ -1,32 +1,50 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, watch } from 'vue'
 import zhCN from 'ant-design-vue/es/locale/zh_CN'
+import { theme as antTheme } from 'ant-design-vue'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import {
   AppstoreOutlined, CheckCircleOutlined, HistoryOutlined, PictureOutlined, PlusOutlined,
   SettingOutlined, LogoutOutlined, CloudOutlined,
 } from '@ant-design/icons-vue'
 import { useClosetStore } from '../stores/closet'
+import { useThemeStore } from '../stores/theme'
 import { usingMocks } from '../services/api'
 import SoundToggle from './SoundToggle.vue'
+import ThemeToggle from './ThemeToggle.vue'
 import AssistantPanel from '../agent/AssistantPanel.vue'
 import { installInteractionSounds, unlockSound } from '../services/sound'
 
 const route = useRoute()
 const router = useRouter()
 const closet = useClosetStore()
-const closetTheme = {
+const appearance = useThemeStore()
+const closetTheme = computed(() => ({
+  algorithm: appearance.isDark ? antTheme.darkAlgorithm : antTheme.defaultAlgorithm,
   token: {
-    colorPrimary: '#202124', colorInfo: '#3f6ff5', colorLink: '#2958cc', colorSuccess: '#25815d',
-    colorWarning: '#ac721c', colorError: '#c74747', borderRadius: 10,
-    controlHeight: 44, fontSize: 14,
+    colorPrimary: appearance.isDark ? '#829fff' : '#202124',
+    colorInfo: appearance.isDark ? '#91aaff' : '#3f6ff5',
+    colorLink: appearance.isDark ? '#adc2ff' : '#2958cc',
+    colorSuccess: appearance.isDark ? '#66c49a' : '#25815d',
+    colorWarning: appearance.isDark ? '#e5b65e' : '#ac721c',
+    colorError: appearance.isDark ? '#f08d8d' : '#c74747',
+    colorText: appearance.isDark ? '#edf0f6' : '#25262b',
+    colorTextSecondary: appearance.isDark ? '#aeb5c2' : '#737680',
+    colorTextLightSolid: appearance.isDark ? '#151a27' : '#ffffff',
+    colorBgBase: appearance.isDark ? '#191c23' : '#ffffff',
+    colorBgLayout: appearance.isDark ? '#191c23' : '#f7f8fa',
+    colorBgContainer: appearance.isDark ? '#242832' : '#ffffff',
+    colorBorder: appearance.isDark ? '#3b404b' : '#e8e9ee',
+    borderRadius: 10,
+    controlHeight: 44,
+    fontSize: 14,
     fontFamily: '"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif',
   },
   components: {
     Button: { fontWeight: 500, primaryShadow: 'none' },
-    Input: { activeShadow: '0 0 0 3px #3b6cf51c' },
+    Input: { activeShadow: appearance.isDark ? '0 0 0 3px #829fff30' : '0 0 0 3px #3b6cf51c' },
   },
-}
+}))
 const isLogin = computed(() => route.path === '/login')
 const isOutfitEditor = computed(() => route.path.startsWith('/outfits/'))
 const navItems = [
@@ -80,7 +98,7 @@ async function signOut() {
         </aside>
         <main class="main-area">
           <div v-if="usingMocks" class="mock-banner"><span class="mock-pulse"></span><span>界面演示 · 示例数据不是 AI 结果，演示模式禁止提交模型任务</span><span class="mock-banner-end">{{ closet.user?.username }} 的衣橱</span></div>
-          <header class="topbar"><span>鱼搭 <span class="topbar-divider">/</span> {{ route.path === '/add' ? '添加衣物' : route.path.startsWith('/garment') ? '衣物工作台' : route.path.startsWith('/outfits') ? '组合台' : navItems.find(item => item.path === route.path)?.label || '回收站' }}</span><div class="topbar-actions"><SoundToggle /><RouterLink v-if="!closet.user?.mustChangePassword" to="/tasks" class="topbar-tasks"><HistoryOutlined /> 任务记录<span v-if="closet.taskCount" class="nav-count">{{ closet.taskCount }}</span></RouterLink></div></header>
+          <header class="topbar"><span>鱼搭 <span class="topbar-divider">/</span> {{ route.path === '/add' ? '添加衣物' : route.path.startsWith('/garment') ? '衣物工作台' : route.path.startsWith('/outfits') ? '组合台' : navItems.find(item => item.path === route.path)?.label || '回收站' }}</span><div class="topbar-actions"><ThemeToggle /><SoundToggle /><RouterLink v-if="!closet.user?.mustChangePassword" to="/tasks" class="topbar-tasks"><HistoryOutlined /> 任务记录<span v-if="closet.taskCount" class="nav-count">{{ closet.taskCount }}</span></RouterLink></div></header>
           <section class="route-content"><RouterView /></section>
           <AssistantPanel v-if="!closet.user?.mustChangePassword" :key="closet.user?.username" />
         </main>
