@@ -8,8 +8,10 @@ import { metadataChoices, matchesMetadataOption, metadataPatch, rebaseMetadata, 
 import { isProcessing, blocksConfirmation, workflowSummary, generatedImages, imageLabels } from '../domain/workflow'
 import { useClosetStore } from '../stores/closet'
 import TaskProgress from '../components/TaskProgress.vue'
+import { batchApi } from '../services/batches'
 import { playSound } from '../services/sound'
 
+const source = ref<{batchId?: string; originalUrl?: string; previewUrl?: string; completion?: boolean}>({})
 const { modal } = AntApp.useApp()
 const route = useRoute(); const router = useRouter(); const closet = useClosetStore()
 const garment = ref<Garment | null>(null); const task = ref<ClosetTask | null>(null)
@@ -37,16 +39,17 @@ const selectedImage = computed(() => imageOptions.value.find(image => image.id =
 const latestResult = computed(() => results.value.find(image => image.id === viewedResultId.value) || results.value[results.value.length - 1])
 const resultUrl = computed(() => imageTab.value === '上传原图' ? garment.value?.sourceUrl : latestResult.value?.url)
 const resultCaption = computed(() => imageTab.value === '上传原图' ? '上传原图' : imageLabels[latestResult.value?.kind || ''] || '本次处理结果')
+const mainTarget = computed(() => task.value?.steps.find(step => step.recognition?.target)?.recognition?.target || garment.value?.target)
 const blocked = computed(() => blocksConfirmation(garment.value?.assessment))
 const stickerPending = computed(() => Boolean(garment.value?.imageProcessing?.stickerRequired && !garment.value.imageProcessing.stickerReady))
 const recoveryAsset = computed(() => {
-  const run = imageTask.value
+  const run = imageTask.value || task.value
   if (!run) return null
   const step = [...run.steps].reverse().find(step => step.outputUrl && ['ENSURE_TRANSPARENCY', 'SEGMENT', 'GENERATE', 'STICKER'].includes(step.type || ''))
   return run.assets?.find(asset => asset.url === step?.outputUrl) || run.assets?.find(asset => asset.url === run.inputUrl) || null
 })
 const forceAsset = computed(() => {
-  const run = imageTask.value
+  const run = imageTask.value || task.value
   const check = [...(run?.steps || [])].reverse().find(step => step.type === 'ENSURE_TRANSPARENCY')
   // Re-cut the image before its mask, so a damaged mask does not erase source pixels.
   return run?.assets?.find(asset => asset.url === check?.inputUrl) || run?.assets?.find(asset => asset.url === run.inputUrl) || recoveryAsset.value
@@ -110,7 +113,7 @@ function useOriginal() {
   modal.confirm({ title: '暂用上传原图入柜？', content: '贴纸尚未完成。本次保存原图和信息，不会把中间结果标记成贴纸。以后可从衣物详情继续制作。', okText: '暂用原图入柜', cancelText: '继续制作贴纸', onOk: () => save(true, true) })
 }
 async function continueSticker(policy: 'FORCE' | 'REVIEWED') {
-  const run = imageTask.value; const asset = policy === 'FORCE' ? forceAsset.value : recoveryAsset.value
+  const run = imageTask.value || task.value; const asset = policy === 'FORCE' ? forceAsset.value : recoveryAsset.value
   if (!run || !asset || processing.value || busy.value || connectionError.value) return
   if (dirty.value) { await save(false); if (error.value) return }
   busy.value = 'continue'; error.value = ''; success.value = ''
@@ -119,6 +122,7 @@ async function continueSticker(policy: 'FORCE' | 'REVIEWED') {
   try {
     const next = await closetApi.continueSticker(run.id, asset.id, policy, key)
     imageTask.value = next; task.value = next; viewedResultId.value = ''; imageTab.value = '处理结果'
+    continuationKeys.delete(identity)
     await router.replace({ path: route.path, query: { task: next.id } }); await load(); schedulePoll()
   } catch (cause) { error.value = cause instanceof Error ? cause.message : '本地处理提交失败，原图和修改已保留。' }
   finally { busy.value = '' }
@@ -171,7 +175,7 @@ function remove() {
 }
 async function restore() { if (!garment.value) return; busy.value = 'restore'; try { garment.value = await closetApi.restore(garment.value.id, 'DRAFT', garment.value.revision); syncForm(garment.value); await closet.refreshCounts() } catch (cause) { error.value = String(cause) } finally { busy.value = '' } }
 async function refresh() { await load(); schedulePoll() }
-onMounted(async () => { alive = true; await load(true); schedulePoll(); elapsedTimer = window.setInterval(() => { now.value = Date.now() }, 1000) })
+onMounted(async () => { alive = true; void batchApi.provenance(String(route.params.id)).then(value => { source.value=value }).catch(() => {}); await load(true); schedulePoll(); elapsedTimer = window.setInterval(() => { now.value = Date.now() }, 1000) })
 onUnmounted(() => { alive = false; generation++; window.clearTimeout(timer); window.clearInterval(elapsedTimer) })
 watch(() => route.params.id, async () => { generation++; window.clearTimeout(timer); baseline.value = null; task.value = null; imageTask.value = null; parentTask.value = null; continuationKeys.clear(); garment.value = null; loading.value = true; await load(true); schedulePoll() })
 watch(() => route.query.task, async () => { await load(); schedulePoll() })
@@ -191,13 +195,15 @@ watch(() => route.query.task, async () => { await load(); schedulePoll() })
       <a-alert v-if="success" type="success" :message="success" show-icon class="page-alert" />
       <div class="workspace-grid">
         <section class="result-panel">
-          <div class="panel-heading"><h2>图片结果</h2><a-segmented v-model:value="imageTab" :options="['处理结果', '上传原图']" /></div>
+          <a-alert v-if="source.completion" type="warning" show-icon message="这件衣物包含推测补全，请对照来源照片核对。" /><div v-if="source.batchId" class="batch-actions"><a-button :href="source.originalUrl" target="_blank">查看完整来源原图</a-button><a-button @click="router.push(`/batches/${source.batchId}`)">返回本批次，单件重做</a-button></div><div class="panel-heading"><h2>图片结果</h2><a-segmented v-model:value="imageTab" :options="['处理结果', '上传原图']" /></div>
           <div v-if="imageTab === '处理结果' && results.length > 1" class="result-choices"><a-button v-for="image in results" :key="image.id" :type="latestResult?.id === image.id ? 'primary' : 'text'" @click="viewedResultId = image.id">{{ imageLabels[image.kind] || '处理图片' }}</a-button></div><div class="result-canvas" :class="{ checkerboard: imageTab === '处理结果' && resultUrl }">
             <img v-if="resultUrl" :src="resultUrl" :alt="resultCaption" />
             <div v-else class="result-placeholder"><LoadingOutlined v-if="processing" spin /><PictureOutlined v-else /><h3>{{ processing ? task?.mode === '本地贴纸' ? '正在本地处理图片' : '结果图片尚未返回' : task?.mode === '仅识别' ? '本次只识别信息' : '本次没有可用结果图' }}</h3><p>{{ processing ? task?.mode === '本地贴纸' ? '正在本地抠图与制作贴纸，结果会在完成后显示。' : '请查看右侧处理进度，模型返回后会显示在这里。' : task?.mode === '仅识别' ? '此模式不会生成新图片，请查看上传原图及下方识别信息。' : '原图已保留，你可以重新处理，或使用原图入柜。' }}</p><a-button v-if="!processing" @click="imageTab = '上传原图'">查看上传原图</a-button></div>
             <span v-if="resultUrl" class="canvas-caption">{{ resultCaption }}</span>
           </div>
           <div v-if="garment.imageProcessing?.stickerReady && garment.imageProcessing.stickerAssetId !== selectedAssetId" class="result-choices"><a-button type="primary" :disabled="processing || Boolean(busy)" @click="selectedAssetId = garment.imageProcessing!.stickerAssetId!">选用贴纸展示图</a-button><span class="muted">{{ garment.status === 'ACTIVE' ? '选择后点击下方保存修改。' : '选择后核对信息并确认入柜。' }}</span></div>
+          <a-alert v-if="mainTarget" type="info" :message="`本次识别的是：${mainTarget.description}`" :description="mainTarget.worn ? '穿着照只整理这件衣物。被遮挡的细节可能无法还原，请对照原图核对后入柜。' : '信息与图片整理都以这件衣物为目标，请核对颜色、图案和细节。'" show-icon class="target-note" />
+          <div v-if="!stickerPending && !processing && forceAsset && garment.status !== 'TRASHED'" class="recut-completed"><span>背景还在，或衣物边缘不满意？</span><a-button :disabled="Boolean(busy) || usingMocks || blocked || Boolean(connectionError)" :loading="busy === 'continue'" @click="continueSticker('FORCE')">重新去背景</a-button><small>从抠图前的图片处理，不使用 AI 额度。</small></div>
           <div class="result-bottom"><span>{{ imageTab === '处理结果' && resultUrl ? task?.mode === '本地贴纸' ? '本地图片处理结果，请检查衣物边缘和透明背景。' : '请对照原图检查款式、颜色与细节。' : '上传原图始终保留，不会被处理结果覆盖。' }}</span><a-button v-if="resultUrl" type="text" :href="resultUrl" target="_blank"><EyeOutlined /> 查看大图</a-button></div>
           <section v-if="stickerPending && !processing && garment.status !== 'TRASHED'" class="sticker-recovery" aria-label="继续制作贴纸">
             <h3>还差一步：制作贴纸</h3><p>上方是中间结果，尚未贴纸化。透明检查是本地检测，耗时不代表 AI 生图时间。</p>

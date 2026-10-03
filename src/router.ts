@@ -16,6 +16,7 @@ export const router = createRouter({
     { path: '/outfits/:id', component: () => import('./views/OutfitWorkspacePage.vue') },
     { path: '/help', component: () => import('./views/HelpPage.vue') },
     { path: '/settings', component: () => import('./views/SettingsPage.vue') },
+    { path: '/batches/:id', component: () => import('./views/BatchPage.vue') },
     { path: '/add', component: () => import('./views/AddGarmentPage.vue') },
     { path: '/garment/:id', component: () => import('./views/GarmentPage.vue') },
     { path: '/trash', component: () => import('./views/TrashPage.vue') },

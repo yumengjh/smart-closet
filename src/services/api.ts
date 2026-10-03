@@ -6,6 +6,7 @@ import type { Outfit, OutfitScene } from '../domain/outfit'
 export type ClosetStatus = 'DRAFT' | 'ACTIVE' | 'TRASHED'
 export type ImageProcessing = { jobId: string; status: string; stickerRequired: boolean; stickerReady: boolean; stickerAssetId: string | null }
 export type TransparencyReport = { verdict: string; hasAlpha: boolean; transparentRatio: number; reasons: string[] }
+export type GarmentTarget = { description: string; worn: boolean; bounds: { x: number; y: number; width: number; height: number } }
 export type Garment = {
   id: string
   revision: number
@@ -36,6 +37,7 @@ export type Garment = {
   sourceOrigin: 'USER_UPLOAD' | 'GENERATED' | 'UNKNOWN'
   imageProcessing?: ImageProcessing | null
   assessment?: string
+  target?: GarmentTarget | null
   issues?: { message: string }[]
   reviewMessage?: string
   imageColor: string
@@ -45,7 +47,7 @@ export type Garment = {
   images: { id: string; url: string; kind: string; reviewStatus: string }[]
 }
 
-export type TaskStep = { name: string; type?: string; status: 'completed' | 'running' | 'failed' | 'waiting' | 'review' | 'skipped'; startedAt?: string; finishedAt?: string; inputUrl?: string; outputUrl?: string; error?: string; transparency?: { after: TransparencyReport } }
+export type TaskStep = { name: string; type?: string; status: 'completed' | 'running' | 'failed' | 'waiting' | 'review' | 'skipped'; startedAt?: string; finishedAt?: string; inputUrl?: string; outputUrl?: string; error?: string; transparency?: { after: TransparencyReport }; recognition?: { target?: GarmentTarget | null } }
 export type ClosetTask = {
   id: string
   garmentId: string
@@ -140,7 +142,7 @@ function writeMockOutfits(outfits: Outfit[]) {
 }
 const delay = (ms = 160) => new Promise((resolve) => setTimeout(resolve, ms))
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers)
   if (init.body && !(init.body instanceof FormData)) headers.set('Content-Type', 'application/json')
   const method = (init.method || 'GET').toUpperCase()
@@ -161,7 +163,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 type GarmentView = {
   id: string; revision: number; sourceAssetId: string; sourceUrl: string; sourceOrigin: Garment['sourceOrigin'];
-  displayAssetId: string; displayUrl: string; images: Garment['images']; automatic: { assessment?: string; issues?: { message: string }[]; attributes?: Record<string, { values: string[] }> } | null; overrides: Record<string, string[]>; effective: Record<string, string[]>;
+  displayAssetId: string; displayUrl: string; images: Garment['images']; automatic: { assessment?: string; target?: GarmentTarget | null; issues?: { message: string }[]; attributes?: Record<string, { values: string[] }> } | null; overrides: Record<string, string[]>; effective: Record<string, string[]>;
   latestRecognitionJobId: string | null; latestImageJobId: string | null; runs: { id: string; status: string; createdAtMs: number }[];
   imageProcessing?: ImageProcessing | null; status: Garment['status']; createdAtMs: number; updatedAtMs: number;
 }
@@ -169,7 +171,7 @@ type WorkflowResponse = {
   id: string; parentJobId?: string; status: string; createdAt: string; updatedAt: string; inputUrl?: string; outputUrl?: string;
   error?: { message: string } | null;
   request: { garmentId?: string; steps?: { type: string }[] };
-  steps: { type: string; status: string; startedAt?: string; finishedAt?: string; inputUrl?: string; outputUrl?: string; error?: { message: string }; transparency?: TaskStep['transparency'] }[];
+  steps: { type: string; status: string; startedAt?: string; finishedAt?: string; inputUrl?: string; outputUrl?: string; error?: { message: string }; transparency?: TaskStep['transparency']; recognition?: TaskStep['recognition'] }[];
   assets: Garment['images']; attempts?: ClosetTask['attempts'];
 }
 export const stepLabels: Record<string, string> = { RECOGNIZE: 'AI 识别衣物', GENERATE: 'AI 整理图片', SEGMENT: '本地抠图', ENSURE_TRANSPARENCY: '检查透明背景', STICKER: '制作贴纸' }
@@ -184,7 +186,7 @@ function fromView(view: GarmentView): Garment {
     : latestStatus === 'NEEDS_REVIEW' ? 'NEEDS_REVIEW' : latestStatus === 'FAILED' ? 'FAILED' : latestStatus === 'CANCELLED' ? 'CANCELLED'
       : latestStatus === 'SUCCEEDED' ? 'SUCCEEDED' : latestStatus === 'UNKNOWN' ? 'UNKNOWN' : undefined
   return {
-    id: view.id, revision: view.revision, sourceAssetId: view.sourceAssetId, displayAssetId: view.displayAssetId, images: view.images || [], assessment: view.automatic?.assessment, issues: view.automatic?.issues || [], status, updatedAt: new Date(view.updatedAtMs).toISOString(), displayUrl: view.displayUrl, sourceUrl: view.sourceUrl,
+    id: view.id, revision: view.revision, sourceAssetId: view.sourceAssetId, displayAssetId: view.displayAssetId, images: view.images || [], assessment: view.automatic?.assessment, target: view.automatic?.target, issues: view.automatic?.issues || [], status, updatedAt: new Date(view.updatedAtMs).toISOString(), displayUrl: view.displayUrl, sourceUrl: view.sourceUrl,
     automatic: Object.fromEntries(Object.entries(view.automatic?.attributes || {}).map(([key, attribute]) => [key, attribute.values])), overrides: view.overrides || {},
     category: view.effective.category || [], primaryColor: view.effective.primaryColor || [], secondaryColors: view.effective.secondaryColors || [],
     patterns: view.effective.patterns || [], neckline: view.effective.neckline || [], sleeveLength: view.effective.sleeveLength || [],
@@ -202,7 +204,7 @@ function fromJob(job: WorkflowResponse): ClosetTask {
   return { id: job.id, parentJobId: job.parentJobId, garmentId: job.request.garmentId || '', title: '衣物图片处理', status, mode, createdAt: job.createdAt, updatedAt: job.updatedAt,
     inputUrl: job.inputUrl, outputUrl: job.outputUrl, assets: job.assets || [], attempts: job.attempts || [],
     steps: job.steps.map((step) => ({ name: stepLabels[step.type] || step.type, type: step.type,
-      startedAt: step.startedAt, finishedAt: step.finishedAt, inputUrl: step.inputUrl, outputUrl: step.outputUrl, error: step.error?.message, transparency: step.transparency,
+      startedAt: step.startedAt, finishedAt: step.finishedAt, inputUrl: step.inputUrl, outputUrl: step.outputUrl, error: step.error?.message, transparency: step.transparency, recognition: step.recognition,
       status: step.status === 'SUCCEEDED' ? 'completed' : step.status === 'RUNNING' ? 'running' : ['FAILED', 'UNKNOWN', 'INTERRUPTED'].includes(step.status) ? 'failed' : step.status === 'NEEDS_REVIEW' ? 'review' : step.status === 'SKIPPED' ? 'skipped' : 'waiting' })),
     note: job.error?.message,
   }
@@ -306,7 +308,7 @@ export const closetApi = {
     await delay()
     return structuredClone(readMock().tasks.sort((a, b) => b.createdAt.localeCompare(a.createdAt)))
   },
-  async create(file: File, mode: Exclude<ClosetTask['mode'], '图片整理'>, options: { restage: boolean; precut: boolean; postcut: boolean; rotationDegrees: number; generationProvider?: string; generationModel?: string; recognitionProvider?: string; recognitionModel?: string }): Promise<ClosetTask> {
+  async create(file: File, mode: Exclude<ClosetTask['mode'], '图片整理'>, options: { restage: boolean; precut: boolean; postcut: boolean; rotationDegrees: number; transparencyPolicy?: 'AUTO' | 'FORCE'; generationProvider?: string; generationModel?: string; recognitionProvider?: string; recognitionModel?: string }): Promise<ClosetTask> {
     if (!usingMocks) {
       const form = new FormData()
       form.append('file', file)

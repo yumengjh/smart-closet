@@ -4,7 +4,7 @@ Vue 3、TypeScript、Vite、Vue Router、Pinia 和 Ant Design Vue 4 构成的数
 
 登录页与应用内支持浅色/深色主题切换，选择保存在当前浏览器。穿搭画板导出的图片不受界面主题影响。
 
-[页面流程与状态说明](docs/INTERACTION.md) · [后端运行与接口文档](../smart-closet-server/docs/CLOSET_PRODUCT.md) · [联调验证记录](../smart-closet-server/reports/closet/README.md)。
+[衣物入库最新完整设计](../smart-closet-server/docs/design/衣物入库最新设计.md) · [页面流程与状态说明](docs/INTERACTION.md) · [后端运行与接口文档](../smart-closet-server/docs/CLOSET_PRODUCT.md) · [联调验证记录](../smart-closet-server/reports/closet/README.md)。
 
 ## 启动真实界面
 
@@ -41,6 +41,8 @@ npm run build:server
 cd ../smart-closet-server
 mvn spring-boot:run
 ```
+
+后端 `src/main/resources/static/assets/` 为忽略的构建产物，不进入 Git；干净检出必须先执行此构建再打包后端。
 
 `build:server` 固定以 `VITE_USE_MOCKS=false` 构建，并发布静态文件到后端 `src/main/resources/static/`。Spring Boot 会在 `/` 和 Vue 页面地址提供应用，API、会话 Cookie 与页面保持同源。正式本地或局域网使用此方式时，不要从另一台电脑启用 Vite 模拟模式。
 
