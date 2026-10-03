@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { arrangeOutfit, orderOutfitLayers } from '../src/domain/outfit-layout.ts'
 import { dropOutfitLayer, copySticker, stickerLimit, elementKey, normalizeScene, nextElementPosition, outfitDropPosition, reorderOutfitElements, restoreOutfitDraft, roleFromGarment, sceneWrite, type Outfit, type OutfitElement, type OutfitScene } from '../src/domain/outfit.ts'
 
 const minimal = (overrides: Partial<OutfitElement> = {}): OutfitElement => ({
@@ -35,7 +36,22 @@ test('maps familiar and open category names to editable outfit roles', () => {
   for (const [category, role] of [
     ['衬衫', 'TOP'], ['西装外套', 'OUTER'], ['牛仔裤', 'BOTTOM'], ['连衣裙', 'ONE_PIECE'],
     ['运动鞋', 'SHOES'], ['棒球帽', 'HAT'], ['斜挎包', 'BAG'], ['围巾', 'ACCESSORY'], ['古着', 'OTHER'],
+    ['针织开衫', 'OUTER'], ['西装裤', 'BOTTOM'], ['连帽卫衣', 'TOP'], ['背心裙', 'ONE_PIECE'],
+    ['衬衫连衣裙', 'ONE_PIECE'], ['连体裤', 'ONE_PIECE'], ['裙装', 'OTHER'],
+    ['cardigan', 'OUTER'], ['skirt', 'BOTTOM'], ['hoodie', 'TOP'], ['dress', 'ONE_PIECE'],
   ] as const) assert.equal(roleFromGarment({ category: [category] }), role)
+})
+
+test('AI layouts keep outerwear above tops and dresses regardless of selection order', () => {
+  for (const bodyRole of ['TOP', 'ONE_PIECE'] as const) {
+    const scene: OutfitScene = { version: 2, elements: [minimal({ garmentId: 'outer', role: 'OUTER' }), minimal({ garmentId: 'body', role: bodyRole, zIndex: 1 })] }
+    const before = structuredClone(scene)
+    const ordered = orderOutfitLayers(scene)
+    assert.deepEqual(ordered.elements.map(item => item.garmentId), ['body', 'outer'])
+    assert.equal(ordered.elements[1].x, scene.elements[0].x)
+    assert.deepEqual(arrangeOutfit(scene).elements.map(item => item.garmentId), ['body', 'outer'])
+    assert.deepEqual(scene, before)
+  }
 })
 
 test('new garments receive deterministic category positions without mutating earlier items', () => {

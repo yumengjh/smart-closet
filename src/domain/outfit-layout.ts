@@ -1,4 +1,11 @@
-import { normalizeScene, type OutfitElement, type OutfitScene } from './outfit'
+import { normalizeScene, type OutfitElement, type OutfitScene } from './outfit.ts'
+
+// Paint body garments first and outerwear above them, independently of selection order.
+export function orderOutfitLayers(scene: OutfitScene): OutfitScene {
+  const order: Record<string, number> = { BOTTOM: 1, ONE_PIECE: 2, TOP: 3, OUTER: 4, SHOES: 5, HAT: 6, BAG: 7, ACCESSORY: 8, OTHER: 9 }
+  const items = [...scene.elements].sort((a, b) => (a.kind === 'PERSON_PART' ? 0 : order[a.role] || 9) - (b.kind === 'PERSON_PART' ? 0 : order[b.role] || 9))
+  return normalizeScene({ ...scene, elements: items.map((item, zIndex) => ({ ...item, zIndex })) })
+}
 
 // All positions use the existing 1080 × 1350 board coordinates.
 export function arrangeOutfit(scene: OutfitScene): OutfitScene {
@@ -39,7 +46,5 @@ export function arrangeOutfit(scene: OutfitScene): OutfitScene {
     item.x = Math.max(item.width / 2 + 16, Math.min(1064 - item.width / 2, item.x))
     item.y = Math.max(item.height / 2 + 16, Math.min(1334 - item.height / 2, item.y))
   }
-  const order: Record<string, number> = { BOTTOM: 1, ONE_PIECE: 2, TOP: 3, OUTER: 4, SHOES: 5, HAT: 6, BAG: 7, ACCESSORY: 8, OTHER: 9 }
-  items.sort((a, b) => (a.kind === 'PERSON_PART' ? 0 : order[a.role] || 9) - (b.kind === 'PERSON_PART' ? 0 : order[b.role] || 9))
-  return normalizeScene({ ...scene, elements: items.map((item, zIndex) => ({ ...item, zIndex })) })
+  return orderOutfitLayers({ ...scene, elements: items })
 }

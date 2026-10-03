@@ -81,15 +81,16 @@ export const outfitRoleOptions: OutfitRoleOption[] = [
 ]
 
 export function roleFromGarment(garment: Pick<Garment, 'category'>): OutfitRole {
-  const name = garment.category.join(' ')
-  if (/连衣裙|连体|连身|jumpsuit|裙装/i.test(name)) return 'ONE_PIECE'
-  if (/外套|夹克|西装|大衣|风衣|羽绒|冲锋衣|罩衫/.test(name)) return 'OUTER'
-  if (/长裤|短裤|牛仔裤|半身裙|下装|裤|裙/.test(name)) return 'BOTTOM'
-  if (/鞋|靴|凉鞋|运动鞋/.test(name)) return 'SHOES'
-  if (/帽|棒球帽|贝雷帽|渔夫帽/.test(name)) return 'HAT'
-  if (/背包|手提包|斜挎包|包袋|包/.test(name)) return 'BAG'
-  if (/围巾|腰带|袜|首饰|眼镜|配饰|手套|领带/.test(name)) return 'ACCESSORY'
-  if (/T恤|衬衫|卫衣|毛衣|针织|开衫|背心|上装|马甲|Polo/i.test(name)) return 'TOP'
+  const name = garment.category.join(' ').trim()
+  if (name === '裙装') return 'OTHER'
+  if (/连衣裙|背心裙|吊带裙|连体|连身|\b(dress|jumpsuit|romper)\b/i.test(name)) return 'ONE_PIECE'
+  if (/外套|夹克|西装外套|西装上衣|西服上衣|^西装$|大衣|风衣|羽绒|冲锋衣|罩衫|开衫|\b(coat|jacket|blazer|cardigan|parka)\b/i.test(name)) return 'OUTER'
+  if (/长裤|短裤|牛仔裤|半身裙|下装|裤|裙|\b(pants|trousers|jeans|shorts|skirt)\b/i.test(name)) return 'BOTTOM'
+  if (/T恤|衬衫|卫衣|毛衣|针织|背心|上装|马甲|Polo|\b(t-shirt|shirt|sweater|hoodie|sweatshirt|top|vest)\b/i.test(name)) return 'TOP'
+  if (/鞋|靴|\b(shoes|boots|sneakers|sandals)\b/i.test(name)) return 'SHOES'
+  if (/帽|\b(hat|cap|beret)\b/i.test(name)) return 'HAT'
+  if (/背包|手提包|斜挎包|包袋|包|\b(bag|backpack|handbag)\b/i.test(name)) return 'BAG'
+  if (/围巾|腰带|袜|首饰|眼镜|配饰|手套|领带|\b(scarf|belt|socks|jewelry|glasses|gloves|tie|accessory)\b/i.test(name)) return 'ACCESSORY'
   return 'OTHER'
 }
 

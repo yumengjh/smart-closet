@@ -1,5 +1,5 @@
 import { shallowRef } from 'vue'
-import { arrangeOutfit } from '../domain/outfit-layout'
+import { arrangeOutfit, orderOutfitLayers } from '../domain/outfit-layout'
 import { closetApi } from '../services/api'
 import { createOutfitElement } from '../domain/outfit-images'
 import { elementKey, normalizeScene, OUTFIT_VERSION, stickerLimit, type OutfitElement, type OutfitScene } from '../domain/outfit'
@@ -28,7 +28,9 @@ export async function candidateScene(candidate: Candidate, people: OutfitElement
 }
 export async function editedScene(proposal: Proposal): Promise<OutfitScene> {
   let elements = proposal.context.scene?.elements.map(item => ({ ...item })) || []
+  let selectionChanged = false
   for (const op of proposal.payload.operations || []) {
+    if (op.op !== 'transform') selectionChanged = true
     const index = elements.findIndex(item => elementKey(item) === op.elementId)
     if (op.op !== 'add' && index < 0) throw new Error('这张贴纸已不存在，请重新生成建议。')
     if (op.op === 'remove') elements.splice(index, 1)
@@ -42,5 +44,6 @@ export async function editedScene(proposal: Proposal): Promise<OutfitScene> {
       else elements.push(item)
     }
   }
-  return normalizeScene({ version: OUTFIT_VERSION, elements: elements.sort((a, b) => a.zIndex - b.zIndex).map((item, zIndex) => ({ ...item, zIndex })) })
+  const scene = normalizeScene({ version: OUTFIT_VERSION, elements: elements.sort((a, b) => a.zIndex - b.zIndex).map((item, zIndex) => ({ ...item, zIndex })) })
+  return selectionChanged ? orderOutfitLayers(scene) : scene
 }

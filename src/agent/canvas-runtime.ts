@@ -4,7 +4,7 @@ import { useClosetStore } from '../stores/closet'
 import { closetApi } from '../services/api'
 import { agentRequest, type AgentContext } from './api'
 import { createOutfitElement } from '../domain/outfit-images'
-import { arrangeOutfit } from '../domain/outfit-layout'
+import { arrangeOutfit, orderOutfitLayers } from '../domain/outfit-layout'
 import { addBoard, createBoard, mutateBoard, workspace, type OutfitWorkspace } from '../domain/outfit-workspace'
 import { sceneWrite, type OutfitScene } from '../domain/outfit'
 import { playSound } from '../services/sound'
@@ -84,11 +84,11 @@ async function execute(command: CanvasCommand) {
           if (index < 0) throw new Error('待替换的衣物已经变化。')
           elements[index] = { ...item, elementId: elements[index].elementId, zIndex: elements[index].zIndex }
         } else elements.push(item)
-        mutateBoard(board, { ...board.scene, elements }, false); playSound('pop')
+        mutateBoard(board, orderOutfitLayers({ ...board.scene, elements }), false); playSound('pop')
       } else if (command.kind === 'remove') {
         const index = board.scene.elements.findIndex(e => e.elementId === command.payload.elementId)
         if (index < 0) throw new Error('待移除的贴纸已不存在。')
-        mutateBoard(board, { ...board.scene, elements: board.scene.elements.filter((_, i) => i !== index) }, false)
+        mutateBoard(board, orderOutfitLayers({ ...board.scene, elements: board.scene.elements.filter((_, i) => i !== index) }), false)
       } else if (command.kind === 'layout') mutateBoard(board, arrangeOutfit(board.scene), false)
       else if (command.kind === 'adjust') {
         const { elementId, intent } = command.payload
