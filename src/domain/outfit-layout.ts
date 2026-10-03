@@ -13,7 +13,7 @@ export function arrangeOutfit(scene: OutfitScene): OutfitScene {
   const garments = items.filter(item => item.kind !== 'PERSON_PART')
   const first = (role: string) => garments.find(item => item.role === role)
   const top = first('TOP'), bottom = first('BOTTOM'), whole = first('ONE_PIECE'), shoes = first('SHOES'), outer = first('OUTER')
-  const widths: Record<string, number> = { TOP: 500, BOTTOM: 400, ONE_PIECE: 510, OUTER: 540, SHOES: 240, HAT: 200, BAG: 230, ACCESSORY: 180, OTHER: 210 }
+  const widths: Record<string, number> = { TOP: 500, BOTTOM: 400, ONE_PIECE: 510, OUTER: 360, SHOES: 240, HAT: 200, BAG: 230, ACCESSORY: 180, OTHER: 210 }
   for (const item of garments) {
     const aspect = item.imageWidth && item.imageHeight
       ? item.imageWidth * item.cropWidth / Math.max(1, item.imageHeight * item.cropHeight)
@@ -24,20 +24,22 @@ export function arrangeOutfit(scene: OutfitScene): OutfitScene {
   }
   const body = whole ? [whole] : [top, bottom].filter((item): item is OutfitElement => !!item)
   if (!body.length && outer) body.push(outer)
+  // A collage shows separate garments, not a fitted virtual try-on: keep opaque outerwear beside the body.
+  const bodyX = outer && !body.includes(outer) ? 340 : 540
   const overlap = body.length > 1 ? 22 : 0
   const naturalHeight = body.reduce((sum, item) => sum + item.height, 0) - overlap + (shoes?.height || 0) + (shoes ? 10 : 0)
   const scale = Math.min(1, 1090 / Math.max(1, naturalHeight))
   for (const item of garments) { item.width *= scale; item.height *= scale }
   let edge = Math.max(155, (1350 - naturalHeight * scale) / 2)
   const shoulder = edge
-  for (const item of body) { item.x = 540; item.y = edge + item.height / 2; edge += item.height - overlap * scale }
-  if (shoes) { shoes.x = 540; shoes.y = Math.min(1315 - shoes.height / 2, edge + overlap * scale + 10 + shoes.height / 2) }
-  if (outer && !body.includes(outer)) { outer.x = 540; outer.y = shoulder + outer.height / 2 }
+  for (const item of body) { item.x = bodyX; item.y = edge + item.height / 2; edge += item.height - overlap * scale }
+  if (shoes) { shoes.x = bodyX; shoes.y = Math.min(1315 - shoes.height / 2, edge + overlap * scale + 10 + shoes.height / 2) }
+  if (outer && !body.includes(outer)) { outer.x = 820; outer.y = shoulder + outer.height / 2 }
   const worn = new Set([...body, shoes, outer].filter(Boolean))
   let side = 0
   for (const item of garments) {
     if (worn.has(item)) continue
-    if (item.role === 'HAT' && item === first('HAT')) { item.x = 540; item.y = Math.max(item.height / 2 + 20, shoulder - item.height / 2 - 12) }
+    if (item.role === 'HAT' && item === first('HAT')) { item.x = bodyX; item.y = Math.max(item.height / 2 + 20, shoulder - item.height / 2 - 12) }
     else { item.x = side % 2 ? 875 : 190; item.y = 350 + Math.floor(side / 2) * 245; side++ }
   }
   for (const item of garments) {

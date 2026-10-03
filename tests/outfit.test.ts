@@ -149,3 +149,17 @@ test('dragged layers insert above or below targets without changing geometry or 
   assert.strictEqual(dropOutfitLayer(items, 'a', 'missing', true), items)
   assert.strictEqual(dropOutfitLayer(items, 'c', 'b', true), items)
 })
+
+
+test('collage layout exposes the body beside outerwear instead of covering it', () => {
+  for (const bodyRole of ['TOP', 'ONE_PIECE'] as const) {
+    for (const ratio of [.3, 1, 2]) {
+      const input: OutfitScene = { version: 2, elements: [minimal({ garmentId: 'outer', role: 'OUTER', width: 600, height: 600 / ratio, imageWidth: 600, imageHeight: 600 / ratio }), minimal({ garmentId: 'body', role: bodyRole })] }
+      const result = arrangeOutfit(input)
+      const body = result.elements.find(e => e.garmentId === 'body')!, outer = result.elements.find(e => e.garmentId === 'outer')!
+      assert.ok(body.x + body.width / 2 + 16 <= outer.x - outer.width / 2)
+      for (const item of result.elements) { assert.ok(item.x - item.width / 2 >= 16); assert.ok(item.x + item.width / 2 <= 1064); assert.ok(item.y + item.height / 2 <= 1334) }
+      assert.equal(input.elements[0]!.width, 600)
+    }
+  }
+})

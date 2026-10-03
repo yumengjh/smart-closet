@@ -1,4 +1,5 @@
 import { nextTick, reactive } from 'vue'
+import { recordBoardTrace } from './trace-client'
 import { router } from '../router'
 import { useClosetStore } from '../stores/closet'
 import { closetApi } from '../services/api'
@@ -31,11 +32,17 @@ export async function stopCanvasRun(runId = canvasExecution.runId) {
 export function failCanvasExecution() { for (const [id, run] of runs) if (!run.cancelled) void stopCanvasRun(id) }
 
 async function execute(command: CanvasCommand) {
+  const owner = useClosetStore().user?.username
+  const currentBoard = runs.get(command.runId)?.space.boards.find(b => b.id === command.boardId)
+  const before = currentBoard ? structuredClone(JSON.parse(JSON.stringify(currentBoard.scene))) : undefined
   const ack = (body: unknown) => agentRequest(`/runs/${command.runId}/ack`, 'POST', { operationId: command.operationId, sequence: command.sequence, ...body as object })
+  const reported = (ackStatus: string, message = '') => {
+    const board = runs.get(command.runId)?.space.boards.find(b => b.id === command.boardId)
+    if (owner && board) recordBoardTrace(owner, command.sessionId, command.boardId, 'agent', before, board.scene, { operationId: command.operationId, runId: command.runId, beforeVersion: command.expectedVersion, afterVersion: board.contentVersion, ackStatus, message })
+  }
   const duplicate = applied.get(command.operationId)
-  if (duplicate) { await ack({ success: true, ...duplicate }); return }
+  if (duplicate) { try { await ack({ success: true, ...duplicate }); reported('DUPLICATE_CONFIRMED') } catch (e) { reported('DUPLICATE_ACK_FAILED', e instanceof Error ? e.message : '') }; return }
   try {
-    const owner = useClosetStore().user?.username
     if (!owner) throw new Error('登录已失效。')
     let run = runs.get(command.runId)
     if (command.kind === 'open') {
@@ -65,6 +72,7 @@ async function execute(command: CanvasCommand) {
     if (command.kind === 'create') {
       if (board) throw new Error('画板已存在。')
       board = createBoard(command.payload.name, command.payload.scene as OutfitScene | undefined, command.boardId)
+      board.traceSessionId = command.sessionId; board.traceOwner = owner
       board.reason = command.payload.reason
       board.sourceOutfitId = command.payload.sourceOutfitId; board.sourceRevision = command.payload.sourceRevision
       board.undo = [board.scene.elements.map(e => ({ ...e }))]
@@ -102,15 +110,17 @@ async function execute(command: CanvasCommand) {
       else throw new Error('未开放的画板操作。')
     }
     if (!board) throw new Error('画板未创建。')
+    board.traceSessionId = command.sessionId; board.traceOwner = owner
     Object.assign(canvasExecution, { boardId: board.id, label: command.label })
     if (canvasExecution.following) space.activeId = board.id
     await nextTick()
     if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) await new Promise(resolve => setTimeout(resolve, 180))
     if (run.cancelled) throw new Error('操作已停止。')
     const result = { version: board.contentVersion, scene: sceneWrite(board.scene) }
-    applied.set(command.operationId, result); await ack({ success: true, ...result })
+    applied.set(command.operationId, result); reported('EXECUTED_PENDING_ACK'); await ack({ success: true, ...result }); reported('ACK_ACCEPTED')
   } catch (e) {
     const text = e instanceof Error ? e.message : '画板操作失败。'
+    reported('FAILED', text)
     canvasExecution.error = text
     const run = runs.get(command.runId)
     if (run) { run.cancelled = true; for (const board of run.space.boards) if (board.locked === command.runId) { board.locked = undefined; board.status = '操作中断'; board.error = text } }

@@ -18,6 +18,7 @@ export type Garment = {
   sourceUrl: string
   category: string[]
   automatic: Record<string, string[]>
+  metadataEvidence?: Record<string, { status?: string; evidence?: string }>
   overrides: Record<string, string[]>
   primaryColor: string[]
   secondaryColors: string[]
@@ -26,6 +27,9 @@ export type Garment = {
   sleeveLength: string[]
   garmentLength: string[]
   closure: string[]
+  fit?: string[]
+  thickness?: string[]
+  wearingModes?: string[]
   texture: string[]
   styles: string[]
   seasons: string[]
@@ -65,9 +69,10 @@ export type ClosetTask = {
   attempts?: { provider: string; model: string; status: string; startedAt: string; finishedAt?: string }[]
 }
 
-export const fieldLabels: Record<keyof Pick<Garment, 'category' | 'primaryColor' | 'secondaryColors' | 'patterns' | 'neckline' | 'sleeveLength' | 'garmentLength' | 'closure' | 'texture' | 'styles' | 'seasons' | 'brand' | 'size' | 'materialComposition' | 'careInstructions' | 'visibleText'>, string> = {
+export const fieldLabels: Record<keyof Pick<Garment, 'category' | 'primaryColor' | 'secondaryColors' | 'patterns' | 'neckline' | 'sleeveLength' | 'garmentLength' | 'closure' | 'texture' | 'fit' | 'thickness' | 'wearingModes' | 'styles' | 'seasons' | 'brand' | 'size' | 'materialComposition' | 'careInstructions' | 'visibleText'>, string> = {
   category: '品类', primaryColor: '主色', secondaryColors: '辅色', patterns: '图案', neckline: '领型',
   sleeveLength: '袖长', garmentLength: '衣物长度', closure: '门襟', texture: '表面纹理', styles: '风格',
+  fit: '版型建议（需核对）', thickness: '厚薄线索（需核对）', wearingModes: '穿着用途建议（需核对）',
   seasons: '季节', brand: '品牌', size: '尺码', materialComposition: '成分', careInstructions: '洗护', visibleText: '可见文字',
 }
 
@@ -92,7 +97,7 @@ function garment(id: string, category: string, primaryColor: string, color: stri
     texture: ['针织'], styles: ['休闲'], seasons: ['春季', '秋季'], brand: [], size: [], materialComposition: [], careInstructions: [], visibleText: [],
     sourceOrigin: 'USER_UPLOAD', imageColor: color, ...extra,
   }
-  for (const key of Object.keys(fieldLabels) as (keyof typeof fieldLabels)[]) item.automatic[key] = [...item[key]]
+  for (const key of Object.keys(fieldLabels) as (keyof typeof fieldLabels)[]) item.automatic[key] = [...(item[key] || [])]
   return item
 }
 
@@ -163,7 +168,7 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
 
 type GarmentView = {
   id: string; revision: number; sourceAssetId: string; sourceUrl: string; sourceOrigin: Garment['sourceOrigin'];
-  displayAssetId: string; displayUrl: string; images: Garment['images']; automatic: { assessment?: string; target?: GarmentTarget | null; issues?: { message: string }[]; attributes?: Record<string, { values: string[] }> } | null; overrides: Record<string, string[]>; effective: Record<string, string[]>;
+  displayAssetId: string; displayUrl: string; images: Garment['images']; automatic: { assessment?: string; target?: GarmentTarget | null; issues?: { message: string }[]; attributes?: Record<string, { values: string[]; status?: string; evidence?: string }> } | null; overrides: Record<string, string[]>; effective: Record<string, string[]>;
   latestRecognitionJobId: string | null; latestImageJobId: string | null; runs: { id: string; status: string; createdAtMs: number }[];
   imageProcessing?: ImageProcessing | null; status: Garment['status']; createdAtMs: number; updatedAtMs: number;
 }
@@ -187,10 +192,10 @@ function fromView(view: GarmentView): Garment {
       : latestStatus === 'SUCCEEDED' ? 'SUCCEEDED' : latestStatus === 'UNKNOWN' ? 'UNKNOWN' : undefined
   return {
     id: view.id, revision: view.revision, sourceAssetId: view.sourceAssetId, displayAssetId: view.displayAssetId, images: view.images || [], assessment: view.automatic?.assessment, target: view.automatic?.target, issues: view.automatic?.issues || [], status, updatedAt: new Date(view.updatedAtMs).toISOString(), displayUrl: view.displayUrl, sourceUrl: view.sourceUrl,
-    automatic: Object.fromEntries(Object.entries(view.automatic?.attributes || {}).map(([key, attribute]) => [key, attribute.values])), overrides: view.overrides || {},
+    metadataEvidence: view.automatic?.attributes || {}, automatic: Object.fromEntries(Object.entries(view.automatic?.attributes || {}).map(([key, attribute]) => [key, attribute.values])), overrides: view.overrides || {},
     category: view.effective.category || [], primaryColor: view.effective.primaryColor || [], secondaryColors: view.effective.secondaryColors || [],
     patterns: view.effective.patterns || [], neckline: view.effective.neckline || [], sleeveLength: view.effective.sleeveLength || [],
-    garmentLength: view.effective.garmentLength || [], closure: view.effective.closure || [], texture: view.effective.texture || [],
+    garmentLength: view.effective.garmentLength || [], closure: view.effective.closure || [], texture: view.effective.texture || [], fit: view.effective.fit || [], thickness: view.effective.thickness || [], wearingModes: view.effective.wearingModes || [],
     styles: view.effective.styles || [], seasons: view.effective.seasons || [], brand: view.effective.brand || [], size: view.effective.size || [],
     materialComposition: view.effective.materialComposition || [], careInstructions: view.effective.careInstructions || [], visibleText: view.effective.visibleText || [],
     sourceOrigin: view.sourceOrigin, imageColor: colors[view.effective.primaryColor?.[0] || ''] || '#d6d5cc',
@@ -215,10 +220,10 @@ export type PortableLoginGrant = { id: string; token: string; expiresAt: number 
 export const closetApi = {
   async metadataOptions(): Promise<Record<string, string[]>> {
     if (!usingMocks) return request<Record<string, string[]>>('/api/closet/metadata-options')
-    return Object.fromEntries(Object.keys(fieldLabels).map(key => [key, [...new Set(readMock().garments.filter(item => item.status === 'ACTIVE').flatMap(item => item[key as keyof typeof fieldLabels]))]]))
+    return Object.fromEntries(Object.keys(fieldLabels).map(key => [key, [...new Set(readMock().garments.filter(item => item.status === 'ACTIVE').flatMap(item => item[key as keyof typeof fieldLabels] || []))]]))
   },
   async metadataFields(): Promise<MetadataField[]> {
-    if (usingMocks) return Object.entries(fieldLabels).map(([key, label]) => ({ key, label, options: [], multiple: ['secondaryColors', 'patterns', 'closure', 'texture', 'styles', 'seasons', 'visibleText'].includes(key), suggestion: ['styles', 'seasons'].includes(key) }))
+    if (usingMocks) return Object.entries(fieldLabels).map(([key, label]) => ({ key, label, options: [], multiple: ['secondaryColors', 'patterns', 'closure', 'texture', 'styles', 'seasons', 'wearingModes', 'visibleText'].includes(key), suggestion: ['styles', 'seasons', 'fit', 'thickness', 'wearingModes'].includes(key) }))
     return (await request<{ fields: MetadataField[] }>('/api/recognition/schema')).fields
   },
   async processingChoices(): Promise<{ generation: ProcessingChoice[]; recognition: ProcessingChoice[] }> {

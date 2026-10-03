@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { recordBoardTrace } from '../agent/trace-client'
+import { changeSource } from '../agent/trace-data'
 import { onBeforeRouteLeave, onBeforeRouteUpdate, useRoute, useRouter } from 'vue-router'
 import { App, Empty } from 'ant-design-vue'
 import Konva from 'konva'
@@ -113,6 +115,7 @@ let loaded = false
 let baselineSignature = ''
 let draftRevision: number | null = null
 let synchronizingBoard = false
+let traceSource = 'manual-edit'
 
 const activeGarments = computed(() => garments.value.filter((item) => item.status === 'ACTIVE'))
 const filteredGarments = computed(() => activeGarments.value.filter((item) => {
@@ -151,7 +154,9 @@ function persistDraft() {
     const board = props.board
     board.undo = undoStack.value; board.redo = redoStack.value; board.selectedIds = [...selectedIds.value]; board.zoom = zoom.value
     if (JSON.stringify(board.scene.elements) !== JSON.stringify(elements.value) || board.name !== name.value) {
+      const before = board.scene, beforeVersion = board.contentVersion
       board.scene = normalizeScene(scene.value); board.name = name.value; board.contentVersion++
+      if (board.traceSessionId && board.traceOwner) recordBoardTrace(board.traceOwner, board.traceSessionId, board.id, traceSource, before, board.scene, { beforeVersion, afterVersion: board.contentVersion })
     }
     return
   }
@@ -166,6 +171,7 @@ function persistDraft() {
   } catch { /* The canvas remains usable if local storage is full or unavailable. */ }
 }
 function scheduleDraft() {
+  if (props.board?.traceSessionId) { persistDraft(); return }
   window.clearTimeout(draftTimer)
   draftTimer = window.setTimeout(persistDraft, 240)
 }
@@ -259,9 +265,10 @@ async function loadLibrary() {
 }
 
 function sceneSnapshot() { return elements.value.map((item) => ({ ...item })) }
-function recordChange(next: OutfitElement[], cue: CueName = 'tap') {
+function recordChange(next: OutfitElement[], cue: CueName = 'tap', source?: string) {
   if (props.board?.locked) return
   if (JSON.stringify(next) === JSON.stringify(elements.value)) return
+  traceSource = source || changeSource(scene.value, { ...scene.value, elements: next })
   undoStack.value = [...undoStack.value.slice(-79), sceneSnapshot()]
   redoStack.value = []
   elements.value = next.map((item, index) => ({ ...item, zIndex: index }))
@@ -273,6 +280,7 @@ function undo() {
   if (!previous) return
   redoStack.value = [...redoStack.value, sceneSnapshot()]
   undoStack.value = undoStack.value.slice(0, -1)
+  traceSource = 'undo'
   elements.value = previous
   playSound('tap')
   scheduleDraft()
@@ -282,6 +290,7 @@ function redo() {
   if (!next) return
   undoStack.value = [...undoStack.value, sceneSnapshot()]
   redoStack.value = redoStack.value.slice(0, -1)
+  traceSource = 'redo'
   elements.value = next
   playSound('tap')
   scheduleDraft()
@@ -805,7 +814,7 @@ async function exportPng() {
 }
 async function resetLayout() {
   if (!elements.value.length || props.board?.locked) return
-  recordChange(arrangeOutfit(scene.value).elements)
+  recordChange(arrangeOutfit(scene.value).elements, 'tap', 'default-layout')
   clearSelection()
 }
 

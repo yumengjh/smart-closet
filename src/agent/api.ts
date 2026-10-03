@@ -10,10 +10,11 @@ export type EditOperation = { op: 'add' | 'remove' | 'replace' | 'transform'; el
 export type Proposal = { id: string; kind: 'OUTFITS' | 'EDIT' | 'SAVE'; payload: { candidates?: Candidate[]; summary?: string; operations?: EditOperation[] }; context: AgentContext; consumed: boolean }
 export type Article = { id: string; title: string; markdown: string; href: string }
 export type AgentEvent = { event: string; data: any }
-export type AgentMessage = { id: string; role: string; content: string; status: string; events: AgentEvent[] }
+export type AgentMessage = { id: string; role: string; content: string; status: string; events: AgentEvent[]; requestId?: string | null }
 export type Models = { defaultModel: string; models: string[]; configured: boolean }
 export type Quota = { limit: number; used: number; resetAt: string }
 
+export class AgentRequestError extends Error { constructor(message: string, public status: number) { super(message) } }
 async function response(path: string, init: RequestInit = {}) {
   if (usingMocks) throw new Error('界面演示不调用助手。请连接真实后端。')
   const headers = new Headers(init.headers)
@@ -28,7 +29,7 @@ async function response(path: string, init: RequestInit = {}) {
     if (result.status === 401) window.dispatchEvent(new Event('closet-session-expired'))
     const error = await result.json().catch(() => ({}))
     if (error.code === 'PASSWORD_CHANGE_REQUIRED') window.dispatchEvent(new Event('closet-password-change-required'))
-    throw new Error(error.message || `助手请求失败 (${result.status})`)
+    throw new AgentRequestError(error.message || `助手请求失败 (${result.status})`, result.status)
   }
   return result
 }

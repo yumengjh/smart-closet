@@ -7,6 +7,8 @@ import { usingMocks } from '../services/api'
 import { agentRequest, streamMessage, type AgentSession, type AgentMessage, type Models, type Memory, type Quota } from './api'
 import { pageContext } from './bridge'
 import AgentProposal from './AgentProposal.vue'
+import AgentTraceModal from './AgentTraceModal.vue'
+import { discardSessionTrace, flushBoardTrace } from './trace-client'
 import { handleCanvasCommand, failCanvasExecution, canvasExecution } from './canvas-runtime'
 import LatticeLoader from './effects/LatticeLoader.vue'
 import ThoughtLine from './effects/ThoughtLine.vue'
@@ -31,6 +33,7 @@ const imageConsent = ref(false); const personalConsent = ref(false); const compa
 const textarea = ref<{ focus: () => void } | null>(null); const transcript = ref<HTMLDivElement | null>(null); const panel = ref<HTMLElement | null>(null); const launcher = ref<InstanceType<typeof AssistantOrb> | null>(null)
 let abort: AbortController | undefined
 const closet = useClosetStore()
+const debugOpen = ref(false), debugRequest = ref<string | null>(null), debugUpdates = ref(0)
 const historyOpen = ref(false); const renameOpen = ref(false); const renameTitle = ref(''); const renaming = ref(false)
 const optionsOpen = ref(false); const delighted = ref(false)
 const pinned = ref(true); const viewport = ref({ width: window.innerWidth, height: window.innerHeight })
@@ -54,6 +57,7 @@ const context = computed(() => pageContext(route.path))
 const contextName = computed(() => context.value.scene ? `${context.value.name || '组合台'} · ${context.value.selectedIds?.length || 0} 项选中` : context.value.garmentId ? '当前衣物详情' : ({ '/wardrobe': '我的衣柜', '/outfits': '组合台', '/settings': '我的设置', '/help': '平台帮助', '/tasks': '任务记录', '/pending': '未入柜', '/add': '添加衣物', '/trash': '回收站' } as Record<string, string>)[route.path] || '当前页面')
 async function refreshSessions() { sessions.value = await agentRequest<AgentSession[]>('/sessions') }
 async function load() {
+  void flushBoardTrace()
   if (usingMocks) { error.value = '界面演示不调用模型，请连接真实后端使用助手。'; return }
   loading.value = true; error.value = ''
   try { const [modelList, preferences, usage] = await Promise.all([agentRequest<Models>('/models'), agentRequest<{ model: string; avatarMode: string }>('/preferences'), agentRequest<Quota>('/quota')]); models.value = modelList; personalModel.value = preferences.model; applyAvatarMode(preferences.avatarMode); quota.value = usage; await refreshSessions(); if (!selected.value && sessions.value.length) { selected.value = sessions.value[0].id; await selectSession() } }
@@ -80,7 +84,7 @@ function menuAction({ key }: { key: string | number }) {
   else if (key === 'help') { void router.push('/help?article=03-assistant'); showPage() }
 }
 function deleteChats(all = false) {
-  modal.confirm({ title: all ? '清空所有聊天？' : '删除当前对话？', content: '聊天记录和长期记忆独立管理，这个操作会保留所有记忆。', okText: '确认删除', cancelText: '取消', async onOk() { await agentRequest(all ? '/sessions' : `/sessions/${selected.value}`, 'DELETE'); selected.value = ''; messages.value = []; await refreshSessions(); playSound('success'); } })
+  modal.confirm({ title: all ? '清空所有聊天？' : '删除当前对话？', content: '聊天记录和长期记忆独立管理，这个操作会保留所有记忆。', okText: '确认删除', cancelText: '取消', async onOk() { await agentRequest(all ? '/sessions' : `/sessions/${selected.value}`, 'DELETE'); if (closet.user) discardSessionTrace(closet.user.username, all ? undefined : selected.value); selected.value = ''; messages.value = []; await refreshSessions(); playSound('success'); } })
 }
 async function undoMemory(memory: Memory) { try { await agentRequest(`/memories/${memory.id}`, 'DELETE'); Object.assign(memory, { revoked: true }); window.dispatchEvent(new Event('closet-agent-memory-changed')); message.success('已删除这条记忆。') } catch (e) { message.error(String(e)) } }
 async function scrollBottom() { await nextTick(); if (transcript.value) transcript.value.scrollTop = transcript.value.scrollHeight }
@@ -91,12 +95,13 @@ async function send() {
   try {
     if (!selected.value) await createSession()
     messages.value.push({ id: body.requestId, role: 'user', content: body.content, status: 'COMPLETE', events: [] })
-    messages.value.push({ id: crypto.randomUUID(), role: 'assistant', content: '', status: 'RUNNING', events: [] }); reply = messages.value[messages.value.length - 1]
+    messages.value.push({ id: crypto.randomUUID(), role: 'assistant', content: '', status: 'RUNNING', events: [], requestId: body.requestId }); reply = messages.value[messages.value.length - 1]
     input.value = ''; imageConsent.value = false; personalConsent.value = false; abort = new AbortController(); await scrollBottom()
     await streamMessage(selected.value, body, event => {
       const follow = nearBottom()
       if (event.event === 'token') { reply!.content += event.data.text; activityPhase.value = 'responding' }
       else if(event.event==='avatar'){ if(validCue(event.data)&&event.data.requestId===body.requestId)avatarCue.value=event.data }
+      else if (event.event === 'debug_trace') { debugUpdates.value++; reply!.requestId = event.data.requestId }
       else if (event.event === 'status') { activityTool.value=event.data.tool||'';status.value = event.data.text; activityPhase.value = event.data.phase === 'operating' ? 'operating' : 'thinking' }
       else if (event.event === 'canvas_operation') { activityPhase.value = 'operating'; status.value = event.data.label; handleCanvasCommand(event.data) }
       else if (event.event === 'done') { reply!.status = 'COMPLETE'; quota.value = event.data.quota; if(!taskFailed.value)celebrate(); playSound('complete') }
@@ -156,6 +161,7 @@ onMounted(() => { try { pinned.value = localStorage.getItem(pinKey.value) !== 'f
 onUnmounted(() => { abort?.abort(); clearTimeout(delightTimer); window.removeEventListener('resize', resize); window.removeEventListener('keydown', keyboard); window.visualViewport?.removeEventListener('resize', resizeMobileViewport); window.visualViewport?.removeEventListener('scroll', resizeMobileViewport); lockBackground(false) })
 </script>
 <template>
+  <AgentTraceModal v-model:open="debugOpen" :session-id="selected" :request-id="debugRequest" :updates="debugUpdates" />
   <AssistantOrb ref="launcher" :open="open" :mood="mood" :busy="busy" :phase="isOperating?'operating':activityPhase" :tool="activityTool" :cue="avatarCue" @toggle="toggle" />
   <Teleport to="body">
     <Transition name="assistant-scrim"><div v-if="open && compact" class="assistant-scrim" @click="close" /></Transition>
@@ -175,6 +181,7 @@ onUnmounted(() => { abort?.abort(); clearTimeout(delightTimer); window.removeEve
         <div ref="transcript" class="assistant-transcript" aria-label="聊天记录" aria-live="polite" :aria-busy="busy">
           <div v-if="!messages.length" class="assistant-welcome"><BloubAvatar class="assistant-face" :size="74" expression="happy" /><p class="eyebrow">从你的衣柜开始</p><h2>今天想怎么穿？</h2><p>告诉我场景，或选中一件衣物。<br />平台怎么用，也可以问我。</p><a-button block @click="input = '帮我组合三套通勤穿搭'; textarea?.focus()">帮我搭三套通勤穿搭</a-button><a-button block @click="input = '组合台怎么使用？'; textarea?.focus()">了解组合台怎么使用</a-button></div>
           <article v-for="item in messages" :key="item.id" class="assistant-message" :class="item.role"><small>{{ item.role === 'user' ? '你' : '鱼搭助手' }}</small><p v-if="item.content" class="assistant-text">{{ item.content }}</p><span v-if="item.status === 'FAILED'" class="assistant-interrupted">回复未完成</span>
+            <a-button v-if="item.role === 'assistant'" type="link" size="small" @click="debugRequest = item.requestId || null; debugOpen = true">查看决策与执行记录</a-button>
             <a-collapse v-if="item.events.some(e => e.event === 'operation_result')" ghost class="assistant-operation-record"><a-collapse-panel key="steps" header="查看搭台操作记录"><ol><li v-for="event in item.events.filter(e => e.event === 'operation_result')" :key="event.data.operationId">{{ event.data.success ? '✓' : '!' }} {{ event.data.label }}<small v-if="event.data.message"> · {{ event.data.message }}</small></li></ol></a-collapse-panel></a-collapse>
             <template v-for="(event, index) in item.events" :key="index">
               <AgentWorkspaceResult v-if="event.event === 'workspace_result'" :result="event.data" @open="showPage" />

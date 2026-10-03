@@ -21,8 +21,10 @@ const values = reactive<Record<string, string[]>>({}); const baseline = ref<Garm
 const loading = ref(true); const busy = ref(''); const error = ref(''); const connectionError = ref(''); const success = ref('')
 const viewedResultId = ref(''); const selectedAssetId = ref(''); const resetFields = ref<string[]>([]); const imageTab = ref('处理结果'); const now = ref(Date.now())
 const schema = ref<MetadataField[]>([])
+const layeringFields = ['fit', 'thickness', 'wearingModes']
+const confirmLayering = ref(false)
 const fields = Object.keys(fieldLabels) as (keyof typeof fieldLabels)[]
-const dirty = computed(() => Boolean(baseline.value && (resetFields.value.length || selectedAssetId.value !== baseline.value.displayAssetId || fields.some(key => JSON.stringify(values[key] || []) !== JSON.stringify(baseline.value?.[key] || [])))))
+const dirty = computed(() => Boolean(baseline.value && (confirmLayering.value || resetFields.value.length || selectedAssetId.value !== baseline.value.displayAssetId || fields.some(key => JSON.stringify(values[key] || []) !== JSON.stringify(baseline.value?.[key] || [])))))
 const title = computed(() => garment.value?.category[0] ? `${garment.value.primaryColor[0] || ''}${garment.value.category[0]}` : '新上传衣物')
 const processing = computed(() => isProcessing(task.value?.status) || isProcessing(garment.value?.taskStatus) || isProcessing(imageTask.value?.status))
 const summary = computed(() => garment.value ? workflowSummary(garment.value, processing.value ? (isProcessing(task.value?.status) ? task.value : imageTask.value) : imageTask.value || task.value) : null)
@@ -61,8 +63,9 @@ const canConfirm = computed(() => !processing.value && schema.value.length > 0 &
 const latestTaskId = computed(() => String(route.query.task || garment.value?.taskId || ''))
 let timer = 0; let elapsedTimer = 0; let alive = false; let pollDelay = 2000; let generation = 0
 function syncForm(record: Garment) {
+  confirmLayering.value = false
   baseline.value = structuredClone(toRaw(record)); selectedAssetId.value = record.displayAssetId; resetFields.value = []
-  for (const key of fields) values[key] = [...record[key]]
+  for (const key of fields) values[key] = [...(record[key] || [])]
 }
 async function load(reset = false) {
   const epoch = generation
@@ -92,9 +95,9 @@ function schedulePoll() {
   if (!alive || (!processing.value && !connectionError.value)) return
   timer = window.setTimeout(async () => { await load(); schedulePoll() }, pollDelay)
 }
-function patchFromForm() { return metadataPatch(schema.value, values, baseline.value || {}, resetFields.value) }
+function patchFromForm() { const patch = metadataPatch(schema.value, values, baseline.value || {}, resetFields.value); if (confirmLayering.value) for (const key of layeringFields) patch[key] = [...(values[key] || [])]; return patch }
 function editField(key: string, next: string[]) { values[key] = next; resetFields.value = resetFields.value.filter(field => field !== key) }
-function restoreAutomatic(key: string) { if (!resetFields.value.includes(key)) resetFields.value.push(key); values[key] = [...(garment.value?.automatic[key] || [])] }
+function restoreAutomatic(key: string) { if (layeringFields.includes(key)) confirmLayering.value = false; if (!resetFields.value.includes(key)) resetFields.value.push(key); values[key] = [...(garment.value?.automatic[key] || [])] }
 async function save(confirming = false, originalFallback = false) {
   if (!garment.value || !baseline.value || !schema.value.length || busy.value || processing.value) return
   busy.value = confirming ? 'confirm' : 'save'; error.value = ''; success.value = ''
@@ -219,13 +222,13 @@ watch(() => route.query.task, async () => { await load(); schedulePoll() })
         <div class="panel-heading"><div><h2>{{ garment.status === 'ACTIVE' ? '图片与衣物信息' : '核对并入柜' }}</h2><p>{{ processing ? '处理结束或取消后，即可选择展示图并编辑信息。' : '选择衣柜里的展示图片，检查识别信息。未知字段可以留空。' }}</p></div><span v-if="dirty" class="unsaved-indicator">有未保存修改</span></div>
         <div class="review-grid">
           <div class="display-picker"><h3>1. 选择展示图</h3><div class="candidate-grid"><button v-for="image in imageOptions" :key="image.id" class="candidate-option" :class="{ selected: image.id === selectedAssetId }" :disabled="processing || garment.status === 'TRASHED'" :aria-pressed="image.id === selectedAssetId" @click="selectedAssetId = image.id"><img :src="image.url" :alt="imageLabels[image.kind] || '处理图片'" /><span>{{ imageLabels[image.kind] || '处理图片' }}</span><CheckOutlined v-if="image.id === selectedAssetId" /></button></div><p v-if="selectedImage" class="muted">将使用：{{ imageLabels[selectedImage.kind] || '所选图片' }}</p><div class="detail-process-actions"><a-button :disabled="processing || dirty || usingMocks || garment.status === 'TRASHED'" :loading="busy === 'retry'" @click="startRun('reprocess')"><ReloadOutlined /> 重新整理图片</a-button><a-button :disabled="processing || dirty || usingMocks || garment.status === 'TRASHED'" @click="startRun('recognize')">重新识别信息</a-button></div></div>
-          <div class="metadata-panel"><h3>2. 核对衣物信息</h3><p v-if="!Object.keys(garment.automatic).length" class="muted">{{ processing ? task?.mode === '本地贴纸' ? '本次只做本地图片处理，结束后可手动填写信息。' : '识别结果尚未返回，暂不填入任何自动值。' : '没有识别结果，可根据原图手动填写。' }}</p><a-alert v-for="(issue, index) in garment.issues" :key="index" type="warning" :message="issue.message" show-icon class="form-alert" /><div class="metadata-grid">
+          <div class="metadata-panel"><h3>2. 核对衣物信息</h3><a-alert type="info" show-icon message="版型、厚薄、穿着用途是照片建议，不能保证实际叠穿。可根据实物核对；未知可留空，无需每次搭配重新识别。" class="form-alert" /><a-button :disabled="processing || garment.status === 'TRASHED' || !layeringFields.every(key => values[key]?.length)" @click="confirmLayering = true">{{ confirmLayering ? '已核对，请保存修改' : '我已根据实物核对三项穿着资料' }}</a-button><p v-if="!Object.keys(garment.automatic).length" class="muted">{{ processing ? task?.mode === '本地贴纸' ? '本次只做本地图片处理，结束后可手动填写信息。' : '识别结果尚未返回，暂不填入任何自动值。' : '没有识别结果，可根据原图手动填写。' }}</p><a-alert v-for="(issue, index) in garment.issues" :key="index" type="warning" :message="issue.message" show-icon class="form-alert" /><div class="metadata-grid">
             <div v-for="field in schema" :key="field.key" class="metadata-field">
               <div class="metadata-label"><label :for="`field-${field.key}`">{{ field.label }}</label><button v-if="Object.hasOwn(garment.overrides, field.key) || resetFields.includes(field.key)" :disabled="processing" type="button" class="restore-field" @click="restoreAutomatic(field.key)"><RollbackOutlined /> 恢复自动值</button></div>
               <a-select v-if="field.multiple" :id="`field-${field.key}`" :aria-label="field.label" :value="values[field.key] || []" mode="tags" :options="metadataChoices(field, values[field.key] || [])" :disabled="processing || garment.status === 'TRASHED'" allow-clear show-search placeholder="选择或输入新值" @update:value="editField(field.key, Array.isArray($event) ? $event.map(String) : [])" />
               <a-auto-complete v-else-if="field.options.length" :id="`field-${field.key}`" :aria-label="field.label" :value="values[field.key]?.[0] || ''" :options="metadataChoices(field, values[field.key] || [])" :filter-option="matchesMetadataOption" :disabled="processing || garment.status === 'TRASHED'" allow-clear @update:value="editField(field.key, $event ? [String($event)] : [])"><a-input :maxlength="400" placeholder="选择或填写新值，未知可留空" /></a-auto-complete>
               <a-input v-else :id="`field-${field.key}`" :aria-label="field.label" :value="values[field.key]?.[0] || ''" :disabled="processing || garment.status === 'TRASHED'" :maxlength="400" placeholder="未知，可留空" @update:value="editField(field.key, $event ? [$event] : [])" />
-              <small v-if="field.multiple" class="field-latest">输入后按回车添加，未知可留空。</small>
+              <small v-if="layeringFields.includes(field.key)" class="field-latest">{{ garment.overrides[field.key]?.length ? '来源：用户核对' : garment.automatic[field.key]?.length ? '来源：自动建议，尚未核对' : '尚缺资料，可根据实物填写' }}<br />{{ garment.metadataEvidence?.[field.key]?.evidence }}</small><small v-if="field.multiple" class="field-latest">输入后按回车添加，未知可留空。</small>
               <small v-if="error || success.includes('核对')" class="field-latest">服务端当前值：{{ garment[field.key as keyof typeof fieldLabels]?.join('、') || '未知' }}</small>
             </div>
           </div></div>
