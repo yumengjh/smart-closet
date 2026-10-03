@@ -15,7 +15,10 @@ const username = ref('')
 const password = ref('')
 const busy = ref(false)
 const error = ref('')
-onMounted(() => { if (route.query.portableLink === 'invalid') error.value = '便携登录链接无效、已使用或已过期，请让分享者重新生成。' })
+onMounted(() => {
+  if (route.query.portableLink === 'invalid') error.value = '便携登录链接无效、已使用或已过期，请让分享者重新生成。'
+  else if (route.query.portableLink === 'error') error.value = typeof route.query.portableError === 'string' ? route.query.portableError : '便携登录暂时无法完成，请稍后重试。'
+})
 
 async function submit() {
   if (busy.value) return

@@ -36,7 +36,9 @@ router.beforeEach(async (to) => {
       await closet.refreshUser()
       return { path: to.path, query: to.query, hash: '', replace: true }
     }
-    catch { return { path: '/login', query: { portableLink: 'invalid' }, replace: true } }
+    catch (cause) {
+      return { path: '/login', query: { portableLink: 'error', portableError: cause instanceof Error ? cause.message : '便携登录暂时无法完成，请稍后重试。' }, replace: true }
+    }
   }
   await closet.ensureUser()
   const destination = sessionRedirect(to.path, closet.user)
