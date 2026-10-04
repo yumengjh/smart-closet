@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { mediaUrl } from '../services/urls'
 import { CheckOutlined, PlusOutlined, SearchOutlined, SwapOutlined } from '@ant-design/icons-vue'
 import { Empty } from 'ant-design-vue'
 import type { Garment } from '../services/api'
@@ -30,7 +31,7 @@ const roles = [{ value: 'ALL', label: '全部分类' }, ...outfitRoleOptions]
       <a-button v-for="garment in garments" :key="garment.id" type="text" class="outfit-garment-option" :class="{ selected: pickedIds.has(garment.id), 'is-active': selectedId === garment.id }"
         :draggable="!mobile && !replacing" :aria-label="`${pickedIds.has(garment.id) ? '定位' : replacing ? '替换为' : '加入'}${formatGarmentLabel(garment)}`" :aria-pressed="pickedIds.has(garment.id)"
         @click="emit('select', garment)" @contextmenu.prevent="emit('context', $event, garment)" @dragstart="emit('dragstart', $event, garment)" @dragend="emit('dragend')">
-        <span class="outfit-garment-image"><img :src="artworkForGarment(garment).url" alt="" draggable="false" loading="lazy" /><span v-if="pickedIds.has(garment.id)" class="outfit-picked-mark"><CheckOutlined /></span></span>
+        <span class="outfit-garment-image"><img :src="mediaUrl(artworkForGarment(garment).url)" alt="" draggable="false" loading="lazy" /><span v-if="pickedIds.has(garment.id)" class="outfit-picked-mark"><CheckOutlined /></span></span>
         <span class="outfit-garment-copy"><strong>{{ garment.category[0] || '衣物' }}</strong><span>{{ garment.primaryColor[0] || '颜色待确认' }}</span></span>
         <component :is="replacing ? SwapOutlined : pickedIds.has(garment.id) ? CheckOutlined : PlusOutlined" class="outfit-garment-add" />
       </a-button>

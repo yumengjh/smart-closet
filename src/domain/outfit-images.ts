@@ -1,4 +1,5 @@
 import type { Garment } from '../services/api'
+import { mediaUrl, isApiMedia } from '../services/urls'
 import type { OutfitElement, OutfitRole } from './outfit'
 import { formatGarmentLabel, nextElementPosition, OUTFIT_HEIGHT, OUTFIT_WIDTH, roleFromGarment } from './outfit'
 
@@ -37,10 +38,10 @@ export function loadOutfitImage(url: string): Promise<HTMLImageElement> {
   if (cached) return cached
   const promise = new Promise<HTMLImageElement>((resolve, reject) => {
     const image = new Image()
-    image.crossOrigin = 'anonymous'
+    image.crossOrigin = isApiMedia(url) ? 'use-credentials' : 'anonymous'
     image.onload = () => resolve(image)
     image.onerror = () => reject(new Error('贴纸图片暂时无法加载，请重试。'))
-    image.src = url
+    image.src = mediaUrl(url)!
   })
   imagePromises.set(url, promise)
   promise.catch(() => imagePromises.delete(url))

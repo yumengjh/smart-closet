@@ -1,3 +1,4 @@
+import { apiUrl } from './urls'
 import { normalizeScene, sceneWrite } from '../domain/outfit'
 import personCatalog from '../domain/person-stickers.json'
 import type { PersonCatalog } from '../domain/person-stickers'
@@ -152,11 +153,11 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
   if (init.body && !(init.body instanceof FormData)) headers.set('Content-Type', 'application/json')
   const method = (init.method || 'GET').toUpperCase()
   if (!usingMocks && !['GET', 'HEAD', 'OPTIONS'].includes(method)) {
-    const csrf = await fetch('/api/auth/csrf', { credentials: 'same-origin' })
+    const csrf = await fetch(apiUrl('/api/auth/csrf'), { credentials: 'include' })
     if (csrf.ok) csrfToken = ((await csrf.json()) as { token: string }).token
     if (csrfToken) headers.set('X-XSRF-TOKEN', csrfToken)
   }
-  const response = await fetch(path, { ...init, headers, credentials: 'same-origin' })
+  const response = await fetch(apiUrl(path), { ...init, headers, credentials: 'include' })
   if (!response.ok) {
     if (response.status === 401 && !['/api/auth/login', '/api/auth/portable-login', '/api/auth/me'].includes(path)) window.dispatchEvent(new Event('closet-session-expired'))
     const data = await response.json().catch(() => ({})) as { code?: string; message?: string; detail?: string }

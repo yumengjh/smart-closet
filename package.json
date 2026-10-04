@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "vue-tsc -b && vite build",
-    "build:server": "vue-tsc -b && VITE_USE_MOCKS=false vite build && node scripts/publish-to-server.mjs",
+    "build:server": "vue-tsc -b && VITE_API_BASE_URL='' VITE_USE_MOCKS=false vite build && node scripts/publish-to-server.mjs",
+    "build:standalone": "vue-tsc -b && CLOSET_STANDALONE_BUILD=true VITE_USE_MOCKS=false vite build",
     "preview": "vite preview --host 0.0.0.0",
     "typecheck": "vue-tsc -b",
     "test": "node --experimental-strip-types --test tests/*.test.ts"

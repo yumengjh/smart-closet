@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { mediaUrl } from '../services/urls'
 import { computed, ref } from 'vue'
 import type { PersonCatalog, PersonPart } from '../domain/person-stickers'
 const props = defineProps<{ catalog: PersonCatalog | null; loading: boolean; error: string; mobile?: boolean }>()
@@ -19,7 +20,7 @@ const parts = computed(() => (loose.value === 'loose' ? props.catalog?.sets.flat
       <p class="outfit-panel-description">逐件{{ mobile ? '点选' : '点选或拖入' }}，每张贴纸都能自由调整和重复添加。</p>
       <div class="outfit-person-grid">
         <button v-for="part in parts" :key="part.id" type="button" class="outfit-person-part" :draggable="!mobile" @click="emit('select', part)" @dragstart="emit('dragstart', $event, part)" @dragend="emit('dragend')">
-          <img :src="part.url" :alt="part.label" draggable="false" /><span>{{ part.label }}</span>
+          <img :src="mediaUrl(part.url)" :alt="part.label" draggable="false" /><span>{{ part.label }}</span>
         </button>
       </div>
       <a-empty v-if="!parts.length" description="没有找到这个部位" />

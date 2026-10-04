@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { mediaUrl } from '../services/urls'
 import { ref, watch } from 'vue'
 import { PictureOutlined } from '@ant-design/icons-vue'
 import { usingMocks, type Garment } from '../services/api'
@@ -10,7 +11,7 @@ watch(() => props.garment.displayUrl, () => { failed.value = false })
 
 <template>
   <div class="garment-art" :class="{ 'has-photo': garment.displayUrl, compact }" :style="{ '--cloth': garment.imageColor }" role="img" :aria-label="`${garment.primaryColor[0] || '未知颜色'}${garment.category[0] || '衣物'}`">
-    <img v-if="garment.displayUrl && !failed" :src="garment.displayUrl" alt="" @error="failed = true" />
+    <img v-if="garment.displayUrl && !failed" :src="mediaUrl(garment.displayUrl)" alt="" @error="failed = true" />
     <div v-else-if="!usingMocks" class="photo-unavailable"><PictureOutlined /><span>{{ failed ? '图片暂时无法加载' : '暂无展示图片' }}</span></div>
     <svg v-else viewBox="0 0 240 245" aria-hidden="true">
       <defs>

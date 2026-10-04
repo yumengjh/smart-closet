@@ -1,5 +1,6 @@
 import { readAgentStream } from './sse'
 import { usingMocks } from '../services/api'
+import { apiUrl } from '../services/urls'
 import type { OutfitScene } from '../domain/outfit'
 
 export type AgentContext = { route: string; workspaceId?: string; boardId?: string; contentVersion?: number; boardCount?: number; garmentId?: string; outfitId?: string; name?: string; revision?: number | null; selectedIds?: string[]; scene?: OutfitScene }
@@ -20,11 +21,11 @@ async function response(path: string, init: RequestInit = {}) {
   const headers = new Headers(init.headers)
   if (init.body) headers.set('Content-Type', 'application/json')
   if (init.method && !['GET', 'HEAD'].includes(init.method)) {
-    const csrf = await fetch('/api/auth/csrf', { credentials: 'same-origin' })
+    const csrf = await fetch(apiUrl('/api/auth/csrf'), { credentials: 'include' })
     if (!csrf.ok) throw new Error('无法完成安全校验，请重新登录。')
     headers.set('X-XSRF-TOKEN', (await csrf.json()).token)
   }
-  const result = await fetch('/api/agent' + path, { ...init, headers, credentials: 'same-origin' })
+  const result = await fetch(apiUrl('/api/agent' + path), { ...init, headers, credentials: 'include' })
   if (!result.ok) {
     if (result.status === 401) window.dispatchEvent(new Event('closet-session-expired'))
     const error = await result.json().catch(() => ({}))
@@ -37,7 +38,7 @@ export async function agentRequest<T>(path: string, method = 'GET', body?: unkno
   const r = await response(path, { method, body: body === undefined ? undefined : JSON.stringify(body) })
   return r.status === 204 ? undefined as T : await r.json()
 }
-// POST fetch keeps the same-origin login/CSRF contract; EventSource cannot carry a message body.
+// POST fetch carries login cookies and CSRF; EventSource cannot carry a message body.
 export async function streamMessage(session: string, body: unknown, onEvent: (event: AgentEvent) => void, signal: AbortSignal) {
   const r = await response(`/sessions/${session}/messages`, { method: 'POST', body: JSON.stringify(body), signal })
   if (!r.body) throw new Error('浏览器不支持流式回复。')

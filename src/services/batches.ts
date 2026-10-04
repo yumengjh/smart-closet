@@ -1,4 +1,5 @@
 import { request } from './api'
+import { apiUrl } from './urls'
 export type IntakeStrategy = 'SMART' | 'FULL' | 'MANUAL'
 export type IntakeChannel = 'SINGLE' | 'MULTIPLE'
 export type Marker = { sourceId: string; x: number; y: number }
@@ -11,7 +12,8 @@ async function upload(path: string, key: string, form: FormData, progress: (perc
   const csrf = await request<{ token: string }>('/api/auth/csrf')
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
-    xhr.open('POST', path)
+    xhr.open('POST', apiUrl(path))
+    xhr.withCredentials = true
     xhr.setRequestHeader('Idempotency-Key', key)
     xhr.setRequestHeader('X-XSRF-TOKEN', csrf.token)
     xhr.upload.onprogress = (event) => { if (event.lengthComputable) progress(Math.round(event.loaded / event.total * 100)) }

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { mediaUrl } from '../services/urls'
 import { ref, watch } from 'vue'
 import { sliderSound } from '../services/sound'
 import { ArrowDownOutlined, ArrowUpOutlined, DeleteOutlined, InfoCircleOutlined, MinusOutlined, PlusOutlined, SwapOutlined, VerticalAlignBottomOutlined, VerticalAlignTopOutlined } from '@ant-design/icons-vue'
@@ -34,7 +35,7 @@ function numberChange(value: unknown, action: (value: number) => void) {
 
 <template>
   <div class="outfit-inspector-content">
-    <div class="outfit-inspector-summary"><div class="outfit-inspector-preview"><img :src="item.assetUrl" :alt="item.garmentLabel" /></div><div><strong>{{ item.garmentLabel }}</strong><a-tag>{{ item.kind === 'PERSON_PART' ? '人物贴纸' : '衣物贴纸' }}</a-tag><a-button v-if="item.kind !== 'PERSON_PART'" type="link" class="outfit-info-link" @click="emit('info')"><InfoCircleOutlined /> 查看衣物信息</a-button></div></div>
+    <div class="outfit-inspector-summary"><div class="outfit-inspector-preview"><img :src="mediaUrl(item.assetUrl)" :alt="item.garmentLabel" /></div><div><strong>{{ item.garmentLabel }}</strong><a-tag>{{ item.kind === 'PERSON_PART' ? '人物贴纸' : '衣物贴纸' }}</a-tag><a-button v-if="item.kind !== 'PERSON_PART'" type="link" class="outfit-info-link" @click="emit('info')"><InfoCircleOutlined /> 查看衣物信息</a-button></div></div>
     <a-alert v-if="item.garmentStatus === 'TRASHED' || item.garmentChanged" type="warning" show-icon :message="item.garmentStatus === 'TRASHED' ? '衣物已在回收站，画板仍保留原图片。' : '衣物已有更新，画板仍保留原图片。'" class="outfit-inspector-notice" />
     <a-tag v-if="item.assetKind === 'INPUT' || item.assetKind === 'GENERATE'" color="orange">当前素材带背景</a-tag>
     <a-form layout="vertical" class="outfit-property-form">

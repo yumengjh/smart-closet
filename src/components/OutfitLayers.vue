@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { mediaUrl } from '../services/urls'
 import { computed, ref } from 'vue'
 import { HolderOutlined, MoreOutlined } from '@ant-design/icons-vue'
 import { Empty } from 'ant-design-vue'
@@ -52,7 +53,7 @@ function keyboard(event: KeyboardEvent, id: string) {
     <a-empty v-if="!elements.length" :image="Empty.PRESENTED_IMAGE_SIMPLE" description="加入贴纸后管理图层" />
     <div v-for="item in layers" :key="elementKey(item)" :data-layer-id="elementKey(item)" class="outfit-layer-row" :class="{ active: selectedIds.includes(elementKey(item)), dragging: dragging === elementKey(item), 'drop-above': target === elementKey(item) && target !== dragging && above, 'drop-below': target === elementKey(item) && target !== dragging && !above }" @contextmenu.prevent="emit('context', $event, elementKey(item))">
       <a-checkbox class="outfit-layer-check" :aria-label="`选择：${item.garmentLabel}`" :checked="selectedIds.includes(elementKey(item))" @change="emit('select', elementKey(item), true)" /><button type="button" class="outfit-layer-handle" :aria-label="`排序：${item.garmentLabel}`" @pointerdown="start($event, elementKey(item))" @pointermove="move" @pointerup="end()" @pointercancel="end(true)" @lostpointercapture="end(true)" @keydown="keyboard($event, elementKey(item))"><HolderOutlined /></button>
-      <button type="button" class="outfit-layer-select" :aria-pressed="selectedIds.includes(elementKey(item))" @click="emit('select', elementKey(item), $event.ctrlKey || $event.metaKey || $event.shiftKey, $event.shiftKey)"><img :src="item.assetUrl" alt="" /><span><strong>{{ item.garmentLabel }}</strong><small>{{ item.kind === 'PERSON_PART' ? '人物' : '衣物' }} · 第 {{ item.zIndex + 1 }} 层{{ item.zIndex === elements.length - 1 ? ' · 顶层' : '' }}</small></span></button>
+      <button type="button" class="outfit-layer-select" :aria-pressed="selectedIds.includes(elementKey(item))" @click="emit('select', elementKey(item), $event.ctrlKey || $event.metaKey || $event.shiftKey, $event.shiftKey)"><img :src="mediaUrl(item.assetUrl)" alt="" /><span><strong>{{ item.garmentLabel }}</strong><small>{{ item.kind === 'PERSON_PART' ? '人物' : '衣物' }} · 第 {{ item.zIndex + 1 }} 层{{ item.zIndex === elements.length - 1 ? ' · 顶层' : '' }}</small></span></button>
       <a-button type="text" :aria-label="`${item.garmentLabel}更多操作`" @click="emit('context', $event, elementKey(item))"><MoreOutlined /></a-button>
     </div>
     <span class="sr-only" role="status" aria-live="polite">{{ dragging ? '正在调整图层顺序' : '' }}</span>
