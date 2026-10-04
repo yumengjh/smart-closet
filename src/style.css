@@ -204,8 +204,14 @@ h3 { font-size: 15px; line-height: 1.5; font-weight: 600; }
   padding: 8px;
   overflow: hidden;
 }
-.settings-nav-item {
+/* Keep the two-line navigation independent of Ant Button's fixed height and
+   inline layout, including when its styles are injected after this sheet. */
+.settings-nav .settings-nav-item {
   display: flex;
+  width: 100%;
+  height: auto;
+  min-height: 60px;
+  flex-shrink: 0;
   align-items: center;
   gap: 12px;
   padding: 12px 14px;
@@ -218,10 +224,11 @@ h3 { font-size: 15px; line-height: 1.5; font-weight: 600; }
   transition: background .15s;
   text-decoration: none;
 }
-.settings-nav-item:hover { background: var(--surface-alt); }
-.settings-nav-item.active { background: var(--selection-bg); color: var(--blue); }
+.settings-nav .settings-nav-item:hover { background: var(--surface-alt); }
+.settings-nav .settings-nav-item.active,
+.settings-nav .settings-nav-item.active:hover { background: var(--selection-bg); color: var(--blue); }
 .settings-nav-item.active .settings-nav-icon { color: var(--blue); }
-.settings-nav-icon {
+.settings-nav-item > .settings-nav-icon {
   display: grid;
   flex-shrink: 0;
   place-items: center;
@@ -232,14 +239,15 @@ h3 { font-size: 15px; line-height: 1.5; font-weight: 600; }
   color: var(--muted-strong);
   font-size: 18px;
 }
-.settings-nav-text {
+.settings-nav-item > .settings-nav-text {
+  display: block;
   flex: 1;
   min-width: 0;
 }
 .settings-nav-text strong { display: block; font-size: 14px; font-weight: 500; }
 .settings-nav-text small { display: block; margin-top: 2px; font-size: 12px; color: var(--muted-copy); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .settings-nav-item.active .settings-nav-text small { color: var(--blue); opacity: .7; }
-.settings-nav-arrow { color: var(--muted-subtle); font-size: 12px; flex-shrink: 0; }
+.settings-nav .settings-nav-item > .settings-nav-arrow { margin-inline-start: 0; color: var(--muted-subtle); font-size: 12px; flex-shrink: 0; }
 .settings-nav-item.active .settings-nav-arrow { color: var(--blue); }
 /* 右侧面板 */
 .settings-panel {
