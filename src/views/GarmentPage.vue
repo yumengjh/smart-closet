@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref, toRaw, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import { ArrowLeftOutlined, CheckOutlined, DeleteOutlined, ReloadOutlined, RollbackOutlined, SaveOutlined, PictureOutlined, LoadingOutlined, PlusOutlined, StopOutlined, EyeOutlined, ArrowRightOutlined, ExclamationCircleOutlined } from '@ant-design/icons-vue'
+import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
+import { ArrowLeftOutlined, CheckOutlined, DeleteOutlined, ReloadOutlined, RollbackOutlined, PictureOutlined, StopOutlined, EyeOutlined, InfoCircleOutlined, EditOutlined, SettingOutlined, HistoryOutlined } from '@ant-design/icons-vue'
 import { App as AntApp } from 'ant-design-vue'
 import { closetApi, fieldLabels, usingMocks, type Garment, type ClosetTask } from '../services/api'
-import { metadataChoices, matchesMetadataOption, metadataPatch, rebaseMetadata, type MetadataField } from '../domain/metadata'
+import { metadataPatch, rebaseMetadata, type MetadataField } from '../domain/metadata'
 import { isProcessing, blocksConfirmation, workflowSummary, generatedImages, imageLabels } from '../domain/workflow'
 import { useClosetStore } from '../stores/closet'
 import TaskProgress from '../components/TaskProgress.vue'
+import GarmentMetadataFields from '../components/GarmentMetadataFields.vue'
+import GarmentEdgeHelp from '../components/GarmentEdgeHelp.vue'
 import { batchApi } from '../services/batches'
 import { playSound } from '../services/sound'
 
@@ -19,10 +21,11 @@ const imageTask = ref<ClosetTask | null>(null); const parentTask = ref<ClosetTas
 const continuationKeys = new Map<string, string>()
 const values = reactive<Record<string, string[]>>({}); const baseline = ref<Garment | null>(null)
 const loading = ref(true); const busy = ref(''); const error = ref(''); const connectionError = ref(''); const success = ref('')
-const viewedResultId = ref(''); const selectedAssetId = ref(''); const resetFields = ref<string[]>([]); const imageTab = ref('处理结果'); const now = ref(Date.now())
+const viewedResultId = ref(''); const selectedAssetId = ref(''); const resetFields = ref<string[]>([]); const now = ref(Date.now())
 const schema = ref<MetadataField[]>([])
 const layeringFields = ['fit', 'thickness', 'wearingModes']
 const confirmLayering = ref(false)
+const layeringVerified = computed(() => layeringFields.every(key => (garment.value?.overrides[key] || []).length && JSON.stringify(values[key] || []) === JSON.stringify(garment.value?.overrides[key] || [])))
 const fields = Object.keys(fieldLabels) as (keyof typeof fieldLabels)[]
 const dirty = computed(() => Boolean(baseline.value && (confirmLayering.value || resetFields.value.length || selectedAssetId.value !== baseline.value.displayAssetId || fields.some(key => JSON.stringify(values[key] || []) !== JSON.stringify(baseline.value?.[key] || [])))))
 const title = computed(() => garment.value?.category[0] ? `${garment.value.primaryColor[0] || ''}${garment.value.category[0]}` : '新上传衣物')
@@ -39,8 +42,6 @@ const imageOptions = computed(() => {
 })
 const selectedImage = computed(() => imageOptions.value.find(image => image.id === selectedAssetId.value))
 const latestResult = computed(() => results.value.find(image => image.id === viewedResultId.value) || results.value[results.value.length - 1])
-const resultUrl = computed(() => imageTab.value === '上传原图' ? garment.value?.sourceUrl : latestResult.value?.url)
-const resultCaption = computed(() => imageTab.value === '上传原图' ? '上传原图' : imageLabels[latestResult.value?.kind || ''] || '本次处理结果')
 const mainTarget = computed(() => task.value?.steps.find(step => step.recognition?.target)?.recognition?.target || garment.value?.target)
 const blocked = computed(() => blocksConfirmation(garment.value?.assessment))
 const stickerPending = computed(() => Boolean(garment.value?.imageProcessing?.stickerRequired && !garment.value.imageProcessing.stickerReady))
@@ -61,6 +62,53 @@ const canApproveTransparency = computed(() => Boolean(transparency.value?.hasAlp
 const checkReasons: Record<string, string> = { FOREGROUND_TOUCHES_IMAGE_EDGE: '衣物或残留像素接触画面边缘', FRAGMENTED_FOREGROUND: '检测到多个分离的区域', LARGE_SEMITRANSPARENT_AREA: '半透明区域较大', VERY_SMALL_FOREGROUND: '主体面积偏小', MOST_OF_IMAGE_IS_FOREGROUND: '主体占比过大', INSUFFICIENT_EXTERIOR_TRANSPARENCY: '画面外缘透明区域不足', NO_EFFECTIVE_TRANSPARENCY: '图片没有有效透明背景', NO_EFFECTIVE_FOREGROUND: '没有可用的衣物主体' }
 const canConfirm = computed(() => !processing.value && schema.value.length > 0 && !connectionError.value && !blocked.value && !stickerPending.value && Boolean(selectedAssetId.value))
 const latestTaskId = computed(() => String(route.query.task || garment.value?.taskId || ''))
+
+const panel = ref<'result' | 'metadata' | 'images' | 'history'>('result')
+const advanced = ref<'appearance' | 'labels' | ''>('')
+const originalOpen = ref(false), completed = ref(false)
+const basicKeys = ['category', 'primaryColor', 'patterns', 'seasons']
+const appearanceKeys = ['secondaryColors', 'neckline', 'sleeveLength', 'garmentLength', 'closure', 'texture', 'styles']
+const basicSchema = computed(() => schema.value.filter(field => basicKeys.includes(field.key)))
+const layeringSchema = computed(() => schema.value.filter(field => layeringFields.includes(field.key)))
+const advancedSchema = computed(() => schema.value.filter(field => !basicKeys.includes(field.key) && !layeringFields.includes(field.key) && (advanced.value === 'appearance' ? appearanceKeys.includes(field.key) : !appearanceKeys.includes(field.key))))
+const previewUrl = computed(() => processing.value || blocked.value ? garment.value?.sourceUrl : selectedImage.value?.url || latestResult.value?.url || garment.value?.displayUrl || garment.value?.sourceUrl)
+const pageTitle = computed(() => completed.value ? '已放进衣柜' : panel.value === 'metadata' ? '编辑衣物资料' : panel.value === 'images' ? '调整展示图片' : panel.value === 'history' ? '处理记录' : processing.value ? '正在识别与整理' : blocked.value ? '先解决照片问题，再继续入柜' : stickerPending.value ? '图片已保留，贴纸还差一步' : garment.value?.status === 'ACTIVE' ? title.value : garment.value?.status === 'TRASHED' ? '衣物已移入回收站' : '识别与整理结果')
+const pageSubtitle = computed(() => panel.value === 'metadata' ? '按需修改，未知可留空。保存后返回结果，无需重新识别。' : panel.value === 'images' ? '对照原图选择展示图片，需要时重新处理衣物边缘。' : panel.value === 'history' ? '任务与图片保留，展示服务端的实际处理状态。' : completed.value ? '图片与衣物信息已保存，之后仍可继续修改。' : processing.value ? '处理在后台继续，你可以先离开，回来后继续。' : blocked.value ? '当前照片无法确认单件衣物，已填写的信息与原图都保留。' : stickerPending.value ? '可继续本地处理，也可以明确选择暂用原图入柜。' : '确认入柜即可，需要时再调整图片或编辑资料。')
+function fieldValue(key: string) { return (values[key] || []).join('、') || '未知' }
+let editorSnapshot: { values: Record<string, string[]>; image: string; resets: string[]; layering: boolean } | undefined
+function openPanel(next: typeof panel.value) {
+  editorSnapshot = { values: Object.fromEntries(Object.entries(values).map(([key, value]) => [key, [...value]])), image: selectedAssetId.value, resets: [...resetFields.value], layering: confirmLayering.value }
+  panel.value = next; advanced.value = ''; window.scrollTo({ top: 0, behavior: 'instant' })
+}
+function returnResult(cancelEdits = false) {
+  if (cancelEdits && editorSnapshot) {
+    for (const key of fields) values[key] = [...(editorSnapshot.values[key] || [])]
+    selectedAssetId.value = editorSnapshot.image; resetFields.value = [...editorSnapshot.resets]; confirmLayering.value = editorSnapshot.layering
+  }
+  if (cancelEdits) { error.value = ''; success.value = '' }
+  panel.value = 'result'; advanced.value = ''; editorSnapshot = undefined; window.scrollTo({ top: 0, behavior: 'instant' })
+}
+async function saveAndReturn() {
+  if (!dirty.value) { returnResult(); return }
+  await save(false)
+  if (!error.value) returnResult()
+}
+function leaveWorkspace() {
+  const leave = () => router.push(source.value.batchId ? `/batches/${source.value.batchId}` : garment.value?.status === 'ACTIVE' ? '/wardrobe' : '/pending')
+  if (dirty.value) modal.confirm({ title: '离开前保存修改？', content: '当前资料或展示图还有未保存的修改。', okText: '保存并离开', cancelText: '继续编辑', onOk: async () => { await save(false); if (!error.value) await leave() } })
+  else void leave()
+}
+async function loadSource() {
+  const id = String(route.params.id); source.value = {}
+  try { const value = await batchApi.provenance(id); if (String(route.params.id) === id) source.value = value } catch { /* Single-item uploads have no batch provenance. */ }
+}
+
+onBeforeRouteLeave(() => {
+  if (busy.value) return false
+  if (!dirty.value) return true
+  return new Promise<boolean>(resolve => modal.confirm({ title: '离开前保存修改？', content: '当前资料或展示图还有未保存的修改。', okText: '保存并离开', cancelText: '继续编辑', closable: false, maskClosable: false, onCancel: () => resolve(false), onOk: async () => { await save(false); resolve(!error.value) } }))
+})
+
 let timer = 0; let elapsedTimer = 0; let alive = false; let pollDelay = 2000; let generation = 0
 function syncForm(record: Garment) {
   confirmLayering.value = false
@@ -96,7 +144,7 @@ function schedulePoll() {
   timer = window.setTimeout(async () => { await load(); schedulePoll() }, pollDelay)
 }
 function patchFromForm() { const patch = metadataPatch(schema.value, values, baseline.value || {}, resetFields.value); if (confirmLayering.value) for (const key of layeringFields) patch[key] = [...(values[key] || [])]; return patch }
-function editField(key: string, next: string[]) { values[key] = next; resetFields.value = resetFields.value.filter(field => field !== key) }
+function editField(key: string, next: string[]) { if (layeringFields.includes(key)) confirmLayering.value = false; values[key] = next; resetFields.value = resetFields.value.filter(field => field !== key) }
 function restoreAutomatic(key: string) { if (layeringFields.includes(key)) confirmLayering.value = false; if (!resetFields.value.includes(key)) resetFields.value.push(key); values[key] = [...(garment.value?.automatic[key] || [])] }
 async function save(confirming = false, originalFallback = false) {
   if (!garment.value || !baseline.value || !schema.value.length || busy.value || processing.value) return
@@ -108,6 +156,7 @@ async function save(confirming = false, originalFallback = false) {
     if (!confirming && selectedAssetId.value !== record.displayAssetId) record = await closetApi.chooseDisplay(record.id, selectedAssetId.value, record.revision)
     garment.value = record; syncForm(record); success.value = confirming ? originalFallback ? '已暂用原图入柜，贴纸仍未完成，可稍后继续制作。' : '已确认入柜，图片和信息已保存。' : '修改已保存。'
     playSound('success')
+    if (confirming && !originalFallback) { completed.value = true; panel.value = 'result' }
     await closet.refreshCounts()
   } catch (cause) { playSound('denied'); error.value = cause instanceof Error ? cause.message : '保存失败，你的输入仍保留。' }
   finally { busy.value = '' }
@@ -124,9 +173,9 @@ async function continueSticker(policy: 'FORCE' | 'REVIEWED') {
   const key = continuationKeys.get(identity) || crypto.randomUUID(); continuationKeys.set(identity, key)
   try {
     const next = await closetApi.continueSticker(run.id, asset.id, policy, key)
-    imageTask.value = next; task.value = next; viewedResultId.value = ''; imageTab.value = '处理结果'
+    imageTask.value = next; task.value = next; viewedResultId.value = ''; returnResult()
     continuationKeys.delete(identity)
-    await router.replace({ path: route.path, query: { task: next.id } }); await load(); schedulePoll()
+    await router.replace({ path: route.path, query: { ...route.query, task: next.id } }); await load(); schedulePoll()
   } catch (cause) { error.value = cause instanceof Error ? cause.message : '本地处理提交失败，原图和修改已保留。' }
   finally { busy.value = '' }
 }
@@ -144,6 +193,11 @@ function reconcile() {
     selectedAssetId.value = image === previous.displayAssetId ? garment.value.displayAssetId : image
     resetFields.value = resets
     for (const key of resets) values[key] = [...(garment.value.automatic[key] || [])]
+    if (editorSnapshot) {
+      editorSnapshot.values = rebaseMetadata(schema.value, editorSnapshot.values, previous, garment.value)
+      if (editorSnapshot.image === previous.displayAssetId) editorSnapshot.image = garment.value.displayAssetId
+      for (const key of editorSnapshot.resets) editorSnapshot.values[key] = [...(garment.value.automatic[key] || [])]
+    }
     baseline.value = structuredClone(toRaw(garment.value)); error.value = ''; success.value = '输入已保留，请核对服务端当前值后保存。'
   } })
 }
@@ -152,7 +206,7 @@ async function startRun(mode: 'recognize' | 'reprocess') {
   if (dirty.value) { error.value = '请先保存当前修改，再提交新的处理任务。'; return }
   modal.confirm({ title: mode === 'recognize' ? '重新识别衣物信息？' : '重新整理图片？', content: '会调用真实模型并使用 1 次 AI 任务额度。已有人工修改和图片会保留。', okText: '提交真实任务', cancelText: '取消', onOk: async () => {
     busy.value = 'retry'; error.value = ''; success.value = ''
-    try { const next = await closetApi[mode](garment.value!.id); task.value = next; imageTab.value = '处理结果'; await router.replace({ path: route.path, query: { task: next.id } }); await load(); await closet.refreshCounts(); schedulePoll() }
+    try { const next = await closetApi[mode](garment.value!.id); task.value = next; returnResult(); await router.replace({ path: route.path, query: { ...route.query, task: next.id } }); await load(); await closet.refreshCounts(); schedulePoll() }
     catch (cause) { error.value = cause instanceof Error ? cause.message : '任务提交失败。' }
     finally { busy.value = '' }
   } })
@@ -178,65 +232,98 @@ function remove() {
 }
 async function restore() { if (!garment.value) return; busy.value = 'restore'; try { garment.value = await closetApi.restore(garment.value.id, 'DRAFT', garment.value.revision); syncForm(garment.value); await closet.refreshCounts() } catch (cause) { error.value = String(cause) } finally { busy.value = '' } }
 async function refresh() { await load(); schedulePoll() }
-onMounted(async () => { alive = true; void batchApi.provenance(String(route.params.id)).then(value => { source.value=value }).catch(() => {}); await load(true); schedulePoll(); elapsedTimer = window.setInterval(() => { now.value = Date.now() }, 1000) })
+onMounted(async () => { alive = true; void loadSource(); await load(true); schedulePoll(); elapsedTimer = window.setInterval(() => { now.value = Date.now() }, 1000) })
 onUnmounted(() => { alive = false; generation++; window.clearTimeout(timer); window.clearInterval(elapsedTimer) })
-watch(() => route.params.id, async () => { generation++; window.clearTimeout(timer); baseline.value = null; task.value = null; imageTask.value = null; parentTask.value = null; continuationKeys.clear(); garment.value = null; loading.value = true; await load(true); schedulePoll() })
+watch(() => route.params.id, async () => { generation++; window.clearTimeout(timer); panel.value = 'result'; completed.value = false; editorSnapshot = undefined; advanced.value = ''; void loadSource(); baseline.value = null; task.value = null; imageTask.value = null; parentTask.value = null; continuationKeys.clear(); garment.value = null; loading.value = true; await load(true); schedulePoll() })
 watch(() => route.query.task, async () => { await load(); schedulePoll() })
 </script>
 
 <template>
-  <div class="detail-page">
-    <div class="workspace-toolbar"><a-button type="text" @click="router.push(garment?.status === 'ACTIVE' ? '/wardrobe' : '/pending')"><ArrowLeftOutlined /> {{ garment?.status === 'ACTIVE' ? '返回衣柜' : '所有未入柜衣物' }}</a-button><a-button @click="router.push('/add')"><PlusOutlined /> 继续添加</a-button></div>
+  <div class="detail-page garment-workspace">
+    <div class="workspace-toolbar">
+      <a-button type="text" @click="panel === 'result' ? leaveWorkspace() : returnResult(true)"><ArrowLeftOutlined /> {{ panel !== 'result' ? '返回处理结果' : source.batchId ? '返回本批次' : garment?.status === 'ACTIVE' ? '返回衣柜' : '所有未入柜衣物' }}</a-button>
+      <a-tooltip title="处理记录"><a-button v-if="garment && panel !== 'history' && !completed" type="text" aria-label="查看处理记录" @click="openPanel('history')"><HistoryOutlined /></a-button></a-tooltip>
+    </div>
     <a-skeleton v-if="loading" active :paragraph="{ rows: 8 }" />
     <a-alert v-else-if="!garment" type="error" :message="connectionError" show-icon><template #action><a-button @click="refresh">重试</a-button></template></a-alert>
     <template v-else>
-      <header class="page-heading workspace-heading"><div><h1>{{ garment.status === 'ACTIVE' ? title : '衣物处理工作台' }}</h1><p class="page-subtitle">{{ title }}<span v-if="task"> · {{ task.mode }}</span></p></div><span class="state-badge" :class="garment.status.toLowerCase()">{{ garment.status === 'ACTIVE' ? '已入柜' : garment.status === 'TRASHED' ? '回收站' : '尚未入柜' }}</span></header>
-      <div v-if="garment.status === 'DRAFT'" class="flow-rail"><span class="done"><CheckOutlined /> 照片已保存</span><ArrowRightOutlined /><span :class="{ current: processing || stickerPending, done: !processing && !stickerPending }"><b>2</b> 处理与结果</span><ArrowRightOutlined /><span :class="{ current: !processing && !stickerPending }"><b>3</b> 核对入柜</span></div>
-      <div v-if="summary" class="workflow-status" :class="summary.tone" role="status" aria-live="polite"><LoadingOutlined v-if="processing" spin /><CheckOutlined v-else-if="garment.status === 'ACTIVE' && !stickerPending" /><ExclamationCircleOutlined v-else /><div><strong>{{ summary.title }}</strong><p>{{ summary.description }}</p></div><a-button v-if="processing" :disabled="busy !== '' || task?.status === 'CANCEL_REQUESTED'" :loading="busy === 'cancel'" @click="cancel"><StopOutlined /> 取消处理</a-button><a-button v-else-if="garment.status === 'DRAFT' && !blocked && !stickerPending" type="primary" href="#review-fields">核对并入柜 <ArrowRightOutlined /></a-button></div>
-      <a-alert v-if="connectionError" type="warning" :message="`连接中断：${connectionError}。当前保留上次状态，正在重试。`" show-icon class="page-alert"><template #action><a-button @click="refresh">重新连接</a-button></template></a-alert>
-      <a-alert v-if="error" type="error" :message="error" description="你的图片选择和表单输入仍保留。" show-icon class="page-alert"><template #action><a-button @click="reconcile">核对最新版本</a-button></template></a-alert>
-      <a-alert v-if="success" type="success" :message="success" show-icon class="page-alert" />
-      <div class="workspace-grid">
-        <section class="result-panel">
-          <a-alert v-if="source.completion" type="warning" show-icon message="这件衣物包含推测补全，请对照来源照片核对。" /><div v-if="source.batchId" class="batch-actions"><a-button :href="source.originalUrl" target="_blank">查看完整来源原图</a-button><a-button @click="router.push(`/batches/${source.batchId}`)">返回本批次，单件重做</a-button></div><div class="panel-heading"><h2>图片结果</h2><a-segmented v-model:value="imageTab" :options="['处理结果', '上传原图']" /></div>
-          <div v-if="imageTab === '处理结果' && results.length > 1" class="result-choices"><a-button v-for="image in results" :key="image.id" :type="latestResult?.id === image.id ? 'primary' : 'text'" @click="viewedResultId = image.id">{{ imageLabels[image.kind] || '处理图片' }}</a-button></div><div class="result-canvas" :class="{ checkerboard: imageTab === '处理结果' && resultUrl }">
-            <img v-if="resultUrl" :src="resultUrl" :alt="resultCaption" />
-            <div v-else class="result-placeholder"><LoadingOutlined v-if="processing" spin /><PictureOutlined v-else /><h3>{{ processing ? task?.mode === '本地贴纸' ? '正在本地处理图片' : '结果图片尚未返回' : task?.mode === '仅识别' ? '本次只识别信息' : '本次没有可用结果图' }}</h3><p>{{ processing ? task?.mode === '本地贴纸' ? '正在本地抠图与制作贴纸，结果会在完成后显示。' : '请查看右侧处理进度，模型返回后会显示在这里。' : task?.mode === '仅识别' ? '此模式不会生成新图片，请查看上传原图及下方识别信息。' : '原图已保留，你可以重新处理，或使用原图入柜。' }}</p><a-button v-if="!processing" @click="imageTab = '上传原图'">查看上传原图</a-button></div>
-            <span v-if="resultUrl" class="canvas-caption">{{ resultCaption }}</span>
-          </div>
-          <div v-if="garment.imageProcessing?.stickerReady && garment.imageProcessing.stickerAssetId !== selectedAssetId" class="result-choices"><a-button type="primary" :disabled="processing || Boolean(busy)" @click="selectedAssetId = garment.imageProcessing!.stickerAssetId!">选用贴纸展示图</a-button><span class="muted">{{ garment.status === 'ACTIVE' ? '选择后点击下方保存修改。' : '选择后核对信息并确认入柜。' }}</span></div>
-          <a-alert v-if="mainTarget" type="info" :message="`本次识别的是：${mainTarget.description}`" :description="mainTarget.worn ? '穿着照只整理这件衣物。被遮挡的细节可能无法还原，请对照原图核对后入柜。' : '信息与图片整理都以这件衣物为目标，请核对颜色、图案和细节。'" show-icon class="target-note" />
-          <div v-if="!stickerPending && !processing && forceAsset && garment.status !== 'TRASHED'" class="recut-completed"><span>背景还在，或衣物边缘不满意？</span><a-button :disabled="Boolean(busy) || usingMocks || blocked || Boolean(connectionError)" :loading="busy === 'continue'" @click="continueSticker('FORCE')">重新去背景</a-button><small>从抠图前的图片处理，不使用 AI 额度。</small></div>
-          <div class="result-bottom"><span>{{ imageTab === '处理结果' && resultUrl ? task?.mode === '本地贴纸' ? '本地图片处理结果，请检查衣物边缘和透明背景。' : '请对照原图检查款式、颜色与细节。' : '上传原图始终保留，不会被处理结果覆盖。' }}</span><a-button v-if="resultUrl" type="text" :href="resultUrl" target="_blank"><EyeOutlined /> 查看大图</a-button></div>
-          <section v-if="stickerPending && !processing && garment.status !== 'TRASHED'" class="sticker-recovery" aria-label="继续制作贴纸">
-            <h3>还差一步：制作贴纸</h3><p>上方是中间结果，尚未贴纸化。透明检查是本地检测，耗时不代表 AI 生图时间。</p>
-            <ul v-if="transparency?.reasons.length"><li v-for="reason in transparency.reasons" :key="reason">{{ checkReasons[reason] || '透明背景需要人工检查' }}</li></ul>
-            <div class="recovery-actions"><a-button type="primary" :disabled="!recoveryAsset || Boolean(busy) || usingMocks || blocked" :loading="busy === 'continue'" @click="continueSticker('FORCE')">重新抠图并制作贴纸</a-button><a-button v-if="canApproveTransparency" :disabled="Boolean(busy) || usingMocks || blocked" @click="approveTransparency">已核对透明图，继续制作</a-button></div>
-            <small>仅做本地处理，不重新生图、不使用 AI 额度。{{ dirty ? '当前修改会先暂存。' : '' }}</small>
-            <a-button v-if="garment.status === 'DRAFT'" type="link" :disabled="Boolean(busy) || blocked || Boolean(connectionError) || !schema.length" @click="useOriginal">暂用原图入柜，稍后制作</a-button>
-          </section>
-        </section>
-        <aside class="workspace-side"><TaskProgress v-if="imageTask || task" :task="(imageTask || task)!" :now="now" /><TaskProgress v-if="task && imageTask && task.id !== imageTask.id" :task="task" :now="now" /><details v-if="parentTask" class="previous-progress"><summary>此前处理记录 · 原任务与图片已保留</summary><TaskProgress :task="parentTask" :now="now" /></details><section class="original-panel"><div class="panel-heading"><h2>上传原图</h2><span>已保存</span></div><button class="original-photo" aria-label="查看上传原图" @click="imageTab = '上传原图'"><img :src="garment.sourceUrl" alt="已保存的上传原图" /></button></section></aside>
-      </div>
-      <section id="review-fields" class="review-panel">
-        <div class="panel-heading"><div><h2>{{ garment.status === 'ACTIVE' ? '图片与衣物信息' : '核对并入柜' }}</h2><p>{{ processing ? '处理结束或取消后，即可选择展示图并编辑信息。' : '选择衣柜里的展示图片，检查识别信息。未知字段可以留空。' }}</p></div><span v-if="dirty" class="unsaved-indicator">有未保存修改</span></div>
-        <div class="review-grid">
-          <div class="display-picker"><h3>1. 选择展示图</h3><div class="candidate-grid"><button v-for="image in imageOptions" :key="image.id" class="candidate-option" :class="{ selected: image.id === selectedAssetId }" :disabled="processing || garment.status === 'TRASHED'" :aria-pressed="image.id === selectedAssetId" @click="selectedAssetId = image.id"><img :src="image.url" :alt="imageLabels[image.kind] || '处理图片'" /><span>{{ imageLabels[image.kind] || '处理图片' }}</span><CheckOutlined v-if="image.id === selectedAssetId" /></button></div><p v-if="selectedImage" class="muted">将使用：{{ imageLabels[selectedImage.kind] || '所选图片' }}</p><div class="detail-process-actions"><a-button :disabled="processing || dirty || usingMocks || garment.status === 'TRASHED'" :loading="busy === 'retry'" @click="startRun('reprocess')"><ReloadOutlined /> 重新整理图片</a-button><a-button :disabled="processing || dirty || usingMocks || garment.status === 'TRASHED'" @click="startRun('recognize')">重新识别信息</a-button></div></div>
-          <div class="metadata-panel"><h3>2. 核对衣物信息</h3><a-alert type="info" show-icon message="版型、厚薄、穿着用途是照片建议，不能保证实际叠穿。可根据实物核对；未知可留空，无需每次搭配重新识别。" class="form-alert" /><a-button :disabled="processing || garment.status === 'TRASHED' || !layeringFields.every(key => values[key]?.length)" @click="confirmLayering = true">{{ confirmLayering ? '已核对，请保存修改' : '我已根据实物核对三项穿着资料' }}</a-button><p v-if="!Object.keys(garment.automatic).length" class="muted">{{ processing ? task?.mode === '本地贴纸' ? '本次只做本地图片处理，结束后可手动填写信息。' : '识别结果尚未返回，暂不填入任何自动值。' : '没有识别结果，可根据原图手动填写。' }}</p><a-alert v-for="(issue, index) in garment.issues" :key="index" type="warning" :message="issue.message" show-icon class="form-alert" /><div class="metadata-grid">
-            <div v-for="field in schema" :key="field.key" class="metadata-field">
-              <div class="metadata-label"><label :for="`field-${field.key}`">{{ field.label }}</label><button v-if="Object.hasOwn(garment.overrides, field.key) || resetFields.includes(field.key)" :disabled="processing" type="button" class="restore-field" @click="restoreAutomatic(field.key)"><RollbackOutlined /> 恢复自动值</button></div>
-              <a-select v-if="field.multiple" :id="`field-${field.key}`" :aria-label="field.label" :value="values[field.key] || []" mode="tags" :options="metadataChoices(field, values[field.key] || [])" :disabled="processing || garment.status === 'TRASHED'" allow-clear show-search placeholder="选择或输入新值" @update:value="editField(field.key, Array.isArray($event) ? $event.map(String) : [])" />
-              <a-auto-complete v-else-if="field.options.length" :id="`field-${field.key}`" :aria-label="field.label" :value="values[field.key]?.[0] || ''" :options="metadataChoices(field, values[field.key] || [])" :filter-option="matchesMetadataOption" :disabled="processing || garment.status === 'TRASHED'" allow-clear @update:value="editField(field.key, $event ? [String($event)] : [])"><a-input :maxlength="400" placeholder="选择或填写新值，未知可留空" /></a-auto-complete>
-              <a-input v-else :id="`field-${field.key}`" :aria-label="field.label" :value="values[field.key]?.[0] || ''" :disabled="processing || garment.status === 'TRASHED'" :maxlength="400" placeholder="未知，可留空" @update:value="editField(field.key, $event ? [$event] : [])" />
-              <small v-if="layeringFields.includes(field.key)" class="field-latest">{{ garment.overrides[field.key]?.length ? '来源：用户核对' : garment.automatic[field.key]?.length ? '来源：自动建议，尚未核对' : '尚缺资料，可根据实物填写' }}<br />{{ garment.metadataEvidence?.[field.key]?.evidence }}</small><small v-if="field.multiple" class="field-latest">输入后按回车添加，未知可留空。</small>
-              <small v-if="error || success.includes('核对')" class="field-latest">服务端当前值：{{ garment[field.key as keyof typeof fieldLabels]?.join('、') || '未知' }}</small>
-            </div>
-          </div></div>
-        </div>
-        <div class="review-actions"><a-button danger type="text" :disabled="Boolean(busy)" @click="remove"><DeleteOutlined /> 移入回收站</a-button><div><a-button v-if="garment.status !== 'TRASHED'" :disabled="processing || !dirty || Boolean(busy)" :loading="busy === 'save'" @click="save(false)"><SaveOutlined /> {{ garment.status === 'DRAFT' ? '暂存修改' : '保存修改' }}</a-button><a-button v-if="garment.status === 'DRAFT'" type="primary" :disabled="!canConfirm || Boolean(busy)" :loading="busy === 'confirm'" @click="save(true)"><CheckOutlined /> 确认入柜</a-button><a-button v-if="garment.status === 'ACTIVE'" type="primary" @click="router.push('/wardrobe')">返回衣柜 <ArrowRightOutlined /></a-button><a-button v-if="garment.status === 'TRASHED'" type="primary" :loading="busy === 'restore'" @click="restore"><RollbackOutlined /> 恢复衣物</a-button></div></div>
-        <p v-if="blocked" class="blocked-hint">这张照片不满足单件衣物要求，请重新上传。</p>
+      <header class="page-heading workspace-heading"><div><h1>{{ pageTitle }}</h1><p class="page-subtitle">{{ pageSubtitle }}</p></div><a-tag :color="garment.status === 'ACTIVE' ? 'success' : garment.status === 'TRASHED' ? 'default' : 'processing'">{{ garment.status === 'ACTIVE' ? '已入柜' : garment.status === 'TRASHED' ? '回收站' : '尚未入柜' }}</a-tag></header>
+      <a-alert v-if="connectionError" type="warning" :message="`连接中断：${connectionError}`" description="保留上次状态，正在重试。" show-icon><template #action><a-button @click="refresh">重新连接</a-button></template></a-alert>
+      <a-alert v-if="error" type="error" :message="error" description="你的图片选择和表单输入仍保留。" show-icon><template #action><a-button @click="reconcile">核对最新版本</a-button></template></a-alert>
+      <a-alert v-if="success && !completed" type="success" :message="success" show-icon />
+      <section v-if="completed" class="workspace-complete">
+        <CheckOutlined class="complete-icon" /><img :src="garment.displayUrl || previewUrl" alt="已入柜的衣物展示图" /><h2>{{ title }}</h2><p>{{ fieldValue('patterns') }} · {{ fieldValue('seasons') }}</p>
+        <div><a-button type="primary" @click="router.push('/wardrobe')">查看衣柜</a-button><a-button @click="router.push('/add')">继续添加衣物</a-button><a-button type="text" @click="completed=false">查看衣物详情</a-button></div>
       </section>
-      <p class="workspace-footer">贴纸完成后，选择展示图并核对信息，再确认入柜。“仅识别”保留原图；贴纸未完成时，也可明确选择暂用原图入柜。</p>
+      <template v-else>
+        <div v-if="panel === 'metadata'" class="garment-layout editor-layout">
+          <section class="garment-surface editor-preview"><h2>这次录入的衣物</h2><div class="garment-canvas"><img :src="previewUrl" alt="当前衣物展示图" /></div><h3>{{ title }}</h3><p>当前展示图</p><a-button @click="originalOpen=true"><PictureOutlined /> 查看上传原图</a-button></section>
+          <section class="garment-surface metadata-editor">
+            <div class="section-heading"><h2>衣物基本信息</h2><a-tag>按需修改</a-tag></div>
+            <GarmentMetadataFields :schema="basicSchema" :values="values" :garment="garment" :reset-fields="resetFields" :disabled="processing || Boolean(busy) || garment.status === 'TRASHED'" @edit="editField" @restore="restoreAutomatic" />
+            <div class="section-heading section-divider"><h2>穿着建议</h2><a-popover title="根据实物核对" :trigger="['hover', 'click']"><template #content><p class="help-copy">照片不能保证实际版型、厚薄和叠穿用途。不确定可留空，资料不足不会自动推断为适合叠穿。</p></template><a-button type="text" aria-label="穿着建议说明"><InfoCircleOutlined /></a-button></a-popover></div>
+            <GarmentMetadataFields :schema="layeringSchema" :values="values" :garment="garment" :reset-fields="resetFields" :disabled="processing || Boolean(busy) || garment.status === 'TRASHED'" @edit="editField" @restore="restoreAutomatic" />
+            <a-checkbox :checked="confirmLayering || layeringVerified" :disabled="processing || Boolean(busy) || garment.status === 'TRASHED' || !layeringFields.every(key => values[key]?.length) || layeringVerified" @update:checked="confirmLayering=Boolean($event)">我已根据实物核对这些穿着建议</a-checkbox>
+            <div class="advanced-actions section-divider"><a-button @click="advanced='appearance'"><SettingOutlined /> 更多外观资料</a-button><a-button @click="advanced='labels'">品牌、尺码与其他标签</a-button></div>
+            <a-alert v-for="(issue,index) in garment.issues" :key="index" type="warning" :message="issue.message" show-icon />
+          </section>
+        </div>
+        <div v-else-if="panel === 'images'" class="garment-layout image-layout">
+          <section class="garment-surface"><div class="section-heading"><h2>图片对照</h2><a-tag :color="stickerPending ? 'warning' : 'success'">{{ stickerPending ? '尚未贴纸化' : '当前可用图片' }}</a-tag></div>
+            <a-segmented v-if="results.length > 1" :value="latestResult?.id" :options="results.map(image => ({label:imageLabels[image.kind] || '处理图片',value:image.id}))" @update:value="viewedResultId=String($event)" class="image-stage-picker" />
+            <div class="comparison-grid"><figure><figcaption>{{ imageLabels[latestResult?.kind || ''] || '处理结果' }}</figcaption><div class="garment-canvas"><img v-if="latestResult" :src="latestResult.url" alt="衣物处理结果" /><a-empty v-else description="本次没有生成图片" /></div></figure><figure><figcaption>上传原图</figcaption><div class="garment-canvas"><img :src="garment.sourceUrl" alt="上传原图" /></div></figure></div>
+            <a-button @click="originalOpen=true"><EyeOutlined /> 放大对照</a-button>
+          </section>
+          <section class="garment-surface image-options"><h2>衣柜展示图</h2><a-radio-group v-model:value="selectedAssetId" :disabled="processing || Boolean(busy) || garment.status === 'TRASHED'" class="display-options"><a-radio v-for="image in imageOptions" :key="image.id" :value="image.id"><img :src="image.url" :alt="imageLabels[image.kind] || '处理图片'" /><span>{{ imageLabels[image.kind] || '处理图片' }}<small>{{ selectedAssetId === image.id ? '已选' : '选择这张图片' }}</small></span></a-radio></a-radio-group>
+            <div class="section-divider"><h3>检查这些细节</h3><p>衣物轮廓完整；颜色、花纹与原图一致；背景没有明显杂物。</p><GarmentEdgeHelp /></div>
+            <a-button v-if="forceAsset && !stickerPending" :disabled="processing || Boolean(busy) || usingMocks || blocked || Boolean(connectionError) || garment.status === 'TRASHED'" :loading="busy === 'continue'" @click="continueSticker('FORCE')"><ReloadOutlined /> 边缘不满意，重新去背景</a-button><small v-if="forceAsset && !stickerPending">本地处理，不使用 AI 额度</small>
+            <a-collapse :bordered="false"><a-collapse-panel key="rework" header="重新处理"><div class="advanced-actions"><a-button :disabled="processing || dirty || usingMocks || garment.status === 'TRASHED'" @click="startRun('reprocess')">重新整理图片 · 1 次</a-button><a-button :disabled="processing || dirty || usingMocks || garment.status === 'TRASHED'" @click="startRun('recognize')">重新识别信息 · 1 次</a-button></div></a-collapse-panel></a-collapse>
+          </section>
+        </div>
+        <div v-else-if="panel === 'history'" class="task-history"><TaskProgress v-if="imageTask || task" :task="(imageTask || task)!" :now="now" /><TaskProgress v-if="task && imageTask && task.id !== imageTask.id" :task="task" :now="now" /><TaskProgress v-if="parentTask" :task="parentTask" :now="now" /><a-empty v-if="!task && !imageTask && !parentTask" description="本次没有处理任务" /></div>
+        <div v-else class="garment-layout" :class="{'result-layout': !processing && !blocked && !stickerPending, 'processing-layout': processing || blocked || stickerPending}">
+          <section class="garment-surface main-preview"><div class="section-heading"><h2>{{ processing || blocked ? '上传原图' : stickerPending ? '当前中间结果' : ['INPUT','ORIGINAL'].includes(selectedImage?.kind || '') ? '当前展示图' : '整理后的衣物' }}</h2><a-tooltip title="查看原图与当前展示图"><a-button type="text" aria-label="放大对照原图" @click="originalOpen=true"><PictureOutlined /></a-button></a-tooltip></div>
+            <div class="garment-canvas"><img :src="stickerPending && latestResult ? latestResult.url : previewUrl" :alt="processing || blocked ? '上传原图' : '当前衣物展示图'" /></div>
+            <div class="preview-caption"><h3>{{ title }}</h3><p>{{ fieldValue('patterns') }} · {{ fieldValue('seasons') }}</p></div>
+            <a-alert v-if="source.completion" type="warning" show-icon message="包含推测补全，请对照来源照片检查。" />
+            <a-button v-if="!processing && !blocked" block @click="openPanel('images')">调整展示图片</a-button>
+            <p v-if="processing" class="quiet-copy">完成后会在这里展示结果。</p>
+          </section>
+          <section v-if="processing" class="garment-surface live-progress"><TaskProgress v-if="imageTask || task" :task="(imageTask || task)!" :now="now" /><a-button @click="openPanel('history')"><HistoryOutlined /> 查看任务记录</a-button><a-button :disabled="busy !== '' || (imageTask || task)?.status === 'CANCEL_REQUESTED'" :loading="busy === 'cancel'" @click="cancel"><StopOutlined /> 取消本次处理</a-button></section>
+          <section v-else-if="blocked" class="garment-surface recovery-options"><a-alert type="warning" show-icon message="还不能确定要入柜哪一件" /><h3>照片里有多件衣物</h3><p>使用多件整理，分别处理每件衣物。</p><a-button @click="router.push({path:'/add',query:{mode:'multiple'}})">转到多件录入</a-button><div class="section-divider"><h3>只有一件，但模糊或被遮挡</h3><p>重新录入清楚、完整的照片。原草稿与资料会保留。</p><a-button type="primary" @click="router.push('/add')">更换照片</a-button></div><GarmentEdgeHelp /><a-button @click="openPanel('metadata')">编辑已填写的资料</a-button></section>
+          <section v-else-if="stickerPending" class="garment-surface recovery-options"><h2>继续这件衣物</h2><div><h3>推荐：完成贴纸</h3><p>重新去背景与制作白边。本地处理，不使用 AI 额度。</p></div><a-alert v-if="transparency?.reasons.length" type="warning" show-icon :message="transparency.reasons.map(reason => checkReasons[reason] || '透明背景需要检查').join('；')" />
+            <a-button type="primary" :disabled="!forceAsset || Boolean(busy) || usingMocks || blocked || Boolean(connectionError) || garment.status === 'TRASHED'" :loading="busy === 'continue'" @click="continueSticker('FORCE')">重新抠图并制作贴纸</a-button><a-button v-if="canApproveTransparency" :disabled="Boolean(busy) || usingMocks || blocked || Boolean(connectionError) || garment.status === 'TRASHED'" @click="approveTransparency">已核对透明图，继续制作</a-button>
+            <div v-if="garment.status === 'DRAFT'" class="section-divider"><h3>稍后再做贴纸</h3><p>本次使用上传原图入柜，以后仍可继续制作。</p><a-button :disabled="Boolean(busy) || blocked || Boolean(connectionError) || !schema.length" @click="useOriginal">暂用上传原图入柜</a-button></div><a-button @click="openPanel('metadata')">编辑衣物资料</a-button><GarmentEdgeHelp />
+          </section>
+          <section v-else class="garment-surface garment-summary"><div class="section-heading"><h2>衣物资料</h2><a-button :disabled="garment.status === 'TRASHED'" @click="openPanel('metadata')"><EditOutlined /> 编辑资料</a-button></div><dl class="summary-fields"><div v-for="key in basicKeys" :key="key"><dt>{{ fieldLabels[key as keyof typeof fieldLabels] }}</dt><dd>{{ fieldValue(key) }}</dd></div></dl>
+            <div class="section-heading section-divider"><h3>穿着建议</h3><a-popover :trigger="['hover','click']" title="可按实物修改"><template #content><p class="help-copy">照片建议尚未核实时，不能保证实际叠穿。点击编辑资料可核对或修改，也可保持未知。</p></template><a-button type="text" aria-label="穿着建议说明"><InfoCircleOutlined /></a-button></a-popover></div><dl class="summary-fields"><div v-for="key in layeringFields" :key="key"><dt>{{ key === 'fit' ? '版型' : key === 'thickness' ? '厚薄' : '用途' }}</dt><dd>{{ fieldValue(key) }}</dd></div></dl><p class="quiet-copy">{{ layeringVerified ? '穿着建议已根据实物核对。' : '照片建议尚未根据实物核对，之后仍可修改。' }}</p>
+            <a-alert v-if="summary && ['warning','error'].includes(summary.tone)" :type="summary.tone === 'error' ? 'error' : 'warning'" :message="summary.title" show-icon><template #description><span>{{ summary.description }}</span><a-button type="link" @click="openPanel('images')">检查图片与重新处理</a-button></template></a-alert>
+            <a-alert v-for="(issue,index) in garment.issues" :key="index" type="warning" :message="issue.message" show-icon />
+            <a-popover :trigger="['hover','click']" title="资料可以之后补充"><template #content><p class="help-copy">品牌、尺码、成分等资料未知可以留空，不影响入柜。</p></template><a-button type="text" class="summary-help"><InfoCircleOutlined /> 还有资料未知？也可以入柜</a-button></a-popover>
+          </section>
+        </div>
+        <footer class="workspace-actionbar">
+          <div class="actionbar-status"><span>{{ dirty ? '有未保存修改' : processing ? '任务已提交，结果会自动保留' : garment.status === 'ACTIVE' ? '图片与资料已保存' : '处理结果已保留，尚未入柜' }}</span><a-popover title="图片和处理说明" :trigger="['hover','click']"><template #content><p class="help-copy">{{ summary?.description }} 原图与已完成图片始终保留。贴纸暂停时可继续本地处理；重新识别或整理图片需要 AI 额度。</p></template><a-button type="text" aria-label="查看当前处理说明"><InfoCircleOutlined /></a-button></a-popover></div>
+          <div class="actionbar-buttons">
+            <template v-if="panel === 'metadata' || panel === 'images'"><a-button :disabled="Boolean(busy)" @click="returnResult(true)">取消修改</a-button><a-button type="primary" :disabled="processing || Boolean(busy) || Boolean(connectionError) || garment.status === 'TRASHED'" :loading="busy === 'save'" @click="saveAndReturn">{{ panel === 'images' ? '应用图片' : '保存并返回' }}</a-button></template>
+            <template v-else-if="panel === 'history'"><a-button @click="returnResult()">返回处理结果</a-button></template>
+            <template v-else><a-tooltip title="移入回收站"><a-button v-if="garment.status !== 'TRASHED'" type="text" danger aria-label="移入回收站" :disabled="Boolean(busy)" @click="remove"><DeleteOutlined /></a-button></a-tooltip><a-button v-if="dirty && garment.status !== 'TRASHED'" :disabled="processing || Boolean(busy)" :loading="busy === 'save'" @click="save(false)">保存草稿</a-button><a-button @click="router.push('/add')">继续添加</a-button><a-button v-if="garment.status === 'DRAFT'" type="primary" :disabled="!canConfirm || Boolean(busy)" :loading="busy === 'confirm'" @click="save(true)"><CheckOutlined /> {{ processing ? '处理中，请稍候' : blocked ? '先处理照片问题' : stickerPending ? '贴纸尚未完成' : '确认入柜' }}</a-button><a-button v-else-if="garment.status === 'ACTIVE'" type="primary" @click="router.push('/wardrobe')">返回衣柜</a-button><a-button v-else type="primary" :loading="busy === 'restore'" @click="restore">恢复衣物</a-button></template>
+          </div>
+        </footer>
+      </template>
+      <a-modal :open="Boolean(advanced)" :title="advanced === 'appearance' ? '更多外观资料' : '品牌、尺码与其他标签'" :footer="null" :width="720" @cancel="advanced=''">
+        <p class="quiet-copy modal-intro">按需填写，未知可留空。修改随衣物资料一起保存。</p><GarmentMetadataFields :schema="advancedSchema" :values="values" :garment="garment" :reset-fields="resetFields" :disabled="processing || Boolean(busy) || garment.status === 'TRASHED'" @edit="editField" @restore="restoreAutomatic" /><div class="modal-actions"><a-button type="primary" @click="advanced=''">返回资料编辑</a-button></div>
+      </a-modal>
+      <a-modal v-model:open="originalOpen" title="原图与当前展示图" :footer="null" :width="1000"><p v-if="mainTarget" class="quiet-copy modal-intro">识别目标：{{ mainTarget.description }}</p><div class="comparison-grid"><figure><figcaption>上传原图</figcaption><div class="garment-canvas"><img :src="source.previewUrl || garment.sourceUrl" alt="完整来源原图" /></div><a-button type="link" :href="source.originalUrl || garment.sourceUrl" target="_blank">查看原始大图</a-button></figure><figure><figcaption>当前选择的展示图</figcaption><div class="garment-canvas"><img :src="selectedImage?.url || previewUrl" alt="当前展示图" /></div><a-button type="link" :href="selectedImage?.url || previewUrl" target="_blank">查看展示大图</a-button></figure></div></a-modal>
     </template>
   </div>
 </template>
+
+<style scoped>
+.garment-workspace{display:grid;gap:20px;max-width:1320px}.workspace-toolbar{margin:0}.workspace-heading{margin:0;align-items:center}.workspace-heading h1{font-size:26px;margin:0 0 8px}.page-subtitle{line-height:1.8}.garment-layout{display:grid;gap:24px;align-items:stretch;min-width:0}.result-layout,.editor-layout{grid-template-columns:minmax(280px,.85fr) minmax(0,1.55fr)}.processing-layout,.image-layout{grid-template-columns:minmax(0,1.6fr) minmax(300px,1fr)}.garment-surface{padding:24px;border:1px solid var(--line);border-radius:12px;background:var(--surface);min-width:0;display:flex;flex-direction:column;gap:20px}.garment-surface h2{font-size:17px;margin:0}.garment-surface h3{font-size:15px;margin:0}.section-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px}.section-heading h2,.section-heading h3{margin:0}.section-divider{border-top:1px solid var(--line);padding-top:24px}.garment-canvas{background:var(--surface-alt);border-radius:10px;display:flex;align-items:center;justify-content:center;min-width:0;height:360px;overflow:hidden}.garment-canvas img{width:100%;height:100%;object-fit:contain;padding:20px}.main-preview .garment-canvas{height:clamp(220px,calc(100dvh - 560px),360px)}.preview-caption h3,.editor-preview h3{font-size:20px;line-height:1.5}.preview-caption p,.editor-preview>p,.quiet-copy,.garment-surface p,.garment-surface small{font-size:13px;color:var(--muted-copy);line-height:1.8;margin:0}.main-preview>.ant-btn:last-child{margin-top:auto}.summary-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;margin:0}.summary-fields>div{display:flex;gap:12px;min-width:0;align-items:baseline}.summary-fields dt{font-size:13px;color:var(--muted-copy);flex:none}.summary-fields dd{font-size:14px;margin:0;overflow-wrap:anywhere}.summary-help{margin-top:auto;align-self:flex-start;white-space:normal;height:auto!important;text-align:left;line-height:1.8}.metadata-editor{gap:24px}.advanced-actions{display:flex;gap:12px;flex-wrap:wrap}.advanced-actions>.ant-btn{flex:1}.comparison-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px;min-width:0}.comparison-grid figure{margin:0;min-width:0;display:grid;gap:12px}.comparison-grid figcaption{font-size:13px;color:var(--muted-copy)}.image-stage-picker{max-width:100%;overflow-x:auto}.display-options{display:grid;gap:12px}.display-options :deep(.ant-radio-wrapper){margin:0;padding:16px;border:1px solid var(--line);border-radius:8px;align-items:center;min-height:88px}.display-options :deep(.ant-radio-wrapper-checked){border-color:var(--blue);background:var(--selection-bg)}.display-options :deep(.ant-radio-wrapper>span:last-child){display:flex;gap:12px;align-items:center;min-width:0;flex:1}.display-options img{width:56px;height:56px;object-fit:contain;background:var(--surface-alt);border-radius:6px;flex:none}.display-options small{display:block;margin-top:4px}.image-options .section-divider{display:grid;gap:12px}.recovery-options .section-divider{display:grid;gap:12px}.live-progress :deep(.progress-panel){padding:0;border:0;border-radius:0}.live-progress>.ant-btn:first-of-type{margin-top:auto}.task-history{display:grid;gap:24px}.workspace-actionbar{position:sticky;bottom:16px;z-index:5;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 20px;border:1px solid var(--line);border-radius:12px;background:var(--surface);box-shadow:0 4px 20px #00000008}.actionbar-status{display:flex;align-items:center;gap:4px;min-width:0;font-size:12px;color:var(--muted-copy)}.actionbar-buttons{display:flex;gap:12px;align-items:center;flex-wrap:wrap;justify-content:flex-end}.actionbar-buttons>.ant-btn-primary{min-width:180px}.garment-workspace :deep(.ant-btn){min-height:44px;display:inline-flex;align-items:center;justify-content:center;gap:6px}.garment-workspace :deep(.ant-tag){margin:0}.help-copy{max-width:320px;font-size:14px;line-height:1.8}.workspace-complete{display:flex;flex-direction:column;align-items:center;gap:20px;text-align:center;max-width:680px;width:100%;justify-self:center;padding:32px;background:var(--surface);border:1px solid var(--line);border-radius:12px}.workspace-complete>img{width:280px;max-width:100%;height:280px;object-fit:contain;background:var(--surface-alt);border-radius:10px}.complete-icon{color:var(--success);font-size:26px}.workspace-complete>div{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}.workspace-complete p{color:var(--muted-copy);font-size:13px}.modal-intro{margin-bottom:24px}.modal-actions{display:flex;justify-content:flex-end;margin-top:24px}
+@media(min-width:1024px){.workspace-actionbar{padding-right:72px}}
+@media(max-width:1000px){.processing-layout,.image-layout{grid-template-columns:minmax(0,1.2fr) minmax(280px,1fr)}.comparison-grid{gap:12px}.comparison-grid .garment-canvas{height:280px}.garment-surface{padding:20px}.actionbar-status>span{max-width:220px}.actionbar-buttons>.ant-btn-primary{min-width:140px}}
+@media(max-width:1023px){.workspace-actionbar{bottom:calc(84px + env(safe-area-inset-bottom))}}
+@media(max-width:767px){.garment-workspace{gap:16px}.workspace-heading{align-items:flex-start;gap:10px}.workspace-heading h1{font-size:22px}.garment-layout{grid-template-columns:1fr;gap:16px}.garment-surface{padding:18px;gap:18px}.main-preview .garment-canvas,.editor-preview .garment-canvas{height:240px}.editor-preview{gap:12px}.editor-preview{display:grid;grid-template-columns:88px minmax(0,1fr);align-items:center}.editor-preview>h2{grid-column:1/-1}.editor-preview .garment-canvas{height:100px;grid-column:1;grid-row:2/4}.editor-preview .garment-canvas img{padding:8px}.editor-preview>h3{grid-column:2;grid-row:2;font-size:18px}.editor-preview>p{grid-column:2;grid-row:3}.editor-preview>.ant-btn{grid-column:1/-1}.section-divider{padding-top:18px}.summary-fields{gap:16px}.summary-fields>div{flex-direction:column;gap:4px}.preview-caption h3{font-size:18px}.comparison-grid .garment-canvas{height:230px}.comparison-grid .garment-canvas img{padding:10px}.workspace-actionbar{bottom:calc(84px + env(safe-area-inset-bottom));flex-direction:column;align-items:stretch;padding:12px;gap:8px}.actionbar-status{justify-content:space-between}.actionbar-status>span{max-width:none}.actionbar-buttons{display:flex;flex-wrap:wrap;gap:8px}.actionbar-buttons>.ant-btn:not(.ant-btn-text){flex:1;min-width:0}.actionbar-buttons>.ant-btn-primary{min-width:140px}.advanced-actions{flex-direction:column}.workspace-complete{padding:24px 18px}.workspace-complete>div{width:100%}.workspace-complete>div>.ant-btn{flex:1}.section-heading{gap:8px}.section-heading h2{font-size:16px}}
+@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+</style>

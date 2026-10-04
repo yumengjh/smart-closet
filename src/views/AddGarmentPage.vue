@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeftOutlined, PictureOutlined, CameraOutlined, RotateRightOutlined, ArrowRightOutlined, InfoCircleOutlined } from '@ant-design/icons-vue'
 import CameraCapture from '../components/CameraCapture.vue'
 import BatchIntake from '../components/BatchIntake.vue'
 import GarmentEdgeHelp from '../components/GarmentEdgeHelp.vue'
-const intake = ref(false)
+const intake = ref(useRoute().query.mode === 'multiple')
 import { hasCamera } from '../services/camera'
 import { closetApi, usingMocks, type ClosetTask, type ProcessingChoice } from '../services/api'
 
