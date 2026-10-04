@@ -9,6 +9,8 @@ import { metadataPatch, rebaseMetadata, type MetadataField } from '../domain/met
 import { isProcessing, blocksConfirmation, workflowSummary, generatedImages, imageLabels } from '../domain/workflow'
 import { useClosetStore } from '../stores/closet'
 import TaskProgress from '../components/TaskProgress.vue'
+import WaitingActivities from '../components/WaitingActivities.vue'
+import { useProcessingStore } from '../stores/processing'
 import GarmentMetadataFields from '../components/GarmentMetadataFields.vue'
 import GarmentEdgeHelp from '../components/GarmentEdgeHelp.vue'
 import { batchApi } from '../services/batches'
@@ -19,6 +21,8 @@ const { modal } = AntApp.useApp()
 const route = useRoute(); const router = useRouter(); const closet = useClosetStore()
 const garment = ref<Garment | null>(null); const task = ref<ClosetTask | null>(null)
 const imageTask = ref<ClosetTask | null>(null); const parentTask = ref<ClosetTask | null>(null)
+const processingTasks = useProcessingStore()
+watch([task, imageTask], tasks => { for (const item of tasks) if (item) processingTasks.trackTask(item, false, !route.query.batch) })
 const continuationKeys = new Map<string, string>()
 const values = reactive<Record<string, string[]>>({}); const baseline = ref<Garment | null>(null)
 const loading = ref(true); const busy = ref(''); const error = ref(''); const connectionError = ref(''); const success = ref('')
@@ -290,7 +294,7 @@ watch(() => route.query.task, async () => { await load(); schedulePoll() })
             <a-button v-if="!processing && !blocked" block @click="openPanel('images')">调整展示图片</a-button>
             <p v-if="processing" class="quiet-copy">完成后会在这里展示结果。</p>
           </section>
-          <section v-if="processing" class="garment-surface live-progress"><TaskProgress v-if="imageTask || task" :task="(imageTask || task)!" :now="now" /><a-button @click="openPanel('history')"><HistoryOutlined /> 查看任务记录</a-button><a-button :disabled="busy !== '' || (imageTask || task)?.status === 'CANCEL_REQUESTED'" :loading="busy === 'cancel'" @click="cancel"><StopOutlined /> 取消本次处理</a-button></section>
+          <section v-if="processing" class="garment-surface live-progress"><TaskProgress v-if="imageTask || task" :task="(imageTask || task)!" :now="now" /><a-button @click="openPanel('history')"><HistoryOutlined /> 查看任务记录</a-button><a-button :disabled="busy !== '' || (imageTask || task)?.status === 'CANCEL_REQUESTED'" :loading="busy === 'cancel'" @click="cancel"><StopOutlined /> 取消本次处理</a-button><WaitingActivities /></section>
           <section v-else-if="blocked" class="garment-surface recovery-options"><a-alert type="warning" show-icon message="还不能确定要入柜哪一件" /><h3>照片里有多件衣物</h3><p>使用多件整理，分别处理每件衣物。</p><a-button @click="router.push({path:'/add',query:{mode:'multiple'}})">转到多件录入</a-button><div class="section-divider"><h3>只有一件，但模糊或被遮挡</h3><p>重新录入清楚、完整的照片。原草稿与资料会保留。</p><a-button type="primary" @click="router.push('/add')">更换照片</a-button></div><GarmentEdgeHelp /><a-button @click="openPanel('metadata')">编辑已填写的资料</a-button></section>
           <section v-else-if="stickerPending" class="garment-surface recovery-options"><h2>继续这件衣物</h2><div><h3>推荐：完成贴纸</h3><p>重新去背景与制作白边。本地处理，不使用 AI 额度。</p></div><a-alert v-if="transparency?.reasons.length" type="warning" show-icon :message="transparency.reasons.map(reason => checkReasons[reason] || '透明背景需要检查').join('；')" />
             <a-button type="primary" :disabled="!forceAsset || Boolean(busy) || usingMocks || blocked || Boolean(connectionError) || garment.status === 'TRASHED'" :loading="busy === 'continue'" @click="continueSticker('FORCE')">重新抠图并制作贴纸</a-button><a-button v-if="canApproveTransparency" :disabled="Boolean(busy) || usingMocks || blocked || Boolean(connectionError) || garment.status === 'TRASHED'" @click="approveTransparency">已核对透明图，继续制作</a-button>

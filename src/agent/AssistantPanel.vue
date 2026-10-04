@@ -17,6 +17,7 @@ import AssistantOrb from './AssistantOrb.vue'
 import BloubAvatar from './BloubAvatar.vue'
 import { applyAvatarMode, validCue, type AvatarCue } from './avatar'
 import SoundToggle from '../components/SoundToggle.vue'
+import TaskNotice from '../components/TaskNotice.vue'
 import { playSound } from '../services/sound'
 import { useClosetStore } from '../stores/closet'
 import { useFloatingPosition } from './useFloatingPosition'
@@ -36,6 +37,21 @@ const closet = useClosetStore()
 const debugOpen = ref(false), debugRequest = ref<string | null>(null), debugUpdates = ref(0)
 const historyOpen = ref(false); const renameOpen = ref(false); const renameTitle = ref(''); const renaming = ref(false)
 const optionsOpen = ref(false); const delighted = ref(false)
+const waitingTopics = ref(false)
+const topics = [
+  { label: '聊聊穿搭', prompt: '给我一些日常通勤的穿搭灵感吧。' },
+  { label: '衣物养护', prompt: '有哪些简单实用的衣物收纳和养护建议？' },
+  { label: '随便聊聊', prompt: '衣物正在整理，陪我轻松聊一会儿吧。' },
+]
+function pickTopic(prompt: string) {
+  if (busy.value || input.value.trim()) { message.info('输入框里有正在编辑的消息，先保留你的草稿。'); return }
+  input.value = prompt; void nextTick(() => textarea.value?.focus())
+}
+async function openFromWaiting(event: Event) {
+  waitingTopics.value = Boolean((event as CustomEvent<{ waiting?: boolean }>).detail?.waiting)
+  if (!open.value) await toggle()
+  else { await nextTick(); textarea.value?.focus() }
+}
 const pinned = ref(true); const viewport = ref({ width: window.innerWidth, height: window.innerHeight })
 const pinKey = computed(() => `yixu.assistant-pin.v1:${closet.user?.username || 'local'}`)
 const panelKey = computed(() => `yixu.assistant-panel.v1:${closet.user?.username || 'local'}`)
@@ -49,7 +65,7 @@ let delightTimer: ReturnType<typeof setTimeout> | undefined
 function celebrate() { delighted.value = true; clearTimeout(delightTimer); delightTimer = setTimeout(() => { delighted.value = false }, 2400) }
 function togglePin() { pinned.value = !pinned.value; try { localStorage.setItem(pinKey.value, String(pinned.value)) } catch {} playSound('latch') }
 function startPanelDrag(event: PointerEvent) { if (!pinned.value && !compact.value) floating.start(event) }
-function close() { open.value = false; optionsOpen.value = false; playSound('off'); void nextTick(() => launcher.value?.focus()) }
+function close() { waitingTopics.value = false; open.value = false; optionsOpen.value = false; playSound('off'); void nextTick(() => launcher.value?.focus()) }
 function nearBottom() { return !transcript.value || transcript.value.scrollHeight - transcript.value.scrollTop - transcript.value.clientHeight < 72 }
 
 const session = computed(() => sessions.value.find(s => s.id === selected.value))
@@ -157,8 +173,8 @@ function lockBackground(lock: boolean) {
   }
 }
 watch([open, compact], ([visible, mobile]) => lockBackground(visible && mobile), { flush: 'post' })
-onMounted(() => { try { pinned.value = localStorage.getItem(pinKey.value) !== 'false' } catch {}; window.addEventListener('resize', resize); window.addEventListener('keydown', keyboard); window.visualViewport?.addEventListener('resize', resizeMobileViewport); window.visualViewport?.addEventListener('scroll', resizeMobileViewport) })
-onUnmounted(() => { abort?.abort(); clearTimeout(delightTimer); window.removeEventListener('resize', resize); window.removeEventListener('keydown', keyboard); window.visualViewport?.removeEventListener('resize', resizeMobileViewport); window.visualViewport?.removeEventListener('scroll', resizeMobileViewport); lockBackground(false) })
+onMounted(() => { window.addEventListener('closet-assistant-open', openFromWaiting); try { pinned.value = localStorage.getItem(pinKey.value) !== 'false' } catch {}; window.addEventListener('resize', resize); window.addEventListener('keydown', keyboard); window.visualViewport?.addEventListener('resize', resizeMobileViewport); window.visualViewport?.addEventListener('scroll', resizeMobileViewport) })
+onUnmounted(() => { window.removeEventListener('closet-assistant-open', openFromWaiting); abort?.abort(); clearTimeout(delightTimer); window.removeEventListener('resize', resize); window.removeEventListener('keydown', keyboard); window.visualViewport?.removeEventListener('resize', resizeMobileViewport); window.visualViewport?.removeEventListener('scroll', resizeMobileViewport); lockBackground(false) })
 </script>
 <template>
   <AgentTraceModal v-model:open="debugOpen" :session-id="selected" :request-id="debugRequest" :updates="debugUpdates" />
@@ -178,6 +194,8 @@ onUnmounted(() => { abort?.abort(); clearTimeout(delightTimer); window.removeEve
           </div>
         </header>
         <div class="assistant-context"><span class="assistant-context-dot" /><span :title="contextName">{{ contextName }}</span><small>随页面更新</small></div>
+        <div v-if="compact" class="assistant-task-notice"><TaskNotice @opened="close" /></div>
+        <div v-if="waitingTopics" class="assistant-waiting-topics"><small>等衣物的这会儿，想聊点什么？选话题后由你发送。</small><div><a-button v-for="topic in topics" :key="topic.label" size="small" :disabled="busy || loading || !models.configured" @click="pickTopic(topic.prompt)">{{ topic.label }}</a-button></div></div>
         <div ref="transcript" class="assistant-transcript" aria-label="聊天记录" aria-live="polite" :aria-busy="busy">
           <div v-if="!messages.length" class="assistant-welcome"><BloubAvatar class="assistant-face" :size="74" expression="happy" /><p class="eyebrow">从你的衣柜开始</p><h2>今天想怎么穿？</h2><p>告诉我场景，或选中一件衣物。<br />平台怎么用，也可以问我。</p><a-button block @click="input = '帮我组合三套通勤穿搭'; textarea?.focus()">帮我搭三套通勤穿搭</a-button><a-button block @click="input = '组合台怎么使用？'; textarea?.focus()">了解组合台怎么使用</a-button></div>
           <article v-for="item in messages" :key="item.id" class="assistant-message" :class="item.role"><small>{{ item.role === 'user' ? '你' : '鱼搭助手' }}</small><p v-if="item.content" class="assistant-text">{{ item.content }}</p><span v-if="item.status === 'FAILED'" class="assistant-interrupted">回复未完成</span>
@@ -210,3 +228,7 @@ onUnmounted(() => { abort?.abort(); clearTimeout(delightTimer); window.removeEve
     <a-modal v-model:open="renameOpen" title="重命名对话" ok-text="保存名称" cancel-text="取消" :confirm-loading="renaming" :ok-button-props="{ disabled: !renameTitle.trim() }" @ok="saveTitle"><a-input v-model:value="renameTitle" aria-label="对话名称" :maxlength="100" @press-enter="saveTitle" /></a-modal>
   </Teleport>
 </template>
+
+<style scoped>
+.assistant-task-notice{padding:0 14px;flex-shrink:0}.assistant-task-notice :deep(.task-notice){margin:10px 0 0}.assistant-waiting-topics{padding:12px 16px;border-bottom:1px solid var(--line);flex-shrink:0}.assistant-waiting-topics small{display:block;font-size:12px;line-height:1.6;color:var(--muted);margin-bottom:8px}.assistant-waiting-topics>div{display:flex;gap:8px;flex-wrap:wrap}
+</style>

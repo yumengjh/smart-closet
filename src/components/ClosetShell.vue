@@ -13,12 +13,22 @@ import { usingMocks } from '../services/api'
 import SoundToggle from './SoundToggle.vue'
 import ThemeToggle from './ThemeToggle.vue'
 import AssistantPanel from '../agent/AssistantPanel.vue'
+import TaskInbox from './TaskInbox.vue'
+import TaskNotice from './TaskNotice.vue'
+import WaitingGame from './WaitingGame.vue'
+import WaitingStarted from './WaitingStarted.vue'
+import { useProcessingStore } from '../stores/processing'
 import { installInteractionSounds, unlockSound } from '../services/sound'
 
 const route = useRoute()
 const router = useRouter()
 const closet = useClosetStore()
 const appearance = useThemeStore()
+const processing = useProcessingStore()
+watch(() => closet.user && !closet.user.mustChangePassword ? closet.user.username : '', user => { if (user) processing.start(user); else processing.stop() }, { immediate: true })
+watch(() => route.fullPath, () => { void processing.refresh(true) })
+watch(() => processing.latestNotice, notice => { if (notice) void closet.refreshCounts() })
+onUnmounted(() => processing.stop())
 const closetTheme = computed(() => ({
   algorithm: appearance.isDark ? antTheme.darkAlgorithm : antTheme.defaultAlgorithm,
   token: {
@@ -99,8 +109,10 @@ async function signOut() {
         </aside>
         <main class="main-area">
           <div v-if="usingMocks" class="mock-banner"><span class="mock-pulse"></span><span>界面演示 · 示例数据不是 AI 结果，演示模式禁止提交模型任务</span><span class="mock-banner-end">{{ closet.user?.username }} 的衣橱</span></div>
-          <header class="topbar"><div class="topbar-actions"><ThemeToggle /><SoundToggle /><RouterLink v-if="!closet.user?.mustChangePassword" to="/tasks" class="topbar-tasks"><HistoryOutlined /> 任务记录<span v-if="closet.taskCount" class="nav-count">{{ closet.taskCount }}</span></RouterLink></div></header>
-          <section class="route-content"><RouterView /></section>
+          <header class="topbar"><div class="topbar-actions"><ThemeToggle /><SoundToggle /><TaskInbox v-if="!closet.user?.mustChangePassword" /><RouterLink v-if="!closet.user?.mustChangePassword" to="/tasks" class="topbar-tasks" aria-label="任务记录"><HistoryOutlined /><span class="task-record-label">任务记录</span><span v-if="closet.taskCount" class="nav-count">{{ closet.taskCount }}</span></RouterLink></div></header>
+          <section class="route-content"><TaskNotice /><RouterView /></section>
+          <WaitingGame v-if="!closet.user?.mustChangePassword" />
+          <WaitingStarted v-if="!closet.user?.mustChangePassword" />
           <AssistantPanel v-if="!closet.user?.mustChangePassword" :key="closet.user?.username" />
         </main>
         <nav v-if="!closet.user?.mustChangePassword" class="mobile-nav" aria-label="移动端主导航">
@@ -112,3 +124,7 @@ async function signOut() {
     </a-app>
   </a-config-provider>
 </template>
+
+<style scoped>
+@media(max-width:640px){.task-record-label{display:none}.topbar-tasks{min-width:32px;justify-content:center}}
+</style>

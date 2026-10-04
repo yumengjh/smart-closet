@@ -5,6 +5,9 @@ import { useThemeStore } from '../stores/theme'
 import { useRouter } from 'vue-router'
 import { PictureOutlined, CameraOutlined, CloseOutlined, InfoCircleOutlined, ExperimentOutlined, ReloadOutlined } from '@ant-design/icons-vue'
 import CameraCapture from './CameraCapture.vue'
+import WaitingActivities from './WaitingActivities.vue'
+import { useProcessingStore } from '../stores/processing'
+import { batchIsProcessing, elapsedLabel } from '../domain/waiting'
 import SpriteTrial from './SpriteTrial.vue'
 import BatchTargetPreview from './BatchTargetPreview.vue'
 import { hasCamera } from '../services/camera'
@@ -15,6 +18,13 @@ const props = defineProps<{ batchId?: string; embedded?: boolean }>()
 const router = useRouter()
 const appearance = useThemeStore()
 const batch = ref<IntakeBatch>()
+const processingTasks = useProcessingStore()
+const now = ref(Date.now())
+const waitingTime = computed(() => batch.value ? elapsedLabel(Math.max(batch.value.createdAtMs, ...batch.value.calls.map(call => call.startedAtMs)), now.value) : '')
+const completedCount = computed(() => batch.value?.targets.filter(target => target.outputUrl && ['SUCCEEDED','NEEDS_REVIEW'].includes(target.status)).length || 0)
+watch(batch, value => { if (value) processingTasks.trackBatch(value, false, true) })
+let waitingClock: ReturnType<typeof setInterval> | undefined
+onMounted(() => { waitingClock = setInterval(() => { now.value = Date.now() }, 1000) })
 const strategy = ref<IntakeStrategy>('SMART')
 const selected = ref<{ file: File; url: string; key: string }[]>([])
 const markers = ref<Marker[]>([])
@@ -28,7 +38,7 @@ const comparison = ref<BatchTarget>()
 const trialEnabled=ref(false), trialReset=ref(0), sourceOpen=ref(false), resultTab=ref(false)
 const baseline=ref<Record<string,string>>({})
 let alive = true, timer: ReturnType<typeof setTimeout> | undefined
-const active = computed(() => batch.value?.calls.some(c => ['RUNNING', 'QUEUED'].includes(c.status)) || batch.value?.targets.some(t=>['RUNNING','QUEUED'].includes(t.status)) || false)
+const active = computed(() => batch.value ? batchIsProcessing(batch.value) : false)
 const locked = computed(() => busy.value || active.value)
 const pending = computed(() => batch.value?.targets.filter(t => !t.confirmed && t.status==='DETECTED' && eligible(t.visibleFraction,t.keyDetailsVisible,batch.value!.strategy)) || [])
 const skipped = computed(() => batch.value?.targets.filter(t=>!eligible(t.visibleFraction,t.keyDetailsVisible,batch.value!.strategy)) || [])
@@ -106,6 +116,7 @@ async function upload(){
 async function submitStart(){
   if(!batch.value||usingMocks)return
   batch.value=await batchApi.start(batch.value.id,key('start'),markers.value,model(recognitionChoice.value),model(generationChoice.value),trialEnabled.value)
+  processingTasks.trackBatch(batch.value, true)
   await refreshQuota()
 }
 async function startSaved(){
@@ -119,6 +130,7 @@ async function generate(ids: string[],retry=false,groupSize=1){
   try{
     const action=retry?`retry-${crypto.randomUUID()}`:`continue-${ids.join(',')}-${groupSize}-${generationChoice.value}`
     batch.value=await batchApi.generate(batch.value.id,key(action),{targetIds:ids,groupSize,referenceSide:1024,sizePolicy:'FIXED',quality:'low',...model(generationChoice.value)})
+    processingTasks.trackBatch(batch.value, true)
     // The selector unmounts as soon as this response makes the batch active.
     // Clear persisted submitted IDs here, rather than relying on its reset watcher.
     try { clearSubmittedSpriteSelection(localStorage,batch.value.id,ids) } catch { /* Storage may be unavailable; server results still reconcile selection on return. */ }
@@ -154,7 +166,7 @@ onMounted(async()=>{
   else if(current.status==='rejected')error.value=current.reason instanceof Error?current.reason.message:'无法读取这次录入。'
   loading.value=false;void poll()
 })
-onBeforeUnmount(()=>{alive=false;if(timer)clearTimeout(timer);selected.value.forEach(s=>URL.revokeObjectURL(s.url))})
+onBeforeUnmount(()=>{clearInterval(waitingClock);alive=false;if(timer)clearTimeout(timer);selected.value.forEach(s=>URL.revokeObjectURL(s.url))})
 </script>
 <template>
   <a-config-provider :theme="{token:{colorPrimary:appearance.isDark?'#91aaff':'#3f6ff5'}}">
@@ -189,7 +201,7 @@ onBeforeUnmount(()=>{alive=false;if(timer)clearTimeout(timer);selected.value.for
       <div v-if="!trialEnabled && !active && pending.length" class="continue-area"><p>还有 {{pending.length}} 件等待整理{{quotaLeft!==null && quotaLeft<pending.length?`，今日剩余 ${quotaLeft} 次额度`:''}}。</p><a-button v-if="nextCount && generationChoice" type="primary" size="large" :loading="busy" :disabled="locked" @click="generate(pending.slice(0,nextCount).map(t=>t.id))">{{nextCount<pending.length?`先整理 ${nextCount} 件`:`继续整理 ${nextCount} 件`}} · {{nextCount}} 次额度</a-button><p v-else class="action-reason">{{quotaLeft===null?'额度暂未读取成功。':!generationChoice?'整理服务尚未配置，请检查设置。':'今日额度已用完，结果已保存，明天可以继续。'}}<a-button v-if="quotaLeft===null" type="link" @click="reloadQuota">重试读取额度</a-button><a-button v-if="!generationChoice" type="link" @click="router.push('/settings')">检查设置</a-button></p></div>
       <div v-if="!active && results.length" class="workspace-toolbar"><a-radio-group v-model:value="trialEnabled" :disabled="locked" button-style="solid" aria-label="整理方式"><a-radio-button :value="false">逐件整理</a-radio-button><a-radio-button :value="true">合图试用</a-radio-button></a-radio-group><div><a-button v-if="trialEnabled && candidates.length" @click="resultTab=!resultTab">{{resultTab?'选择衣物':results.some(t=>t.outputUrl)?'查看已有结果':'查看衣物状态'}}</a-button><a-tooltip v-if="!choosing" title="查看来源照片"><a-button type="text" aria-label="查看来源照片" @click="sourceOpen=true"><PictureOutlined /></a-button></a-tooltip></div></div>
       <SpriteTrial v-if="choosing" :targets="candidates" :sources="batch.sources" :all-targets="batch.targets" :batch-id="batch.id" :reset-key="trialReset" :disabled="locked" :quota="quotaLeft" :configured="!!generationChoice" @submit="trySprite" @source="sourceOpen=true" @back="resultTab=true" />
-      <section v-if="active" class="processing-state"><a-spin size="large" /><h2>{{batch.status==='RECOGNIZING'?'正在识别衣物':'正在整理衣物'}}</h2><p>处理会在后台继续，可以离开页面后再回来。</p><div v-if="batch.status!=='RECOGNIZING'" class="processing-phases"><span>{{trialEnabled?'合图整理':'逐件整理'}}</span><span>拆分衣物</span><span>去背景与制作贴纸</span></div></section>
+      <section v-if="active" class="processing-state"><a-spin size="large" /><h2>{{batch.status==='RECOGNIZING'?'正在识别衣物':'正在整理衣物'}}</h2><p>已等待 {{ waitingTime }}<span v-if="batch.status!=='RECOGNIZING'"> · {{ completedCount }} / {{ batch.targets.length }} 件已有结果</span></p><p>处理会在后台继续，完成后会在站内提醒。</p><div v-if="batch.status!=='RECOGNIZING'" class="processing-phases"><span>{{trialEnabled?'合图整理':'逐件整理'}}</span><span>拆分衣物</span><span>去背景与制作贴纸</span></div><WaitingActivities /></section>
       <div v-if="!choosing && !active" class="result-summary"><strong>{{results.filter(t=>t.outputUrl).length}} 件已有结果 · {{pending.length}} 件等待整理</strong><span>处理完成后仍需确认入柜</span></div>
       <div v-if="!choosing && !active" class="target-grid compact-results"><article v-for="target in results" :key="target.id" class="target"><div class="target-body"><div class="target-identity"><img v-if="target.outputUrl" class="result-thumb" :src="mediaUrl(target.outputUrl)" alt="衣物整理结果" /><BatchTargetPreview v-else :target="target" :source="source(target)" /><div><h3 :title="target.recognition.target.description">#{{batch.targets.findIndex(t=>t.id===target.id)+1}} {{target.recognition.target.description}}</h3><p class="muted">{{target.confirmed?'已入柜':['FAILED','UNKNOWN'].includes(target.status)?label[target.status]:target.outputUrl?'已有结果 · 尚未入柜':label[target.status] || '等待整理'}}</p></div></div><a-tag v-if="target.completion" color="warning">含推测补全 · 请对照原图</a-tag><div class="result-actions"><a-button v-if="target.jobId && !['QUEUED','RUNNING'].includes(target.status)" @click="review(target)">查看结果</a-button><a-button v-else-if="!target.confirmed && target.status==='DETECTED'" :disabled="locked || !quotaLeft || !generationChoice" @click="generate([target.id])">整理这件 · 1 次</a-button><a-tooltip title="对照原图"><a-button type="text" :aria-label="`对照第 ${batch.targets.findIndex(t=>t.id===target.id)+1} 件原图`" @click="comparison=target"><PictureOutlined /></a-button></a-tooltip><a-tooltip v-if="!target.confirmed && ['FAILED','UNKNOWN','SUCCEEDED','NEEDS_REVIEW'].includes(target.status)" title="重做这件 · 1 次额度"><a-button type="text" :disabled="locked || !quotaLeft || !generationChoice" :aria-label="`重做第 ${batch.targets.findIndex(t=>t.id===target.id)+1} 件 · 1 次额度`" @click="generate([target.id],true)"><ReloadOutlined /></a-button></a-tooltip></div></div></article></div>
       <a-empty v-if="!batch.targets.length && !active" description="没有找到适合整理的衣物。补拍清楚后再添加照片。" />

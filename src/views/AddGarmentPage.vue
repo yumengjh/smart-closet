@@ -5,6 +5,7 @@ import { ArrowLeftOutlined, PictureOutlined, CameraOutlined, RotateRightOutlined
 import CameraCapture from '../components/CameraCapture.vue'
 import BatchIntake from '../components/BatchIntake.vue'
 import GarmentEdgeHelp from '../components/GarmentEdgeHelp.vue'
+import { useProcessingStore } from '../stores/processing'
 const intake = ref(useRoute().query.mode === 'multiple')
 import { hasCamera } from '../services/camera'
 import { closetApi, usingMocks, type ClosetTask, type ProcessingChoice } from '../services/api'
@@ -85,6 +86,7 @@ async function submit() {
     const recognition = JSON.parse(recognitionChoice.value || '{}') as { provider?: string; model?: string }
     const task = await closetApi.create(file.value, mode.value, { restage: restage.value, precut: precut.value, postcut: postcut.value, rotationDegrees: rotationDegrees.value, transparencyPolicy: reuseTransparency.value ? 'AUTO' : 'FORCE',
       generationProvider: generation.provider, generationModel: generation.model, recognitionProvider: recognition.provider, recognitionModel: recognition.model })
+    useProcessingStore().trackTask(task, true)
     await router.replace({ path: `/garment/${task.garmentId}`, query: { task: task.id } })
   } catch (cause) { error.value = cause instanceof Error ? cause.message : '提交失败，照片仍保留在此处。' }
   finally { busy.value = false }
