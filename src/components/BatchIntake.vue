@@ -9,7 +9,7 @@ import BatchTargetPreview from './BatchTargetPreview.vue'
 import { hasCamera } from '../services/camera'
 import { closetApi, usingMocks } from '../services/api'
 import { batchApi, type IntakeBatch, type IntakeStrategy, type Marker, type BatchTarget } from '../services/batches'
-import { eligible, imagePoint } from '../domain/intake'
+import { eligible, imagePoint, clearSubmittedSpriteSelection } from '../domain/intake'
 const props = defineProps<{ batchId?: string; embedded?: boolean }>()
 const router = useRouter()
 const appearance = useThemeStore()
@@ -118,6 +118,9 @@ async function generate(ids: string[],retry=false,groupSize=1){
   try{
     const action=retry?`retry-${crypto.randomUUID()}`:`continue-${ids.join(',')}-${groupSize}-${generationChoice.value}`
     batch.value=await batchApi.generate(batch.value.id,key(action),{targetIds:ids,groupSize,referenceSide:1024,sizePolicy:'FIXED',quality:'low',...model(generationChoice.value)})
+    // The selector unmounts as soon as this response makes the batch active.
+    // Clear persisted submitted IDs here, rather than relying on its reset watcher.
+    try { clearSubmittedSpriteSelection(localStorage,batch.value.id,ids) } catch { /* Storage may be unavailable; server results still reconcile selection on return. */ }
     trialReset.value++;resultTab.value=false
     await refreshQuota()
     return true

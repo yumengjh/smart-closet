@@ -3,17 +3,20 @@ import { computed, ref, watch } from 'vue'
 import { InfoCircleOutlined, SettingOutlined, PictureOutlined } from '@ant-design/icons-vue'
 import BatchTargetPreview from './BatchTargetPreview.vue'
 import type { BatchSource, BatchTarget } from '../services/batches'
-import { generationUnits } from '../domain/intake'
+import { generationUnits, freshSpriteTargets, restoreSpriteSelection } from '../domain/intake'
 const props=defineProps<{targets:BatchTarget[]; disabled:boolean; quota:number|null; configured:boolean; sources:BatchSource[]; allTargets:BatchTarget[]; batchId:string; resetKey:number}>()
 const emit=defineEmits<{submit:[options:{targetIds:string[];groupSize:number}]; back:[]; source:[]}>()
 const groupSize=ref(2),selected=ref<string[]>([]), customOpen=ref(false)
 try {
   const saved=JSON.parse(localStorage.getItem(`closet-batch:${props.batchId}:sprite-selection`) || '{}')
   if(Number.isInteger(saved.groupSize))groupSize.value=Math.max(2,Math.min(10,saved.groupSize))
-  if(Array.isArray(saved.ids))selected.value=saved.ids.filter((id:unknown)=>typeof id==='string' && props.targets.some(t=>t.id===id))
+  selected.value=restoreSpriteSelection(saved.ids,props.targets)
 }catch{ /* Invalid local state starts with an empty selection. */ }
 watch([groupSize,selected],()=>localStorage.setItem(`closet-batch:${props.batchId}:sprite-selection`,JSON.stringify({groupSize:groupSize.value,ids:selected.value})),{deep:true})
 watch(()=>props.resetKey,()=>{selected.value=[]})
+const freshTargets=computed(()=>freshSpriteTargets(props.targets))
+const reworkCount=computed(()=>orderedSelected.value.filter(t=>!!t.outputUrl).length)
+const allFreshSelected=computed(()=>freshTargets.value.length>0 && freshTargets.value.every(t=>selected.value.includes(t.id)))
 const maxGroup=computed(()=>Math.min(10,props.targets.length))
 const orderedSelected=computed(()=>props.targets.filter(t=>selected.value.includes(t.id)))
 const requests=computed(()=>generationUnits(selected.value.length,groupSize.value))
@@ -22,9 +25,11 @@ watch(()=>props.targets.map(t=>t.id).join(','),()=>{
   groupSize.value=Math.max(2,Math.min(groupSize.value,Math.max(2,maxGroup.value)))
   selected.value=selected.value.filter(id=>props.targets.some(t=>t.id===id))
 },{immediate:true})
+// Persist reconciled state on mount too: an old selection must not return after navigation.
+try { localStorage.setItem(`closet-batch:${props.batchId}:sprite-selection`,JSON.stringify({groupSize:groupSize.value,ids:selected.value})) } catch { /* Storage is optional. */ }
 function choose(id:string,checked:boolean){selected.value=checked?[...selected.value,id]:selected.value.filter(value=>value!==id)}
-function selectAll(){selected.value=props.targets.map(t=>t.id)}
-function firstGroup(){selected.value=props.targets.slice(0,groupSize.value).map(t=>t.id)}
+function selectAll(){selected.value=freshTargets.value.map(t=>t.id)}
+function firstGroup(){selected.value=freshTargets.value.slice(0,groupSize.value).map(t=>t.id)}
 function submit(){if(props.disabled||blocked.value)return;emit('submit',{targetIds:props.targets.filter(t=>selected.value.includes(t.id)).map(t=>t.id),groupSize:groupSize.value})}
 </script>
 <template>
@@ -34,12 +39,13 @@ function submit(){if(props.disabled||blocked.value)return;emit('submit',{targetI
       <div class="group-presets"><span>每组</span><a-button v-for="count in [2,3,4,6]" :key="count" :type="groupSize===count?'primary':'default'" :disabled="disabled || count>maxGroup" @click="groupSize=count">{{count}} 件</a-button><a-button v-if="![2,3,4,6].includes(groupSize)" type="primary" disabled>{{groupSize}} 件</a-button></div>
       <a-tooltip title="自定义每组件数"><a-button type="text" :disabled="disabled" aria-label="自定义每组件数" @click="customOpen=true"><SettingOutlined /></a-button></a-tooltip>
     </div>
-    <div class="selection-heading"><strong>已选 {{selected.length}} / {{targets.length}} 件</strong><div class="selection-actions"><a-button :disabled="disabled || !targets.length" @click="firstGroup">只选一组</a-button><a-button :disabled="disabled || !targets.length" @click="selected.length===targets.length?selected=[]:selectAll()">{{selected.length===targets.length?'清空选择':`全选 ${targets.length} 件`}}</a-button><a-tooltip title="查看来源照片"><a-button type="text" aria-label="查看来源照片" @click="emit('source')"><PictureOutlined /></a-button></a-tooltip></div></div>
-    <div class="choices"><a-checkbox v-for="target in targets" :key="target.id" :checked="selected.includes(target.id)" :disabled="disabled" :class="{selected:selected.includes(target.id)}" @change="choose(target.id,$event.target.checked)"><span class="choice-content"><BatchTargetPreview :target="target" :source="sources.find(s=>s.id===target.sourceId)" /><span class="choice-text"><strong :title="target.recognition.target.description">#{{allTargets.findIndex(t=>t.id===target.id)+1}} {{target.recognition.target.description}}</strong><small v-if="selected.includes(target.id)">第 {{Math.floor(orderedSelected.findIndex(t=>t.id===target.id)/groupSize)+1}} 组 · 第 {{orderedSelected.findIndex(t=>t.id===target.id)%groupSize+1}} 格</small><small v-else>{{target.outputUrl?'已有结果 · 可重做':'未选择'}}</small></span></span></a-checkbox></div>
+    <div class="selection-heading"><strong>已选 {{selected.length}} / {{targets.length}} 件</strong><div class="selection-actions"><a-button :disabled="disabled || !freshTargets.length" @click="firstGroup">只选一组</a-button><a-button :disabled="disabled || !freshTargets.length" @click="allFreshSelected?selected=[]:selectAll()">{{allFreshSelected?'清空选择':`全选未处理 ${freshTargets.length} 件`}}</a-button><a-tooltip title="查看来源照片"><a-button type="text" aria-label="查看来源照片" @click="emit('source')"><PictureOutlined /></a-button></a-tooltip></div></div>
+    <div class="choices"><a-checkbox v-for="target in targets" :key="target.id" :checked="selected.includes(target.id)" :disabled="disabled" :class="{selected:selected.includes(target.id)}" @change="choose(target.id,$event.target.checked)"><span class="choice-content"><BatchTargetPreview processed :target="target" :source="sources.find(s=>s.id===target.sourceId)" /><span class="choice-text"><strong :title="target.recognition.target.description">#{{allTargets.findIndex(t=>t.id===target.id)+1}} {{target.recognition.target.description}}</strong><small v-if="selected.includes(target.id)">第 {{Math.floor(orderedSelected.findIndex(t=>t.id===target.id)/groupSize)+1}} 组 · 第 {{orderedSelected.findIndex(t=>t.id===target.id)%groupSize+1}} 格</small><small v-else>{{target.outputUrl?'已有结果 · 选中将重做':'未选择'}}</small></span></span></a-checkbox></div>
     <a-empty v-if="!targets.length" description="没有可继续整理的衣物" />
     <div class="trial-summary"><div><strong>{{selected.length}} 件 → {{requests}} 组 → {{requests}} 次额度</strong><p>提交后自动合图、拆分、去背景并制作贴纸</p></div><a-popover trigger="click" title="额度怎么算"><template #content><p class="help-copy">整理额度按选中件数除以每组件数向上取整，最后一组可以少于设定件数。读取照片另计额度；拆分、去背景和贴纸制作不占 AI 额度。</p></template><a-button type="text" aria-label="查看额度说明"><InfoCircleOutlined /></a-button></a-popover></div>
+    <p v-if="reworkCount" class="action-reason" role="status">已选 {{reworkCount}} 件已有结果的衣物，将再次整理并使用额度。</p>
     <p v-if="blocked" class="action-reason" role="status">{{blocked}}</p>
-    <footer class="trial-footer"><span>已选 {{selected.length}} 件 · 每组 {{groupSize}} 件 · 本次 {{requests}} 次额度</span><div><a-button :disabled="disabled" @click="emit('back')">返回</a-button><a-button type="primary" size="large" :loading="disabled" :disabled="disabled || !!blocked" @click="submit">合图整理 {{selected.length}} 件 · {{requests}} 次</a-button></div></footer>
+    <footer class="trial-footer"><span>已选 {{selected.length}} 件 · 每组 {{groupSize}} 件 · 本次 {{requests}} 次额度</span><div><a-button :disabled="disabled" @click="emit('back')">返回</a-button><a-button type="primary" size="large" :loading="disabled" :disabled="disabled || !!blocked" @click="submit">{{reworkCount?'合图重做':'合图整理'}} {{selected.length}} 件 · {{requests}} 次</a-button></div></footer>
     <a-modal v-model:open="customOpen" title="自定义每组件数" :footer="null"><p class="help-copy">当前可整理 {{targets.length}} 件，最多每组 10 件。</p><div class="custom-counts"><a-button v-for="count in 9" :key="count" :disabled="disabled || count+1>maxGroup" :type="groupSize===count+1?'primary':'default'" @click="groupSize=count+1;customOpen=false">{{count+1}} 件</a-button></div></a-modal>
   </section>
 </template>
