@@ -169,3 +169,13 @@ h3 { font-size: 15px; line-height: 1.5; font-weight: 600; }
   .add-page .submit-garment { min-height: 48px; }
   .target-note { margin: 12px; }
 }
+
+/* Shared navigation alignment matches the approved intake design. */
+.sidebar .nav-link { justify-content: flex-start; gap: 12px; }
+.sidebar .nav-link > .anticon { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; flex: 0 0 20px; }
+.sidebar-add { background: var(--blue); color: #fff; }
+.sidebar-add:hover { background: var(--link); color: #fff; }
+.sidebar .profile-name { min-width: 0; }
+.sidebar .profile-name strong { overflow-wrap: anywhere; }
+.edge-help-modal .ant-modal-body { max-height: calc(100dvh - 180px); overflow-y: auto; overscroll-behavior: contain; }
+@media (max-width: 767px) { .edge-help-modal { top: 20px; padding-bottom: 20px; } .edge-help-modal .ant-modal-body { max-height: calc(100dvh - 130px); } }

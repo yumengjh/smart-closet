@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ArrowLeftOutlined, PictureOutlined, CameraOutlined, RotateRightOutlined, ScanOutlined, BgColorsOutlined, FileImageOutlined, ArrowRightOutlined, InfoCircleOutlined, CheckOutlined, QuestionCircleOutlined } from '@ant-design/icons-vue'
+import { ArrowLeftOutlined, PictureOutlined, CameraOutlined, RotateRightOutlined, ArrowRightOutlined, InfoCircleOutlined } from '@ant-design/icons-vue'
 import CameraCapture from '../components/CameraCapture.vue'
 import BatchIntake from '../components/BatchIntake.vue'
-const intake = ref(true)
+import GarmentEdgeHelp from '../components/GarmentEdgeHelp.vue'
+const intake = ref(false)
 import { hasCamera } from '../services/camera'
 import { closetApi, usingMocks, type ClosetTask, type ProcessingChoice } from '../services/api'
 
@@ -38,10 +39,12 @@ const recognitionChoice = ref('')
 const isAI = computed(() => mode.value !== '本地贴纸')
 const configured = computed(() => !isAI.value || (recognitionChoices.value.length > 0 && (mode.value === '仅识别' || generationChoices.value.length > 0)))
 const modes = [
-  { value: '识别并整理', title: '帮我识别并整理', body: '自动填写信息，整理图片并制作透明贴纸', suitable: '自拍、镜子照或单件衣物都可以', detail: '会自动选择主视的一件衣物，去掉人物和背景。完成后请对照原图检查颜色、印花和衣物细节。', tag: '推荐', icon: BgColorsOutlined },
-  { value: '仅识别', title: '只帮我填写信息', body: '识别颜色、款式等信息，保留你拍的照片', suitable: '适合已经拍得满意的照片', detail: '只填写有照片依据的信息，不整理图片，也不去背景。品牌、尺码等需要照片中清晰可读的衣标。', tag: '', icon: ScanOutlined },
-  { value: '本地贴纸', title: '本地去背景，自己填写', body: '去掉照片背景，衣物信息由你填写', suitable: '适合平铺或悬挂的单件衣物', detail: '由衣柜服务本地处理，不发送到云端模型，不使用 AI 额度。穿着照可能连人物一起保留，自拍建议使用识别并整理。', tag: '不使用 AI 额度', icon: FileImageOutlined },
+  { value: '识别并整理', title: '识别并整理', body: '填写信息，整理照片并制作透明贴纸。', suitable: '适合自拍、穿着照或需要整理外观的单件。', cost: '1 次 AI 任务额度 · 需要等待模型' },
+  { value: '仅识别', title: '仅识别信息', body: '自动填写信息，保留原照片。', suitable: '照片已拍得满意，无需改变外观。', cost: '1 次 AI 任务额度 · 不生成新图片' },
+  { value: '本地贴纸', title: '本地去背景', body: '保留照片里的外观，衣物信息自己填写。', suitable: '适合平铺或悬挂；穿着照可能保留人物。', cost: '0 次 AI 额度 · 不发送云端' },
 ]
+const selectedMode = computed(() => modes.find(option => option.value === mode.value)!)
+
 async function detectCamera() {
   const attempt = ++cameraEpoch
   const available = await hasCamera(navigator.mediaDevices)
@@ -89,42 +92,43 @@ async function submit() {
 </script>
 
 <template>
-  <div class="add-page">
+  <div class="add-page redesigned-intake">
     <input ref="fileInput" class="hidden-file-input" type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/png" tabindex="-1" :disabled="busy" @change="handleFileChange" />
     <input ref="rearInput" class="hidden-file-input" type="file" accept="image/jpeg,image/png" capture="environment" tabindex="-1" :disabled="busy" @change="handleFileChange" />
     <input ref="selfieInput" class="hidden-file-input" type="file" accept="image/jpeg,image/png" capture="user" tabindex="-1" :disabled="busy" @change="handleFileChange" />
     <CameraCapture v-if="cameraOpen" @close="cameraOpen = false" @capture="setFile" />
     <a-button type="text" class="back-link" @click="router.push('/wardrobe')"><ArrowLeftOutlined /> 返回衣柜</a-button>
-    <header class="page-heading"><div><h1>添加衣物</h1><p class="page-subtitle">选好照片，我们来整理。单件、多件同框和自拍都可以。</p></div><span class="context-label">{{ usingMocks ? '界面演示 · 无 AI 调用' : '真实模型处理' }}</span></header>
-    <a-button v-if="!intake" type="link" @click="intake = true">返回照片录入</a-button>
-    <BatchIntake v-if="intake" />
-    <a-button v-if="intake" type="link" class="local-tools-link" @click="intake = false">已有单件图？使用仅识别或本地去背景工具</a-button>
-    <template v-else>
-    <div class="flow-rail" aria-label="添加衣物流程"><span class="current"><b>1</b> 上传照片</span><ArrowRightOutlined /><span><b>2</b> 查看处理与结果</span><ArrowRightOutlined /><span><b>3</b> 核对入柜</span></div>
+    <header class="page-heading"><div><h1>添加衣物</h1><p class="page-subtitle">{{ intake ? '多张单件照、多件同框或自拍，分开整理后逐件核对。' : '一件衣物，用单件工具更直接；多件照片，再选择批量整理。' }}</p></div></header>
+    <a-radio-group v-model:value="intake" :disabled="busy" class="intake-switch" aria-label="录入方式">
+      <a-radio-button :value="false"><strong>单件处理</strong><small>一张照片、一件衣物 · 按需处理</small></a-radio-button>
+      <a-radio-button :value="true"><strong>多件整理</strong><small>多张照片或多件同框 · 分别整理</small></a-radio-button>
+    </a-radio-group>
+    <KeepAlive><BatchIntake v-if="intake" embedded /></KeepAlive>
+    <template v-if="!intake">
     <div class="add-layout">
       <section class="upload-panel" @dragover.prevent @drop="drop">
         <div class="panel-heading"><h2>衣物照片</h2><span>每次一张 · 一件衣物</span></div>
         <div v-if="!file" class="drop-zone">
-          <div class="upload-icon"><PictureOutlined /></div><h2>从一张照片开始</h2><p>平铺、悬挂或自拍都可以，让想录入的衣物完整入镜</p>
+          <div class="upload-icon"><PictureOutlined /></div><h2>选一张想收进衣柜的照片</h2><p>平铺、悬挂或自拍都可以，让想录入的衣物完整入镜</p>
           <div class="upload-actions">
-            <a-button type="primary" size="large" @click="fileInput?.click()"><PictureOutlined /> 从相册选择</a-button>
+            <a-button type="primary" size="large" @click="fileInput?.click()"><PictureOutlined /> 选择照片</a-button>
             <a-dropdown v-if="cameraAvailable && mobileCamera" :trigger="['click']"><a-button size="large"><CameraOutlined /> 拍一张照片</a-button><template #overlay><a-menu @click="chooseCamera"><a-menu-item key="rear">拍衣物（后置摄像头）</a-menu-item><a-menu-item key="selfie">自拍（前置摄像头）</a-menu-item></a-menu></template></a-dropdown>
             <a-button v-else-if="cameraAvailable" size="large" @click="cameraOpen = true"><CameraOutlined /> 拍一张照片</a-button>
           </div><span class="upload-limits">也可将照片拖到这里 · JPEG / PNG · 最大 50 MB</span>
         </div>
         <div v-else class="upload-preview"><img :src="preview" alt="上传原图预览" :style="{ transform: `rotate(${rotationDegrees}deg)` }" /><div class="preview-toolbar"><a-button :disabled="busy" @click="fileInput?.click()"><PictureOutlined /> 更换照片</a-button><a-button :disabled="busy" @click="rotationDegrees = (rotationDegrees + 90) % 360"><RotateRightOutlined /> 旋转</a-button></div><div class="preview-file"><PictureOutlined /><span>{{ file.name }}</span><small>{{ (file.size / 1024 / 1024).toFixed(1) }} MB</small></div></div>
-        <div class="photo-guidance"><span>拍得清楚就很好，不必像商品图一样完美。</span><a-popover trigger="click" placement="top"><template #content><div class="photo-tips"><p>光线均匀，衣物轮廓尽量完整，四周留一点空隙。</p><p>自拍不用露脸，让想录入的那件更突出；多件同样突出时会请你补拍。</p><p>被手、手机或外套挡住的细节可能无法还原，完成后记得核对。</p><p>本地去背景更适合单件平铺或悬挂，选择与衣物不同颜色的背景。</p></div></template><a-button type="link"><QuestionCircleOutlined /> 怎么拍更清楚</a-button></a-popover></div>
-        <div class="upload-footnote"><InfoCircleOutlined /><span>提交后照片会保存到你的衣柜服务。可以先去做别的，回来再核对。</span></div>
+        <p class="single-supported">T恤、衬衫、外套、裤裙、鞋帽包及配饰均可录入。</p>
       </section>
       <section class="process-panel">
-        <div class="panel-heading"><h2>处理方式</h2></div>
-        <div class="mode-list" role="radiogroup" aria-label="处理方式">
-          <div v-for="option in modes" :key="option.value" class="mode-entry">
-            <a-button class="mode-option" :class="{ selected: mode === option.value }" role="radio" :aria-checked="mode === option.value" :disabled="busy" @click="mode = option.value as Exclude<ClosetTask['mode'], '图片整理'>"><component :is="option.icon" /><span class="mode-copy"><strong>{{ option.title }} <a-tag v-if="option.tag">{{ option.tag }}</a-tag></strong><small>{{ option.body }}</small><small class="mode-suitable">{{ option.suitable }}</small></span><CheckOutlined v-if="mode === option.value" class="mode-check" /></a-button>
-            <a-popover trigger="click" placement="top"><template #content><p class="mode-detail">{{ option.detail }}</p></template><a-button type="link" size="small" :aria-label="`${option.title}的说明`"><InfoCircleOutlined /> 了解这个方式</a-button></a-popover>
-          </div>
-        </div>
-        <a-alert v-if="mode === '本地贴纸'" type="info" message="自拍可能连人物一起保留。平铺或挂起单件衣物，本地去背景会更容易。" show-icon class="form-alert" />
+        <div class="panel-heading"><h2>处理方式</h2><a-popover :trigger="['hover','click']" title="怎么选择处理方式"><template #content><div class="mode-help"><p v-for="option in modes" :key="option.value"><strong>{{option.title}}</strong><br />{{option.suitable}}<br />{{option.cost}}</p></div></template><a-button type="text" aria-label="了解单件处理方式"><InfoCircleOutlined /></a-button></a-popover></div>
+        <a-radio-group v-model:value="mode" :disabled="busy" class="single-mode-list" aria-label="单件处理方式">
+          <a-radio v-for="option in modes" :key="option.value" :value="option.value" class="single-mode-card" :class="{ selected: mode === option.value }">
+            <span class="mode-copy"><strong>{{ option.title }}</strong><small>{{ option.body }}</small></span>
+          </a-radio>
+        </a-radio-group>
+      </section>
+    </div>
+    <section class="single-submit-section">
         <a-collapse class="add-advanced" ghost><a-collapse-panel key="options" header="按自己的习惯调整" :disabled="busy">
           <p class="advanced-intro">默认已经替你选好，想调整时再打开就好。</p>
           <div class="advanced-choices">
@@ -138,14 +142,28 @@ async function submit() {
             <label v-if="mode === '本地贴纸'" class="choice-line"><span>背景已经透明，直接制作贴纸<small>仅适用于已经去干净背景的衣物图；截图的透明圆角不算</small></span><a-switch v-model:checked="reuseTransparency" :disabled="busy" aria-label="背景已经透明，直接制作贴纸" /></label>
           </div>
         </a-collapse-panel></a-collapse>
-        <div class="cost-note"><InfoCircleOutlined /><p>{{ isAI ? '本次使用 1 次 AI 任务额度' : '不调用云端 AI，不使用 AI 额度' }}<small v-if="isAI">今日剩余 {{ quotaLeft === null ? '—' : quotaLeft }} / {{ quotaLimit ?? '—' }} 次</small></p></div>
         <a-alert v-if="usingMocks" type="warning" message="演示模式禁止提交 AI 任务。请连接真实后端使用。" show-icon class="form-alert" />
         <a-alert v-if="isAI && (configError || quotaError || !configured)" type="warning" :message="configError || quotaError || '当前模式需要的模型未配置。你可以先使用本地去背景，或联系管理员。'" show-icon class="form-alert" />
         <a-alert v-if="error" type="error" :message="error" show-icon class="form-alert" />
-        <a-button type="primary" block :loading="busy" :disabled="!file || usingMocks || !configured || isAI && (Boolean(configError || quotaError) || quotaLeft === null || quotaLeft === 0)" class="submit-garment" @click="submit">{{ busy ? '正在上传并提交…' : isAI && quotaLeft === 0 ? '今日 AI 额度已用完' : '开始处理这件衣物' }}<ArrowRightOutlined v-if="!busy" /></a-button>
+        <div class="single-submit-row"><div class="cost-note"><p>当前：{{ selectedMode.title }} · {{ isAI ? '1 次 AI 任务额度' : '0 次 AI 额度' }}<small v-if="isAI">今日剩余 {{ quotaLeft === null ? '—' : quotaLeft }} / {{ quotaLimit ?? '—' }} 次</small></p></div>
+        <a-button type="primary" block :loading="busy" :disabled="!file || usingMocks || !configured || isAI && (Boolean(configError || quotaError) || quotaLeft === null || quotaLeft === 0)" class="submit-garment" @click="submit">{{ busy ? '正在上传并提交…' : isAI && quotaLeft === 0 ? '今日 AI 额度已用完' : !file ? '选择照片后开始处理' : mode === '仅识别' ? '开始识别衣物信息' : mode === '本地贴纸' ? '开始本地去背景' : '识别并整理' }}<ArrowRightOutlined v-if="!busy" /></a-button>
+        </div>
         <p class="privacy-note">{{ isAI ? '照片将发送到已配置的模型服务。处理时长由模型决定，结果返回后请检查衣物细节。' : '照片由你的衣柜服务本地处理，不发送到云端模型。衣物信息可以稍后慢慢填写。' }}</p>
-      </section>
-    </div>
+    </section>
     </template>
+    <GarmentEdgeHelp />
   </div>
 </template>
+
+<style scoped>
+.redesigned-intake .intake-switch{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:8px;margin-bottom:24px;background:var(--surface-alt);border-radius:12px}.intake-switch :deep(.ant-radio-button-wrapper){height:auto;min-height:88px;display:flex;align-items:center;padding:14px 20px;border:1px solid transparent!important;border-radius:8px!important;color:var(--muted);background:transparent;box-shadow:none!important;white-space:normal}.intake-switch :deep(.ant-radio-button-wrapper:before){display:none}.intake-switch :deep(.ant-radio-button-wrapper-checked){background:var(--surface);border-color:var(--line)!important;color:var(--ink)}.intake-switch strong{display:block;font-size:18px;line-height:28px}.intake-switch small{display:block;margin-top:6px;font-size:13px;line-height:20px;font-weight:400;color:var(--muted)}.redesigned-intake .add-layout{grid-template-columns:minmax(0,1.4fr) minmax(360px,1fr)}.redesigned-intake .upload-panel,.redesigned-intake .process-panel{border-radius:12px}.redesigned-intake .upload-panel>.panel-heading{border:0;align-items:flex-start;flex-direction:column;gap:8px;padding:24px 24px 0}.redesigned-intake .drop-zone{min-height:350px;padding:32px 24px}.redesigned-intake .upload-icon{background:transparent;border-radius:0;margin-bottom:22px;font-size:42px;height:52px;width:52px}.redesigned-intake .drop-zone h2{font-size:20px}.redesigned-intake .upload-actions .ant-btn{min-width:150px;display:inline-flex;align-items:center;justify-content:center;gap:8px}.redesigned-intake :deep(.ant-btn-primary){background:var(--blue);border-color:var(--blue);color:var(--surface)}.redesigned-intake :deep(.ant-btn-primary:disabled){color:var(--muted-subtle);background:var(--surface-alt);border-color:var(--line)}.single-supported{padding:12px 24px 24px;color:var(--muted);font-size:13px;line-height:1.7}.single-mode-list{display:grid;gap:12px;margin-top:20px;width:100%}.single-mode-card{display:flex;align-items:flex-start;gap:10px;width:100%;margin:0;padding:12px 16px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}.single-mode-card.selected{background:var(--selection-bg);border-color:var(--blue)}.single-mode-card :deep(.ant-radio){top:4px;align-self:flex-start}.single-mode-card :deep(.ant-radio+span){padding:0;min-width:0;flex:1}.single-mode-card :deep(.ant-radio-checked .ant-radio-inner){border-color:var(--blue);background:var(--blue)}.single-mode-card .mode-copy{gap:2px}.single-mode-card strong{font-size:16px;line-height:24px;font-weight:600;color:var(--ink)}.single-mode-card.selected strong{color:var(--link)}.single-mode-card small{font-size:12px;line-height:20px}.single-mode-card small:first-of-type{font-size:13px;margin-top:0}.single-mode-card small:last-of-type{margin-top:4px}.single-mode-card .local-cost{color:var(--success)}.single-submit-section{margin-top:16px}.single-submit-section :deep(.ant-collapse-header){padding-left:0!important}.single-submit-row{display:flex;align-items:center;justify-content:space-between;gap:24px;margin-top:18px}.single-submit-row .cost-note{background:none;padding:0;margin:0}.single-submit-row .cost-note p{font-weight:600;color:var(--ink)}.single-submit-row .cost-note small{font-weight:400}.single-submit-row .submit-garment{display:inline-flex;align-items:center;justify-content:center;gap:8px;width:auto;min-width:264px;height:44px}.single-submit-section .privacy-note{margin-top:10px}.single-submit-section .form-alert{margin:12px 0}.redesigned-intake .upload-preview{min-height:370px}.redesigned-intake .upload-preview>img{height:320px}.redesigned-intake .preview-toolbar{position:static;padding:12px 20px;justify-content:flex-start;box-shadow:none}.redesigned-intake .preview-file{padding:0 24px 12px}
+@media(max-width:767px){.redesigned-intake .add-layout{grid-template-columns:1fr;gap:20px}.redesigned-intake .process-panel{padding:20px}.intake-switch :deep(.ant-radio-button-wrapper){justify-content:center;text-align:center;min-height:44px;padding:8px 12px}.intake-switch strong{font-size:14px;line-height:22px}.intake-switch small{display:none}.redesigned-intake .intake-switch{gap:4px;padding:4px}.redesigned-intake .drop-zone{min-height:220px;padding:24px 20px}.redesigned-intake .upload-panel>.panel-heading{padding:20px 20px 0}.redesigned-intake .drop-zone h2{font-size:18px}.redesigned-intake .upload-actions{width:100%;display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.redesigned-intake .upload-actions .ant-btn{min-width:0;padding:0 10px;font-size:13px}.single-mode-card{padding:14px 16px}.single-supported{padding:0 20px 20px;font-size:12px}.single-submit-row{align-items:stretch;flex-direction:column;gap:16px}.single-submit-row .submit-garment{width:100%;min-width:0}.redesigned-intake .upload-preview>img{height:280px}}
+</style>
+<style scoped>
+.redesigned-intake .upload-preview{height:auto;min-height:0;padding-top:16px}.redesigned-intake .upload-preview>img{padding:16px 24px;height:320px;min-height:0}.redesigned-intake .preview-file{position:static;margin:0 20px 16px;padding:0;border:0;background:none}.redesigned-intake .preview-toolbar{padding:12px 20px}.redesigned-intake .upload-panel>.panel-heading span{font-size:13px;color:var(--muted)}
+@media(max-width:767px){.redesigned-intake .upload-preview{height:auto;min-height:0}.redesigned-intake .upload-preview>img{height:280px;min-height:0}}
+</style>
+
+<style scoped>
+.mode-help{max-width:320px;line-height:1.8;font-size:13px}.mode-help p+p{margin-top:16px}.single-mode-card{min-height:88px;align-items:center}.single-mode-card :deep(.ant-radio){top:0;align-self:center}.redesigned-intake .process-panel>.panel-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}.redesigned-intake .process-panel>.panel-heading :deep(.ant-btn){min-height:44px}.single-mode-card .mode-copy{gap:4px}
+</style>
