@@ -1,3 +1,4 @@
+import './domain/uuid-polyfill'
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import VueKonva from 'vue-konva'
