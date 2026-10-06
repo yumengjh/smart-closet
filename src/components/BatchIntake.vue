@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { createUuid } from '../domain/id'
 import { mediaUrl } from '../services/urls'
 import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { useThemeStore } from '../stores/theme'
@@ -10,7 +11,7 @@ import { useProcessingStore } from '../stores/processing'
 import { batchIsProcessing, elapsedLabel } from '../domain/waiting'
 import SpriteTrial from './SpriteTrial.vue'
 import BatchTargetPreview from './BatchTargetPreview.vue'
-import { hasCamera } from '../services/camera'
+import { hasCamera, prefersNativeCamera } from '../services/camera'
 import { closetApi, usingMocks } from '../services/api'
 import { batchApi, type IntakeBatch, type IntakeStrategy, type Marker, type BatchTarget } from '../services/batches'
 import { eligible, imagePoint, clearSubmittedSpriteSelection } from '../domain/intake'
@@ -63,7 +64,7 @@ watch(active,(value,previous)=>{if(previous&&!value)resultTab.value=true})
 function key(action: string) {
   const storage=`closet-batch:${batch.value!.id}:${action}`
   let value=localStorage.getItem(storage)
-  if(!value){value=crypto.randomUUID();localStorage.setItem(storage,value)}
+  if(!value){value=createUuid();localStorage.setItem(storage,value)}
   return value
 }
 function model(value: string) { return JSON.parse(value || '{}') as {provider?: string; model?: string} }
@@ -79,7 +80,7 @@ function accept(files: File[]) {
     if(!['image/jpeg','image/png'].includes(file.type)&&!/\.(jpe?g|png)$/i.test(file.name)){error.value='请选择 JPEG 或 PNG。HEIC 请先导出 JPEG，也可以直接拍照。';continue}
     if(file.size>50*1024*1024){error.value='每张照片最多 50 MB，请导出较小照片后再试。';continue}
     if(selected.value.length===10){error.value='一次最多选择 10 张照片。';break}
-    selected.value.push({file,url:URL.createObjectURL(file),key:crypto.randomUUID()})
+    selected.value.push({file,url:URL.createObjectURL(file),key:createUuid()})
   }
 }
 function change(event: Event) {const el=event.target as HTMLInputElement;accept(Array.from(el.files||[]));el.value=''}
@@ -128,7 +129,7 @@ async function generate(ids: string[],retry=false,groupSize=1){
   if(!batch.value||!ids.length||locked.value||usingMocks)return
   busy.value=true;error.value=''
   try{
-    const action=retry?`retry-${crypto.randomUUID()}`:`continue-${ids.join(',')}-${groupSize}-${generationChoice.value}`
+    const action=retry?`retry-${createUuid()}`:`continue-${ids.join(',')}-${groupSize}-${generationChoice.value}`
     batch.value=await batchApi.generate(batch.value.id,key(action),{targetIds:ids,groupSize,referenceSide:1024,sizePolicy:'FIXED',quality:'low',...model(generationChoice.value)})
     processingTasks.trackBatch(batch.value, true)
     // The selector unmounts as soon as this response makes the batch active.
@@ -153,7 +154,7 @@ async function resumeLocal(callId: string){
 function review(target: BatchTarget){void router.push({path:`/garment/${target.garmentId}`,query:{task:target.jobId,batch:batch.value!.id}})}
 function cameraMenu(info:{key:string|number}){(info.key==='selfie'?selfie.value:rear.value)?.click()}
 onMounted(async()=>{
-  mobile.value=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)||navigator.maxTouchPoints>1&&/Macintosh/.test(navigator.userAgent)
+  mobile.value=prefersNativeCamera()
   void hasCamera(navigator.mediaDevices).then(v=>{if(alive)camera.value=v})
   const loaded=await Promise.allSettled([closetApi.processingChoices(),batchApi.history(),refreshQuota(),props.batchId?batchApi.get(props.batchId):Promise.resolve(undefined)])
   if(!alive)return
@@ -181,7 +182,7 @@ onBeforeUnmount(()=>{clearInterval(waitingClock);alive=false;if(timer)clearTimeo
     <a-skeleton v-if="loading" active :paragraph="{rows:3}" />
     <div v-if="!batch || batch.status==='UPLOADED'" class="batch-upload-layout"><div :class="['upload-area', {'has-photos':selected.length}]" @dragover.prevent @drop.prevent="accept(Array.from($event.dataTransfer?.files || []))">
       <template v-if="!batch"><div class="upload-heading"><PictureOutlined v-if="!selected.length" /><h2>{{selected.length?`已选 ${selected.length} 张照片`:'把想收的衣物拍下来'}}</h2><p v-if="!selected.length">单件照、多件同框或自拍都可以，也能一次选多张。</p></div>
-      <div class="batch-actions"><a-button :type="selected.length?'default':'primary'" size="large" :disabled="locked" @click="input?.click()"><PictureOutlined /> {{selected.length?'继续选照片':'选择照片'}}</a-button><a-dropdown v-if="camera && mobile" :trigger="['click']"><a-button size="large" :disabled="locked"><CameraOutlined /> 拍照 / 自拍</a-button><template #overlay><a-menu @click="cameraMenu"><a-menu-item key="rear">拍衣物</a-menu-item><a-menu-item key="selfie">自拍</a-menu-item></a-menu></template></a-dropdown><a-button v-else-if="camera" size="large" :disabled="locked" @click="cameraOpen=true"><CameraOutlined /> 拍一张</a-button></div></template>
+      <div class="batch-actions"><a-button :type="selected.length?'default':'primary'" size="large" :disabled="locked" @click="input?.click()"><PictureOutlined /> {{selected.length?'继续选照片':'选择照片'}}</a-button><a-dropdown v-if="mobile" :trigger="['click']"><a-button size="large" :disabled="locked"><CameraOutlined /> 拍照 / 自拍</a-button><template #overlay><a-menu @click="cameraMenu"><a-menu-item key="rear">拍衣物</a-menu-item><a-menu-item key="selfie">自拍</a-menu-item></a-menu></template></a-dropdown><a-button v-else-if="camera" size="large" :disabled="locked" @click="cameraOpen=true"><CameraOutlined /> 拍一张</a-button></div></template>
       <p v-else-if="strategy==='MANUAL'">点击照片里想收的衣物，标记好后开始整理。补出的部分会标注为推测。</p>
       <div class="photo-grid"><figure v-for="(item,index) in !batch?selected:[]" :key="item.key"><img :src="mediaUrl(item.url)" :alt="item.file.name" /><a-button type="text" :disabled="locked" :aria-label="`移除${item.file.name}`" @click="remove(index)"><CloseOutlined /></a-button><figcaption>{{item.file.name}}</figcaption></figure>
       <figure v-for="source in batch?.status==='UPLOADED'?batch.sources:[]" :key="source.id"><div class="marker-image"><img :src="mediaUrl(source.previewUrl)" :alt="source.name" :class="{markable:strategy==='MANUAL'}" :tabindex="strategy==='MANUAL'?0:undefined" @click="mark($event,source.id)" @keydown.enter="addMarker(source.id,{x:.5,y:.5})" /><a-button v-for="(marker,index) in markers.filter(m=>m.sourceId===source.id)" :key="index" class="marker" :style="{left:marker.x*100+'%',top:marker.y*100+'%'}" :aria-label="`移除第${index+1}个标记`" @click="markers=markers.filter(m=>m!==marker)">{{index+1}}</a-button></div><figcaption>{{source.name}}</figcaption></figure></div>

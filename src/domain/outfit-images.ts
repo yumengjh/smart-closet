@@ -1,3 +1,4 @@
+import { createUuid } from './id'
 import type { Garment } from '../services/api'
 import { mediaUrl, isApiMedia } from '../services/urls'
 import type { OutfitElement, OutfitRole } from './outfit'
@@ -90,7 +91,7 @@ export async function createOutfitElement(garment: Garment, current: OutfitEleme
   const x = Math.max(width / 2 + 16, Math.min(OUTFIT_WIDTH - width / 2 - 16, position.x))
   const y = Math.max(height / 2 + 16, Math.min(OUTFIT_HEIGHT - height / 2 - 16, position.y))
   return {
-    elementId: crypto.randomUUID(), kind: 'GARMENT', flipX: false, freeStretch: false,
+    elementId: createUuid(), kind: 'GARMENT', flipX: false, freeStretch: false,
     garmentId: garment.id, assetId: artwork.assetId, role,
     x, y, width, height, rotation: 0, zIndex: current.length,
     garmentLabel: formatGarmentLabel(garment), cropX: crop.x, cropY: crop.y,

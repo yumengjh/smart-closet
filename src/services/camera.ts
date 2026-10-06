@@ -1,3 +1,8 @@
+/** Native capture also works when the browser does not expose mediaDevices. */
+export function prefersNativeCamera(agent = navigator.userAgent, touchPoints = navigator.maxTouchPoints): boolean {
+  return /Android|iPhone|iPad|iPod/i.test(agent) || touchPoints > 1 && /Macintosh/.test(agent)
+}
+
 /** Inspect devices without opening a permission prompt or starting a stream. */
 export async function hasCamera(devices?: Pick<MediaDevices, 'enumerateDevices'>): Promise<boolean> {
   if (!devices?.enumerateDevices) return false

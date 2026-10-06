@@ -1,3 +1,4 @@
+import { createUuid } from '../domain/id'
 import { apiUrl } from './urls'
 import { normalizeScene, sceneWrite } from '../domain/outfit'
 import personCatalog from '../domain/person-stickers.json'
@@ -49,10 +50,10 @@ export type Garment = {
   taskStatus?: 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'NEEDS_REVIEW' | 'FAILED' | 'UNKNOWN' | 'CANCEL_REQUESTED' | 'CANCELLED'
   taskId?: string
   restoreStatus?: 'ACTIVE' | 'DRAFT'
-  images: { id: string; url: string; kind: string; reviewStatus: string }[]
+  images: { id: string; url: string; kind: string; reviewStatus: string; aiGenerated?: boolean }[]
 }
 
-export type TaskStep = { name: string; type?: string; status: 'completed' | 'running' | 'failed' | 'waiting' | 'review' | 'skipped'; startedAt?: string; finishedAt?: string; inputUrl?: string; outputUrl?: string; error?: string; transparency?: { after: TransparencyReport }; recognition?: { target?: GarmentTarget | null } }
+export type TaskStep = { name: string; type?: string; status: 'completed' | 'running' | 'failed' | 'waiting' | 'review' | 'skipped'; startedAt?: string; finishedAt?: string; inputUrl?: string; outputUrl?: string; error?: string; transparency?: { after: TransparencyReport }; recognition?: { target?: GarmentTarget | null; assessment?: string; issues?: { code?: string; message: string; suggestedAction?: string }[] } }
 export type ClosetTask = {
   id: string
   garmentId: string
@@ -291,7 +292,7 @@ export const closetApi = {
     const outfits = readMockOutfits()
     const now = Date.now()
     if (!id) {
-      const created: Outfit = { id: crypto.randomUUID(), name, revision: 0, createdAtMs: now, updatedAtMs: now, scene: mockScene }
+      const created: Outfit = { id: createUuid(), name, revision: 0, createdAtMs: now, updatedAtMs: now, scene: mockScene }
       outfits.unshift(created); writeMockOutfits(outfits); return structuredClone(created)
     }
     const index = outfits.findIndex((outfit) => outfit.id === id)
@@ -319,7 +320,7 @@ export const closetApi = {
       const form = new FormData()
       form.append('file', file)
       form.append('workflow', new Blob([JSON.stringify({ mode, ...options })], { type: 'application/json' }))
-      return fromJob(await request<WorkflowResponse>('/api/closet/garments', { method: 'POST', body: form, headers: { 'Idempotency-Key': crypto.randomUUID() } }))
+      return fromJob(await request<WorkflowResponse>('/api/closet/garments', { method: 'POST', body: form, headers: { 'Idempotency-Key': createUuid() } }))
     }
     throw new Error('当前是界面演示模式，未连接 AI。请关闭 VITE_USE_MOCKS 并登录真实账号后提交。')
   },
@@ -428,13 +429,13 @@ export const closetApi = {
     }
     throw new Error('任务仍在收尾，请稍后再移入回收站。')
   },
-  async recognize(id: string) { return this.startExistingRun(id, '仅识别') },
+  async recognize(id: string, targetDescription = '') { return this.startExistingRun(id, '仅识别', targetDescription) },
   async reprocess(id: string) { return this.startExistingRun(id, '识别并整理') },
-  async startExistingRun(id: string, mode: ClosetTask['mode']) {
+  async startExistingRun(id: string, mode: ClosetTask['mode'], targetDescription = '') {
     if (!usingMocks) {
       const task = mode === '仅识别'
-        ? await request<WorkflowResponse>(`/api/garments/${id}/recognize`, { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: '{}' })
-        : await request<WorkflowResponse>(`/api/closet/garments/${id}/reprocess`, { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ restage: true, precut: false, postcut: true }) })
+        ? await request<WorkflowResponse>(`/api/garments/${id}/recognize`, { method: 'POST', headers: { 'Idempotency-Key': createUuid() }, body: JSON.stringify({ targetDescription }) })
+        : await request<WorkflowResponse>(`/api/closet/garments/${id}/reprocess`, { method: 'POST', headers: { 'Idempotency-Key': createUuid() }, body: JSON.stringify({ restage: true, precut: false, postcut: true }) })
       return fromJob(task)
     }
     throw new Error('演示模式不会调用 AI，请使用真实账号提交。')

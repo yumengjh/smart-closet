@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { workflowSummary, generatedImages, blocksConfirmation, isProcessing, processingSeconds } from '../src/domain/workflow.ts'
+import { workflowSummary, generatedImages, blocksConfirmation, isProcessing, processingSeconds, orderedTasks } from '../src/domain/workflow.ts'
 import type { ClosetTask } from '../src/services/api'
 const draft = { status: 'DRAFT' as const, taskStatus: 'SUCCEEDED' as const }
 test('processing completion never means garment confirmed', () => assert.match(workflowSummary(draft).title, /尚未入柜/))
@@ -27,4 +27,15 @@ test('unfinished sticker remains actionable even for an already confirmed garmen
   assert.match(workflowSummary({ ...draft, imageProcessing }).title, /贴纸尚未完成/)
   assert.match(workflowSummary({ ...draft, status: 'ACTIVE', imageProcessing }).title, /已入柜，贴纸尚未完成/)
   assert.match(workflowSummary({ ...draft, imageProcessing: { ...imageProcessing, stickerReady: true } }).title, /核对结果/)
+})
+
+test('a new recognition job takes priority over the earlier quick intake image error', () => {
+  const old = { id: 'old', status: 'NEEDS_REVIEW', createdAt: '2026-10-05T23:46:00Z', steps: [{error:'old error'}] } as ClosetTask
+  const current = { id: 'new', status: 'RUNNING', createdAt: '2026-10-05T23:48:00Z', steps: [] } as unknown as ClosetTask
+  assert.equal(orderedTasks(old, current)[0]?.id, 'new')
+  const done = { ...current, status: 'NEEDS_REVIEW', steps: [{ recognition: {assessment:'MULTIPLE_GARMENTS',issues:[{message:'无法判断一体或分体'}]} }] } as ClosetTask
+  assert.equal(orderedTasks(old, done, done).length, 2)
+  assert.equal(orderedTasks(old, done)[0]?.id, 'new')
+  const summary = workflowSummary({status:'ACTIVE',taskStatus:'NEEDS_REVIEW'}, done)
+  assert.equal(summary.tone, 'warning'); assert.match(summary.description,/一体或分体/)
 })

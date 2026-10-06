@@ -1,3 +1,4 @@
+import { createUuid } from './id'
 import { reactive, watch } from 'vue'
 import { recordBoardTrace } from '../agent/trace-client'
 import { normalizeScene, OUTFIT_VERSION, type Outfit, type OutfitElement, type OutfitScene } from './outfit'
@@ -13,7 +14,7 @@ export type OutfitWorkspace = { id: string; owner: string; boards: WorkspaceBoar
 const spaces = new Map<string, OutfitWorkspace>()
 export const storageWarning = reactive({ text: '' })
 export function boardSignature(board: Pick<WorkspaceBoard, 'name' | 'scene'>) { return JSON.stringify({ name: board.name, scene: board.scene }) }
-export function createBoard(name = '未命名搭配', scene: OutfitScene = { version: OUTFIT_VERSION, elements: [] }, id: string = crypto.randomUUID()): WorkspaceBoard {
+export function createBoard(name = '未命名搭配', scene: OutfitScene = { version: OUTFIT_VERSION, elements: [] }, id: string = createUuid()): WorkspaceBoard {
   return { id, name, scene: normalizeScene(scene), contentVersion: 0, revision: null, savedSignature: '', selectedIds: [], undo: [], redo: [], zoom: 1, status: '草稿' }
 }
 export function addBoard(space: OutfitWorkspace, board: WorkspaceBoard) {

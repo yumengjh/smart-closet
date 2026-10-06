@@ -1,0 +1,12 @@
+<script setup lang="ts">
+import { onMounted, onBeforeUnmount, ref } from 'vue'
+import { processingApi, poolLabels, executionLabels, type ExecutionTask } from '../services/processing'
+const tasks = ref<ExecutionTask[]>([]); const error = ref(''); const page = ref(1); let timer = 0; let alive = true
+async function load() { try { tasks.value = (await processingApi.list(page.value)).items; error.value = '' } catch (cause) { error.value = String(cause) } }
+async function poll() { await load(); if (alive) timer = window.setTimeout(poll, 2500) }
+async function cancel(id: string) { try { await processingApi.cancel(id); await load() } catch (cause) { error.value = String(cause) } }
+async function retry(id: string) { try { await processingApi.retry(id); await load() } catch (cause) { error.value = String(cause) } }
+onMounted(poll); onBeforeUnmount(() => { alive = false; clearTimeout(timer) })
+</script>
+<template><section class="execution-tasks"><h2>后台阶段与等待原因</h2><a-alert v-if="error" type="warning" :message="error" /><p v-if="!tasks.length">尚无后台阶段。</p><article v-for="task in tasks" :key="task.id"><div><strong>{{ poolLabels[task.pool] }} · {{ executionLabels[task.status] }}</strong><p>{{ task.kind === 'BATCH' ? '批量整理' : task.kind === 'QUICK' ? '快速入柜' : '衣物处理' }} · 第 {{ task.stage + 1 }} 阶段</p><p v-if="task.waitReason || task.error">{{ task.waitReason || task.error }}</p></div><a-space><a-button v-if="['RUNNING','QUEUED','WAITING_QUOTA'].includes(task.status)" @click="cancel(task.id)">取消后续处理</a-button><a-button v-if="(task.pool === 'CPU' || task.kind === 'QUICK' && ['RECOGNITION','GENERATION'].includes(task.pool)) && ['FAILED','UNKNOWN'].includes(task.status)" @click="retry(task.id)">{{ task.pool === 'CPU' ? '恢复本地处理' : '校验已返回结果' }}</a-button></a-space></article><a-space><a-button :disabled="page === 1" @click="page--; load()">上一页</a-button><span>第 {{ page }} 页</span><a-button :disabled="tasks.length < 100" @click="page++; load()">下一页</a-button></a-space></section></template>
+<style scoped>.execution-tasks{margin:24px 0;padding:24px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}.execution-tasks h2{margin-bottom:14px}.execution-tasks article{padding:16px 0;display:flex;gap:16px;justify-content:space-between;border-top:1px solid var(--line)}.execution-tasks p{color:var(--muted);margin-top:6px}@media(max-width:767px){.execution-tasks article{flex-direction:column}}</style>

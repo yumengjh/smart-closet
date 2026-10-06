@@ -19,7 +19,7 @@ function openGarment() { if (!props.pending && !props.trashed) playSound('tap');
 <template>
   <article class="garment-card" tabindex="0" role="link" :aria-label="`打开${title}`" @keydown.enter="openGarment()" @click="openGarment()">
     <div class="card-image-wrap">
-      <GarmentArt :garment="garment" />
+      <GarmentArt :garment="garment" /><span v-if="garment.images.find(image => image.id === garment.displayAssetId)?.aiGenerated" class="ai-image-label">AI 生成 · 可能含推测细节</span>
       <span v-if="pending" class="card-status"><span class="status-dot"></span>{{ stickerPending ? '贴纸待继续' : garment.taskStatus ? taskLabels[garment.taskStatus] : '待核对' }} · 未入柜</span>
       <span v-if="!pending && !trashed && stickerPending" class="card-status">已入柜 · 贴纸未完成</span>
       <button v-if="!pending && !trashed" class="card-more" aria-label="打开衣物详情" @click.stop="openGarment()"><ArrowRightOutlined /></button>
@@ -30,3 +30,5 @@ function openGarment() { if (!props.pending && !props.trashed) playSound('tap');
     </div>
   </article>
 </template>
+
+<style scoped>.ai-image-label{position:absolute;top:10px;left:10px;max-width:calc(100% - 20px);font-size:11px;padding:4px 8px;background:var(--surface);color:var(--muted);border-radius:6px}</style>

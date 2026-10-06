@@ -1,3 +1,4 @@
+import { createUuid } from '../domain/id'
 import { reactive } from 'vue'
 import { agentRequest, AgentRequestError } from './api'
 import { useClosetStore } from '../stores/closet'
@@ -19,8 +20,8 @@ function save(owner: string) {
 export function recordBoardTrace(owner: string, session: string, boardId: string, source: string, before?: OutfitScene, after?: OutfitScene, extra: Record<string, unknown> = {}) {
   let device: string | null = null; let sequence = Date.now()
   try { device = localStorage.getItem('yixu.trace-device.v1'); sequence = Math.max(sequence, Number(localStorage.getItem('yixu.trace-sequence.v1') || '0') + 1); localStorage.setItem('yixu.trace-sequence.v1', String(sequence)) } catch {}
-  if (!device) { device = crypto.randomUUID(); try { localStorage.setItem('yixu.trace-device.v1', device) } catch {} }
-  queue(owner).push({ session, body: { eventId: crypto.randomUUID(), deviceId: device, clientSequence: sequence, occurredAt: Date.now(), workspaceId: `agent:${session}`, boardId, source, before: traceScene(before), after: traceScene(after), ...extra } })
+  if (!device) { device = createUuid(); try { localStorage.setItem('yixu.trace-device.v1', device) } catch {} }
+  queue(owner).push({ session, body: { eventId: createUuid(), deviceId: device, clientSequence: sequence, occurredAt: Date.now(), workspaceId: `agent:${session}`, boardId, source, before: traceScene(before), after: traceScene(after), ...extra } })
   save(owner); void flushBoardTrace()
 }
 export async function flushBoardTrace() {

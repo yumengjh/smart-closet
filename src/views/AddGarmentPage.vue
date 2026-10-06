@@ -3,12 +3,17 @@ import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeftOutlined, PictureOutlined, CameraOutlined, RotateRightOutlined, ArrowRightOutlined, InfoCircleOutlined } from '@ant-design/icons-vue'
 import CameraCapture from '../components/CameraCapture.vue'
+import QuickIntake from '../components/QuickIntake.vue'
 import BatchIntake from '../components/BatchIntake.vue'
 import GarmentEdgeHelp from '../components/GarmentEdgeHelp.vue'
 import { useProcessingStore } from '../stores/processing'
 const intake = ref(useRoute().query.mode === 'multiple')
-import { hasCamera } from '../services/camera'
-import { closetApi, usingMocks, type ClosetTask, type ProcessingChoice } from '../services/api'
+const preferQuick = useRoute().query.mode !== 'multiple' && useRoute().query.mode !== 'single'
+const quick = ref(false); const quickEnabled = ref(false)
+const entryMode = computed({ get: () => quick.value ? 'quick' : intake.value ? 'multiple' : 'single', set: (value: string) => { quick.value = value === 'quick'; intake.value = value === 'multiple' } })
+const entryOptions = computed(() => [...(quickEnabled.value ? [{ label: '快速入柜', value: 'quick' }] : []), { label: '单件处理', value: 'single' }, { label: '多件整理', value: 'multiple' }])
+import { hasCamera, prefersNativeCamera } from '../services/camera'
+import { closetApi, request, usingMocks, type ClosetTask, type ProcessingChoice } from '../services/api'
 
 const router = useRouter()
 const file = ref<File>()
@@ -40,7 +45,7 @@ const recognitionChoice = ref('')
 const isAI = computed(() => mode.value !== '本地贴纸')
 const configured = computed(() => !isAI.value || (recognitionChoices.value.length > 0 && (mode.value === '仅识别' || generationChoices.value.length > 0)))
 const modes = [
-  { value: '识别并整理', title: '识别并整理', body: '填写信息，整理照片并制作透明贴纸。', suitable: '适合自拍、穿着照或需要整理外观的单件。', cost: '1 次 AI 任务额度 · 需要等待模型' },
+  { value: '识别并整理', title: '识别并整理', body: '填写信息，整理照片并制作透明贴纸。', suitable: '适合自拍、穿着照或需要整理外观的单件。', cost: '识别 1 次 + 整理 1 次 AI 额度 · 需要等待模型' },
   { value: '仅识别', title: '仅识别信息', body: '自动填写信息，保留原照片。', suitable: '照片已拍得满意，无需改变外观。', cost: '1 次 AI 任务额度 · 不生成新图片' },
   { value: '本地贴纸', title: '本地去背景', body: '保留照片里的外观，衣物信息自己填写。', suitable: '适合平铺或悬挂；穿着照可能保留人物。', cost: '0 次 AI 额度 · 不发送云端' },
 ]
@@ -53,7 +58,8 @@ async function detectCamera() {
 }
 function chooseCamera({ key }: { key: string | number }) { (key === 'selfie' ? selfieInput.value : rearInput.value)?.click() }
 onMounted(async () => {
-  mobileCamera.value = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent))
+  void request<{quickIntake:boolean}>('/api/processing/capabilities').then(flags => { if(alive){quickEnabled.value=flags.quickIntake;quick.value=flags.quickIntake && preferQuick} }).catch(() => {})
+  mobileCamera.value = prefersNativeCamera()
   void detectCamera()
   navigator.mediaDevices?.addEventListener('devicechange', detectCamera)
   const [quota, choices] = await Promise.allSettled([closetApi.quota(), closetApi.processingChoices()])
@@ -100,13 +106,11 @@ async function submit() {
     <input ref="selfieInput" class="hidden-file-input" type="file" accept="image/jpeg,image/png" capture="user" tabindex="-1" :disabled="busy" @change="handleFileChange" />
     <CameraCapture v-if="cameraOpen" @close="cameraOpen = false" @capture="setFile" />
     <a-button type="text" class="back-link" @click="router.push('/wardrobe')"><ArrowLeftOutlined /> 返回衣柜</a-button>
-    <header class="page-heading"><div><h1>添加衣物</h1><p class="page-subtitle">{{ intake ? '多张单件照、多件同框或自拍，分开整理后逐件核对。' : '一件衣物，用单件工具更直接；多件照片，再选择批量整理。' }}</p></div></header>
-    <a-radio-group v-model:value="intake" :disabled="busy" class="intake-switch" aria-label="录入方式">
-      <a-radio-button :value="false"><strong>单件处理</strong><small>一张照片、一件衣物 · 按需处理</small></a-radio-button>
-      <a-radio-button :value="true"><strong>多件整理</strong><small>多张照片或多件同框 · 分别整理</small></a-radio-button>
-    </a-radio-group>
-    <KeepAlive><BatchIntake v-if="intake" embedded /></KeepAlive>
-    <template v-if="!intake">
+    <header class="page-heading"><div><h1>添加衣物</h1><p class="page-subtitle">{{ quick ? '一张照片一件衣物，拍完就能继续下一件。' : intake ? '多张单件照、多件同框或自拍，分开整理后逐件核对。' : '一件衣物，用单件工具更直接；多件照片，再选择批量整理。' }}</p></div></header>
+    <a-segmented v-model:value="entryMode" block :options="entryOptions" :disabled="busy" class="entry-switch" aria-label="录入方式" />
+    <QuickIntake v-if="quick" />
+    <KeepAlive><BatchIntake v-if="!quick && intake" embedded /></KeepAlive>
+    <template v-if="!quick && !intake">
     <div class="add-layout">
       <section class="upload-panel" @dragover.prevent @drop="drop">
         <div class="panel-heading"><h2>衣物照片</h2><span>每次一张 · 一件衣物</span></div>
@@ -114,7 +118,7 @@ async function submit() {
           <div class="upload-icon"><PictureOutlined /></div><h2>选一张想收进衣柜的照片</h2><p>平铺、悬挂或自拍都可以，让想录入的衣物完整入镜</p>
           <div class="upload-actions">
             <a-button type="primary" size="large" @click="fileInput?.click()"><PictureOutlined /> 选择照片</a-button>
-            <a-dropdown v-if="cameraAvailable && mobileCamera" :trigger="['click']"><a-button size="large"><CameraOutlined /> 拍一张照片</a-button><template #overlay><a-menu @click="chooseCamera"><a-menu-item key="rear">拍衣物（后置摄像头）</a-menu-item><a-menu-item key="selfie">自拍（前置摄像头）</a-menu-item></a-menu></template></a-dropdown>
+            <a-dropdown v-if="mobileCamera" :trigger="['click']"><a-button size="large"><CameraOutlined /> 拍一张照片</a-button><template #overlay><a-menu @click="chooseCamera"><a-menu-item key="rear">拍衣物（后置摄像头）</a-menu-item><a-menu-item key="selfie">自拍（前置摄像头）</a-menu-item></a-menu></template></a-dropdown>
             <a-button v-else-if="cameraAvailable" size="large" @click="cameraOpen = true"><CameraOutlined /> 拍一张照片</a-button>
           </div><span class="upload-limits">也可将照片拖到这里 · JPEG / PNG · 最大 50 MB</span>
         </div>
@@ -153,7 +157,7 @@ async function submit() {
         <p class="privacy-note">{{ isAI ? '照片将发送到已配置的模型服务。处理时长由模型决定，结果返回后请检查衣物细节。' : '照片由你的衣柜服务本地处理，不发送到云端模型。衣物信息可以稍后慢慢填写。' }}</p>
     </section>
     </template>
-    <GarmentEdgeHelp />
+    <GarmentEdgeHelp v-if="!quick" />
   </div>
 </template>
 
@@ -168,4 +172,9 @@ async function submit() {
 
 <style scoped>
 .mode-help{max-width:320px;line-height:1.8;font-size:13px}.mode-help p+p{margin-top:16px}.single-mode-card{min-height:88px;align-items:center}.single-mode-card :deep(.ant-radio){top:0;align-self:center}.redesigned-intake .process-panel>.panel-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}.redesigned-intake .process-panel>.panel-heading :deep(.ant-btn){min-height:44px}.single-mode-card .mode-copy{gap:4px}
+</style>
+
+<style scoped>
+.entry-switch{margin-bottom:24px;padding:4px;border:1px solid var(--line);background:var(--surface-alt);border-radius:12px}.entry-switch :deep(.ant-segmented-item-label){min-height:44px;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;padding:0 12px}.entry-switch :deep(.ant-segmented-item-selected){background:var(--surface);color:var(--ink);border-radius:8px;box-shadow:0 1px 3px #0000000c}.entry-switch :deep(.ant-segmented-thumb){border-radius:8px;background:var(--surface)}
+@media(max-width:767px){.redesigned-intake .back-link{margin-bottom:8px;min-height:44px}.redesigned-intake .page-heading{margin-bottom:20px}.redesigned-intake .page-heading h1{font-size:26px}.redesigned-intake .page-subtitle{font-size:13px;line-height:1.6;margin-top:6px}.entry-switch{margin-bottom:20px}.entry-switch :deep(.ant-segmented-item-label){font-size:14px;padding:0 8px}}
 </style>

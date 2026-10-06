@@ -5,7 +5,7 @@ export const taskLabels: Record<ClosetTask['status'], string> = {
   QUEUED: '等待处理', RUNNING: '正在处理', CANCEL_REQUESTED: '正在取消', SUCCEEDED: '处理结束',
   NEEDS_REVIEW: '结果需检查', FAILED: '处理失败', CANCELLED: '已取消', UNKNOWN: '状态待核实',
 }
-export const imageLabels: Record<string, string> = { INPUT: '上传原图', GENERATED: 'AI 整理图', GENERATE: 'AI 整理图', SEGMENT: '透明抠图', ENSURE_TRANSPARENCY: '背景检查图', CUTOUT: '透明抠图', STICKER: '贴纸展示图', TRANSPARENT: '透明图片', ORIGINAL: '上传原图' }
+export const imageLabels: Record<string, string> = { INPUT: '上传原图', BASE: '基础图', BASE_STICKER: '基础贴纸', AI_ENHANCED: 'AI 增强图', GENERATED: 'AI 整理图', GENERATE: 'AI 整理图', SEGMENT: '透明抠图', ENSURE_TRANSPARENCY: '背景检查图', CUTOUT: '透明抠图', STICKER: '贴纸展示图', TRANSPARENT: '透明图片', ORIGINAL: '上传原图' }
 export const blocksConfirmation = (assessment?: string) => ['NO_GARMENT', 'MULTIPLE_GARMENTS', 'UNUSABLE'].includes(assessment || '')
 export function processingSeconds(task: ClosetTask, now = Date.now()) {
   const finished = [...task.steps, ...(task.attempts || [])].map(step => Date.parse(step.finishedAt || '')).filter(Number.isFinite)
@@ -13,7 +13,12 @@ export function processingSeconds(task: ClosetTask, now = Date.now()) {
   return Math.max(0, Math.floor((end - Date.parse(task.createdAt)) / 1000))
 }
 export function generatedImages(task: ClosetTask | null) {
-  return (task?.assets || []).filter(asset => ['GENERATE', 'GENERATED', 'SEGMENT', 'CUTOUT', 'ENSURE_TRANSPARENCY', 'TRANSPARENT', 'STICKER'].includes(asset.kind) && asset.url !== task?.inputUrl).sort((a, b) => (task?.steps?.findIndex(step => step.outputUrl === a.url) ?? -1) - (task?.steps?.findIndex(step => step.outputUrl === b.url) ?? -1))
+  return (task?.assets || []).filter(asset => ['BASE', 'BASE_STICKER', 'AI_ENHANCED', 'GENERATE', 'GENERATED', 'SEGMENT', 'CUTOUT', 'ENSURE_TRANSPARENCY', 'TRANSPARENT', 'STICKER'].includes(asset.kind) && asset.url !== task?.inputUrl).sort((a, b) => (task?.steps?.findIndex(step => step.outputUrl === a.url) ?? -1) - (task?.steps?.findIndex(step => step.outputUrl === b.url) ?? -1))
+}
+/** In-flight work comes first; finished image jobs must not hide newer recognition. */
+export function orderedTasks(...tasks: (ClosetTask | null | undefined)[]) {
+  return tasks.filter((task): task is ClosetTask => Boolean(task)).filter((task, index, all) => all.findIndex(other => other.id === task.id) === index)
+    .sort((a, b) => Number(isProcessing(b.status)) - Number(isProcessing(a.status)) || Date.parse(b.createdAt) - Date.parse(a.createdAt))
 }
 export function workflowSummary(garment: Pick<Garment, 'taskStatus' | 'status' | 'assessment' | 'imageProcessing'>, task?: ClosetTask | null) {
   const state = task?.status || garment.taskStatus
@@ -24,6 +29,10 @@ export function workflowSummary(garment: Pick<Garment, 'taskStatus' | 'status' |
     const current = task?.steps.find(step => step.status === 'running')
     return { title: current ? `正在${current.name.replace(/^AI /, '')}` : '正在处理衣物', description: '页面根据服务端状态更新，结果返回后会显示在下方。', tone: 'processing' }
   }
+  const recognition = [...(task?.steps || [])].reverse().find(step => step.recognition)?.recognition
+  if (blocksConfirmation(recognition?.assessment)) return { title: '本次识别需要补充目标说明', description: recognition?.issues?.[0]?.message || task?.note || '未能确定本次衣物。可以说明要识别哪件，或说明实物是否为一件连衣裙，再主动识别。', tone: 'warning' }
+  if (task && ['FAILED', 'UNKNOWN', 'NEEDS_REVIEW'].includes(state || '') && (task.note || task.steps?.some(step => step.error)))
+    return { title: garment.status === 'ACTIVE' ? '衣物已入柜，本次处理需查看' : '本次处理需要查看', description: task.steps?.find(step => step.error)?.error || task.note || '请查看本次处理记录。', tone: 'warning' }
   if (blocksConfirmation(garment.assessment)) return { title: '这张照片需要重新上传', description: '识别发现多件衣物、没有衣物或图片不可用，请重新拍摄单件衣物。', tone: 'error' }
   if (garment.imageProcessing?.stickerRequired && !garment.imageProcessing.stickerReady)
     return { title: garment.status === 'ACTIVE' ? '已入柜，贴纸尚未完成' : '贴纸尚未完成，等待继续处理', description: '当前图片是中间结果。请继续本地抠图或核对透明背景后制作贴纸；完成后再选择展示图。', tone: 'warning' }

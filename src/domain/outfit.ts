@@ -1,3 +1,4 @@
+import { createUuid } from './id.ts'
 import type { Garment } from '../services/api'
 
 export const OUTFIT_WIDTH = 1080
@@ -158,5 +159,5 @@ export function stickerLimit(elements: OutfitElement[], kind: 'GARMENT' | 'PERSO
   return null
 }
 export function copySticker(item: OutfitElement, zIndex: number): OutfitElement {
-  return { ...item, elementId: crypto.randomUUID(), x: Math.min(1080, item.x + 30), y: Math.min(1350, item.y + 30), zIndex }
+  return { ...item, elementId: createUuid(), x: Math.min(1080, item.x + 30), y: Math.min(1350, item.y + 30), zIndex }
 }

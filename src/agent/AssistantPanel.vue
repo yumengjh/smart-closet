@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { createUuid } from '../domain/id'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { App } from 'ant-design-vue'
@@ -107,11 +108,11 @@ async function scrollBottom() { await nextTick(); if (transcript.value) transcri
 async function send() {
   if (busy.value || !input.value.trim() || !models.value.configured) return
   avatarCue.value=null;taskFailed.value=false;activityTool.value=''; error.value = ''; busy.value = true; activityPhase.value = 'thinking'; status.value = '正在理解你的请求'; playSound('bubble'); let reply: AgentMessage | undefined
-  const body = { requestId: crypto.randomUUID(), content: input.value.trim(), context: context.value, imageConsent: imageConsent.value, personalMemoryConsent: personalConsent.value }
+  const body = { requestId: createUuid(), content: input.value.trim(), context: context.value, imageConsent: imageConsent.value, personalMemoryConsent: personalConsent.value }
   try {
     if (!selected.value) await createSession()
     messages.value.push({ id: body.requestId, role: 'user', content: body.content, status: 'COMPLETE', events: [] })
-    messages.value.push({ id: crypto.randomUUID(), role: 'assistant', content: '', status: 'RUNNING', events: [], requestId: body.requestId }); reply = messages.value[messages.value.length - 1]
+    messages.value.push({ id: createUuid(), role: 'assistant', content: '', status: 'RUNNING', events: [], requestId: body.requestId }); reply = messages.value[messages.value.length - 1]
     input.value = ''; imageConsent.value = false; personalConsent.value = false; abort = new AbortController(); await scrollBottom()
     await streamMessage(selected.value, body, event => {
       const follow = nearBottom()

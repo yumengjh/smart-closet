@@ -17,6 +17,8 @@ export const router = createRouter({
     { path: '/help', component: () => import('./views/HelpPage.vue') },
     { path: '/settings', component: () => import('./views/SettingsPage.vue') },
     { path: '/batches/:id', component: () => import('./views/BatchPage.vue') },
+    { path: '/quick-add', redirect: '/add' },
+    { path: '/admin/processing', component: () => import('./views/AdminProcessingPage.vue') },
     { path: '/add', component: () => import('./views/AddGarmentPage.vue') },
     { path: '/garment/:id', component: () => import('./views/GarmentPage.vue') },
     { path: '/trash', component: () => import('./views/TrashPage.vue') },
@@ -41,6 +43,7 @@ router.beforeEach(async (to) => {
     }
   }
   await closet.ensureUser()
+  if (to.path.startsWith('/admin/') && closet.user && closet.user.role !== 'ADMIN') return '/wardrobe'
   const destination = sessionRedirect(to.path, closet.user)
   if (destination) return { ...router.resolve(destination), replace: true }
 })

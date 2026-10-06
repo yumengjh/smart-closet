@@ -3,7 +3,9 @@ import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { CameraOutlined, SwapOutlined, ReloadOutlined } from '@ant-design/icons-vue'
 import { cameraError } from '../services/camera'
 
-const emit = defineEmits<{ close: []; capture: [file: File] }>()
+const props = defineProps<{ continuous?: boolean; disabled?: boolean }>()
+const capturing = ref(false)
+const emit = defineEmits<{ close: []; capture: [file: File, specify?: boolean] }>()
 const video = ref<HTMLVideoElement>()
 const facing = ref<'environment' | 'user'>('environment')
 const loading = ref(false)
@@ -29,18 +31,20 @@ async function start() {
   finally { if (!closed && attempt === epoch) loading.value = false }
 }
 function switchCamera() { facing.value = facing.value === 'environment' ? 'user' : 'environment'; void start() }
-function takePhoto() {
+function takePhoto(specify = false) {
   const source = video.value
-  if (!source || !ready.value || !source.videoWidth || closed) return
+  if (!source || !ready.value || !source.videoWidth || closed || capturing.value || props.disabled) return
+  capturing.value = true
   const canvas = document.createElement('canvas')
   canvas.width = source.videoWidth; canvas.height = source.videoHeight
   canvas.getContext('2d')!.drawImage(source, 0, 0)
   const attempt = epoch
   canvas.toBlob(blob => {
+    capturing.value = false
     if (closed || attempt !== epoch) return
     if (!blob) { error.value = '照片暂时没有保存好，请再拍一次。'; return }
-    emit('capture', new File([blob], `衣物照片-${Date.now()}.jpg`, { type: 'image/jpeg' }))
-    close()
+    emit('capture', new File([blob], `衣物照片-${Date.now()}.jpg`, { type: 'image/jpeg' }), specify)
+    if (!props.continuous) close()
   }, 'image/jpeg', .92)
 }
 onMounted(start)
@@ -48,7 +52,7 @@ onBeforeUnmount(() => { closed = true; epoch++; release() })
 </script>
 
 <template>
-  <a-modal :open="true" title="拍一张衣物照片" :footer="null" :width="640" @cancel="close">
+  <a-modal :open="true" :title="continuous ? '连续拍摄衣物' : '拍一张衣物照片'" :footer="null" :width="640" @cancel="close">
     <p class="camera-guidance">让想录入的衣物尽量完整地出现在画面里，不用露脸也可以。</p>
     <div class="camera-preview"><video ref="video" autoplay muted playsinline aria-label="摄像头预览" @loadeddata="ready = true" /><a-spin v-if="loading" class="camera-loading" /></div>
     <a-alert v-if="error" type="warning" :message="error" show-icon />
@@ -56,7 +60,8 @@ onBeforeUnmount(() => { closed = true; epoch++; release() })
       <a-button @click="close">返回选择照片</a-button>
       <a-button v-if="error" :loading="loading" @click="start"><ReloadOutlined /> 重试</a-button>
       <a-button v-else :disabled="loading" @click="switchCamera"><SwapOutlined /> 切换摄像头</a-button>
-      <a-button type="primary" :disabled="!ready || loading" @click="takePhoto"><CameraOutlined /> 使用这张照片</a-button>
+      <a-button type="primary" :disabled="!ready || loading || capturing || disabled" @click="takePhoto()"><CameraOutlined /> {{ continuous ? '拍下即上传' : '使用这张照片' }}</a-button>
+      <a-button v-if="continuous" :disabled="!ready || loading || capturing || disabled" @click="takePhoto(true)">拍摄并指定目标</a-button>
     </div>
   </a-modal>
 </template>
