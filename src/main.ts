@@ -6,6 +6,7 @@ import { Steps, Alert, App as AntApp, AutoComplete, Button, ConfigProvider, Inpu
 import 'ant-design-vue/dist/reset.css'
 import App from './App.vue'
 import { router } from './router'
+import { installPwa } from './services/pwa'
 import './style.css'
 import './styles/outfit.css'
 import './styles/alert.css'
@@ -25,4 +26,5 @@ for (const [name, component] of Object.entries({
   'a-tooltip': Tooltip, 'a-empty': Empty, 'a-tag': Tag, 'a-form': Form, 'a-form-item': Form.Item,
   'a-input-number': InputNumber, 'a-slider': Slider, 'a-descriptions': Descriptions, 'a-descriptions-item': Descriptions.Item,
 })) app.component(name, component)
+installPwa()
 app.mount('#app')

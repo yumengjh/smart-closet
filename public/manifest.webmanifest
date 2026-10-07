@@ -1,0 +1,23 @@
+{
+  "id": "/",
+  "name": "鱼搭 · 数字衣柜",
+  "short_name": "鱼搭",
+  "description": "整理衣物、管理衣柜与组合穿搭。",
+  "lang": "zh-CN",
+  "start_url": "/wardrobe",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f7f8fa",
+  "theme_color": "#f7f8fa",
+  "categories": ["lifestyle", "shopping", "productivity"],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "录入衣物", "url": "/add", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "穿搭", "url": "/outfits", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

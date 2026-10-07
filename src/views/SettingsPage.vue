@@ -3,7 +3,7 @@ import { computed, defineAsyncComponent } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   LockOutlined, ThunderboltOutlined, LinkOutlined, RobotOutlined, UserOutlined, DashboardOutlined,
-  DeleteOutlined, ArrowRightOutlined, ArrowLeftOutlined,
+  DeleteOutlined, ArrowRightOutlined, ArrowLeftOutlined, DownloadOutlined,
 } from '@ant-design/icons-vue'
 import { useClosetStore } from '../stores/closet'
 
@@ -63,6 +63,15 @@ const categories: SettingsCategory[] = [
     icon: LinkOutlined,
     hidden: () => firstLogin.value || isPortableLogin.value,
     component: defineAsyncComponent(() => import('./settings/SettingsPortableSection.vue')),
+  },
+  {
+    key: 'install',
+    label: '安装应用',
+    eyebrow: '桌面与主屏幕',
+    description: '把鱼搭安装到电脑或手机，像应用一样独立打开。',
+    icon: DownloadOutlined,
+    hidden: () => firstLogin.value,
+    component: defineAsyncComponent(() => import('./settings/SettingsInstallSection.vue')),
   },
 ]
 
