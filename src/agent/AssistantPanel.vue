@@ -7,6 +7,7 @@ import { CloseOutlined, PlusOutlined, SendOutlined, PushpinOutlined, PushpinFill
 import { usingMocks } from '../services/api'
 import { agentRequest, streamMessage, type AgentSession, type AgentMessage, type Models, type Memory, type Quota } from './api'
 import { pageContext } from './bridge'
+import AgentCommandCard from './AgentCommandCard.vue'
 import AgentProposal from './AgentProposal.vue'
 import AgentTraceModal from './AgentTraceModal.vue'
 import { discardSessionTrace, flushBoardTrace } from './trace-client'
@@ -31,7 +32,7 @@ const isOperating = computed(() => busy.value && (activityPhase.value === 'opera
 const operationSteps = computed(() => messages.value.at(-1)?.events.filter(e => e.event === 'operation_result').slice(-6).map(e => ({ text: e.data.label + (e.data.message ? ` · ${e.data.message}` : ''), success: e.data.success })) || [])
 const sessions = ref<AgentSession[]>([]); const selected = ref(''); const messages = ref<AgentMessage[]>([])
 const models = ref<Models>({ defaultModel: '', models: [], configured: false }); const personalModel = ref(''); const quota = ref<Quota | null>(null)
-const imageConsent = ref(false); const personalConsent = ref(false); const compact = ref(window.innerWidth < 1024)
+const imageConsent = ref(false); const compact = ref(window.innerWidth < 1024)
 const textarea = ref<{ focus: () => void } | null>(null); const transcript = ref<HTMLDivElement | null>(null); const panel = ref<HTMLElement | null>(null); const launcher = ref<InstanceType<typeof AssistantOrb> | null>(null)
 let abort: AbortController | undefined
 const closet = useClosetStore()
@@ -97,7 +98,7 @@ function menuAction({ key }: { key: string | number }) {
   if (key === 'rename') rename()
   else if (key === 'delete') deleteChats()
   else if (key === 'clear') deleteChats(true)
-  else if (key === 'memory') { void router.push('/settings'); showPage() }
+  else if (key === 'memory') { void router.push('/settings?section=assistant'); showPage() }
   else if (key === 'help') { void router.push('/help?article=03-assistant'); showPage() }
 }
 function deleteChats(all = false) {
@@ -108,12 +109,12 @@ async function scrollBottom() { await nextTick(); if (transcript.value) transcri
 async function send() {
   if (busy.value || !input.value.trim() || !models.value.configured) return
   avatarCue.value=null;taskFailed.value=false;activityTool.value=''; error.value = ''; busy.value = true; activityPhase.value = 'thinking'; status.value = '正在理解你的请求'; playSound('bubble'); let reply: AgentMessage | undefined
-  const body = { requestId: createUuid(), content: input.value.trim(), context: context.value, imageConsent: imageConsent.value, personalMemoryConsent: personalConsent.value }
+  const body = { requestId: createUuid(), content: input.value.trim(), context: context.value, imageConsent: imageConsent.value }
   try {
     if (!selected.value) await createSession()
     messages.value.push({ id: body.requestId, role: 'user', content: body.content, status: 'COMPLETE', events: [] })
     messages.value.push({ id: createUuid(), role: 'assistant', content: '', status: 'RUNNING', events: [], requestId: body.requestId }); reply = messages.value[messages.value.length - 1]
-    input.value = ''; imageConsent.value = false; personalConsent.value = false; abort = new AbortController(); await scrollBottom()
+    input.value = ''; imageConsent.value = false; abort = new AbortController(); await scrollBottom()
     await streamMessage(selected.value, body, event => {
       const follow = nearBottom()
       if (event.event === 'token') { reply!.content += event.data.text; activityPhase.value = 'responding' }
@@ -151,7 +152,7 @@ function keyboard(e: KeyboardEvent) {
 function resize() { compact.value = window.innerWidth < 1024; viewport.value = { width: window.innerWidth, height: window.innerHeight }; resizeMobileViewport() }
 function resizeMobileViewport() { mobileViewport.value = { height: window.visualViewport?.height ?? window.innerHeight, top: window.visualViewport?.offsetTop ?? 0 } }
 watch(() => closet.user?.username, async username=>{avatarCue.value=null;applyAvatarMode('personal');if(username&&!usingMocks){try{const p=await agentRequest<{avatarMode:string}>('/preferences');if(closet.user?.username===username)applyAvatarMode(p.avatarMode)}catch{}}},{immediate:true})
-watch(() => route.path, () => { imageConsent.value = false; personalConsent.value = false })
+watch(() => route.path, () => { imageConsent.value = false; })
 // Fix the body as well as hiding overflow, so iOS cannot scroll the page beneath the dialog.
 let scrollLock: { x: number; y: number; styles: [string, string, string][]; app: HTMLElement | null; inert: boolean } | undefined
 function lockBackground(lock: boolean) {
@@ -198,12 +199,13 @@ onUnmounted(() => { window.removeEventListener('closet-assistant-open', openFrom
         <div v-if="compact" class="assistant-task-notice"><TaskNotice @opened="close" /></div>
         <div v-if="waitingTopics" class="assistant-waiting-topics"><small>等衣物的这会儿，想聊点什么？选话题后由你发送。</small><div><a-button v-for="topic in topics" :key="topic.label" size="small" :disabled="busy || loading || !models.configured" @click="pickTopic(topic.prompt)">{{ topic.label }}</a-button></div></div>
         <div ref="transcript" class="assistant-transcript" aria-label="聊天记录" aria-live="polite" :aria-busy="busy">
-          <div v-if="!messages.length" class="assistant-welcome"><BloubAvatar class="assistant-face" :size="74" expression="happy" /><p class="eyebrow">从你的衣柜开始</p><h2>今天想怎么穿？</h2><p>告诉我场景，或选中一件衣物。<br />平台怎么用，也可以问我。</p><a-button block @click="input = '帮我组合三套通勤穿搭'; textarea?.focus()">帮我搭三套通勤穿搭</a-button><a-button block @click="input = '组合台怎么使用？'; textarea?.focus()">了解组合台怎么使用</a-button></div>
+          <div v-if="!messages.length" class="assistant-welcome"><BloubAvatar class="assistant-face" :size="74" expression="happy" /><p class="eyebrow">你的鱼搭助手</p><h2>今天我能帮你做什么？</h2><p>查衣柜、管理衣物、查看任务，<br />也可以聊穿搭或了解平台。</p><a-button block @click="input = '我有多少件衣物？请按品类统计'; textarea?.focus()">看看我的衣柜数量</a-button><a-button block @click="input = '帮我组合三套通勤穿搭'; textarea?.focus()">准备通勤穿搭</a-button><a-button block @click="input = '组合台怎么使用？'; textarea?.focus()">了解组合台怎么使用</a-button></div>
           <article v-for="item in messages" :key="item.id" class="assistant-message" :class="item.role"><small>{{ item.role === 'user' ? '你' : '鱼搭助手' }}</small><p v-if="item.content" class="assistant-text">{{ item.content }}</p><span v-if="item.status === 'FAILED'" class="assistant-interrupted">回复未完成</span>
             <a-button v-if="item.role === 'assistant'" type="link" size="small" @click="debugRequest = item.requestId || null; debugOpen = true">查看决策与执行记录</a-button>
             <a-collapse v-if="item.events.some(e => e.event === 'operation_result')" ghost class="assistant-operation-record"><a-collapse-panel key="steps" header="查看搭台操作记录"><ol><li v-for="event in item.events.filter(e => e.event === 'operation_result')" :key="event.data.operationId">{{ event.data.success ? '✓' : '!' }} {{ event.data.label }}<small v-if="event.data.message"> · {{ event.data.message }}</small></li></ol></a-collapse-panel></a-collapse>
             <template v-for="(event, index) in item.events" :key="index">
               <AgentWorkspaceResult v-if="event.event === 'workspace_result'" :result="event.data" @open="showPage" />
+              <AgentCommandCard v-else-if="event.event === 'command'" :command="event.data" />
               <AgentProposal v-else-if="event.event === 'proposal'" :proposal="event.data" @applied="showPage" />
               <div v-else-if="event.event === 'memory'" class="assistant-memory-notice"><span>{{ event.data.revoked ? '已撤销' : '已记住' }}：{{ event.data.content }}</span><a-button v-if="!event.data.revoked" type="link" size="small" @click="undoMemory(event.data)">撤销记忆</a-button></div>
               <div v-else-if="event.event === 'sources' && event.data.articles?.length" class="assistant-sources"><RouterLink v-for="article in event.data.articles" :key="article.id" :to="article.href" @click="showPage">{{ article.title }} ↗</RouterLink></div>
@@ -219,7 +221,7 @@ onUnmounted(() => { window.removeEventListener('closet-assistant-open', openFrom
             <a-button type="primary" html-type="submit" shape="circle" aria-label="发送消息" data-sound="off" :loading="busy" :disabled="busy || !input.trim() || !models.configured"><template #icon><SendOutlined /></template></a-button>
           </form>
           <div class="assistant-composer-tools">
-            <div><SoundToggle /><a-popover v-model:open="optionsOpen" title="本次对话选项" trigger="click" placement="topLeft" overlay-class-name="assistant-options-popover"><a-button type="text" aria-label="助手对话选项" :aria-expanded="optionsOpen"><SettingOutlined /></a-button><template #content><div class="assistant-options"><label>本会话模型</label><a-select :value="session?.model || ''" aria-label="本会话模型" :options="modelOptions" :disabled="!selected || busy" @change="setModel" /><small v-if="!selected">发送消息或新建对话后可设置会话模型。</small><a-checkbox v-if="context.garmentId" v-model:checked="imageConsent" :disabled="busy">发送当前衣物图片到模型（仅本条）</a-checkbox><a-checkbox v-model:checked="personalConsent" :disabled="busy">同意保存本条的尺码 / 身材信息</a-checkbox><RouterLink to="/settings" @click="optionsOpen=false;showPage()">设置角色动效与预览 ↗</RouterLink></div></template></a-popover><span v-if="imageConsent || personalConsent" class="assistant-consent-badge">本条已授权</span></div>
+            <div><SoundToggle /><a-popover v-model:open="optionsOpen" title="本次对话选项" trigger="click" placement="topLeft" overlay-class-name="assistant-options-popover"><a-button type="text" aria-label="助手对话选项" :aria-expanded="optionsOpen"><SettingOutlined /></a-button><template #content><div class="assistant-options"><label>本会话模型</label><a-select :value="session?.model || ''" aria-label="本会话模型" :options="modelOptions" :disabled="!selected || busy" @change="setModel" /><small v-if="!selected">发送消息或新建对话后可设置会话模型。</small><a-checkbox v-if="context.garmentId" v-model:checked="imageConsent" :disabled="busy">发送当前衣物图片到模型（仅本条）</a-checkbox><RouterLink to="/settings" @click="optionsOpen=false;showPage()">设置角色动效与预览 ↗</RouterLink></div></template></a-popover><span v-if="imageConsent" class="assistant-consent-badge">本条已授权</span></div>
             <small>{{ quota ? `今日剩余 ${Math.max(0, quota.limit - quota.used)} 条` : '正在读取额度' }}</small>
           </div>
         </footer>

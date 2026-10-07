@@ -95,7 +95,8 @@ export function roleFromGarment(garment: Pick<Garment, 'category'>): OutfitRole 
   return 'OTHER'
 }
 
-export function formatGarmentLabel(garment: Pick<Garment, 'category' | 'primaryColor'>): string {
+export function formatGarmentLabel(garment: Pick<Garment, 'category' | 'primaryColor' | 'name'>): string {
+  if (garment.name) return garment.name
   return [garment.primaryColor[0], garment.category[0] || '衣物'].filter(Boolean).join(' ')
 }
 
@@ -114,7 +115,13 @@ export function nextElementPosition(role: OutfitRole, current: OutfitElement[]):
   const y = Math.max(70, Math.min(1278, base.y + 42 * layer))
   const width = Math.max(120, base.width * Math.pow(0.9, layer))
   const proposedX = base.x + (layer % 2 ? -1 : 1) * spread * Math.ceil(layer / 2)
-  const x = Math.max(width / 2 + 16, Math.min(OUTFIT_WIDTH - width / 2 - 16, proposedX))
+  const clamp = (value: number) => Math.max(width / 2 + 16, Math.min(OUTFIT_WIDTH - width / 2 - 16, value))
+  const positions = [proposedX, base.x + spread * Math.ceil(layer / 2), base.x - spread * Math.ceil(layer / 2), width / 2 + 16, OUTFIT_WIDTH - width / 2 - 16].map(clamp)
+  // Restored or hand-moved items may differ from the nominal anchor. Keep them in place
+  // and choose a free center instead of stacking the new sticker on top of them.
+  const distance = (value: number) => Math.min(...siblings.map(item => Math.abs(item.x - value)))
+  const x = positions.find(value => distance(value) >= Math.min(150, spread))
+    ?? positions.reduce((best, value) => distance(value) > distance(best) ? value : best)
   return { x, y, width, height: width }
 }
 

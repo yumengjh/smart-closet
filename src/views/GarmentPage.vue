@@ -37,7 +37,7 @@ const confirmLayering = ref(false)
 const layeringVerified = computed(() => layeringFields.every(key => (garment.value?.overrides[key] || []).length && JSON.stringify(values[key] || []) === JSON.stringify(garment.value?.overrides[key] || [])))
 const fields = Object.keys(fieldLabels) as (keyof typeof fieldLabels)[]
 const dirty = computed(() => Boolean(baseline.value && (confirmLayering.value || resetFields.value.length || selectedAssetId.value !== baseline.value.displayAssetId || fields.some(key => JSON.stringify(values[key] || []) !== JSON.stringify(baseline.value?.[key] || [])))))
-const title = computed(() => garment.value?.category[0] ? `${garment.value.primaryColor[0] || ''}${garment.value.category[0]}` : '新上传衣物')
+const title = computed(() => garment.value?.name || (garment.value?.category[0] ? `${garment.value.primaryColor[0] || ''}${garment.value.category[0]}` : '新上传衣物'))
 const processing = computed(() => isProcessing(task.value?.status) || isProcessing(garment.value?.taskStatus) || isProcessing(imageTask.value?.status))
 const currentTasks = computed(() => orderedTasks(task.value, imageTask.value))
 const displayTask = computed(() => currentTasks.value[0] || null)

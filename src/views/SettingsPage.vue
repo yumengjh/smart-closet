@@ -26,6 +26,7 @@ interface SettingsCategory {
 }
 
 const categories: SettingsCategory[] = [
+  { key: 'personal', label: '个人形象', eyebrow: '资料与基准人物', description: '管理真实资料、全身照或半身照与自己的基准人物。', icon: RobotOutlined, hidden: () => firstLogin.value, component: defineAsyncComponent(() => import('./settings/SettingsPersonalSection.vue')) },
   { key: 'processing', label: '任务与资源', eyebrow: '管理员', description: '查看积压、共享账户与调度容量。', icon: ThunderboltOutlined, hidden: () => firstLogin.value || closet.user?.role !== 'ADMIN', component: defineAsyncComponent(() => import('./AdminProcessingPage.vue')) },
   {
     key: 'account',

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import RenderTasksOverview from '../components/RenderTasksOverview.vue'
 import ExecutionTasks from '../components/ExecutionTasks.vue'
 import { mediaUrl } from '../services/urls'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
@@ -20,6 +21,7 @@ onMounted(async () => { alive = true; await load(); poll() }); onUnmounted(() =>
 <template>
   <header class="page-heading"><div><h1>任务记录</h1><p class="page-subtitle">查看每次真实处理的步骤和结果。快录会自动入柜，其他整理工具仍可逐件确认。</p></div><span v-if="runningCount" class="state-badge running"><LoadingOutlined spin /> {{ runningCount }} 项处理中</span></header>
   <ExecutionTasks />
+  <RenderTasksOverview />
   <div class="list-toolbar"><a-segmented v-model:value="filter" :options="['全部', '处理中', '已结束', '需检查']" /><span class="muted">最近 50 项</span></div>
   <a-alert v-if="error" type="warning" :message="`无法更新任务状态：${error}，正在重新连接。`" show-icon class="page-alert" />
   <a-skeleton v-if="loading" active :paragraph="{ rows: 6 }" />

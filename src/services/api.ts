@@ -10,6 +10,8 @@ export type ImageProcessing = { jobId: string; status: string; stickerRequired: 
 export type TransparencyReport = { verdict: string; hasAlpha: boolean; transparentRatio: number; reasons: string[] }
 export type GarmentTarget = { description: string; worn: boolean; bounds: { x: number; y: number; width: number; height: number } }
 export type Garment = {
+  name?: string | null
+  favorite?: boolean
   id: string
   revision: number
   sourceAssetId: string
@@ -169,6 +171,7 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
 }
 
 type GarmentView = {
+  name?: string | null; favorite?: boolean;
   id: string; revision: number; sourceAssetId: string; sourceUrl: string; sourceOrigin: Garment['sourceOrigin'];
   displayAssetId: string; displayUrl: string; images: Garment['images']; automatic: { assessment?: string; target?: GarmentTarget | null; issues?: { message: string }[]; attributes?: Record<string, { values: string[]; status?: string; evidence?: string }> } | null; overrides: Record<string, string[]>; effective: Record<string, string[]>;
   latestRecognitionJobId: string | null; latestImageJobId: string | null; runs: { id: string; status: string; createdAtMs: number }[];
@@ -193,7 +196,7 @@ function fromView(view: GarmentView): Garment {
     : latestStatus === 'NEEDS_REVIEW' ? 'NEEDS_REVIEW' : latestStatus === 'FAILED' ? 'FAILED' : latestStatus === 'CANCELLED' ? 'CANCELLED'
       : latestStatus === 'SUCCEEDED' ? 'SUCCEEDED' : latestStatus === 'UNKNOWN' ? 'UNKNOWN' : undefined
   return {
-    id: view.id, revision: view.revision, sourceAssetId: view.sourceAssetId, displayAssetId: view.displayAssetId, images: view.images || [], assessment: view.automatic?.assessment, target: view.automatic?.target, issues: view.automatic?.issues || [], status, updatedAt: new Date(view.updatedAtMs).toISOString(), displayUrl: view.displayUrl, sourceUrl: view.sourceUrl,
+    id: view.id, name: view.name, favorite: view.favorite, revision: view.revision, sourceAssetId: view.sourceAssetId, displayAssetId: view.displayAssetId, images: view.images || [], assessment: view.automatic?.assessment, target: view.automatic?.target, issues: view.automatic?.issues || [], status, updatedAt: new Date(view.updatedAtMs).toISOString(), displayUrl: view.displayUrl, sourceUrl: view.sourceUrl,
     metadataEvidence: view.automatic?.attributes || {}, automatic: Object.fromEntries(Object.entries(view.automatic?.attributes || {}).map(([key, attribute]) => [key, attribute.values])), overrides: view.overrides || {},
     category: view.effective.category || [], primaryColor: view.effective.primaryColor || [], secondaryColors: view.effective.secondaryColors || [],
     patterns: view.effective.patterns || [], neckline: view.effective.neckline || [], sleeveLength: view.effective.sleeveLength || [],

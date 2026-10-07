@@ -5,6 +5,7 @@ import { App } from 'ant-design-vue'
 import { PlusOutlined, FolderOpenOutlined, ExpandOutlined, SaveOutlined, CloseOutlined, ArrowLeftOutlined, AimOutlined, MinusOutlined, AppstoreOutlined, MoreOutlined, DownloadOutlined, InfoCircleOutlined, SoundOutlined, AudioMutedOutlined } from '@ant-design/icons-vue'
 import OutfitPage from './OutfitPage.vue'
 import OutfitThumbnail from '../components/OutfitThumbnail.vue'
+import OutfitReview from '../components/OutfitReview.vue'
 import { useClosetStore } from '../stores/closet'
 import { closetApi } from '../services/api'
 import { boardSignature, workspace, createBoard, addBoard, openSavedBoard, mutateBoard, storageWarning, type WorkspaceBoard } from '../domain/outfit-workspace'
@@ -23,14 +24,19 @@ const editor = ref<{ flush: () => void; exportPng: () => Promise<void> } | null>
 const viewport = ref<HTMLElement | null>(null)
 const openLibrary = ref(false), saved = ref<Outfit[]>([]), opening = ref(false), saving = ref(false), error = ref('')
 const checked = ref<string[]>([])
-const boardsOpen = ref(false), boardInfo = ref(false), glowPreview = ref(false)
+const boardsOpen = ref(false), boardInfo = ref(false), glowPreview = ref(false), reviewOpen=ref(false)
+const readyForOotd=computed(()=>!!active.value?.outfitId&&!active.value.locked&&!active.value.error&&boardSignature(active.value)===active.value.savedSignature)
+function reviewActive(){editor.value?.flush();if(active.value&&!active.value.locked)reviewOpen.value=true}
+function openOotd(){editor.value?.flush();if(!readyForOotd.value){message.info('请先保存当前搭配，再生成 OOTD。');return}void router.push({path:'/ootd',query:{outfit:active.value!.outfitId}})}
 let glowPreviewTimer: ReturnType<typeof setTimeout> | undefined
 function endGlowPreview() { glowPreview.value = false; clearTimeout(glowPreviewTimer) }
 function previewGlow() { glowPreview.value = true; clearTimeout(glowPreviewTimer); glowPreviewTimer = setTimeout(endGlowPreview, 10_000) }
 function renameBoard(value: string) { const board = active.value; if (!board || board.locked || board.name === value) return; editor.value?.flush(); board.name = value; board.contentVersion++ }
 function selectFromDrawer(board: WorkspaceBoard) { selectBoard(board, true); boardsOpen.value = false }
 function moreAction({ key }: { key: string | number }) {
-  if (key === 'preview') previewGlow()
+  if(key==='review')reviewActive()
+  else if(key==='ootd')openOotd()
+  else if (key === 'preview') previewGlow()
   else if (key === 'new') newBoard()
   else if (key === 'open') void library()
   else if (key === 'details') boardInfo.value = true
@@ -199,12 +205,14 @@ onUnmounted(() => { endGlowPreview(); window.removeEventListener('resize', resiz
         <span v-if="focus && active" class="workspace-mode-label">{{ sessionId ? '临时搭台' : '本机工作区' }}</span>
       </div>
       <div class="workspace-actions">
+        <a-button class="workspace-personal-action" :disabled="!active || !!active.locked" @click="reviewActive">穿搭检查</a-button><a-button class="workspace-personal-action" :disabled="!readyForOotd" @click="openOotd">OOTD</a-button>
         <a-tooltip title="切换画板、勾选保存"><a-button type="text" class="workspace-boards-button" :aria-label="`管理画板，共 ${space.boards.length} 块`" @click="boardsOpen = true"><AppstoreOutlined /><span class="workspace-board-count">{{ space.boards.length }}</span></a-button></a-tooltip>
         <a-tooltip :title="focus ? '总览所有画板' : '编辑当前画板'"><a-button type="text" :aria-label="focus ? '总览所有画板' : '聚焦当前画板'" :disabled="!space.boards.length" @click="focus = !focus"><ExpandOutlined /><span class="workspace-view-label">{{ focus ? '总览' : '聚焦' }}</span></a-button></a-tooltip>
         <a-dropdown :trigger="['click']" placement="bottomRight"><a-button type="text" aria-label="更多搭台操作"><MoreOutlined /></a-button><template #overlay><a-menu @click="moreAction">
           <a-menu-item key="new" :disabled="space.boards.length >= 12"><PlusOutlined /> 新画板</a-menu-item>
           <a-menu-item key="open"><FolderOpenOutlined /> 打开已有搭配</a-menu-item>
           <a-menu-divider />
+          <a-menu-item key="review" :disabled="!active || !!active.locked">穿搭检查</a-menu-item><a-menu-item key="ootd" :disabled="!readyForOotd">OOTD（先保存搭配）</a-menu-item>
           <a-menu-item key="details" :disabled="!active"><InfoCircleOutlined /> 搭配说明与保存状态</a-menu-item>
           <a-menu-item key="export" :disabled="!focus || !active?.scene.elements.length || !!active?.locked"><DownloadOutlined /> 导出当前搭配</a-menu-item>
           <a-menu-item v-if="active?.outfitId" key="copy" :disabled="!!active.locked">另存副本…</a-menu-item>
@@ -246,6 +254,7 @@ onUnmounted(() => { endGlowPreview(); window.removeEventListener('resize', resiz
       <a-empty v-if="!space.boards.length" description="新建画板，开始一套搭配" />
       <template #footer><div class="workspace-drawer-actions"><a-button :disabled="space.boards.length >= 12" @click="newBoard"><PlusOutlined /> 新画板</a-button><a-button danger :disabled="!checked.length || !selection.some(board => checked.includes(board.id) && !board.locked)" @click="discardBoards()"><CloseOutlined /> 丢弃所选 {{ checked.length }} 块</a-button><a-button type="primary" :loading="saving" :disabled="!selection.length" @click="confirmSave().catch(() => {})"><SaveOutlined /> 保存所选 {{ checked.length || (active ? 1 : 0) }} 套</a-button><a-button v-if="sessionId" danger block :disabled="!space.boards.length || !!currentRun" @click="discardTemporaryWorkspace">丢弃整个临时搭台</a-button></div></template>
     </a-drawer>
+    <OutfitReview v-if="active" v-model:open="reviewOpen" :scene="active.scene" />
     <a-drawer v-model:open="boardInfo" title="搭配说明" :width="Math.min(380, windowWidth)">
       <template v-if="active"><h2 class="workspace-info-title">{{ active.name }}</h2><a-tag>{{ boardSignature(active) === active.savedSignature ? '已保存至搭配库' : '本机草稿' }}</a-tag><p>{{ active.reason || active.status }}</p><p>{{ sessionId ? '临时搭台不会自动保存到账号，请确认满意后保存。' : '草稿自动保留在当前设备，保存后才能在其他设备查看。' }}</p><a-alert v-if="active.scene.elements.some(e => ['INPUT','GENERATE','DISPLAY'].includes(e.assetKind))" type="info" message="原图含背景，穿搭衔接仅供参考。" show-icon /><a-alert v-if="active.error" type="error" :message="active.error" show-icon /></template>
     </a-drawer>
@@ -354,3 +363,5 @@ onUnmounted(() => { endGlowPreview(); window.removeEventListener('resize', resiz
   .workspace-library { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 </style>
+
+<style scoped>@media(max-width:760px){.workspace-personal-action{display:none}}</style>

@@ -10,9 +10,9 @@ import { playSound } from '../services/sound'
 const props = defineProps<{ garment: Garment; pending?: boolean; trashed?: boolean }>()
 const router = useRouter()
 const stickerPending = computed(() => Boolean(props.garment.imageProcessing?.stickerRequired && !props.garment.imageProcessing.stickerReady && !isProcessing(props.garment.taskStatus)))
-const title = computed(() => props.garment.category[0] && props.garment.category[0] !== '未分类'
+const title = computed(() => props.garment.name || (props.garment.category[0] && props.garment.category[0] !== '未分类'
   ? `${props.garment.primaryColor[0] === '未知颜色' ? '' : props.garment.primaryColor[0] || ''}${props.garment.category[0]}`
-  : '未分类衣物')
+  : '未分类衣物'))
 function openGarment() { if (!props.pending && !props.trashed) playSound('tap'); void router.push(`/garment/${props.garment.id}`) }
 </script>
 
