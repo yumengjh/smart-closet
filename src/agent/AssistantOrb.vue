@@ -5,12 +5,29 @@ import { useFloatingPosition } from './useFloatingPosition'
 import BloubAvatar from './BloubAvatar.vue'
 import { avatarPreferences, cueAllowed, duration, idleStates, type AvatarCue, type AvatarExpression } from './avatar'
 import type { StateId } from './bloub/states'
-const props = defineProps<{ open: boolean; mood: string; busy: boolean; phase: string; tool: string; cue: AvatarCue | null }>()
+const props = defineProps<{ open: boolean; mood: string; busy: boolean; phase: string; tool: string; cue: AvatarCue | null; suppressed?: boolean }>()
 const emit = defineEmits<{ toggle: [] }>()
 const closet=useClosetStore(), hovered=ref(false), pressed=ref(false), nearby=ref(false)
 const control=ref<{ $el:HTMLButtonElement } | null>(null)
 const key=computed(()=>`yixu.assistant-orb.v1:${closet.user?.username||'local'}`)
-const position=useFloatingPosition(key,computed(()=>({width:64,height:64})),()=>window.innerWidth<1024?96:24)
+// Smaller on desktop so it reads as a quiet companion; the touch size stays comfortable on phones.
+const compact=ref(window.innerWidth<1024), orbSize=computed(()=>compact.value?56:52)
+const position=useFloatingPosition(key,computed(()=>({width:orbSize.value,height:orbSize.value})),()=>compact.value?96:24,{snap:true})
+// On phones the companion tucks into its edge while reading downward and returns on the way back up.
+const scrollTucked=ref(false)
+const tucked=computed(()=>compact.value&&scrollTucked.value&&!props.open&&!props.busy&&props.mood!=='concern'&&!pressed.value&&!position.dragging.value)
+const scrollTops=new WeakMap<EventTarget,number>()
+function scrolled(e:Event){
+  if(!compact.value)return
+  const target=e.target===document?document.scrollingElement:e.target as Element|null
+  if(!target||target.closest?.('.assistant-panel'))return
+  const top=target.scrollTop, delta=top-(scrollTops.get(target)??0)
+  scrollTops.set(target,top)
+  if(top<80)scrollTucked.value=false
+  else if(delta>6)scrollTucked.value=true
+  else if(delta<-6)scrollTucked.value=false
+}
+function resizeOrb(){compact.value=window.innerWidth<1024;if(!compact.value)scrollTucked.value=false}
 const visible=ref(!document.hidden), reduced=ref(window.matchMedia('(prefers-reduced-motion: reduce)').matches)
 const media=window.matchMedia('(prefers-reduced-motion: reduce)')
 const enabled=computed(()=>avatarPreferences.mode!=='static' && !reduced.value && visible.value)
@@ -65,15 +82,15 @@ function preference(){reduced.value=media.matches}
 function saved(){if(!props.busy)play('burst','happy')}
 const appearance=computed(()=>({state:state.value,expression:expression.value,animate:enabled.value,repeat:props.busy&&props.phase!=='responding',look:state.value==='idle'?look.value:null}))
 const responding=computed(()=>enabled.value&&props.busy&&props.phase==='responding'&&!local.value)
-defineExpose({focus:()=>control.value?.$el.focus(),appearance,responding})
-onMounted(()=>{schedule();document.addEventListener('visibilitychange',hide);window.addEventListener('pointermove',pointer);document.addEventListener('pointerout',leave);window.addEventListener('blur',resetGaze);media.addEventListener('change',preference);window.addEventListener('closet-outfit-saved',saved)})
-onUnmounted(()=>{clearTimeout(idleTimer);clearTimeout(actionTimer);document.removeEventListener('visibilitychange',hide);window.removeEventListener('pointermove',pointer);document.removeEventListener('pointerout',leave);window.removeEventListener('blur',resetGaze);media.removeEventListener('change',preference);window.removeEventListener('closet-outfit-saved',saved)})
+defineExpose({focus:()=>control.value?.$el.focus(),rect:()=>control.value?.$el.getBoundingClientRect(),appearance,responding})
+onMounted(()=>{schedule();document.addEventListener('visibilitychange',hide);window.addEventListener('pointermove',pointer);document.addEventListener('pointerout',leave);window.addEventListener('blur',resetGaze);media.addEventListener('change',preference);window.addEventListener('closet-outfit-saved',saved);document.addEventListener('scroll',scrolled,{capture:true,passive:true});window.addEventListener('resize',resizeOrb)})
+onUnmounted(()=>{clearTimeout(idleTimer);clearTimeout(actionTimer);document.removeEventListener('visibilitychange',hide);window.removeEventListener('pointermove',pointer);document.removeEventListener('pointerout',leave);window.removeEventListener('blur',resetGaze);media.removeEventListener('change',preference);window.removeEventListener('closet-outfit-saved',saved);document.removeEventListener('scroll',scrolled,{capture:true});window.removeEventListener('resize',resizeOrb)})
 </script>
 <template>
 <Teleport to="body">
-<a-tooltip :title="position.dragging.value?'':open?'收起助手 · 拖动可以移动':'找我聊聊 · 拖动可以移动'" placement="left">
-<a-button ref="control" class="assistant-orb bloub-orb" shape="circle" :class="{dragging:position.dragging.value,active:open}" :style="position.style.value" :data-avatar-state="state" :data-avatar-mode="avatarPreferences.mode" data-sound="off" :aria-label="open?'收起个人助手':'打开个人助手'" :aria-expanded="open" aria-controls="closet-assistant" @pointerdown="down" @pointermove="move" @pointerup="end" @pointercancel="end" @lostpointercapture="end" @keydown="position.keyboard" @click="activate" @pointerenter="hovered=true" @pointerleave="hovered=false">
-<span class="bloub-orb-shape" :class="{'bloub-responding':responding}" :style="{transform:deformation}"><BloubAvatar v-bind="appearance" :size="80" /></span>
+<a-tooltip :title="position.dragging.value||open?'':'找我聊聊 · 拖动可以移动'" :placement="position.side.value==='left'?'right':'left'">
+<a-button v-show="!suppressed" ref="control" class="assistant-orb bloub-orb" shape="circle" :class="[`edge-${position.side.value}`,{dragging:position.dragging.value,settling:position.settling.value,active:open,tucked}]" :style="{...position.style.value,'--orb-size':`${orbSize}px`}" :tabindex="open?-1:undefined" :aria-hidden="open||undefined" :data-avatar-state="state" :data-avatar-mode="avatarPreferences.mode" data-sound="off" aria-label="打开个人助手" :aria-expanded="open" aria-controls="closet-assistant" @pointerdown="down" @pointermove="move" @pointerup="end" @pointercancel="end" @lostpointercapture="end" @keydown="position.keyboard" @click="activate" @pointerenter="hovered=true" @pointerleave="hovered=false">
+<span class="bloub-orb-shape" :class="{'bloub-responding':responding}" :style="{transform:deformation}"><BloubAvatar v-bind="appearance" :size="orbSize*1.25" /></span>
 </a-button>
 </a-tooltip>
 </Teleport>

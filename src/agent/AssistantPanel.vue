@@ -57,10 +57,77 @@ async function openFromWaiting(event: Event) {
 const pinned = ref(true); const viewport = ref({ width: window.innerWidth, height: window.innerHeight })
 const pinKey = computed(() => `yixu.assistant-pin.v1:${closet.user?.username || 'local'}`)
 const panelKey = computed(() => `yixu.assistant-panel.v1:${closet.user?.username || 'local'}`)
-const dimensions = computed(() => ({ width: Math.min(420, viewport.value.width - 16), height: Math.min(720, viewport.value.height - 112) }))
-const floating = useFloatingPosition(panelKey, dimensions, () => 100)
+const dimensions = computed(() => ({ width: Math.min(420, viewport.value.width - 16), height: Math.min(760, viewport.value.height - 32) }))
+const floating = useFloatingPosition(panelKey, dimensions, () => 16)
 const mobileViewport = ref({ height: window.visualViewport?.height ?? window.innerHeight, top: window.visualViewport?.offsetTop ?? 0 })
-const panelStyle = computed(() => compact.value ? { top: `${mobileViewport.value.top}px`, height: `${mobileViewport.value.height}px` } : pinned.value ? undefined : { ...floating.style.value, width: `${dimensions.value.width}px`, height: `${dimensions.value.height}px` })
+const sheetDrag = ref(0)
+const panelStyle = computed(() => compact.value ? { '--vvt': `${mobileViewport.value.top}px`, '--vvh': `${mobileViewport.value.height}px`, transform: sheetDrag.value ? `translateY(${sheetDrag.value}px)` : undefined } : pinned.value ? undefined : { ...floating.style.value, width: `${dimensions.value.width}px`, height: `${dimensions.value.height}px` })
+// Phones get a bottom sheet: pull the handle or header down far or fast enough to dismiss it.
+let sheetOrigin: { pointer: number; y: number; last: number; time: number; speed: number } | undefined
+function startSheetDrag(event: PointerEvent) {
+  if (event.button !== 0 || (event.target as Element).closest('button, a, input, [data-no-drag]')) return
+  sheetOrigin = { pointer: event.pointerId, y: event.clientY, last: event.clientY, time: performance.now(), speed: 0 }
+  ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
+}
+function moveSheet(event: PointerEvent) {
+  if (!sheetOrigin || event.pointerId !== sheetOrigin.pointer) return
+  const now = performance.now(), dy = event.clientY - sheetOrigin.y
+  sheetOrigin.speed = (event.clientY - sheetOrigin.last) / Math.max(8, now - sheetOrigin.time); sheetOrigin.last = event.clientY; sheetOrigin.time = now
+  sheetDrag.value = dy > 0 ? dy : dy / 6
+}
+function endSheetDrag() {
+  if (!sheetOrigin) return
+  const dismiss = sheetDrag.value > 140 || (sheetDrag.value > 40 && sheetOrigin.speed > .6)
+  sheetOrigin = undefined
+  if (dismiss) close()
+  else sheetDrag.value = 0
+}
+function startHeaderDrag(event: PointerEvent) { if (compact.value) startSheetDrag(event); else startPanelDrag(event) }
+function moveHeader(event: PointerEvent) { if (compact.value) moveSheet(event); else floating.move(event) }
+function endHeaderDrag() { if (compact.value) endSheetDrag(); else floating.end() }
+
+// On desktop the companion itself flies into the panel header while the panel unfolds from it.
+const morph = ref<{ size: number } | null>(null); const morphGhost = ref<HTMLElement | null>(null)
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)')
+const morphEasing = 'cubic-bezier(.2,.8,.2,1)'
+function morphGeometry(el: Element) {
+  const from = launcher.value?.rect(); const avatar = el.querySelector('.assistant-header-avatar')?.getBoundingClientRect(); const box = el.getBoundingClientRect()
+  if (!from?.width || !avatar) return null
+  const cx = from.left + from.width / 2 - box.left, cy = from.top + from.height / 2 - box.top
+  const radius = Math.hypot(Math.max(cx, box.width - cx), Math.max(cy, box.height - cy))
+  return { from, avatar, small: `circle(${from.width / 2}px at ${cx}px ${cy}px)`, large: `circle(${radius}px at ${cx}px ${cy}px)` }
+}
+async function flyGhost(from: DOMRect, to: DOMRect, duration: number) {
+  morph.value = { size: from.width }; await nextTick()
+  const ghost = morphGhost.value
+  if (!ghost) { morph.value = null; return }
+  const at = (rect: DOMRect) => `translate(${rect.left}px, ${rect.top}px) scale(${rect.width / from.width})`
+  await ghost.animate([{ transform: at(from) }, { transform: at(to) }], { duration, easing: morphEasing, fill: 'forwards' }).finished.catch(() => {})
+  morph.value = null
+}
+function enterPanel(el: Element, done: () => void) {
+  const panelEl = el as HTMLElement
+  if (reducedMotion.matches) { done(); return }
+  if (compact.value) { panelEl.animate([{ transform: 'translateY(100%)' }, { transform: 'none' }], { duration: 340, easing: morphEasing }).finished.then(done, done); return }
+  const geometry = morphGeometry(el)
+  if (!geometry) { panelEl.animate([{ opacity: 0, transform: 'translateY(12px) scale(.98)' }, { opacity: 1, transform: 'none' }], { duration: 240, easing: morphEasing }).finished.then(done, done); return }
+  panelEl.classList.add('morphing')
+  void flyGhost(geometry.from, geometry.avatar, 420).then(() => panelEl.classList.remove('morphing'))
+  panelEl.animate([{ clipPath: geometry.small, opacity: .4 }, { clipPath: geometry.large, opacity: 1 }], { duration: 420, easing: morphEasing }).finished.then(done, done)
+}
+function leavePanel(el: Element, done: () => void) {
+  const panelEl = el as HTMLElement
+  if (reducedMotion.matches) { done(); return }
+  if (compact.value) { panelEl.animate([{ transform: panelEl.style.transform || 'none' }, { transform: 'translateY(100%)' }], { duration: 260, easing: 'cubic-bezier(.4,0,1,1)', fill: 'forwards' }).finished.then(() => { sheetDrag.value = 0; done() }, done); return }
+  const geometry = morphGeometry(el)
+  if (!geometry) { panelEl.animate([{ opacity: 1 }, { opacity: 0, transform: 'translateY(12px) scale(.98)' }], { duration: 180, fill: 'forwards' }).finished.then(done, done); return }
+  landing.value = true; panelEl.classList.add('morphing')
+  void flyGhost(geometry.avatar, geometry.from, 340).then(() => { landing.value = false })
+  panelEl.animate([{ clipPath: geometry.large, opacity: 1 }, { clipPath: geometry.small, opacity: 0 }], { duration: 340, easing: 'cubic-bezier(.5,0,.2,1)', fill: 'forwards' }).finished.then(done, done)
+}
+// Keeps the companion hidden until its ghost lands back in place.
+const landing = ref(false)
+const editorRoute = computed(() => route.path.startsWith('/outfits/'))
 const mood = computed(() => busy.value ? 'thinking' : (error.value||taskFailed.value) ? 'concern' : delighted.value ? 'happy' : 'idle')
 const modelOptions = computed(() => [{ value: '', label: `个人默认 · ${personalModel.value || models.value.defaultModel}` }, ...models.value.models.map(value => ({ value, label: value }))])
 let delightTimer: ReturnType<typeof setTimeout> | undefined
@@ -139,6 +206,14 @@ function showPage() { if (compact.value) open.value = false }
 function enter(e: KeyboardEvent) { if (e.isComposing) return; e.preventDefault(); void send() }
 async function toggle() { if (open.value) { close(); return } open.value = true; playSound('pop'); await load(); await nextTick(); await scrollBottom(); if (compact.value) panel.value?.focus({ preventScroll: true }); else textarea.value?.focus() }
 function keyboard(e: KeyboardEvent) {
+  if (e.key.toLowerCase() === 'k' && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && !compact.value) {
+    if ([...document.querySelectorAll('.ant-modal-wrap')].some(el => el.getClientRects().length)) return
+    e.preventDefault()
+    if (!open.value) void toggle()
+    else if (panel.value?.contains(document.activeElement)) close()
+    else textarea.value?.focus()
+    return
+  }
   if (!open.value || [...document.querySelectorAll('.ant-modal-wrap')].some(el => el.getClientRects().length)) return
   if (e.key === 'Escape' && [...document.querySelectorAll('.ant-dropdown, .ant-select-dropdown')].some(el => el.getClientRects().length && getComputedStyle(el).display !== 'none')) return
   if (e.key === 'Escape') { if (optionsOpen.value) { optionsOpen.value = false; return }; close(); return }
@@ -180,12 +255,14 @@ onUnmounted(() => { window.removeEventListener('closet-assistant-open', openFrom
 </script>
 <template>
   <AgentTraceModal v-model:open="debugOpen" :session-id="selected" :request-id="debugRequest" :updates="debugUpdates" />
-  <AssistantOrb ref="launcher" :open="open" :mood="mood" :busy="busy" :phase="isOperating?'operating':activityPhase" :tool="activityTool" :cue="avatarCue" @toggle="toggle" />
+  <AssistantOrb ref="launcher" :open="open || landing" :suppressed="editorRoute" :mood="mood" :busy="busy" :phase="isOperating?'operating':activityPhase" :tool="activityTool" :cue="avatarCue" @toggle="toggle" />
   <Teleport to="body">
     <Transition name="assistant-scrim"><div v-if="open && compact" class="assistant-scrim" @click="close" /></Transition>
-    <Transition name="assistant-window">
-      <aside v-if="open" id="closet-assistant" ref="panel" tabindex="-1" class="assistant-panel" :class="{ pinned, floating: !pinned, dragging: floating.dragging.value }" :style="panelStyle" :role="compact ? 'dialog' : 'complementary'" :aria-modal="compact || undefined" aria-label="个人助手">
-        <header class="assistant-header" @pointerdown="startPanelDrag" @pointermove="floating.move" @pointerup="floating.end" @pointercancel="floating.end" @lostpointercapture="floating.end">
+    <span v-if="morph" ref="morphGhost" class="bloub-orb-shape assistant-morph" :style="{ '--orb-size': `${morph.size}px` }" aria-hidden="true"><BloubAvatar v-bind="launcher?.appearance" :size="morph.size * 1.25" /></span>
+    <Transition :css="false" @enter="enterPanel" @leave="leavePanel">
+      <aside v-if="open" id="closet-assistant" ref="panel" tabindex="-1" class="assistant-panel" :class="{ pinned: pinned && !compact, floating: !pinned && !compact, sheet: compact, dragging: floating.dragging.value || !!sheetDrag }" :style="panelStyle" :role="compact ? 'dialog' : 'complementary'" :aria-modal="compact || undefined" aria-label="个人助手">
+        <header class="assistant-header" @pointerdown="startHeaderDrag" @pointermove="moveHeader" @pointerup="endHeaderDrag" @pointercancel="endHeaderDrag" @lostpointercapture="endHeaderDrag">
+          <span v-if="compact" class="assistant-sheet-handle" aria-hidden="true" />
           <div class="assistant-identity"><span class="assistant-face assistant-header-avatar" :class="{'bloub-responding':launcher?.responding}"><BloubAvatar v-bind="launcher?.appearance" :size="48" /></span><div><strong>鱼搭助手</strong><small :title="session?.title">{{ session?.title || '今天也一起好好穿衣' }}</small></div></div>
           <div class="assistant-header-actions" data-no-drag>
             <a-tooltip title="新建对话"><a-button type="text" aria-label="新建对话" :disabled="busy || usingMocks" @click="newSession"><PlusOutlined /></a-button></a-tooltip>

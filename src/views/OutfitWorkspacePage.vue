@@ -6,6 +6,7 @@ import { PlusOutlined, FolderOpenOutlined, ExpandOutlined, SaveOutlined, CloseOu
 import OutfitPage from './OutfitPage.vue'
 import OutfitThumbnail from '../components/OutfitThumbnail.vue'
 import OutfitReview from '../components/OutfitReview.vue'
+import BloubAvatar from '../agent/BloubAvatar.vue'
 import { useClosetStore } from '../stores/closet'
 import { closetApi } from '../services/api'
 import { boardSignature, workspace, createBoard, addBoard, openSavedBoard, mutateBoard, storageWarning, type WorkspaceBoard } from '../domain/outfit-workspace'
@@ -14,6 +15,8 @@ import { canvasBridge } from '../agent/bridge'
 import { canvasExecution, stopCanvasRun } from '../agent/canvas-runtime'
 import { playSound, soundEnabled, toggleSound } from '../services/sound'
 const route = useRoute(), router = useRouter(), closet = useClosetStore(), { modal, message } = App.useApp()
+// The floating companion steps aside on the canvas; this toolbar entry replaces it.
+function openAssistant() { window.dispatchEvent(new CustomEvent('closet-assistant-open')) }
 const sessionId = computed(() => typeof route.query.session === 'string' ? route.query.session : '')
 const space = computed(() => workspace(closet.user!.username, sessionId.value ? `agent:${sessionId.value}` : 'main'))
 const active = computed(() => space.value.boards.find(b => b.id === space.value.activeId))
@@ -205,6 +208,7 @@ onUnmounted(() => { endGlowPreview(); window.removeEventListener('resize', resiz
         <span v-if="focus && active" class="workspace-mode-label">{{ sessionId ? '临时搭台' : '本机工作区' }}</span>
       </div>
       <div class="workspace-actions">
+        <a-tooltip title="问鱼搭助手"><a-button type="text" class="workspace-assistant" aria-label="打开鱼搭助手" @click="openAssistant"><BloubAvatar :size="34" expression="happy" /></a-button></a-tooltip>
         <a-button class="workspace-personal-action" :disabled="!active || !!active.locked" @click="reviewActive">穿搭检查</a-button><a-button class="workspace-personal-action" :disabled="!readyForOotd" @click="openOotd">OOTD</a-button>
         <a-tooltip title="切换画板、勾选保存"><a-button type="text" class="workspace-boards-button" :aria-label="`管理画板，共 ${space.boards.length} 块`" @click="boardsOpen = true"><AppstoreOutlined /><span class="workspace-board-count">{{ space.boards.length }}</span></a-button></a-tooltip>
         <a-tooltip :title="focus ? '总览所有画板' : '编辑当前画板'"><a-button type="text" :aria-label="focus ? '总览所有画板' : '聚焦当前画板'" :disabled="!space.boards.length" @click="focus = !focus"><ExpandOutlined /><span class="workspace-view-label">{{ focus ? '总览' : '聚焦' }}</span></a-button></a-tooltip>
@@ -274,6 +278,7 @@ onUnmounted(() => { endGlowPreview(); window.removeEventListener('resize', resiz
 .workspace-save-dot { flex: none; width: 7px; height: 7px; background: var(--warning); border-radius: 50%; }
 .workspace-save-dot.saved { background: var(--success); }
 .workspace-actions { display: flex; align-items: center; gap: 4px; }
+.workspace-assistant.ant-btn { display: inline-flex; align-items: center; justify-content: center; }
 .workspace-board-count { font-size: 12px; }
 .workspace-save.ant-btn { min-width: 80px; }
 .workspace-boards-button { position: relative; }

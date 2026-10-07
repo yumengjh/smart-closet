@@ -13,6 +13,7 @@ import { antTokens, antComponentTokens } from '../theme/tokens'
 import { usingMocks } from '../services/api'
 import SoundToggle from './SoundToggle.vue'
 import ThemeToggle from './ThemeToggle.vue'
+import BloubAvatar from '../agent/BloubAvatar.vue'
 import AssistantPanel from '../agent/AssistantPanel.vue'
 import TaskInbox from './TaskInbox.vue'
 import TaskNotice from './TaskNotice.vue'
@@ -50,6 +51,8 @@ function isNavActive(path: string) {
   const current = navPath.value
   return current === path || (path === '/wardrobe' && current.startsWith('/garment')) || (path === '/outfits' && current.startsWith('/outfits'))
 }
+const assistantShortcut = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘K' : 'Ctrl K'
+function openAssistant() { window.dispatchEvent(new CustomEvent('closet-assistant-open')) }
 const visibleNavItems = computed(() => closet.user?.mustChangePassword ? navItems.filter(item => item.path === '/settings') : navItems)
 const prefetch = (path: string) => prefetchRoute(router, path)
 watch(() => closet.isSignedIn && !closet.user?.mustChangePassword, ready => { if (ready) prefetchWhenIdle(router, [...navItems.map(item => item.path), '/add', '/tasks']) }, { immediate: true })
@@ -118,7 +121,7 @@ async function signOut() {
         </aside>
         <main class="main-area">
           <div v-if="usingMocks" class="mock-banner"><span class="mock-pulse"></span><span>界面演示 · 示例数据不是 AI 结果，演示模式禁止提交模型任务</span><span class="mock-banner-end">{{ closet.user?.username }} 的衣橱</span></div>
-          <header class="topbar"><div class="topbar-actions"><ThemeToggle /><SoundToggle /><TaskInbox v-if="!closet.user?.mustChangePassword" /><RouterLink v-if="!closet.user?.mustChangePassword" to="/tasks" class="topbar-tasks" aria-label="任务记录"><HistoryOutlined /><span class="task-record-label">任务记录</span><span v-if="closet.taskCount" class="nav-count">{{ closet.taskCount }}</span></RouterLink></div></header>
+          <header class="topbar"><div class="topbar-actions"><a-button v-if="!closet.user?.mustChangePassword" class="topbar-assistant" :aria-label="`问鱼搭助手（${assistantShortcut}）`" @click="openAssistant"><BloubAvatar :size="28" expression="happy" /><span>问鱼搭</span><kbd>{{ assistantShortcut }}</kbd></a-button><ThemeToggle /><SoundToggle /><TaskInbox v-if="!closet.user?.mustChangePassword" /><RouterLink v-if="!closet.user?.mustChangePassword" to="/tasks" class="topbar-tasks" aria-label="任务记录"><HistoryOutlined /><span class="task-record-label">任务记录</span><span v-if="closet.taskCount" class="nav-count">{{ closet.taskCount }}</span></RouterLink></div></header>
           <section class="route-content" :aria-busy="!!pendingPath"><TaskNotice /><RouterView v-slot="{ Component }"><Transition name="route-fade" mode="out-in"><div :key="viewKey(Component)" class="route-view"><component :is="Component" /></div></Transition></RouterView></section>
           <WaitingGame v-if="!closet.user?.mustChangePassword" />
           <WaitingStarted v-if="!closet.user?.mustChangePassword" />
@@ -154,5 +157,8 @@ async function signOut() {
   .route-progress.active span { animation: none; width: 100%; transform: none; opacity: .6; }
   .nav-link.pending .anticon, .mobile-nav .pending .anticon { animation: none; }
 }
+.topbar-assistant.ant-btn { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 6px 0 2px; border-radius: 999px; color: var(--muted-strong); }
+.topbar-assistant kbd { padding: 1px 6px; border: 1px solid var(--line); border-radius: 6px; font-size: 11px; line-height: 16px; font-family: inherit; color: var(--muted); background: var(--surface-alt); }
+@media(max-width:1023px){.topbar-assistant.ant-btn{display:none}}
 @media(max-width:640px){.task-record-label{display:none}.topbar-tasks{min-width:32px;justify-content:center}}
 </style>
