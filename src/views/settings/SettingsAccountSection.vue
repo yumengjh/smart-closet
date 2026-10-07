@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { ArrowRightOutlined, LockOutlined } from '@ant-design/icons-vue'
+import { ArrowRightOutlined } from '@ant-design/icons-vue'
 import { closetApi } from '../../services/api'
 import { useClosetStore } from '../../stores/closet'
 
@@ -39,24 +39,26 @@ async function changePassword() {
 
 <template>
   <div class="settings-section-content">
-    <div class="settings-section-icon"><LockOutlined /></div>
-    <p class="eyebrow">账户安全</p>
-    <h2>{{ firstLogin ? '设置新密码' : '修改密码' }}</h2>
-    <p class="settings-hint">密码至少 12 个字符，修改后立即生效。</p>
-    <form class="password-form" @submit.prevent="changePassword">
-      <template v-if="!firstLogin">
-        <label for="old-pass">当前密码</label>
-        <a-input-password id="old-pass" v-model:value="currentPassword" autocomplete="current-password" placeholder="输入当前密码" />
-      </template>
-      <label for="new-pass">新密码</label>
-      <a-input-password id="new-pass" v-model:value="newPassword" autocomplete="new-password" placeholder="至少 12 个字符" />
-      <label for="repeat-pass">再输一次新密码</label>
-      <a-input-password id="repeat-pass" v-model:value="repeatPassword" autocomplete="new-password" placeholder="确认新密码" />
-      <a-alert v-if="error" type="error" :message="error" show-icon />
-      <a-alert v-if="success" type="success" :message="success" show-icon />
-      <a-button type="primary" html-type="submit" :loading="loading">
-        {{ firstLogin ? '设置密码并开始使用' : '保存密码' }} <ArrowRightOutlined />
-      </a-button>
-    </form>
+    <section class="settings-group">
+      <header class="settings-group-head">
+        <h3>{{ firstLogin ? '设置新密码' : '修改密码' }}</h3>
+        <p>密码至少 12 个字符，修改后立即生效。</p>
+      </header>
+      <form class="password-form" @submit.prevent="changePassword">
+        <template v-if="!firstLogin">
+          <label for="old-pass">当前密码</label>
+          <a-input-password id="old-pass" v-model:value="currentPassword" autocomplete="current-password" placeholder="输入当前密码" />
+        </template>
+        <label for="new-pass">新密码</label>
+        <a-input-password id="new-pass" v-model:value="newPassword" autocomplete="new-password" placeholder="至少 12 个字符" />
+        <label for="repeat-pass">再输一次新密码</label>
+        <a-input-password id="repeat-pass" v-model:value="repeatPassword" autocomplete="new-password" placeholder="确认新密码" />
+        <a-alert v-if="error" type="error" :message="error" show-icon />
+        <a-alert v-if="success" type="success" :message="success" show-icon />
+        <a-button type="primary" html-type="submit" :loading="loading">
+          {{ firstLogin ? '设置密码并开始使用' : '保存密码' }} <ArrowRightOutlined />
+        </a-button>
+      </form>
+    </section>
   </div>
 </template>

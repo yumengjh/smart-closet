@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { App } from 'ant-design-vue'
-import { RobotOutlined } from '@ant-design/icons-vue'
 import { agentRequest, type Models, type Quota } from '../../agent/api'
 import MemoryDocuments from '../../components/MemoryDocuments.vue'
 import AvatarPreview from '../../agent/AvatarPreview.vue'
@@ -48,44 +47,49 @@ async function saveMode(value: AvatarMode) {
 
 <template>
   <div class="settings-section-content">
-    <a-alert v-if="error" type="error" :message="error" show-icon style="margin-bottom:16px" />
+    <a-alert v-if="error" type="error" :message="error" show-icon />
 
     <!-- 模型 -->
-    <div class="settings-section-icon"><RobotOutlined /></div>
-    <p class="eyebrow">个人助手</p>
-    <h2>默认模型与对话额度</h2>
-    <p class="settings-hint">从平台开放的模型中选择。当前对话还可以单独切换模型。</p>
-    <div class="agent-setting-model">
-      <a-select v-model:value="model" aria-label="个人助手默认模型" :options="models.models.map(value => ({ value, label: value }))" />
-      <a-button :disabled="!model" @click="saveModel">保存模型</a-button>
-    </div>
-    <p v-if="quota" class="agent-setting-quota">今天已提交 <strong>{{ quota.used }}</strong> / {{ quota.limit }} 条助手消息</p>
-    <p class="settings-hint">助手消息与图像任务分开统计，每天按北京时间重置。内部工具调用不另计消息次数。</p>
-    <RouterLink to="/help?article=03-assistant">查看助手说明 ↗</RouterLink>
-
-    <a-divider />
+    <section class="settings-group">
+      <header class="settings-group-head settings-group-head-row">
+        <div>
+          <h3>默认模型与对话额度</h3>
+          <p>从平台开放的模型中选择。当前对话还可以单独切换模型。</p>
+        </div>
+        <RouterLink class="settings-group-link" to="/help?article=03-assistant">查看助手说明 ↗</RouterLink>
+      </header>
+      <div class="agent-setting-model">
+        <a-select v-model:value="model" aria-label="个人助手默认模型" :options="models.models.map(value => ({ value, label: value }))" />
+        <a-button :disabled="!model" @click="saveModel">保存模型</a-button>
+      </div>
+      <p v-if="quota" class="agent-setting-quota">今天已提交 <strong>{{ quota.used }}</strong> / {{ quota.limit }} 条助手消息</p>
+      <p class="settings-hint">助手消息与图像任务分开统计，每天按北京时间重置。内部工具调用不另计消息次数。</p>
+    </section>
 
     <!-- 蓝色小伙伴 -->
-    <p class="eyebrow">蓝色小伙伴</p>
-    <h2>角色动效</h2>
-    <p class="settings-hint">基础动画和空闲玩法不消耗模型 token。个性动效让助手每轮最多选择一次表达，只增加少量提示与控制信息，不另发模型请求。</p>
-    <a-segmented
-      :value="avatarPreferences.mode"
-      aria-label="助手动效模式"
-      :disabled="savingMode || !!error"
-      :options="[{value:'static',label:'静态'},{value:'basic',label:'基础动效'},{value:'personal',label:'Agent 个性动效'}]"
-      @change="saveMode"
-    />
-    <p class="settings-hint">
-      {{ avatarPreferences.mode === 'static' ? '安静圆球，任务状态仍有文字提示。' : avatarPreferences.mode === 'basic' ? '任务和拖拽跟随真实状态；收起后每隔 10–20 秒随机玩一个动作。' : '真实任务优先，聊天温和表达；收起后每隔 10–20 秒随机玩一个动作。' }}
-      设置随账号保存，系统减少动态效果优先。
-    </p>
-    <h3>动作预览</h3>
-    <AvatarPreview />
-
-    <a-divider />
+    <section class="settings-group">
+      <header class="settings-group-head">
+        <h3>角色动效</h3>
+        <p>基础动画和空闲玩法不消耗模型 token。个性动效让助手每轮最多选择一次表达，只增加少量提示与控制信息，不另发模型请求。</p>
+      </header>
+      <a-segmented
+        class="agent-mode-segmented"
+        :value="avatarPreferences.mode"
+        aria-label="助手动效模式"
+        :disabled="savingMode || !!error"
+        :options="[{value:'static',label:'静态'},{value:'basic',label:'基础动效'},{value:'personal',label:'Agent 个性动效'}]"
+        @change="saveMode"
+      />
+      <p class="settings-hint">
+        {{ avatarPreferences.mode === 'static' ? '安静圆球，任务状态仍有文字提示。' : avatarPreferences.mode === 'basic' ? '任务和拖拽跟随真实状态；收起后每隔 10–20 秒随机玩一个动作。' : '真实任务优先，聊天温和表达；收起后每隔 10–20 秒随机玩一个动作。' }}
+        设置随账号保存，系统减少动态效果优先。
+      </p>
+      <div class="settings-group-sub">
+        <h4>动作预览</h4>
+        <AvatarPreview />
+      </div>
+    </section>
 
     <MemoryDocuments />
   </div>
-
 </template>

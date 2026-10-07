@@ -33,18 +33,39 @@ onMounted(() => { void load(); window.addEventListener('closet-agent-memory-chan
 onUnmounted(() => window.removeEventListener('closet-agent-memory-changed', refresh))
 </script>
 <template>
-  <section aria-label="长期记忆文档">
-    <h2>长期记忆</h2><p class="settings-hint">直接查看和编辑原始文档。删除聊天不会删除记忆；临时穿搭要求不会自动变为长期偏好。</p>
+  <section class="settings-group" aria-label="长期记忆文档">
+    <header class="settings-group-head">
+      <h3>长期记忆</h3>
+      <p>直接查看和编辑原始文档。删除聊天不会删除记忆；临时穿搭要求不会自动变为长期偏好。</p>
+    </header>
     <a-alert v-if="error" type="error" :message="error" show-icon><template #action><a-button @click="load(true)">核对最新版本</a-button></template></a-alert>
     <a-skeleton v-if="loading" active />
     <div v-for="doc in documents" :key="doc.kind" class="memory-document">
-      <h3>{{ doc.kind === 'GENERAL' ? '通用长期记忆' : '敏感长期记忆' }}</h3>
-      <p class="settings-hint">{{ doc.kind === 'GENERAL' ? '颜色、风格和长期穿搭偏好。身体、健康和联系方式请放入敏感文档。' : '保存与使用授权分开；数量查询和普通问答不会读取身体资料。' }}</p>
+      <div class="memory-document-head">
+        <h4>{{ doc.kind === 'GENERAL' ? '通用长期记忆' : '敏感长期记忆' }}</h4>
+        <span class="muted">版本 {{ doc.revision }}</span>
+      </div>
+      <p class="memory-document-hint">{{ doc.kind === 'GENERAL' ? '颜色、风格和长期穿搭偏好。身体、健康和联系方式请放入敏感文档。' : '保存与使用授权分开；数量查询和普通问答不会读取身体资料。' }}</p>
       <a-alert v-if="doc.kind==='GENERAL' && /身高|体重|体型|身材|围度|胸围|腰围|臀围|病史|手机号|身份证|地址/.test(drafts[doc.kind]||'')" type="warning" message="这里含有可能敏感的内容，请转入敏感文档并按用途授权。自由文本无法保证完整识别敏感信息。" style="margin-bottom:12px" />
-      <a-textarea v-model:value="drafts[doc.kind]" :aria-label="doc.kind === 'GENERAL' ? '通用长期记忆原始文档' : '敏感长期记忆原始文档'" :maxlength="20000" :auto-size="{ minRows: 6, maxRows: 16 }" />
-      <a-space wrap style="margin-top:12px"><a-button type="primary" :loading="busy === doc.kind" :disabled="drafts[doc.kind] === doc.content" @click="save(doc)">保存文档</a-button><a-button @click="exportDoc(doc)">导出 Markdown</a-button><span class="muted">版本 {{ doc.revision }}</span></a-space>
-      <div v-if="doc.kind === 'SENSITIVE'" style="margin-top:16px"><p>允许按用途读取相关片段</p><a-space direction="vertical"><a-checkbox v-for="purpose in purposes" :key="purpose.value" :checked="permissions.some(p => p.purpose === purpose.value && p.revision === doc.revision)" :disabled="drafts[doc.kind] !== doc.content" @change="permission(purpose.value, $event.target.checked)">{{ purpose.label }}</a-checkbox></a-space><p class="settings-hint">文档变化后需重新授权。撤销后停止后续使用；已经发送给上游的内容无法撤回。</p></div>
+      <a-textarea v-model:value="drafts[doc.kind]" :aria-label="doc.kind === 'GENERAL' ? '通用长期记忆原始文档' : '敏感长期记忆原始文档'" :maxlength="20000" :auto-size="{ minRows: 5, maxRows: 16 }" />
+      <a-space wrap class="memory-document-actions"><a-button type="primary" :loading="busy === doc.kind" :disabled="drafts[doc.kind] === doc.content" @click="save(doc)">保存文档</a-button><a-button @click="exportDoc(doc)">导出 Markdown</a-button></a-space>
+      <div v-if="doc.kind === 'SENSITIVE'" class="memory-permissions">
+        <p class="memory-permissions-title">允许按用途读取相关片段</p>
+        <div class="memory-permission-options"><a-checkbox v-for="purpose in purposes" :key="purpose.value" :checked="permissions.some(p => p.purpose === purpose.value && p.revision === doc.revision)" :disabled="drafts[doc.kind] !== doc.content" @change="permission(purpose.value, $event.target.checked)">{{ purpose.label }}</a-checkbox></div>
+        <p class="memory-document-hint">文档变化后需重新授权。撤销后停止后续使用；已经发送给上游的内容无法撤回。</p>
+      </div>
     </div>
   </section>
 </template>
-<style scoped>.memory-document + .memory-document { margin-top: 28px; }</style>
+<style scoped>
+.memory-document + .memory-document { margin-top: var(--space-6); padding-top: var(--space-6); border-top: 1px solid var(--line); }
+.memory-document-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
+.memory-document-head h4 { margin: 0; font-size: 14px; font-weight: 600; }
+.memory-document-head .muted { font-size: 12px; }
+.memory-document-hint { margin: 6px 0 var(--space-3); font-size: 13px; line-height: 1.7; color: var(--muted-copy); }
+.memory-document-actions { margin-top: var(--space-3); }
+.memory-permissions { margin-top: var(--space-5); padding: 14px 16px; border-radius: var(--radius-md); background: var(--surface-alt); }
+.memory-permissions-title { margin: 0 0 10px; font-size: 13px; font-weight: 500; }
+.memory-permission-options { display: flex; flex-wrap: wrap; gap: 10px 20px; }
+.memory-permissions .memory-document-hint { margin: 10px 0 0; }
+</style>

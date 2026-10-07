@@ -2,7 +2,7 @@
 import { computed, defineAsyncComponent } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  LockOutlined, ThunderboltOutlined, LinkOutlined, RobotOutlined,
+  LockOutlined, ThunderboltOutlined, LinkOutlined, RobotOutlined, UserOutlined, DashboardOutlined,
   DeleteOutlined, ArrowRightOutlined, ArrowLeftOutlined,
 } from '@ant-design/icons-vue'
 import { useClosetStore } from '../stores/closet'
@@ -26,8 +26,8 @@ interface SettingsCategory {
 }
 
 const categories: SettingsCategory[] = [
-  { key: 'personal', label: '个人形象', eyebrow: '资料与基准人物', description: '管理真实资料、全身照或半身照与自己的基准人物。', icon: RobotOutlined, hidden: () => firstLogin.value, component: defineAsyncComponent(() => import('./settings/SettingsPersonalSection.vue')) },
-  { key: 'processing', label: '任务与资源', eyebrow: '管理员', description: '查看积压、共享账户与调度容量。', icon: ThunderboltOutlined, hidden: () => firstLogin.value || closet.user?.role !== 'ADMIN', component: defineAsyncComponent(() => import('./AdminProcessingPage.vue')) },
+  { key: 'personal', label: '个人形象', eyebrow: '资料与基准人物', description: '管理真实资料、全身照或半身照与自己的基准人物。', icon: UserOutlined, hidden: () => firstLogin.value, component: defineAsyncComponent(() => import('./settings/SettingsPersonalSection.vue')) },
+  { key: 'processing', label: '任务与资源', eyebrow: '管理员', description: '查看积压、共享账户与调度容量。', icon: DashboardOutlined, hidden: () => firstLogin.value || closet.user?.role !== 'ADMIN', component: defineAsyncComponent(() => import('./AdminProcessingPage.vue')) },
   {
     key: 'account',
     label: '账户安全',
@@ -93,7 +93,7 @@ function goBack() {
 </script>
 
 <template>
-  <div class="page-heading simple-heading">
+  <div class="page-heading simple-heading settings-heading" :class="{ 'mobile-hidden': mobileInSection }">
     <div>
       <p class="eyebrow">账户与设置</p>
       <h1>{{ firstLogin ? '设置新密码' : '我的' }}</h1>
@@ -114,15 +114,14 @@ function goBack() {
   <!-- 便携登录提示 -->
   <a-alert
     v-if="isPortableLogin"
+    class="settings-portable-alert"
     type="info"
     message="当前使用便携登录授权，最长 24 小时有效。修改密码或管理授权需退出后使用账号密码登录。"
     show-icon
-    style="margin-bottom: 16px"
   />
 
-  <!-- ======= PC 端：左右布局 ======= -->
   <div class="settings-layout" :class="{ 'first-login-layout': firstLogin }">
-    <!-- 左侧分类导航（PC 始终显示；移动端仅在列表页显示） -->
+    <!-- 分类导航（PC 始终显示；移动端仅在列表页显示） -->
     <nav class="settings-nav" :class="{ 'mobile-hidden': mobileInSection }" aria-label="设置分类">
       <a-button
         type="text"
@@ -130,12 +129,13 @@ function goBack() {
         :key="cat.key"
         class="settings-nav-item"
         :class="{ active: activeKey === cat.key }"
+        :aria-current="activeKey === cat.key ? 'page' : undefined"
         @click="selectCategory(cat.key)"
       >
         <span class="settings-nav-icon"><component :is="cat.icon" /></span>
         <span class="settings-nav-text">
           <strong>{{ cat.label }}</strong>
-          <small>{{ cat.description }}</small>
+          <small>{{ cat.eyebrow }}</small>
         </span>
         <ArrowRightOutlined class="settings-nav-arrow" />
       </a-button>
@@ -145,25 +145,32 @@ function goBack() {
         <span class="settings-nav-icon"><DeleteOutlined /></span>
         <span class="settings-nav-text">
           <strong>回收站</strong>
-          <small>已删除的衣物，可随时恢复。</small>
+          <small>恢复已删除的衣物</small>
         </span>
         <ArrowRightOutlined class="settings-nav-arrow" />
       </RouterLink>
     </nav>
 
-    <!-- 右侧内容面板（PC 显示；移动端仅 mobileInSection 时显示） -->
-    <div v-if="activeCategory" class="settings-panel" :class="{ 'mobile-shown': mobileInSection }">
-      <!-- 移动端返回按钮 -->
-      <a-button type="text" class="settings-panel-back mobile-only" @click="goBack">
-        <ArrowLeftOutlined /> 返回设置
-      </a-button>
+    <!-- 内容面板（PC 显示；移动端仅 mobileInSection 时显示） -->
+    <main v-if="activeCategory" class="settings-panel" :class="{ 'mobile-shown': mobileInSection }">
+      <header class="settings-panel-head">
+        <a-button type="text" class="settings-panel-back" aria-label="返回设置" @click="goBack">
+          <ArrowLeftOutlined />
+        </a-button>
+        <span class="settings-panel-icon"><component :is="activeCategory.icon" /></span>
+        <div class="settings-panel-title">
+          <p class="eyebrow">{{ activeCategory.eyebrow }}</p>
+          <h2>{{ firstLogin ? '设置新密码' : activeCategory.label }}</h2>
+          <p>{{ activeCategory.description }}</p>
+        </div>
+      </header>
 
       <Suspense>
-        <component :is="activeCategory.component" />
+        <component :is="activeCategory.component" v-bind="activeCategory.key === 'processing' ? { embedded: true } : {}" />
         <template #fallback>
-          <a-skeleton active :paragraph="{ rows: 5 }" style="padding: 28px" />
+          <div class="settings-group"><a-skeleton active :paragraph="{ rows: 5 }" /></div>
         </template>
       </Suspense>
-    </div>
+    </main>
   </div>
 </template>

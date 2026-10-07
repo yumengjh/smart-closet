@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { LinkOutlined, CopyOutlined } from '@ant-design/icons-vue'
+import { ref, computed, onMounted } from 'vue'
+import { Empty } from 'ant-design-vue'
+import { CopyOutlined } from '@ant-design/icons-vue'
 import { closetApi } from '../../services/api'
 import { useClosetStore } from '../../stores/closet'
 
@@ -13,6 +14,7 @@ const portableUrl = ref('')
 const portableLinkId = ref('')
 const portableBusy = ref(false)
 const portableMessage = ref('')
+const activeLinks = computed(() => portableLinks.value.filter(link => ['PENDING', 'USED'].includes(link.status)))
 
 async function refreshPortableLinks() {
   try { portableLinks.value = await closetApi.portableLoginLinks() } catch (cause) { portableMessage.value = cause instanceof Error ? cause.message : '便携登录记录暂时无法加载。' }
@@ -58,36 +60,52 @@ const alertType = (msg: string, hasUrl: boolean) => {
 
 <template>
   <div class="settings-section-content">
-    <div class="settings-section-icon"><LinkOutlined /></div>
-    <p class="eyebrow">跨设备访问</p>
-    <h2>便携登录链接</h2>
-    <p class="settings-hint">生成后可分享给可信任的人或设备。链接可进入你的账号中的衣物和业务功能，无法修改密码或继续签发登录链接；10 分钟有效，只能兑换一次。登录后会保持登录，最长 24 小时，也可随时撤回访问。请勿发到公开群聊。</p>
+    <section class="settings-group">
+      <header class="settings-group-head">
+        <h3>生成一次性登录链接</h3>
+        <p>分享给可信任的人或设备，请勿发到公开群聊。</p>
+      </header>
+      <ul class="portable-rules">
+        <li>可进入你账号中的衣物和业务功能，无法修改密码或继续签发链接。</li>
+        <li>链接 10 分钟内有效，只能兑换一次。</li>
+        <li>登录后最长保持 24 小时，可随时撤回访问。</li>
+      </ul>
 
-    <form class="password-form" @submit.prevent="createPortableLink">
-      <label for="portable-password">再次输入当前密码以确认</label>
-      <a-input-password id="portable-password" v-model:value="portablePassword" autocomplete="current-password" placeholder="当前账号密码" />
-      <a-button type="primary" html-type="submit" :loading="portableBusy" :disabled="!portablePassword">
-        生成并复制一次性链接 <CopyOutlined />
-      </a-button>
-    </form>
+      <form class="password-form" @submit.prevent="createPortableLink">
+        <label for="portable-password">再次输入当前密码以确认</label>
+        <a-input-password id="portable-password" v-model:value="portablePassword" autocomplete="current-password" placeholder="当前账号密码" />
+        <a-button type="primary" html-type="submit" :loading="portableBusy" :disabled="!portablePassword">
+          生成并复制一次性链接 <CopyOutlined />
+        </a-button>
+      </form>
 
-    <div v-if="portableUrl" class="portable-link-result">
-      <label for="portable-url">新链接（只显示本次）</label>
-      <a-input id="portable-url" :value="portableUrl" readonly />
-      <a-button @click="copyPortableLink"><CopyOutlined /> 复制</a-button>
-    </div>
-
-    <a-alert v-if="portableMessage" class="portable-message"
-      :type="alertType(portableMessage, !!portableUrl)"
-      :message="portableMessage" show-icon />
-
-    <div v-if="portableLinks.some(link => ['PENDING', 'USED'].includes(link.status))" class="portable-pending-links">
-      <strong>登录链接与授权设备</strong>
-      <div v-for="link in portableLinks.filter(item => ['PENDING', 'USED'].includes(item.status))" :key="link.id" class="portable-pending-row">
-        <span>{{ link.status === 'USED' ? '已登录 · 授权到期' : '待使用 · 到期' }}
-          {{ new Date(link.status === 'USED' ? link.sessionExpiresAt ?? link.expiresAt : link.expiresAt).toLocaleString('zh-CN') }}</span>
-        <a-button danger type="text" @click="revokePortableLink(link.id)">撤销</a-button>
+      <div v-if="portableUrl" class="portable-link-result">
+        <label for="portable-url">新链接（只显示本次）</label>
+        <a-input id="portable-url" :value="portableUrl" readonly />
+        <a-button @click="copyPortableLink"><CopyOutlined /> 复制</a-button>
       </div>
-    </div>
+
+      <a-alert v-if="portableMessage" class="portable-message"
+        :type="alertType(portableMessage, !!portableUrl)"
+        :message="portableMessage" show-icon />
+    </section>
+
+    <section class="settings-group">
+      <header class="settings-group-head">
+        <h3>登录链接与授权设备</h3>
+        <p>撤销后，对应链接或设备会立即失去访问权限。</p>
+      </header>
+      <div v-if="activeLinks.length" class="portable-pending-links">
+        <div v-for="link in activeLinks" :key="link.id" class="portable-pending-row">
+          <span>
+            <a-tag :color="link.status === 'USED' ? 'success' : 'processing'">{{ link.status === 'USED' ? '已登录' : '待使用' }}</a-tag>
+            {{ link.status === 'USED' ? '授权到期' : '链接到期' }}
+            {{ new Date(link.status === 'USED' ? link.sessionExpiresAt ?? link.expiresAt : link.expiresAt).toLocaleString('zh-CN') }}
+          </span>
+          <a-button danger type="text" size="small" @click="revokePortableLink(link.id)">撤销</a-button>
+        </div>
+      </div>
+      <a-empty v-else :image="Empty.PRESENTED_IMAGE_SIMPLE" description="暂无有效链接或授权设备" />
+    </section>
   </div>
 </template>

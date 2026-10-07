@@ -66,31 +66,133 @@ onMounted(()=>{void load();timer=setInterval(refreshResults,5000)})
 onUnmounted(()=>{clearInterval(timer);if(photoPreview.value)URL.revokeObjectURL(photoPreview.value)})
 </script>
 <template>
-  <section class="settings-section-content"><p class="eyebrow">个人形象</p><h2>个人资料与基准人物</h2><p class="settings-hint">资料均可逐步完善。生成人物前必须选择男或女；其他衣柜功能仍可使用。</p><a-alert v-if="error" type="error" :message="error" show-icon /><a-skeleton v-if="loading" active />
-    <a-form v-else :model="profile" layout="vertical" @finish="save">
-      <a-form-item label="性别（生成人物必选）"><a-radio-group v-model:value="profile.sex" :options="[{value:'MALE',label:'男'},{value:'FEMALE',label:'女'}]" /></a-form-item>
-      <div class="personal-fields"><a-form-item label="身高（cm，可选）"><a-input-number v-model:value="profile.heightCm" aria-label="身高（cm，可选）" :min="1" :max="300" placeholder="未填写" /></a-form-item><a-form-item label="体重（kg，可选）"><a-input-number v-model:value="profile.weightKg" aria-label="体重（kg，可选）" :min="1" :max="600" placeholder="未填写" /></a-form-item></div>
-      <a-form-item label="体型 / 身材（可选）"><a-input v-model:value="profile.bodyShape" aria-label="体型 / 身材（可选）" :maxlength="500" placeholder="例如：肩较宽、梨形身材" /></a-form-item>
-      <div class="personal-fields"><a-form-item v-for="item in [{key:'chest',label:'胸围'},{key:'waist',label:'腰围'},{key:'hips',label:'臀围'}]" :key="item.key" :label="item.label+'（cm，可选）'"><a-input-number v-model:value="profile.measurements[item.key]" :aria-label="item.label+'（cm，可选）'" :min="1" placeholder="不推算围度" /></a-form-item></div>
-      <a-form-item v-for="item in [{key:'fit',label:'合身偏好'},{key:'style',label:'穿搭风格'},{key:'thermal',label:'冷暖偏好'},{key:'dislikes',label:'不喜欢的元素'}]" :key="item.key" :label="item.label+'（可选）'"><a-input v-model:value="profile.preferences[item.key]" :aria-label="item.label+'（可选）'" :maxlength="500" /></a-form-item>
-      <p v-if="dirty" class="muted">资料有未保存修改，保存后用于下一次人物生成。</p><a-button type="primary" html-type="submit" :loading="saving">保存真实资料</a-button>
-    </a-form>
-    <a-divider /><h3>参考照片（可选）</h3>
-    <p class="settings-hint">可以选择全身照或半身照，辅助保留你的脸部和可见身形。全身照更适合参考整体比例；半身照看不到的部分会采用个人资料或标准模板，不测量或推断真实围度。没有照片也能生成人物。</p>
-    <a-space wrap><a-upload :disabled="pending || generating" :before-upload="choosePhoto" :max-count="1" :show-upload-list="false" accept="image/png,image/jpeg"><a-button>选择全身照或半身照</a-button></a-upload><a-button v-if="photo" :disabled="pending || generating" @click="clearPhoto">移除本次照片</a-button></a-space>
-    <p v-if="photo" class="muted">{{ photo.name }} · 尚未上传，确认生成人物时一起提交</p><img v-if="photoPreview" class="reference-preview" :src="photoPreview" alt="本次人物参考照片预览" />
-    <a-select v-if="photos.length" v-model:value="selectedPhoto" allow-clear :disabled="!!photo || pending || generating" aria-label="复用参考照片" style="width:100%;max-width:420px;margin-top:12px" :options="photos.map((p,i)=>({value:p.id,label:'参考照片 '+(i+1)}))" placeholder="可选：复用已上传照片" />
-    <p v-if="!profile.sex" class="muted">选择并保存男或女后，才可以提交人物生成；现在可以先选择照片。</p>
-    <a-divider /><h3>基准人物</h3><p class="settings-hint">未填资料只在生成时采用示意默认值：男 170 cm、女 160 cm、标准身材，缺体重按 BMI 22 计算。不代表真实体重，也不写回资料。</p>
-    <a-alert v-if="pending" type="warning" message="上一次提交结果尚未核对，请继续核对原任务，避免重复生成。" style="margin-bottom:12px" /><a-space wrap><a-button type="primary" :disabled="!profile.sex" @click="prepare">{{ pending ? '核对上次人物提交' : photo ? '上传照片并生成基准人物' : '生成基准人物' }}</a-button><a-button @click="refreshResults">刷新结果</a-button><RouterLink to="/ootd">查看 OOTD 穿搭图</RouterLink></a-space>
-    <a-alert v-if="!choices.length" type="info" message="尚无已验证的人物生成模型。资料可保存，模型启用后再生成。" style="margin-top:16px" />
-    <a-empty v-if="!baselines.length" description="生成后先核对，再确认为自己的基准人物" />
-    <div class="baseline-list"><article v-for="b in baselines" :key="b.id"><img v-if="b.mediaUrl" :src="mediaUrl(b.mediaUrl)" alt="基准人物候选" /><p>{{ b.currentDefault ? '默认人物' : b.status === 'CANDIDATE' ? '待确认' : b.status === 'CONFIRMED' ? '已确认' : states[jobFor(b)?.status || ''] || (b.status === 'GENERATING' ? '生成中' : b.status) }}</p><a-alert v-if="jobFor(b)?.error" type="error" :message="jobFor(b)?.error || '生成未完成'" show-icon /><p class="muted">基于资料版本 {{ b.profile.profileRevision }}</p><a-alert v-if="isStale(b)" type="warning" message="人物基于旧身体资料；不会自动重新生成。" /><a-space wrap><a-button v-if="['CANDIDATE','CONFIRMED'].includes(b.status) && !b.currentDefault" size="small" @click="confirm(b)">确认并设为默认</a-button><a-button size="small" danger @click="remove(b)">删除人物</a-button></a-space></article></div>
-    <template v-if="photos.length"><h3>原始参考照片</h3><p class="settings-hint">只用于生成人物，不直接发送给 OOTD。与人物、穿搭图分别管理。</p><div class="baseline-list"><article v-for="p in photos" :key="p.id"><img :src="mediaUrl(p.url)" alt="本人上传的参考照片" /><a-button size="small" danger @click="deletePhoto(p.id)">仅删除原照</a-button></article></div></template>
-  </section>
+  <div class="settings-section-content">
+    <a-alert v-if="error" type="error" :message="error" show-icon />
+    <section v-if="loading" class="settings-group"><a-skeleton active /></section>
+
+    <!-- 个人资料 -->
+    <section v-else class="settings-group">
+      <header class="settings-group-head">
+        <h3>个人资料</h3>
+        <p>资料均可逐步完善。生成人物前必须选择男或女；其他衣柜功能仍可使用。</p>
+      </header>
+      <a-form :model="profile" layout="vertical" @finish="save">
+        <a-form-item label="性别（生成人物必选）"><a-radio-group v-model:value="profile.sex" :options="[{value:'MALE',label:'男'},{value:'FEMALE',label:'女'}]" /></a-form-item>
+        <div class="settings-form-grid">
+          <a-form-item label="身高（cm，可选）"><a-input-number v-model:value="profile.heightCm" aria-label="身高（cm，可选）" :min="1" :max="300" placeholder="未填写" /></a-form-item>
+          <a-form-item label="体重（kg，可选）"><a-input-number v-model:value="profile.weightKg" aria-label="体重（kg，可选）" :min="1" :max="600" placeholder="未填写" /></a-form-item>
+        </div>
+        <a-form-item label="体型 / 身材（可选）"><a-input v-model:value="profile.bodyShape" aria-label="体型 / 身材（可选）" :maxlength="500" placeholder="例如：肩较宽、梨形身材" /></a-form-item>
+        <p class="settings-field-note">围度可选填写，不会根据身高体重推算。</p>
+        <div class="settings-form-grid cols-3">
+          <a-form-item v-for="item in [{key:'chest',label:'胸围'},{key:'waist',label:'腰围'},{key:'hips',label:'臀围'}]" :key="item.key" :label="item.label+'（cm）'"><a-input-number v-model:value="profile.measurements[item.key]" :aria-label="item.label+'（cm，可选）'" :min="1" placeholder="可选" /></a-form-item>
+        </div>
+        <div class="settings-group-sub">
+          <h4>穿搭偏好</h4>
+          <div class="settings-form-grid">
+            <a-form-item v-for="item in [{key:'fit',label:'合身偏好'},{key:'style',label:'穿搭风格'},{key:'thermal',label:'冷暖偏好'},{key:'dislikes',label:'不喜欢的元素'}]" :key="item.key" :label="item.label+'（可选）'"><a-input v-model:value="profile.preferences[item.key]" :aria-label="item.label+'（可选）'" :maxlength="500" /></a-form-item>
+          </div>
+        </div>
+        <div class="settings-group-actions">
+          <a-button type="primary" html-type="submit" :loading="saving">保存真实资料</a-button>
+          <span v-if="dirty" class="muted">有未保存修改，保存后用于下一次人物生成。</span>
+        </div>
+      </a-form>
+    </section>
+
+    <!-- 参考照片 -->
+    <section class="settings-group">
+      <header class="settings-group-head">
+        <h3>参考照片（可选）</h3>
+        <p>可选择全身照或半身照，辅助保留你的脸部和可见身形。全身照更适合参考整体比例；半身照看不到的部分会采用个人资料或标准模板，不测量或推断真实围度。没有照片也能生成人物。</p>
+      </header>
+      <div class="reference-pick">
+        <a-upload :disabled="pending || generating" :before-upload="choosePhoto" :max-count="1" :show-upload-list="false" accept="image/png,image/jpeg"><a-button>选择全身照或半身照</a-button></a-upload>
+        <a-select v-if="photos.length" v-model:value="selectedPhoto" allow-clear :disabled="!!photo || pending || generating" aria-label="复用参考照片" class="reference-select" :options="photos.map((p,i)=>({value:p.id,label:'参考照片 '+(i+1)}))" placeholder="可选：复用已上传照片" />
+      </div>
+      <div v-if="photo" class="reference-chosen">
+        <img v-if="photoPreview" class="reference-preview" :src="photoPreview" alt="本次人物参考照片预览" />
+        <div>
+          <p>{{ photo.name }}</p>
+          <p class="muted">尚未上传，确认生成人物时一起提交</p>
+          <a-button size="small" :disabled="pending || generating" @click="clearPhoto">移除本次照片</a-button>
+        </div>
+      </div>
+      <div v-if="photos.length" class="settings-group-sub">
+        <h4>原始参考照片</h4>
+        <p class="settings-hint">只用于生成人物，不直接发送给 OOTD。与人物、穿搭图分别管理。</p>
+        <div class="baseline-list">
+          <article v-for="p in photos" :key="p.id" class="baseline-card">
+            <div class="baseline-media"><img :src="mediaUrl(p.url)" alt="本人上传的参考照片" /></div>
+            <div class="baseline-body"><a-button size="small" danger block @click="deletePhoto(p.id)">仅删除原照</a-button></div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- 基准人物 -->
+    <section class="settings-group">
+      <header class="settings-group-head settings-group-head-row">
+        <div>
+          <h3>基准人物</h3>
+          <p>未填资料只在生成时采用示意默认值：男 170 cm、女 160 cm、标准身材，缺体重按 BMI 22 计算。不代表真实体重，也不写回资料。</p>
+        </div>
+        <RouterLink class="settings-group-link" to="/ootd">查看 OOTD 穿搭图 ↗</RouterLink>
+      </header>
+      <a-alert v-if="pending" type="warning" message="上一次提交结果尚未核对，请继续核对原任务，避免重复生成。" style="margin-bottom:12px" />
+      <a-alert v-if="!choices.length" type="info" message="尚无已验证的人物生成模型。资料可保存，模型启用后再生成。" style="margin-bottom:12px" />
+      <p v-if="!profile.sex" class="muted" style="margin-bottom:12px">选择并保存男或女后，才可以提交人物生成；现在可以先选择照片。</p>
+      <a-space wrap>
+        <a-button type="primary" :disabled="!profile.sex" @click="prepare">{{ pending ? '核对上次人物提交' : photo ? '上传照片并生成基准人物' : '生成基准人物' }}</a-button>
+        <a-button @click="refreshResults">刷新结果</a-button>
+      </a-space>
+      <a-empty v-if="!baselines.length" description="生成后先核对，再确认为自己的基准人物" />
+      <div v-else class="baseline-list">
+        <article v-for="b in baselines" :key="b.id" class="baseline-card" :class="{ 'is-default': b.currentDefault }">
+          <div class="baseline-media"><img v-if="b.mediaUrl" :src="mediaUrl(b.mediaUrl)" alt="基准人物候选" /></div>
+          <div class="baseline-body">
+            <div class="baseline-meta">
+              <a-tag :color="b.currentDefault ? 'success' : b.status === 'CANDIDATE' ? 'warning' : 'default'">{{ b.currentDefault ? '默认人物' : b.status === 'CANDIDATE' ? '待确认' : b.status === 'CONFIRMED' ? '已确认' : states[jobFor(b)?.status || ''] || (b.status === 'GENERATING' ? '生成中' : b.status) }}</a-tag>
+              <span class="muted">资料版本 {{ b.profile.profileRevision }}</span>
+            </div>
+            <a-alert v-if="jobFor(b)?.error" type="error" :message="jobFor(b)?.error || '生成未完成'" show-icon />
+            <a-alert v-if="isStale(b)" type="warning" message="人物基于旧身体资料；不会自动重新生成。" />
+            <div class="baseline-actions">
+              <a-button v-if="['CANDIDATE','CONFIRMED'].includes(b.status) && !b.currentDefault" size="small" @click="confirm(b)">确认并设为默认</a-button>
+              <a-button size="small" danger @click="remove(b)">删除人物</a-button>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
+  </div>
   <a-modal v-model:open="generateOpen" title="确认本次基准人物" :footer="null" :closable="!generating" :mask-closable="!generating" :keyboard="!generating"><template v-if="preview"><a-alert v-if="submissionNotice" :type="submissionNotice.type" :message="submissionNotice.text" show-icon role="status" aria-live="polite" style="margin-bottom:16px" /><a-descriptions :column="1"><a-descriptions-item label="性别">{{ preview.sex==='MALE'?'男':'女' }}</a-descriptions-item><a-descriptions-item label="身高">{{ preview.heightCm }} cm · {{ preview.sources.heightCm==='USER_REPORTED'?'已填写':'生成默认值' }}</a-descriptions-item><a-descriptions-item label="体重">{{ preview.weightKg }} kg · {{ preview.sources.weightKg==='USER_REPORTED'?'已填写':'示意计算值' }}</a-descriptions-item><a-descriptions-item label="身材">{{ preview.bodyShape }}</a-descriptions-item></a-descriptions>
     <p>全身自然站姿，素色短袖、及膝短裤与平底鞋。每次一张，使用 1 个图像额度。</p><a-select v-model:value="selectedModel" :disabled="generating || pending" aria-label="人物生成模型" style="width:100%" :options="choices.map(c=>({value:c.provider+':'+c.model,label:c.provider+' / '+c.model}))" placeholder="选择已验证模型" />
     <p v-if="photo || selectedPhoto">本次使用{{ photo ? photo.name : '已上传参考照片' }}。照片仅用于建立基准人物，不直接用于 OOTD。</p><p v-else>本次不使用照片，根据资料与模板生成人物。</p><img v-if="photoPreview" :src="photoPreview" alt="本次照片预览" style="max-height:200px;max-width:100%" />
     <a-button type="primary" block style="margin-top:20px" :loading="generating" :disabled="!capability || generating || (pending && lookupUncertain)" @click="generate">{{ generating ? '正在提交 / 核对，请稍候' : pending ? '重新提交同一任务' : photo ? '上传并生成基准人物' : '生成单张基准人物' }}</a-button><a-button v-if="pending" block style="margin-top:12px" :disabled="generating" @click="checkSubmission">核对提交结果</a-button><RouterLink v-if="pending" to="/tasks" style="display:block;margin-top:12px" @click="generateOpen=false">查看任务记录</RouterLink></template></a-modal>
 </template>
-<style scoped>.reference-preview{display:block;max-height:260px;max-width:100%;margin-top:12px;border-radius:12px}.personal-fields{display:flex;flex-wrap:wrap;gap:20px}.baseline-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:20px;margin:20px 0}.baseline-list img{width:100%;height:220px;object-fit:contain;border-radius:12px}.baseline-list article{min-width:0}</style>
+<style scoped>
+.settings-field-note { margin: 0 0 var(--space-2); font-size: 13px; color: var(--muted-copy); }
+.reference-pick { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+.reference-select { flex: 1; min-width: 200px; max-width: 360px; }
+.reference-chosen { display: flex; align-items: flex-start; gap: var(--space-4); margin-top: var(--space-4); padding: var(--space-3); border-radius: var(--radius-md); background: var(--surface-alt); }
+.reference-chosen p { margin: 0 0 6px; overflow-wrap: anywhere; }
+.reference-preview { display: block; flex-shrink: 0; width: 96px; height: 128px; object-fit: cover; border-radius: var(--radius-sm); }
+.baseline-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: var(--space-4); margin-top: var(--space-5); }
+.baseline-card { display: flex; flex-direction: column; min-width: 0; overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
+.baseline-card.is-default { border-color: var(--success-line); box-shadow: 0 0 0 1px var(--success-line); }
+.baseline-media { height: 240px; overflow: hidden; background: var(--surface-alt); }
+.baseline-media img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.baseline-body { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); }
+.baseline-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; }
+.baseline-meta .ant-tag { margin: 0; }
+.baseline-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.settings-group :deep(.ant-empty) { margin: var(--space-6) 0 var(--space-2); }
+@media (max-width: 767px) {
+  .baseline-list { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
+  .baseline-media { height: 200px; }
+  .settings-form-grid.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 var(--space-2); }
+  .reference-pick > *, .reference-select { flex: 1 1 100%; max-width: none; }
+  .reference-pick :deep(.ant-upload), .reference-pick :deep(.ant-upload .ant-btn) { width: 100%; }
+}
+</style>
