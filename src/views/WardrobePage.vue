@@ -5,6 +5,7 @@ import { useRouter } from 'vue-router'
 import { closetApi, type Garment, type ListQuery } from '../services/api'
 import { useClosetStore } from '../stores/closet'
 import GarmentCard from '../components/GarmentCard.vue'
+import GarmentCardSkeleton from '../components/GarmentCardSkeleton.vue'
 
 const router = useRouter()
 const closet = useClosetStore()
@@ -56,7 +57,7 @@ watch(() => [query.category, query.color, query.season], debounceLoad)
     </div>
   </section>
   <a-alert v-if="error" type="error" :message="error" show-icon closable class="page-alert" />
-  <div v-if="loading && !items.length" class="loading-state"><a-spin /><span>正在加载衣柜…</span></div>
+  <GarmentCardSkeleton v-if="loading && !items.length" label="正在加载衣柜…" />
   <section v-else-if="items.length" class="garment-grid" aria-label="衣物列表" :aria-busy="loading">
     <GarmentCard v-for="item in items" :key="item.id" :garment="item" />
     <button class="add-card" @click="router.push('/add')"><span class="add-card-icon"><PlusOutlined /></span><strong>添加衣物</strong><small>上传 → 处理 → 核对入柜</small></button>

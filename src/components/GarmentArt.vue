@@ -1,18 +1,58 @@
 <script setup lang="ts">
 import { mediaUrl } from '../services/urls'
-import { ref, watch } from 'vue'
-import { PictureOutlined } from '@ant-design/icons-vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { PictureOutlined, ReloadOutlined } from '@ant-design/icons-vue'
 import { usingMocks, type Garment } from '../services/api'
 
 const props = defineProps<{ garment: Garment; compact?: boolean }>()
-const failed = ref(false)
-watch(() => props.garment.displayUrl, () => { failed.value = false })
+type LoadState = 'loading' | 'loaded' | 'failed'
+const state = ref<LoadState>('loading')
+const slow = ref(false)
+const attempt = ref(0)
+let autoRetried = false
+let slowTimer = 0
+let retryTimer = 0
+const src = computed(() => props.garment.displayUrl ? mediaUrl(props.garment.displayUrl) : '')
+
+function clearTimers() { clearTimeout(slowTimer); clearTimeout(retryTimer) }
+function startLoading() {
+  clearTimers()
+  state.value = 'loading'
+  slow.value = false
+  slowTimer = window.setTimeout(() => { if (state.value === 'loading') slow.value = true }, 6000)
+}
+function onLoad() { clearTimers(); state.value = 'loaded'; slow.value = false }
+function onError() {
+  clearTimers()
+  // Weak networks often drop a single request; try once more quietly before showing the failure.
+  if (!autoRetried) { autoRetried = true; retryTimer = window.setTimeout(() => { attempt.value++; startLoading() }, 1200); return }
+  state.value = 'failed'
+}
+function retry() { autoRetried = true; attempt.value++; startLoading() }
+// Cached images can finish before the load listener runs, so check completion on mount too.
+function trackImage(element: unknown) {
+  const image = element as HTMLImageElement | null
+  if (image?.complete && image.naturalWidth && state.value === 'loading') onLoad()
+}
+watch(src, () => { autoRetried = false; attempt.value = 0; startLoading() }, { immediate: true })
+onBeforeUnmount(clearTimers)
 </script>
 
 <template>
-  <div class="garment-art" :class="{ 'has-photo': garment.displayUrl, compact }" :style="{ '--cloth': garment.imageColor }" role="img" :aria-label="`${garment.primaryColor[0] || '未知颜色'}${garment.category[0] || '衣物'}`">
-    <img v-if="garment.displayUrl && !failed" :src="mediaUrl(garment.displayUrl)" alt="" @error="failed = true" />
-    <div v-else-if="!usingMocks" class="photo-unavailable"><PictureOutlined /><span>{{ failed ? '图片暂时无法加载' : '暂无展示图片' }}</span></div>
+  <div class="garment-art" :class="[{ 'has-photo': garment.displayUrl, compact }, garment.displayUrl ? `is-${state}` : '']" :style="{ '--cloth': garment.imageColor }" role="img" :aria-label="`${garment.primaryColor[0] || '未知颜色'}${garment.category[0] || '衣物'}`" :aria-busy="garment.displayUrl ? state === 'loading' : undefined">
+    <template v-if="garment.displayUrl">
+      <div v-if="state === 'loading'" class="art-placeholder" aria-hidden="true">
+        <svg class="art-hanger" viewBox="0 0 64 40"><path d="M32 12a4.5 4.5 0 1 0-4.5-4.5M32 12v3.5L5 33.5c-1.6 1.1-.8 3.5 1.1 3.5h51.8c1.9 0 2.7-2.4 1.1-3.5L32 15.5" /></svg>
+        <span v-if="slow && !compact" class="art-slow">网络较慢，仍在加载…</span>
+      </div>
+      <img v-if="state !== 'failed'" :key="attempt" :ref="trackImage" :src="src" alt="" loading="lazy" decoding="async" @load="onLoad" @error="onError" />
+      <div v-else class="photo-unavailable art-failed">
+        <PictureOutlined />
+        <span v-if="!compact">图片加载失败</span>
+        <a-button size="small" type="text" class="art-retry" aria-label="重新加载图片" @click.stop="retry" @keydown.enter.stop><template #icon><ReloadOutlined /></template><template v-if="!compact">重新加载</template></a-button>
+      </div>
+    </template>
+    <div v-else-if="!usingMocks" class="photo-unavailable"><PictureOutlined /><span v-if="!compact">暂无展示图片</span></div>
     <svg v-else viewBox="0 0 240 245" aria-hidden="true">
       <defs>
         <linearGradient id="fabric" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="white" stop-opacity=".28"/><stop offset="1" stop-color="#173b30" stop-opacity=".16"/></linearGradient>
@@ -29,3 +69,22 @@ watch(() => props.garment.displayUrl, () => { failed.value = false })
     </svg>
   </div>
 </template>
+
+<style scoped>
+.art-placeholder { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; overflow: hidden; background: radial-gradient(circle at 50% 46%, color-mix(in srgb, var(--cloth, var(--line)) 14%, transparent), transparent 62%); }
+.art-placeholder::after { content: ''; position: absolute; inset: 0; background: linear-gradient(105deg, transparent 30%, color-mix(in srgb, var(--surface) 55%, transparent) 50%, transparent 70%); transform: translateX(-100%); animation: art-shimmer 1.5s ease-in-out infinite; }
+.art-hanger { width: 34%; max-width: 76px; fill: none; stroke: var(--muted-subtle); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; opacity: .5; transform-origin: 50% 8%; animation: art-sway 2.4s ease-in-out infinite; }
+.art-slow { position: relative; z-index: 1; color: var(--muted-subtle); font-size: 12px; }
+.garment-art.has-photo img { opacity: 1; transition: opacity .35s ease-out, transform .35s ease-out; }
+.garment-art.is-loading img { opacity: 0; transform: scale(.98); }
+.art-failed { gap: 8px; }
+.art-failed > .anticon { opacity: .7; }
+.art-retry { color: var(--muted-strong); font-size: 12px; }
+.photo-unavailable .art-retry :deep(.anticon) { font-size: 12px; }
+@keyframes art-shimmer { to { transform: translateX(100%); } }
+@keyframes art-sway { 0%, 100% { transform: rotate(-3deg); } 50% { transform: rotate(3deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .art-placeholder::after, .art-hanger { animation: none; }
+  .garment-art.is-loading img { transform: none; }
+}
+</style>
