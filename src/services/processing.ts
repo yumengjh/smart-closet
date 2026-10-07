@@ -5,6 +5,7 @@ export type AdminProcessing = { items: ExecutionTask[]; resources: { config: { l
 export const processingApi = {
  list: (page = 1) => request<{ items: ExecutionTask[] }>(`/api/processing/tasks?page=${page}`),
  cancel: (id: string) => request<ExecutionTask>(`/api/processing/tasks/${id}/cancel`, { method: 'POST' }),
+ resume: (id: string) => request<ExecutionTask>(`/api/processing/tasks/${id}/resume`, { method: 'POST' }),
  retry: (id: string) => request<ExecutionTask>(`/api/processing/tasks/${id}/retry`, { method: 'POST' }),
  admin: (page = 1) => request<AdminProcessing>(`/api/admin/processing?page=${page}`),
  config: (limits: Limits, revision: number) => request('/api/admin/processing/config', { method: 'PUT', body: JSON.stringify({ limits, revision }) }),
