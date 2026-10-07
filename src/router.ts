@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { useClosetStore } from './stores/closet'
 import { sessionRedirect } from './domain/session'
 import { closetApi } from './services/api'
+import { installRouteProgress } from './composables/useRouteProgress'
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -27,6 +28,8 @@ export const router = createRouter({
   ],
   scrollBehavior: () => ({ top: 0, behavior: 'smooth' }),
 })
+
+installRouteProgress(router)
 
 router.beforeEach(async (to) => {
   const closet = useClosetStore()

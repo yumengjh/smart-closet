@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import zhCN from 'ant-design-vue/es/locale/zh_CN'
 import { theme as antTheme } from 'ant-design-vue'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
@@ -20,6 +20,7 @@ import WaitingGame from './WaitingGame.vue'
 import WaitingStarted from './WaitingStarted.vue'
 import { useProcessingStore } from '../stores/processing'
 import { installInteractionSounds, unlockSound } from '../services/sound'
+import { pendingPath, prefetchRoute, prefetchWhenIdle } from '../composables/useRouteProgress'
 
 const route = useRoute()
 const router = useRouter()
@@ -43,6 +44,33 @@ const navItems = [
   { path: '/outfits', label: '组合台', icon: PictureOutlined },
   { path: '/settings', label: '我的', icon: SettingOutlined },
 ]
+// Highlight the clicked destination immediately; on slow networks the route itself resolves later.
+const navPath = computed(() => pendingPath.value ?? route.path)
+function isNavActive(path: string) {
+  const current = navPath.value
+  return current === path || (path === '/wardrobe' && current.startsWith('/garment')) || (path === '/outfits' && current.startsWith('/outfits'))
+}
+const visibleNavItems = computed(() => closet.user?.mustChangePassword ? navItems.filter(item => item.path === '/settings') : navItems)
+const prefetch = (path: string) => prefetchRoute(router, path)
+watch(() => closet.isSignedIn && !closet.user?.mustChangePassword, ready => { if (ready) prefetchWhenIdle(router, [...navItems.map(item => item.path), '/add', '/tasks']) }, { immediate: true })
+// Show the progress bar only when navigation is noticeably slow, so fast switches stay calm.
+const showProgress = ref(false)
+let progressTimer = 0
+watch(pendingPath, path => {
+  clearTimeout(progressTimer)
+  if (path) progressTimer = window.setTimeout(() => { showProgress.value = true }, 120)
+  else showProgress.value = false
+})
+onUnmounted(() => clearTimeout(progressTimer))
+// Reuse the same instance when only params change (e.g. /outfits/new to /outfits/:id), matching prior behavior.
+const componentKeys = new WeakMap<object, number>()
+let nextComponentKey = 0
+function viewKey(component: { type: unknown } | undefined) {
+  const type = component?.type
+  if (!type || typeof type !== 'object' && typeof type !== 'function') return 'empty'
+  if (!componentKeys.has(type)) componentKeys.set(type, ++nextComponentKey)
+  return componentKeys.get(type)
+}
 
 watch(() => [closet.user?.username, closet.user?.mustChangePassword], () => { void closet.refreshCounts() }, { immediate: true })
 function sessionExpired() { closet.user = null; closet.taskCount = 0; closet.pendingCount = 0; void router.replace('/login') }
@@ -64,6 +92,7 @@ async function signOut() {
 <template>
   <a-config-provider :theme="closetTheme" :locale="zhCN">
     <a-app>
+      <div class="route-progress" :class="{ active: showProgress }" role="progressbar" aria-label="页面加载中" :aria-hidden="!showProgress"><span></span></div>
       <div v-if="isLogin" class="login-frame"><RouterView /></div>
       <div v-else-if="closet.isSignedIn && (!closet.user?.mustChangePassword || route.path === '/settings')" class="app-frame" :class="{ 'outfit-editing': isOutfitEditor }">
         <aside class="sidebar">
@@ -71,9 +100,9 @@ async function signOut() {
             <img class="brand-logo" src="/yuda-logo.png" alt="" />
             <span><strong>鱼搭</strong><small>数字衣橱</small></span>
           </RouterLink>
-          <RouterLink v-if="!closet.user?.mustChangePassword" to="/add" class="sidebar-add"><PlusOutlined /> 添加衣物</RouterLink><p class="nav-label">我的空间</p>
+          <RouterLink v-if="!closet.user?.mustChangePassword" to="/add" class="sidebar-add" @pointerenter="prefetch('/add')"><PlusOutlined /> 添加衣物</RouterLink><p class="nav-label">我的空间</p>
           <nav class="main-nav" aria-label="主导航">
-            <RouterLink v-for="item in (closet.user?.mustChangePassword ? navItems.filter(item => item.path === '/settings') : navItems)" :key="item.path" :to="item.path" class="nav-link" :class="{ active: route.path === item.path || (item.path === '/wardrobe' && route.path.startsWith('/garment')) || (item.path === '/outfits' && route.path.startsWith('/outfits')) }">
+            <RouterLink v-for="item in visibleNavItems" :key="item.path" :to="item.path" class="nav-link" :class="{ active: isNavActive(item.path), pending: pendingPath === item.path }" @pointerenter="prefetch(item.path)" @focus="prefetch(item.path)">
               <component :is="item.icon" /><span>{{ item.label }}</span>
               <span v-if="item.path === '/pending' && closet.pendingCount" class="nav-count">{{ closet.pendingCount }}</span>
               <span v-if="item.path === '/tasks' && closet.taskCount" class="nav-count quiet">{{ closet.taskCount }}</span>
@@ -90,13 +119,13 @@ async function signOut() {
         <main class="main-area">
           <div v-if="usingMocks" class="mock-banner"><span class="mock-pulse"></span><span>界面演示 · 示例数据不是 AI 结果，演示模式禁止提交模型任务</span><span class="mock-banner-end">{{ closet.user?.username }} 的衣橱</span></div>
           <header class="topbar"><div class="topbar-actions"><ThemeToggle /><SoundToggle /><TaskInbox v-if="!closet.user?.mustChangePassword" /><RouterLink v-if="!closet.user?.mustChangePassword" to="/tasks" class="topbar-tasks" aria-label="任务记录"><HistoryOutlined /><span class="task-record-label">任务记录</span><span v-if="closet.taskCount" class="nav-count">{{ closet.taskCount }}</span></RouterLink></div></header>
-          <section class="route-content"><TaskNotice /><RouterView /></section>
+          <section class="route-content" :aria-busy="!!pendingPath"><TaskNotice /><RouterView v-slot="{ Component }"><Transition name="route-fade" mode="out-in"><div :key="viewKey(Component)" class="route-view"><component :is="Component" /></div></Transition></RouterView></section>
           <WaitingGame v-if="!closet.user?.mustChangePassword" />
           <WaitingStarted v-if="!closet.user?.mustChangePassword" />
           <AssistantPanel v-if="!closet.user?.mustChangePassword" :key="closet.user?.username" />
         </main>
         <nav v-if="!closet.user?.mustChangePassword" class="mobile-nav" aria-label="移动端主导航">
-          <RouterLink v-for="item in (closet.user?.mustChangePassword ? navItems.filter(item => item.path === '/settings') : navItems)" :key="item.path" :to="item.path" :class="{ active: route.path === item.path || (item.path === '/wardrobe' && route.path.startsWith('/garment')) || (item.path === '/outfits' && route.path.startsWith('/outfits')) }"><component :is="item.icon" /><span>{{ item.label }}</span><i v-if="item.path === '/pending' && closet.pendingCount"></i></RouterLink>
+          <RouterLink v-for="item in visibleNavItems" :key="item.path" :to="item.path" :class="{ active: isNavActive(item.path), pending: pendingPath === item.path }" @touchstart.passive="prefetch(item.path)"><component :is="item.icon" /><span>{{ item.label }}</span><i v-if="item.path === '/pending' && closet.pendingCount"></i></RouterLink>
           <RouterLink to="/add" class="mobile-add"><PlusOutlined /><span>添加</span></RouterLink>
         </nav>
       </div>
@@ -106,5 +135,24 @@ async function signOut() {
 </template>
 
 <style scoped>
+.route-progress { position: fixed; z-index: 2000; inset: 0 0 auto; height: 2px; overflow: hidden; opacity: 0; pointer-events: none; transition: opacity .2s; }
+.route-progress.active { opacity: 1; }
+.route-progress span { position: absolute; inset: 0 auto 0 0; width: 40%; background: var(--accent); border-radius: 0 2px 2px 0; transform: translateX(-100%); }
+.route-progress.active span { animation: route-progress-slide 1.1s cubic-bezier(.4, 0, .2, 1) infinite; }
+@keyframes route-progress-slide { from { transform: translateX(-100%); } to { transform: translateX(260%); } }
+.nav-link.pending .anticon, .mobile-nav .pending .anticon { animation: nav-pending-pulse .9s ease-in-out infinite; }
+@keyframes nav-pending-pulse { 50% { opacity: .45; } }
+.route-fade-enter-active { transition: opacity .2s ease-out, transform .2s ease-out; }
+.route-fade-leave-active { transition: opacity .1s ease-in; }
+.route-fade-enter-from { opacity: 0; transform: translateY(6px); }
+.route-fade-leave-to { opacity: 0; }
+/* The editor fills the viewport through a height chain and owns fixed controls, so keep the wrapper transparent there. */
+.outfit-editing .route-view { height: 100%; min-height: 0; }
+.outfit-editing .route-fade-enter-from { transform: none; }
+@media (prefers-reduced-motion: reduce) {
+  .route-fade-enter-from { transform: none; }
+  .route-progress.active span { animation: none; width: 100%; transform: none; opacity: .6; }
+  .nav-link.pending .anticon, .mobile-nav .pending .anticon { animation: none; }
+}
 @media(max-width:640px){.task-record-label{display:none}.topbar-tasks{min-width:32px;justify-content:center}}
 </style>
