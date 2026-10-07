@@ -4,7 +4,7 @@ import zhCN from 'ant-design-vue/es/locale/zh_CN'
 import { theme as antTheme } from 'ant-design-vue'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import {
-  AppstoreOutlined, CheckCircleOutlined, HistoryOutlined, PictureOutlined, PlusOutlined,
+  AppstoreOutlined, CheckCircleOutlined, PictureOutlined, PlusOutlined,
   SettingOutlined, LogoutOutlined,
 } from '@ant-design/icons-vue'
 import { useClosetStore } from '../stores/closet'
@@ -121,7 +121,7 @@ async function signOut() {
         </aside>
         <main class="main-area">
           <div v-if="usingMocks" class="mock-banner"><span class="mock-pulse"></span><span>界面演示 · 示例数据不是 AI 结果，演示模式禁止提交模型任务</span><span class="mock-banner-end">{{ closet.user?.username }} 的衣橱</span></div>
-          <header class="topbar"><div class="topbar-actions"><a-button v-if="!closet.user?.mustChangePassword" class="topbar-assistant" :aria-label="`问鱼搭助手（${assistantShortcut}）`" @click="openAssistant"><BloubAvatar :size="28" expression="happy" /><span>问鱼搭</span><kbd>{{ assistantShortcut }}</kbd></a-button><ThemeToggle /><SoundToggle /><TaskInbox v-if="!closet.user?.mustChangePassword" /><RouterLink v-if="!closet.user?.mustChangePassword" to="/tasks" class="topbar-tasks" aria-label="任务记录"><HistoryOutlined /><span class="task-record-label">任务记录</span><span v-if="closet.taskCount" class="nav-count">{{ closet.taskCount }}</span></RouterLink></div></header>
+          <header class="topbar"><div class="topbar-actions"><a-button v-if="!closet.user?.mustChangePassword" class="topbar-assistant" :aria-label="`问鱼搭助手（${assistantShortcut}）`" @click="openAssistant"><BloubAvatar :size="28" expression="happy" /><span>问鱼搭</span><kbd>{{ assistantShortcut }}</kbd></a-button><ThemeToggle /><SoundToggle /><TaskInbox v-if="!closet.user?.mustChangePassword" /></div></header>
           <section class="route-content" :aria-busy="!!pendingPath"><TaskNotice /><RouterView v-slot="{ Component }"><Transition name="route-fade" mode="out-in"><div :key="viewKey(Component)" class="route-view"><component :is="Component" /></div></Transition></RouterView></section>
           <WaitingGame v-if="!closet.user?.mustChangePassword" />
           <WaitingStarted v-if="!closet.user?.mustChangePassword" />
@@ -160,5 +160,4 @@ async function signOut() {
 .topbar-assistant.ant-btn { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 6px 0 2px; border-radius: 999px; color: var(--muted-strong); }
 .topbar-assistant kbd { padding: 1px 6px; border: 1px solid var(--line); border-radius: 6px; font-size: 11px; line-height: 16px; font-family: inherit; color: var(--muted); background: var(--surface-alt); }
 @media(max-width:1023px){.topbar-assistant.ant-btn{display:none}}
-@media(max-width:640px){.task-record-label{display:none}.topbar-tasks{min-width:32px;justify-content:center}}
 </style>
