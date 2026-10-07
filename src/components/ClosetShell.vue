@@ -16,7 +16,7 @@ import ThemeToggle from './ThemeToggle.vue'
 import BloubAvatar from '../agent/BloubAvatar.vue'
 import AssistantPanel from '../agent/AssistantPanel.vue'
 import TaskInbox from './TaskInbox.vue'
-import TaskNotice from './TaskNotice.vue'
+import TaskToast from './TaskToast.vue'
 import WaitingGame from './WaitingGame.vue'
 import WaitingStarted from './WaitingStarted.vue'
 import { useProcessingStore } from '../stores/processing'
@@ -122,7 +122,7 @@ async function signOut() {
         <main class="main-area">
           <div v-if="usingMocks" class="mock-banner"><span class="mock-pulse"></span><span>界面演示 · 示例数据不是 AI 结果，演示模式禁止提交模型任务</span><span class="mock-banner-end">{{ closet.user?.username }} 的衣橱</span></div>
           <header class="topbar"><div class="topbar-actions"><a-button v-if="!closet.user?.mustChangePassword" class="topbar-assistant" :aria-label="`问鱼搭助手（${assistantShortcut}）`" @click="openAssistant"><BloubAvatar :size="28" expression="happy" /><span>问鱼搭</span><kbd>{{ assistantShortcut }}</kbd></a-button><ThemeToggle /><SoundToggle /><TaskInbox v-if="!closet.user?.mustChangePassword" /></div></header>
-          <section class="route-content" :aria-busy="!!pendingPath"><TaskNotice /><RouterView v-slot="{ Component }"><Transition name="route-fade" mode="out-in"><div :key="viewKey(Component)" class="route-view"><component :is="Component" /></div></Transition></RouterView></section>
+          <section class="route-content" :aria-busy="!!pendingPath"><TaskToast /><RouterView v-slot="{ Component }"><Transition name="route-fade" mode="out-in"><div :key="viewKey(Component)" class="route-view"><component :is="Component" /></div></Transition></RouterView></section>
           <WaitingGame v-if="!closet.user?.mustChangePassword" />
           <WaitingStarted v-if="!closet.user?.mustChangePassword" />
           <AssistantPanel v-if="!closet.user?.mustChangePassword" :key="closet.user?.username" />

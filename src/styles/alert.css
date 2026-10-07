@@ -1,0 +1,51 @@
+/*
+ * Calm inline notices. Alerts sit inside content, so they read as quiet notes:
+ * neutral surface, no frame, colour only on the icon. Errors keep a faint tint
+ * because they block the user; everything else stays neutral.
+ */
+.ant-alert {
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--surface-alt);
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.ant-alert .ant-alert-icon { margin-top: 3px; margin-inline-end: 8px; font-size: 14px; }
+.ant-alert .ant-alert-message { color: var(--ink); font-size: 13px; }
+.ant-alert .ant-alert-description { margin-top: 2px; color: var(--muted); font-size: 12px; line-height: 1.7; }
+.ant-alert .ant-alert-close-icon { margin-top: 2px; color: var(--muted-subtle); }
+.ant-alert .ant-alert-action { align-self: center; margin-inline-start: 12px; }
+
+.ant-alert-info .ant-alert-icon { color: var(--info); }
+.ant-alert-success .ant-alert-icon { color: var(--success); }
+.ant-alert-warning .ant-alert-icon { color: var(--warning); }
+.ant-alert-error { background: var(--danger-bg); }
+.ant-alert-error .ant-alert-icon { color: var(--danger); }
+
+/* Larger icon with a description, aligned to the title line. */
+.ant-alert-with-description { padding: 12px 14px; }
+.ant-alert-with-description .ant-alert-icon { margin-top: 2px; font-size: 16px; }
+.ant-alert-with-description .ant-alert-message { font-weight: 500; }
+
+/* `banner` alerts are strips inside a surface: no box at all. */
+.ant-alert-banner { padding: 6px 0; background: transparent; border-radius: 0; }
+.ant-alert-error.ant-alert-banner { background: transparent; }
+.ant-alert-error.ant-alert-banner .ant-alert-message { color: var(--danger); }
+
+/* Stacked notices read as one group rather than a column of boxes. */
+.ant-alert + .ant-alert { margin-top: 6px; }
+
+/* Global task results float in as a notification card instead of pushing the page down. */
+.task-toast.ant-notification-notice { width: 340px; max-width: calc(100vw - 32px); padding: 14px 16px; border-radius: var(--radius-lg); background: var(--surface); box-shadow: 0 12px 40px #25262b1f, 0 1px 3px #25262b10; }
+.task-toast .ant-notification-notice-message { margin-bottom: 2px; font-size: 14px; font-weight: 500; color: var(--ink); }
+.task-toast .ant-notification-notice-description { font-size: 12px; color: var(--muted); }
+.task-toast .ant-notification-notice-btn { margin-top: 10px; }
+.task-toast.ready .ant-notification-notice-icon { color: var(--success); }
+.task-toast.attention .ant-notification-notice-icon { color: var(--warning); }
+.task-toast.cancelled .ant-notification-notice-icon { color: var(--muted); }
+/* Sit below the topbar so the card never covers the processing-center button it relates to. */
+.ant-notification-topRight:has(.task-toast), .ant-notification-top:has(.task-toast) { top: 64px !important; }

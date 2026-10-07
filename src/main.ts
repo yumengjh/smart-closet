@@ -8,6 +8,7 @@ import App from './App.vue'
 import { router } from './router'
 import './style.css'
 import './styles/outfit.css'
+import './styles/alert.css'
 import './agent/agent.css'
 
 // Remove only abandoned mannequin experiment settings, preserving outfits and drafts.
