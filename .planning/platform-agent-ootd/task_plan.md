@@ -8,6 +8,6 @@
 - [x] 保留并纳入并行任务全部运行步骤显示
 - [x] 干净检出npm ci、55项测试、类型检查和真实API构建
 - [x] 新建smart-closet私有远程，配置origin
-- [ ] 推送并验证GitHub独立CI
+- [x] 推送并验证GitHub独立CI
 
 完整设计和299项清单位于smart-closet-server/docs，天气真实接入仍后续，图片生成必须明确操作。本次仓库整理不部署8080、不调用AI。

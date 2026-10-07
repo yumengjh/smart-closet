@@ -7,3 +7,7 @@
 2026-10-07仓库整理：纳入既有并行步骤文案，新增独立Frontend checks与本地工具忽略，README链接GitHub后端设计／体验清单；正在干净检出验证并创建私有远程。
 
 本地独立检出验证完成：npm ci、55/55、类型检查、真实API构建全部成功，未复用原node_modules或私有环境。私有仓库yumengjh/smart-closet创建成功、origin配置完成；下一步推送并等待真实GitHub结果。
+
+远程交付完成：main（6d0f7f2）已推送到 https://github.com/yumengjh/smart-closet ，Frontend checks run37592782235全部通过（安装、55项、类型检查、构建）。
+
+统计更正：此前后端报告226项包含target/surefire-reports中已移除ParallelHttpWorkflowTest残留XML；本次后端独立干净检出为225项（218通过、7跳过），0失败／错误，构建通过。此前前端55项与Agent16项不受影响。
