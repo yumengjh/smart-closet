@@ -14,7 +14,7 @@ export function taskEntry(task: ClosetTask): WaitingEntry {
   const state = running(task.status) ? 'processing' : task.status === 'CANCELLED' ? 'cancelled'
     : ['FAILED', 'UNKNOWN', 'NEEDS_REVIEW'].includes(task.status) ? 'attention' : 'ready'
   const stage = state === 'processing'
-    ? task.status === 'CANCEL_REQUESTED' ? '正在取消处理' : task.steps.find(step => step.status === 'running')?.name || '等待处理'
+    ? task.status === 'CANCEL_REQUESTED' ? '正在取消处理' : task.steps.filter(step => step.status === 'running').map(step => step.name).join(' · ') || '等待处理'
     : task.status === 'FAILED' ? '处理未完成，请检查' : task.status === 'UNKNOWN' ? '调用结果待核实'
     : task.status === 'CANCELLED' ? '已取消，原图保留' : task.status === 'NEEDS_REVIEW' ? '结果需要检查' : '处理完成，可以核对'
   return { key: `task:${task.id}`, kind: 'task', id: task.id, title: task.title || '新上传衣物',

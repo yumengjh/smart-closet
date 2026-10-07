@@ -10,3 +10,11 @@ dist/
 .DS_Store
 .idea/
 *.log
+
+# Local tool artifacts; progress Markdown under .planning stays versioned.
+/.archify/
+/output/
+/tmp/
+/.cache/
+/.planning/.active_plan
+/.planning/*/.attestation

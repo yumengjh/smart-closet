@@ -1,10 +1,12 @@
 # 鱼搭 · 数字衣柜
 
-Vue 3、TypeScript、Vite、Vue Router、Pinia 和 Ant Design Vue 4 构成的数字衣柜界面。项目按手机与桌面同时设计，包含登录/首次改密、衣柜、单件录入、待确认、衣物详情、任务、我的和回收站。
+Vue 3、TypeScript、Vite、Vue Router、Pinia 和 Ant Design Vue 4 构成的数字衣柜界面。项目按手机与桌面同时设计，包含登录/首次改密、衣柜、录入、待确认、衣物详情、任务、组合台、平台级鱼搭助手、个人基准人物、OOTD、我的和回收站。
 
 登录页与应用内支持浅色/深色主题切换，选择保存在当前浏览器。穿搭画板导出的图片不受界面主题影响。
 
-[衣物入库最新完整设计](../smart-closet-server/docs/design/衣物入库最新设计.md) · [页面流程与状态说明](docs/INTERACTION.md) · [后端运行与接口文档](../smart-closet-server/docs/CLOSET_PRODUCT.md) · [联调验证记录](../smart-closet-server/reports/closet/README.md)。
+[衣物入库最新完整设计](https://github.com/yumengjh/smart-closet-server/blob/main/docs/design/衣物入库最新设计.md) · [平台级鱼搭与个人 OOTD 设计](https://github.com/yumengjh/smart-closet-server/blob/main/docs/design/2026-10-06-平台级鱼搭助手与个人OOTD设计.md) · [页面流程与状态说明](docs/INTERACTION.md) · [后端运行与接口文档](https://github.com/yumengjh/smart-closet-server/blob/main/docs/CLOSET_PRODUCT.md) · [299 项体验清单](https://github.com/yumengjh/smart-closet-server/blob/main/docs/testing/2026-10-07-平台级鱼搭与个人OOTD完整手工体验清单.md)。
+
+前后端为两个私有仓库。需要同源本地发布时，将它们分别检出为相邻的 `smart-closet` 与 `smart-closet-server`；独立前端测试和构建不要求存在后端目录。
 
 ## 启动真实界面
 
@@ -77,4 +79,6 @@ npm test
 npm run build
 ```
 
-后端回归检查：在 `smart-closet-server` 执行 `mvn test`。目前界面所有关键操作均走统一 `src/services/api.ts`；模拟模式没有真实登录、云端处理或服务端隔离能力。
+后端回归检查：在 `smart-closet-server` 执行 `mvn test`。界面关键操作使用受控 API 服务 `src/services/api.ts` 与 `src/services/platform.ts`；模拟模式没有真实登录、云端处理或服务端隔离能力。
+
+GitHub Actions 的 `Frontend checks` 使用 Node.js 24，在干净检出中运行 `npm ci`、测试、类型检查和关闭模拟的构建；不会调用真实 AI 或发布页面。[当前平台功能进度](.planning/platform-agent-ootd/progress.md)。
