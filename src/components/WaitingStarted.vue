@@ -14,5 +14,5 @@ const stage = computed(() => processing.entries.find(entry => entry.key === proc
   </a-modal>
 </template>
 <style scoped>
-.started-stage{display:flex;align-items:center;gap:8px;margin:4px 0 20px;color:var(--muted);font-size:13px}.started-stage .anticon{color:var(--blue)}.started-stay{margin-top:12px}
+.started-stage{display:flex;align-items:center;gap:8px;margin:4px 0 20px;color:var(--muted);font-size:13px}.started-stage .anticon{color:var(--accent)}.started-stay{margin-top:12px}
 </style>

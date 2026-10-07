@@ -27,4 +27,4 @@ watch(() => props.open, v => { if (v) { selected.value = items.value.map(i => i.
     </template>
   </a-modal>
 </template>
-<style scoped>.wear-distribution{display:flex;gap:24px;margin-top:20px}.wear-distribution svg{width:90px;flex-shrink:0;align-self:flex-start;fill:var(--surface-secondary,#eee);stroke:var(--text-muted,#888);stroke-width:3}.wear-distribution dl{flex:1;min-width:0;margin:0}.wear-slot{padding:8px 0;border-bottom:1px solid var(--border-color,#ddd)}dt{font-weight:600}dd{margin:6px 0;font-size:13px;overflow-wrap:anywhere}dd a{margin-left:12px}@media(max-width:480px){.wear-distribution{gap:12px}.wear-distribution svg{width:56px}}</style>
+<style scoped>.wear-distribution{display:flex;gap:24px;margin-top:20px}.wear-distribution svg{width:90px;flex-shrink:0;align-self:flex-start;fill:var(--surface-alt);stroke:var(--muted);stroke-width:3}.wear-distribution dl{flex:1;min-width:0;margin:0}.wear-slot{padding:8px 0;border-bottom:1px solid var(--line)}dt{font-weight:600}dd{margin:6px 0;font-size:13px;overflow-wrap:anywhere}dd a{margin-left:12px}@media(max-width:480px){.wear-distribution{gap:12px}.wear-distribution svg{width:56px}}</style>

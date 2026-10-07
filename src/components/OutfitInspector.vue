@@ -37,7 +37,7 @@ function numberChange(value: unknown, action: (value: number) => void) {
   <div class="outfit-inspector-content">
     <div class="outfit-inspector-summary"><div class="outfit-inspector-preview"><img :src="mediaUrl(item.assetUrl)" :alt="item.garmentLabel" /></div><div><strong>{{ item.garmentLabel }}</strong><a-tag>{{ item.kind === 'PERSON_PART' ? '人物贴纸' : '衣物贴纸' }}</a-tag><a-button v-if="item.kind !== 'PERSON_PART'" type="link" class="outfit-info-link" @click="emit('info')"><InfoCircleOutlined /> 查看衣物信息</a-button></div></div>
     <a-alert v-if="item.garmentStatus === 'TRASHED' || item.garmentChanged" type="warning" show-icon :message="item.garmentStatus === 'TRASHED' ? '衣物已在回收站，画板仍保留原图片。' : '衣物已有更新，画板仍保留原图片。'" class="outfit-inspector-notice" />
-    <a-tag v-if="item.assetKind === 'INPUT' || item.assetKind === 'GENERATE'" color="orange">当前素材带背景</a-tag>
+    <a-tag v-if="item.assetKind === 'INPUT' || item.assetKind === 'GENERATE'" color="warning">当前素材带背景</a-tag>
     <a-form layout="vertical" class="outfit-property-form">
       <a-form-item v-if="item.kind !== 'PERSON_PART'" label="画板分组"><a-select :value="item.role" :options="outfitRoleOptions" aria-label="画板分组" @update:value="emit('role', $event as OutfitRole)" /></a-form-item>
       <a-form-item :label="item.freeStretch ? '宽度（自由拉伸）' : '大小（等比缩放）'"><div class="outfit-number-control"><a-button aria-label="缩小贴纸" @click="emit('scale', .9)"><MinusOutlined /></a-button><a-input-number :value="Math.round(item.width)" :min="24" :max="2160" :precision="0" aria-label="贴纸宽度" addon-after="px" @change="numberChange($event, value => emit('resize', value))" /><a-button aria-label="放大贴纸" @click="emit('scale', 1.1)"><PlusOutlined /></a-button></div></a-form-item>

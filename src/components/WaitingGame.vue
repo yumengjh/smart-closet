@@ -80,13 +80,13 @@ onUnmounted(() => { clearTimeout(coverTimer); window.removeEventListener('closet
 .memory-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
 .memory-card.ant-btn{
   display:flex;align-items:center;justify-content:center;position:relative;
-  width:100%;height:auto;aspect-ratio:4/5;padding:6px;border-radius:14px;
+  width:100%;height:auto;aspect-ratio:4/5;padding:6px;border-radius:var(--radius-lg);
   border-color:var(--info-line);background:var(--info-bg);
   transition:background .2s ease-out,border-color .2s ease-out,transform .2s ease-out;
 }
-.memory-card:not(.revealed):hover{transform:translateY(-2px);border-color:var(--blue)}
+.memory-card:not(.revealed):hover{transform:translateY(-2px);border-color:var(--accent)}
 .memory-card:not(.revealed):active{transform:translateY(0)}
-.memory-card.revealed{background:var(--surface);border-color:var(--blue)}
+.memory-card.revealed{background:var(--surface);border-color:var(--accent)}
 .memory-card.matched{background:var(--surface);border-color:var(--success-line)}
 .card-face{display:grid;grid-template-rows:minmax(0,1fr) auto;gap:2px;width:100%;height:100%;min-width:0}
 .card-face img{display:block;width:100%;height:100%;min-height:0;object-fit:contain;user-select:none}
@@ -97,6 +97,6 @@ onUnmounted(() => { clearTimeout(coverTimer); window.removeEventListener('closet
 .game-bottom{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin:20px 0 14px}
 .game-bottom p{font-size:12px;color:var(--muted);margin:0}
 .game-note{text-align:center}
-@media(max-width:400px){.memory-grid{gap:8px}.memory-card.ant-btn{padding:4px;border-radius:10px}.game-intro{gap:8px}.game-intro h3{font-size:15px}.memory-card .card-check{width:14px;height:14px;right:2px;top:2px;font-size:9px}}
+@media(max-width:400px){.memory-grid{gap:8px}.memory-card.ant-btn{padding:4px;border-radius:var(--radius-md)}.game-intro{gap:8px}.game-intro h3{font-size:15px}.memory-card .card-check{width:14px;height:14px;right:2px;top:2px;font-size:9px}}
 @media(prefers-reduced-motion:reduce){.memory-card.ant-btn{transition:none}.memory-card:not(.revealed):hover{transform:none}}
 </style>

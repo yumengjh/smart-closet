@@ -14,6 +14,8 @@ import {
   VerticalAlignBottomOutlined, VerticalAlignTopOutlined, DragOutlined, FullscreenOutlined,
 } from '@ant-design/icons-vue'
 import { useClosetStore } from '../stores/closet'
+import { useThemeStore } from '../stores/theme'
+import { tokens } from '../theme/tokens'
 import { closetApi, type Garment } from '../services/api'
 import { dropOutfitLayer, elementKey, normalizeScene, stickerLimit, copySticker, OUTFIT_HEIGHT, OUTFIT_VERSION, OUTFIT_WIDTH, outfitDropPosition, outfitRoleOptions, reorderOutfitElements, restoreOutfitDraft, roleFromGarment, type Outfit, type OutfitDraft, type OutfitElement, type OutfitLayerMove, type OutfitRole, type OutfitScene } from '../domain/outfit'
 import { artworkForGarment, createOutfitElement, downloadOutfitPng, loadOutfitImage } from '../domain/outfit-images'
@@ -37,6 +39,8 @@ const actualRoute = useRoute()
 const route = new Proxy(actualRoute, { get(target, key) { if (props.board && key === 'params') return { id: props.board.outfitId || 'new' }; return Reflect.get(target, key) } })
 const router = useRouter()
 const closet = useClosetStore()
+const appearance = useThemeStore()
+const accentColor = computed(() => tokens[appearance.isDark ? 'dark' : 'light'].accent)
 const { message, modal } = App.useApp()
 const editing = computed(() => Boolean(route.params.id))
 const isNew = computed(() => route.params.id === 'new')
@@ -723,7 +727,7 @@ function transformEnd(_event: { target: Konva.Group }, _item: OutfitElement) {
 }
 function styleTransformAnchor(anchor: Konva.Rect) {
   anchor.hitStrokeWidth(compact.value ? 24 : 8)
-  if (anchor.hasName('rotater')) { anchor.cornerRadius(12); anchor.fill('#3f6ff5') }
+  if (anchor.hasName('rotater')) { anchor.cornerRadius(12); anchor.fill(accentColor.value) }
 }
 
 async function refreshImages() {
@@ -956,7 +960,7 @@ defineExpose({ flush: persistDraft, exportPng })
       <div class="outfit-library-toolbar"><a-input v-model:value="librarySearch" allow-clear placeholder="搜索搭配名称" aria-label="搜索搭配"><template #prefix><SearchOutlined /></template></a-input><span class="muted">{{ displayedOutfits.length }} 套搭配 · 最近更新</span></div>
       <section v-if="displayedOutfits.length" class="outfit-library-grid" aria-label="已保存的穿搭">
         <article v-for="outfit in displayedOutfits" :key="outfit.id" class="outfit-card">
-          <RouterLink :to="`/outfits/${outfit.id}`" class="outfit-card-preview" @click="playSound('tap')"><OutfitThumbnail :scene="outfit.scene" :title="outfit.name" /><a-tag class="outfit-card-count">{{ outfit.scene.elements.length }} 张贴纸</a-tag><a-tag v-if="outfit.scene.elements.some(item => item.garmentChanged || item.garmentStatus === 'TRASHED')" color="orange" class="outfit-card-status">衣物有更新</a-tag></RouterLink>
+          <RouterLink :to="`/outfits/${outfit.id}`" class="outfit-card-preview" @click="playSound('tap')"><OutfitThumbnail :scene="outfit.scene" :title="outfit.name" /><a-tag class="outfit-card-count">{{ outfit.scene.elements.length }} 张贴纸</a-tag><a-tag v-if="outfit.scene.elements.some(item => item.garmentChanged || item.garmentStatus === 'TRASHED')" color="warning" class="outfit-card-status">衣物有更新</a-tag></RouterLink>
           <div class="outfit-card-details"><div><RouterLink :to="`/outfits/${outfit.id}`" class="outfit-card-name">{{ outfit.name }}</RouterLink><span>{{ new Date(outfit.updatedAtMs).toLocaleDateString() }} 更新</span></div><a-dropdown :trigger="['click']"><a-button type="text" aria-label="搭配更多操作"><MoreOutlined /></a-button><template #overlay><a-menu><a-menu-item @click="router.push(`/outfits/${outfit.id}`)">编辑搭配</a-menu-item><a-menu-item @click="startCopy(outfit)"><CopyOutlined /> 复制搭配</a-menu-item><a-menu-divider /><a-menu-item danger @click="confirmDelete(outfit)"><DeleteOutlined /> 删除搭配</a-menu-item></a-menu></template></a-dropdown></div>
         </article>
       </section>
@@ -1005,7 +1009,7 @@ defineExpose({ flush: persistDraft, exportPng })
                 @click="playSound('tick'); selectElement(elementKey(item), $event.evt.shiftKey || $event.evt.ctrlKey || $event.evt.metaKey, $event.evt.shiftKey)" @tap="playSound('tick'); selectElement(elementKey(item))" @dbltap="selectElement(elementKey(item)); inspectorOpen = true" @contextmenu="canvasContextMenu($event, item)" @touchstart="beginTouch($event, item)" @touchmove="cancelLongPress" @touchend="cancelLongPress" @dragstart="startSelectionDrag($event, item)" @dragmove="moveSelectionDrag($event, item)" @dragend="dragEnd($event, item)" @transformend="transformEnd($event, item)">
                 <v-image :config="{ image: imageMap[item.assetUrl], scaleX: item.flipX ? -1 : 1, x: (item.flipX ? 1 : -1) * item.width * canvasScale / 2, y: -item.height * canvasScale / 2, width: item.width * canvasScale, height: item.height * canvasScale, crop: { x: item.cropX * item.imageWidth, y: item.cropY * item.imageHeight, width: item.cropWidth * item.imageWidth, height: item.cropHeight * item.imageHeight }, visible: Boolean(imageMap[item.assetUrl]) }" />
               </v-group>
-              <v-transformer ref="transformer" :config="{ keepRatio: !currentItem?.freeStretch, shiftBehavior: currentItem?.freeStretch ? 'default' : 'inverted', rotationSnaps: shiftHeld ? Array.from({ length: 24 }, (_, i) => i * 15) : [], rotationSnapTolerance: 8, rotateEnabled: true, flipEnabled: false, enabledAnchors: ['top-left', 'top-center', 'top-right', 'middle-left', 'middle-right', 'bottom-left', 'bottom-center', 'bottom-right'], anchorSize: compact ? 22 : 12, anchorCornerRadius: 3, anchorStyleFunc: styleTransformAnchor, borderStroke: '#3f6ff5', anchorStroke: '#3f6ff5', anchorFill: '#ffffff', rotateAnchorOffset: compact ? 32 : 24, padding: 6 }" />
+              <v-transformer ref="transformer" :config="{ keepRatio: !currentItem?.freeStretch, shiftBehavior: currentItem?.freeStretch ? 'default' : 'inverted', rotationSnaps: shiftHeld ? Array.from({ length: 24 }, (_, i) => i * 15) : [], rotationSnapTolerance: 8, rotateEnabled: true, flipEnabled: false, enabledAnchors: ['top-left', 'top-center', 'top-right', 'middle-left', 'middle-right', 'bottom-left', 'bottom-center', 'bottom-right'], anchorSize: compact ? 22 : 12, anchorCornerRadius: 3, anchorStyleFunc: styleTransformAnchor, borderStroke: accentColor, anchorStroke: accentColor, anchorFill: '#ffffff', rotateAnchorOffset: compact ? 32 : 24, padding: 6 }" />
             </v-layer>
           </v-stage>
           <div v-if="!elements.length && !dragOver" class="outfit-board-empty"><PictureOutlined /><strong>选一张贴纸，开始搭配</strong><span>{{ compact ? '从底部打开素材栏，点选加入' : '从左侧点击加入，或直接拖到这里' }}</span><a-button v-if="compact" @click="pickerOpen = true"><PlusOutlined /> 选择贴纸</a-button></div>

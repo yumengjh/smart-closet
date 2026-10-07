@@ -9,6 +9,7 @@ import {
 } from '@ant-design/icons-vue'
 import { useClosetStore } from '../stores/closet'
 import { useThemeStore } from '../stores/theme'
+import { antTokens, antComponentTokens } from '../theme/tokens'
 import { usingMocks } from '../services/api'
 import SoundToggle from './SoundToggle.vue'
 import ThemeToggle from './ThemeToggle.vue'
@@ -31,29 +32,8 @@ watch(() => processing.latestNotice, notice => { if (notice) void closet.refresh
 onUnmounted(() => processing.stop())
 const closetTheme = computed(() => ({
   algorithm: appearance.isDark ? antTheme.darkAlgorithm : antTheme.defaultAlgorithm,
-  token: {
-    colorPrimary: appearance.isDark ? '#829fff' : '#202124',
-    colorInfo: appearance.isDark ? '#91aaff' : '#3f6ff5',
-    colorLink: appearance.isDark ? '#adc2ff' : '#2958cc',
-    colorSuccess: appearance.isDark ? '#66c49a' : '#25815d',
-    colorWarning: appearance.isDark ? '#e5b65e' : '#ac721c',
-    colorError: appearance.isDark ? '#f08d8d' : '#c74747',
-    colorText: appearance.isDark ? '#edf0f6' : '#25262b',
-    colorTextSecondary: appearance.isDark ? '#aeb5c2' : '#737680',
-    colorTextLightSolid: appearance.isDark ? '#151a27' : '#ffffff',
-    colorBgBase: appearance.isDark ? '#191c23' : '#ffffff',
-    colorBgLayout: appearance.isDark ? '#191c23' : '#f7f8fa',
-    colorBgContainer: appearance.isDark ? '#242832' : '#ffffff',
-    colorBorder: appearance.isDark ? '#3b404b' : '#e8e9ee',
-    borderRadius: 10,
-    controlHeight: 44,
-    fontSize: 14,
-    fontFamily: '"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif',
-  },
-  components: {
-    Button: { fontWeight: 500, primaryShadow: 'none' },
-    Input: { activeShadow: appearance.isDark ? '0 0 0 3px #829fff30' : '0 0 0 3px #3b6cf51c' },
-  },
+  token: antTokens(appearance.isDark ? 'dark' : 'light'),
+  components: antComponentTokens(appearance.isDark ? 'dark' : 'light'),
 }))
 const isLogin = computed(() => route.path === '/login')
 const isOutfitEditor = computed(() => route.path.startsWith('/outfits/'))

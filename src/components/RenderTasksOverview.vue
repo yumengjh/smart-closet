@@ -34,4 +34,4 @@ onUnmounted(()=>{alive=false;clearTimeout(timer);window.removeEventListener('clo
     </article>
   </section>
 </template>
-<style scoped>.render-task-overview{margin:24px 0}.render-task-overview h2{margin:0}.render-task-overview article{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 0;border-bottom:1px solid var(--border-color,#ddd)}.render-task-overview article p{margin:6px 0}</style>
+<style scoped>.render-task-overview{margin:24px 0}.render-task-overview h2{margin:0}.render-task-overview article{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 0;border-bottom:1px solid var(--line)}.render-task-overview article p{margin:6px 0}</style>

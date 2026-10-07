@@ -13,5 +13,5 @@ import { soundEnabled, toggleSound } from '../services/sound'
 
 <style scoped>
 .sound-toggle.ant-btn { flex: none; width: 44px; min-width: 44px; height: 44px; padding: 0; }
-.sound-toggle[aria-pressed="true"] { color: var(--link); background: var(--accent-soft); }
+.sound-toggle[aria-pressed="true"] { color: var(--accent-strong); background: var(--accent-soft); }
 </style>

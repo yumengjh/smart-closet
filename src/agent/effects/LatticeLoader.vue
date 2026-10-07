@@ -18,7 +18,7 @@ onUnmounted(() => clearInterval(clock))
 <style scoped>
 .lattice-loader { display: flex; align-items: center; gap: 10px; min-height: 28px; color: var(--ink); font-size: 13px; }
 .lattice-grid { flex: none; display: grid; grid-template-columns: repeat(3, 4px); gap: 2px; }
-.lattice-grid > span { width: 4px; height: 4px; border-radius: 1px; background: var(--blue); opacity: .2; animation: lattice-cell-wave 864ms cubic-bezier(.77, 0, .175, 1) infinite; }
+.lattice-grid > span { width: 4px; height: 4px; border-radius: 1px; background: var(--accent); opacity: .2; animation: lattice-cell-wave 864ms cubic-bezier(.77, 0, .175, 1) infinite; }
 .lattice-grid > span.hole { opacity: .1; animation: none; }
 .lattice-label { min-width: 0; overflow-wrap: anywhere; }
 .lattice-timer { flex: none; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }

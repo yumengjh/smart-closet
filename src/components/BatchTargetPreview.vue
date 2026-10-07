@@ -11,4 +11,4 @@ const crop=computed(()=>{
 })
 </script>
 <template><span class="target-preview"><img v-if="preview.url" :src="mediaUrl(preview.url)" :style="preview.cropped?crop:undefined" :class="{processed:!preview.cropped}" :alt="target.recognition.target.description" /></span></template>
-<style scoped>.target-preview{position:relative;display:block;flex:none;width:64px;height:64px;overflow:hidden;border-radius:8px;background:var(--surface-soft)}.target-preview img{position:absolute;max-width:none;object-fit:fill}.target-preview img.processed{position:static;width:100%;height:100%;object-fit:contain}</style>
+<style scoped>.target-preview{position:relative;display:block;flex:none;width:64px;height:64px;overflow:hidden;border-radius:var(--radius-sm);background:var(--surface-soft)}.target-preview img{position:absolute;max-width:none;object-fit:fill}.target-preview img.processed{position:static;width:100%;height:100%;object-fit:contain}</style>

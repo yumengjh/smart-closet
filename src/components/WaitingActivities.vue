@@ -16,7 +16,7 @@ function wardrobe() { emit('chosen'); void router.push('/wardrobe') }
   </section>
 </template>
 <style scoped>
-.waiting-activities{width:100%;padding:24px;border:1px solid var(--line);border-radius:12px;background:var(--surface);text-align:left}.waiting-activities-heading strong{font-size:16px;font-weight:600}.waiting-activities-heading p{margin:8px 0 18px;color:var(--muted);font-size:14px;line-height:1.7}.waiting-activities-buttons{display:flex;flex-wrap:wrap;gap:10px}.waiting-activities small{display:block;margin-top:14px;font-size:12px;color:var(--muted);line-height:1.7}@media(max-width:640px){.waiting-activities{padding:20px 16px}.waiting-activities-buttons{display:grid;grid-template-columns:1fr}.waiting-activities-buttons .ant-btn{width:100%}}
+.waiting-activities{width:100%;padding:24px;border:1px solid var(--line);border-radius:var(--radius-lg);background:var(--surface);text-align:left}.waiting-activities-heading strong{font-size:16px;font-weight:600}.waiting-activities-heading p{margin:8px 0 18px;color:var(--muted);font-size:14px;line-height:1.7}.waiting-activities-buttons{display:flex;flex-wrap:wrap;gap:10px}.waiting-activities small{display:block;margin-top:14px;font-size:12px;color:var(--muted);line-height:1.7}@media(max-width:640px){.waiting-activities{padding:20px 16px}.waiting-activities-buttons{display:grid;grid-template-columns:1fr}.waiting-activities-buttons .ant-btn{width:100%}}
 </style>
 <style scoped>
 .waiting-activities.invitation{border:0;padding:0}.invitation .waiting-activities-buttons{display:grid;grid-template-columns:1fr}.invitation .waiting-activities-buttons .ant-btn{width:100%;min-height:44px}.invitation small{text-align:center}
