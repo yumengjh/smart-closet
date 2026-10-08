@@ -15,7 +15,7 @@ const groups = computed(() => {
   const pick = (kinds: string[]) => list.filter(s => kinds.includes(s.kind))
   return [
     { title: '冷却中的单品', items: pick(['COOLDOWN']) },
-    { title: '你对搭配的反馈', items: pick(['COMBO', 'PAIR', 'ITEM', 'MIX', 'FEEDBACK']) },
+    { title: '你对搭配的反馈', items: pick(['COMBO', 'ITEM', 'MIX', 'FEEDBACK']).concat(list.filter(s => s.kind === 'PAIR' && s.weight < 0)) },
     { title: '颜色、风格与常穿组合', items: pick(['COLOR', 'STYLE', 'MEMORY']).concat(list.filter(s => s.kind === 'PAIR' && s.weight > 0)) },
     { title: '很久没穿的衣物', items: pick(['IDLE']) },
   ].filter(g => g.items.length)
