@@ -6,7 +6,7 @@ import { playSound } from '../services/sound'
 
 /** 搭配模板审核 (D31): review state lives in the database and overrides the file defaults; changes apply to the next recommendation. */
 defineProps<{ embedded?: boolean }>()
-type Slot = { roles: string[]; categoryAny: string[]; colorAny: string[]; styleAny: string[]; patternMax: number | null; fitAny?: string[] }
+type Slot = { roles: string[]; categoryAny: string[]; colorAny: string[]; styleAny: string[]; patternMax: number | null; fitAny?: string[]; patternMin?: number | null }
 type Meta = { kind: 'CLASSIC' | 'TREND'; audience: string[]; occasions: string[]; seasons: string[]; validFrom: string | null; validUntil: string | null; reference: string }
 type Entry = { id: string; text: string; bonus: number; defaultBonus: number; enabled: boolean; reviewStatus: 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED'; reviewedBy: string | null; reviewedAtMs: number; slots: Slot[]; meta?: Meta }
 const { message } = App.useApp()
@@ -34,6 +34,7 @@ function slotText(s: Slot) {
   if (s.colorAny.length) parts.push('颜色 ' + s.colorAny.map(c => COLOR[c] || c).join('/'))
   if (s.styleAny.length) parts.push('风格 ' + s.styleAny.join('/'))
   if (s.patternMax !== null && s.patternMax !== undefined) parts.push(s.patternMax === 0 ? '纯色' : `花纹≤${s.patternMax}`)
+  if (s.patternMin) parts.push('需带花纹')
   if (s.fitAny?.length) parts.push('版型 ' + s.fitAny.join('/'))
   return parts.join('，')
 }
