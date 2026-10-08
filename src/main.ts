@@ -23,7 +23,7 @@ for (const [name, component] of Object.entries({
   'a-radio-group': Radio.Group, 'a-radio-button': Radio.Button, 'a-radio': Radio, 'a-collapse': Collapse, 'a-collapse-panel': Collapse.Panel, 'a-checkbox': Checkbox, 'a-popover': Popover, 'a-textarea': Input.TextArea, 'a-input': Input, 'a-input-password': InputPassword, 'a-auto-complete': AutoComplete, 'a-progress': Progress,
   'a-select': Select, 'a-select-option': SelectOption, 'a-spin': Spin, 'a-switch': Switch, 'a-segmented': Segmented, 'a-skeleton': Skeleton, 'a-modal': Modal,
   'a-drawer': Drawer, 'a-dropdown': Dropdown, 'a-menu': Menu, 'a-menu-item': Menu.Item, 'a-menu-divider': Menu.Divider,
-  'a-tooltip': Tooltip, 'a-empty': Empty, 'a-tag': Tag, 'a-form': Form, 'a-form-item': Form.Item,
+  'a-tooltip': Tooltip, 'a-empty': Empty, 'a-tag': Tag, 'a-checkable-tag': Tag.CheckableTag, 'a-form': Form, 'a-form-item': Form.Item,
   'a-input-number': InputNumber, 'a-slider': Slider, 'a-descriptions': Descriptions, 'a-descriptions-item': Descriptions.Item,
 })) app.component(name, component)
 installPwa()

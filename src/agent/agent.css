@@ -76,3 +76,27 @@
 .bloub-orb-shape > svg { position: relative; left: calc(var(--orb-size, 64px) * -.125); top: calc(var(--orb-size, 64px) * -.125); }
 
 .assistant-header-avatar { display: inline-flex; align-items: center; justify-content: center; }.assistant-header-avatar > svg { display: block; flex: none; width: 125%; height: 125%; }
+/* Recommendation cards (design 8.3): every number and sentence comes from the server's white-box scoring. */
+.recommend-intent { margin: 0 0 6px; font-size: 12px; color: var(--accent); }
+.agent-candidate h3 { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.recommend-score { flex: none; font-size: 18px; font-weight: 600; color: var(--accent); }.recommend-score small { font-size: 11px; font-weight: 400; margin-left: 2px; color: var(--muted); }
+.recommend-tags { display: flex; flex-wrap: wrap; gap: 4px; margin: -2px 0 8px; }.recommend-tags .ant-tag { margin: 0; }
+.recommend-highlights, .recommend-warnings { list-style: none; margin: 0 0 8px; padding: 0; font-size: 12px; line-height: 1.8; }
+.recommend-highlights li::before { content: '✓'; color: var(--success); margin-right: 6px; }
+.recommend-warnings li { color: var(--warning); }.recommend-warnings .anticon { margin-right: 6px; }
+.agent-candidate p.recommend-model-reason { flex: none; margin: 0 0 8px; }
+.recommend-collapse.ant-collapse { margin: 0 -12px 4px; }.recommend-collapse .ant-collapse-header { font-size: 12px; color: var(--muted) !important; padding: 6px 12px !important; }
+.recommend-feedback { display: flex; gap: 2px; justify-content: flex-end; margin: 0 0 8px; }.recommend-feedback .ant-btn.is-active { color: var(--accent); background: var(--accent-soft); }
+.recommend-feedback-reasons { display: flex; flex-wrap: wrap; gap: 6px; max-width: 240px; margin-bottom: 10px; }.recommend-feedback-reasons .ant-tag { margin: 0; }
+.recommend-feedback-item { width: 100%; margin-bottom: 10px; }
+.recommend-explain h4 { font-size: 12px; font-weight: 500; margin: 6px 0 8px; color: var(--ink); }
+.recommend-explain section + section { margin-top: 14px; }
+.recommend-dimension { margin-bottom: 10px; }.recommend-dimension-head { display: flex; align-items: baseline; gap: 6px; font-size: 12px; }
+.recommend-dimension-head small { color: var(--muted-subtle); font-size: 11px; }.recommend-dimension-head strong { margin-left: auto; font-weight: 500; }
+.recommend-dimension .ant-progress { margin: 0 0 2px; }
+.recommend-dimension ul { list-style: none; margin: 0; padding: 0; font-size: 11px; line-height: 1.7; color: var(--muted); }
+.recommend-dimension li .anticon { margin-right: 5px; font-size: 10px; }.recommend-dimension li.is-positive .anticon { color: var(--success); }.recommend-dimension li.is-negative .anticon { color: var(--warning); }
+.recommend-garments { list-style: none; margin: 0; padding: 0; }.recommend-garments li { padding: 6px 0; border-top: 1px solid var(--line); }
+.recommend-garments li div { display: flex; align-items: center; gap: 6px; font-size: 12px; }.recommend-garments li .ant-tag { margin: 0; font-size: 11px; }.recommend-garments li small { color: var(--muted-subtle); }
+.agent-candidate .recommend-garments li p { margin: 2px 0 0; font-size: 11px; line-height: 1.6; flex: none; }
+.recommend-outers .ant-alert { font-size: 12px; margin-bottom: 6px; }
