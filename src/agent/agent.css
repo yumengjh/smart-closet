@@ -78,6 +78,8 @@
 .assistant-header-avatar { display: inline-flex; align-items: center; justify-content: center; }.assistant-header-avatar > svg { display: block; flex: none; width: 125%; height: 125%; }
 /* Recommendation cards (design 8.3): every number and sentence comes from the server's white-box scoring. */
 .recommend-intent { margin: 0 0 6px; font-size: 12px; color: var(--accent); }
+.recommend-notices { margin: 0 0 8px; }
+.recommend-notices ul { margin: 0; padding-left: 18px; }
 .agent-candidate h3 { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 .recommend-score { flex: none; font-size: 18px; font-weight: 600; color: var(--accent); }.recommend-score small { font-size: 11px; font-weight: 400; margin-left: 2px; color: var(--muted); }
 .recommend-tags { display: flex; flex-wrap: wrap; gap: 4px; margin: -2px 0 8px; }.recommend-tags .ant-tag { margin: 0; }

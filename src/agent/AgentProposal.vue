@@ -22,6 +22,8 @@ const scenes = ref<OutfitScene[]>([]); const error = ref(''); const busy = ref(f
 const current = computed(() => Boolean(canvasBridge.value && route.path.startsWith('/outfits/')))
 const isOutfits = computed(() => props.proposal.kind === 'OUTFITS' || props.proposal.kind === 'RECOMMENDATION')
 const isRecommendation = computed(() => props.proposal.kind === 'RECOMMENDATION')
+// Server-written limits (e.g. paused garments) and user-only notes; shown as-is, never rephrased here.
+const notices = computed(() => isRecommendation.value ? [...(props.proposal.payload.limits ?? []), ...(props.proposal.payload.notes ?? [])] : [])
 const count = computed(() => props.proposal.payload.candidates?.length || 0)
 const cardTitle = computed(() => isRecommendation.value ? `为你推荐了 ${count.value} 套搭配` : isOutfits.value ? '为你挑了三套搭配' : '画布修改预览')
 const explained = ref<string[]>([])
@@ -80,6 +82,7 @@ function confirmApply(index: number, intoCurrent: boolean) {
       </a-button>
       <a-modal v-model:open="expanded" :title="isOutfits ? '从你的衣柜，为你组合' : '确认画布修改'" :width="1100" :footer="null" wrap-class-name="agent-preview-modal">
         <p v-if="isRecommendation && proposal.payload.intent" class="recommend-intent">按“{{ proposal.payload.intent }}”推荐 · 分数与理由由系统按规则计算，可展开查看</p>
+        <a-alert v-if="notices.length" class="recommend-notices" type="info" show-icon message="本次推荐的限制与说明"><template #description><ul><li v-for="n in notices" :key="n">{{ n }}</li></ul></template></a-alert>
         <p class="agent-preview-intro">{{ used ? '这份建议已经处理，仍可查看预览。' : '先看看整体效果。应用后仍是草稿，保存时会再次请你确认。' }}</p>
         <a-alert v-if="error" type="warning" :message="error" show-icon /><a-button v-if="error" @click="preview">重新加载预览</a-button>
         <p v-if="isOutfits" class="agent-preview-mobile-hint">左右滑动，查看{{ count }}套搭配</p>
