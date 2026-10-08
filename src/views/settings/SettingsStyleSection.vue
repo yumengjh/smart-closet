@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { App } from 'ant-design-vue'
 import { playSound } from '../../services/sound'
 import { recommendApi } from '../../recommend/api'
+import RecommendationStatsCard from '../../recommend/RecommendationStatsCard.vue'
 import type { Statement, StyleProfileView } from '../../recommend/types'
 import { STRICTNESS_NOTES, strictnessNote } from '../../recommend/format'
 
@@ -83,6 +84,7 @@ const marks = { 0: '宽松', 25: ' ', 50: '推荐', 75: ' ', 100: '严格' }
         <p class="style-profile-note"><strong>{{ strictness }}</strong> · {{ strictnessNote(strictness) }}<a-button v-if="profile.settings.semanticStrictness !== null" type="link" size="small" :loading="saving === 'strictness-reset'" @click="patch({ semanticStrictness: null }, 'strictness-reset', '已恢复推荐档。')">恢复推荐档</a-button></p>
         <ul class="style-profile-slider-marks"><li v-for="l in profile.strictness.levels" :key="l.level">{{ l.level }}：{{ STRICTNESS_NOTES[l.level] }}（相似度门槛 {{ l.threshold }}）</li></ul>
       </section>
+      <RecommendationStatsCard />
       <section class="settings-card">
         <h3>清空画像</h3>
         <p class="muted">清空后画像从头统计，屏蔽项一并清除；推荐、反馈和穿着记录本身保留。</p>

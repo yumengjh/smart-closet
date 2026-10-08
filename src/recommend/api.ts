@@ -1,5 +1,5 @@
 import { request } from '../services/api'
-import type { Explanation, IntentInput, RecommendationView, RecommendedOutfit, StyleProfileView, SwapView, Verdict, WearSummary } from './types'
+import type { Explanation, InspirationView, IntentInput, RecommendationStats, RecommendationView, RecommendedOutfit, StyleProfileView, SwapView, Verdict, WearSummary } from './types'
 
 type Signal = { kind: 'VIEW_DETAIL' | 'OPEN_WORKSPACE' | 'SWAP_OUT'; logId?: string; garmentId?: string }
 
@@ -25,6 +25,11 @@ export const recommendApi = {
   recommend(intent: IntentInput) {
     return request<RecommendationView>('/api/recommendations', { method: 'POST', body: JSON.stringify(intent) }).then(view => { rememberRun(view.runId); return view })
   },
+  inspiration(temperatureC?: number | null) {
+    const q = temperatureC === null || temperatureC === undefined ? '' : `?temperatureC=${temperatureC}`
+    return request<InspirationView>(`/api/recommendations/inspiration${q}`)
+  },
+  stats(days = 30) { return request<RecommendationStats>(`/api/recommendations/stats?days=${days}`) },
   more(runId: string, count = 3) { return request<RecommendationView>(`/api/recommendations/${runId}/more?count=${count}`) },
   swap(runId: string, outfitKey: string, garmentId: string) {
     return request<SwapView>(`/api/recommendations/${runId}/outfits/${outfitKey}/swap?garmentId=${encodeURIComponent(garmentId)}`)

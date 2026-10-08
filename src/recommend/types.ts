@@ -69,3 +69,22 @@ export const ROLE_LABELS: Record<string, string> = {
 export function scoreTone(score: number): 'success' | 'normal' | 'exception' {
   return score >= 75 ? 'success' : score >= 50 ? 'normal' : 'exception'
 }
+
+/** GET /api/recommendations/inspiration (P4 今日灵感): reviewed templates filled with the user's own clothes. */
+export type InspirationIdea = { key: string; templateId: string; text: string; kind: 'CLASSIC' | 'TREND'; label: string }
+export type InspirationGap = { templateId: string; text: string; kind: 'CLASSIC' | 'TREND'; missing: string; have: string[]; hint: string }
+export type InspirationView = { view: RecommendationView; ideas: InspirationIdea[]; gaps: InspirationGap[]; approvedTemplates: number; applicableTemplates: number }
+
+/** GET /api/recommendations/stats (P4): adoption and model cost over the last N days. */
+export type RecommendationStats = {
+  days: number
+  effect: {
+    shown: number; adopted: number; adoptionRate: number | null; liked: number; disliked: number; likeRate: number | null
+    openedInWorkspace: number; wornWithin3Days: number; swaps: number; swapPerShown: number | null
+    bySource: Record<string, { shown: number; adopted: number }>; definition: string
+  }
+  cost: {
+    agentMessages: number; imageCredits: number; agentCalls: number; inputTokens: number; outputTokens: number; unknownUsage: number
+    zeroModelRecommendations: number; note: string
+  }
+}

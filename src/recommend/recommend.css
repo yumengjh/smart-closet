@@ -69,3 +69,9 @@
   .recommend-detail { grid-template-columns: 1fr; }
   .recommend-intent-field .ant-input-number-group-wrapper { width: 120px; }
 }
+/* 今日灵感 (P4) */
+.recommend-strip-mode { margin-top: 10px; }
+.recommend-inspiration { display: grid; gap: 12px; }
+.recommend-inspiration-meta { margin: 0; font-size: 13px; }
+.recommend-gaps { padding: 10px 12px; border: 1px dashed var(--line); border-radius: 10px; }
+.recommend-gaps ul { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 4px; font-size: 13px; }
