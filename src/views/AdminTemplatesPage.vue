@@ -1,0 +1,83 @@
+<script setup lang="ts">
+import { computed, onMounted, ref } from 'vue'
+import { App } from 'ant-design-vue'
+import { request } from '../services/api'
+import { playSound } from '../services/sound'
+
+/** 搭配模板审核 (D31): review state lives in the database and overrides the file defaults; changes apply to the next recommendation. */
+defineProps<{ embedded?: boolean }>()
+type Slot = { roles: string[]; categoryAny: string[]; colorAny: string[]; styleAny: string[]; patternMax: number | null }
+type Entry = { id: string; text: string; bonus: number; defaultBonus: number; enabled: boolean; reviewStatus: 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED'; reviewedBy: string | null; reviewedAtMs: number; slots: Slot[] }
+const { message } = App.useApp()
+const items = ref<Entry[]>([]); const active = ref(0); const loading = ref(true); const error = ref(''); const busy = ref('')
+const selected = ref<string[]>([]); const filter = ref<'ALL' | 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED'>('PENDING_REVIEW')
+const STATUS: Record<string, { label: string; color: string }> = { PENDING_REVIEW: { label: '待审核', color: 'default' }, APPROVED: { label: '已通过', color: 'green' }, REJECTED: { label: '已停用', color: 'red' } }
+const ROLE: Record<string, string> = { TOP: '上装', BOTTOM: '下装', ONE_PIECE: '连衣裙/连体', SHOES: '鞋', HAT: '帽', BAG: '包', OUTER: '外层' }
+const COLOR: Record<string, string> = { BLACK: '黑', WHITE: '白', GRAY: '灰', BEIGE: '米', BROWN: '棕', NAVY: '藏蓝', DENIM: '牛仔蓝', BLUE: '蓝', RED: '红', ORANGE: '橙', YELLOW: '黄', GREEN: '绿', PURPLE: '紫', PINK: '粉' }
+const shown = computed(() => filter.value === 'ALL' ? items.value : items.value.filter(i => i.reviewStatus === filter.value))
+function slotText(s: Slot) {
+  const parts = [s.roles.map(r => ROLE[r] || r).join('/') || '任意位置']
+  if (s.categoryAny.length) parts.push(s.categoryAny.join('/'))
+  if (s.colorAny.length) parts.push('颜色 ' + s.colorAny.map(c => COLOR[c] || c).join('/'))
+  if (s.styleAny.length) parts.push('风格 ' + s.styleAny.join('/'))
+  if (s.patternMax !== null && s.patternMax !== undefined) parts.push(s.patternMax === 0 ? '纯色' : `花纹≤${s.patternMax}`)
+  return parts.join('，')
+}
+async function load() {
+  loading.value = true; error.value = ''
+  try { const r = await request<{ items: Entry[]; active: number }>('/api/admin/outfit-templates'); items.value = r.items; active.value = r.active }
+  catch (e) { error.value = e instanceof Error ? e.message : '模板列表暂时无法加载。' }
+  finally { loading.value = false }
+}
+onMounted(load)
+async function review(id: string, body: Record<string, unknown>) {
+  busy.value = id
+  try {
+    const next = await request<Entry>(`/api/admin/outfit-templates/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(body) })
+    items.value = items.value.map(i => i.id === id ? next : i); active.value = items.value.filter(i => i.reviewStatus === 'APPROVED' && i.enabled).length; playSound('tap')
+  } catch (e) { playSound('error'); message.error(e instanceof Error ? e.message : '保存失败。') }
+  finally { busy.value = '' }
+}
+async function batch(status: 'APPROVED' | 'REJECTED') {
+  busy.value = 'batch'
+  try {
+    await request('/api/admin/outfit-templates/review', { method: 'POST', body: JSON.stringify({ ids: selected.value, reviewStatus: status }) })
+    message.success(`已${status === 'APPROVED' ? '通过' : '停用'} ${selected.value.length} 条。`); selected.value = []; await load(); playSound('success')
+  } catch (e) { playSound('error'); message.error(e instanceof Error ? e.message : '批量操作失败。') }
+  finally { busy.value = '' }
+}
+const columns = [
+  { title: '搭法', key: 'text' }, { title: '条件', key: 'slots' }, { title: '加分', key: 'bonus', width: 120 }, { title: '状态', key: 'status', width: 110 }, { title: '操作', key: 'actions', width: 200 },
+]
+</script>
+<template>
+  <header v-if="!embedded" class="page-heading"><div><h1>搭配模板审核</h1><p>通过并启用的模板命中时加分（最多 5 分），卡片显示“经典搭法”。审核结果存数据库，立即生效，不改动资源文件。</p></div></header>
+  <div class="settings-section-content">
+    <a-alert v-if="error" type="error" show-icon :message="error"><template #action><a-button size="small" @click="load">重试</a-button></template></a-alert>
+    <div class="template-review-toolbar">
+      <a-segmented v-model:value="filter" :options="[{ value: 'PENDING_REVIEW', label: '待审核' }, { value: 'APPROVED', label: '已通过' }, { value: 'REJECTED', label: '已停用' }, { value: 'ALL', label: '全部' }]" />
+      <span class="muted">共 {{ items.length }} 条 · 生效 {{ active }} 条</span>
+      <a-button type="primary" :disabled="!selected.length" :loading="busy === 'batch'" @click="batch('APPROVED')">批量通过（{{ selected.length }}）</a-button>
+      <a-button :disabled="!selected.length" :loading="busy === 'batch'" @click="batch('REJECTED')">批量停用</a-button>
+    </div>
+    <a-table class="template-review-table" :data-source="shown" :columns="columns" row-key="id" size="small" :loading="loading" :pagination="{ pageSize: 20 }" :scroll="{ x: 760 }"
+      :row-selection="{ selectedRowKeys: selected, onChange: (keys: (string | number)[]) => { selected = keys.map(String) } }">
+      <template #bodyCell="{ column, record }">
+        <template v-if="column.key === 'text'"><strong>{{ record.text }}</strong><br /><small class="muted">{{ record.id }}</small></template>
+        <template v-else-if="column.key === 'slots'"><ul class="template-review-slots"><li v-for="(s, i) in record.slots" :key="i">{{ slotText(s) }}</li></ul></template>
+        <template v-else-if="column.key === 'bonus'"><a-input-number :value="record.bonus" :min="0" :max="5" :step="0.5" size="small" :disabled="busy === record.id" aria-label="加分" @change="(v: number | string | null) => v !== null && Number(v) !== record.bonus && review(record.id, { bonus: Number(v) })" /></template>
+        <template v-else-if="column.key === 'status'"><a-tag :color="STATUS[record.reviewStatus].color">{{ STATUS[record.reviewStatus].label }}</a-tag><a-tag v-if="!record.enabled">已关闭</a-tag></template>
+        <template v-else-if="column.key === 'actions'">
+          <a-space wrap>
+            <a-button v-if="record.reviewStatus !== 'APPROVED'" size="small" type="primary" :loading="busy === record.id" @click="review(record.id, { reviewStatus: 'APPROVED', enabled: true })">通过</a-button>
+            <a-button v-if="record.reviewStatus !== 'REJECTED'" size="small" :loading="busy === record.id" @click="review(record.id, { reviewStatus: 'REJECTED' })">停用</a-button>
+            <a-button v-if="record.reviewStatus !== 'PENDING_REVIEW'" size="small" type="link" :loading="busy === record.id" @click="review(record.id, { reviewStatus: 'PENDING_REVIEW' })">退回待审</a-button>
+          </a-space>
+        </template>
+      </template>
+    </a-table>
+  </div>
+</template>
+<style scoped>
+.template-review-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+</style>

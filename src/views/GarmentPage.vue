@@ -3,6 +3,7 @@ import { createUuid } from '../domain/id'
 import { quickApi } from '../services/quickIntake'
 import { mediaUrl } from '../services/urls'
 import { computed, onMounted, onUnmounted, reactive, ref, toRaw, watch } from 'vue'
+import GarmentRecommendPanel from '../recommend/GarmentRecommendPanel.vue'
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import { ArrowLeftOutlined, CheckOutlined, DeleteOutlined, ReloadOutlined, RollbackOutlined, PictureOutlined, StopOutlined, EyeOutlined, InfoCircleOutlined, EditOutlined, SettingOutlined, HistoryOutlined } from '@ant-design/icons-vue'
 import { App as AntApp } from 'ant-design-vue'
@@ -330,11 +331,12 @@ watch(() => route.query.task, async () => { await load(); schedulePoll() })
             <div v-if="garment.status === 'DRAFT'" class="section-divider"><h3>稍后再做贴纸</h3><p>本次使用上传原图入柜，以后仍可继续制作。</p><a-button :disabled="Boolean(busy) || blocked || Boolean(connectionError) || !schema.length" @click="useOriginal">暂用上传原图入柜</a-button></div><a-button @click="openPanel('metadata')">编辑衣物资料</a-button><GarmentEdgeHelp />
           </section>
           <section v-else class="garment-surface garment-summary"><div class="section-heading"><h2>衣物资料</h2><a-button :disabled="garment.status === 'TRASHED'" @click="openPanel('metadata')"><EditOutlined /> 编辑资料</a-button></div><dl class="summary-fields"><div v-for="key in basicKeys" :key="key"><dt>{{ fieldLabels[key as keyof typeof fieldLabels] }}</dt><dd>{{ fieldValue(key) }}</dd></div></dl>
-            <div class="section-heading section-divider"><h3>穿着建议</h3><a-popover :trigger="['hover','click']" title="可按实物修改"><template #content><p class="help-copy">照片建议尚未核实时，不能保证实际叠穿。点击编辑资料可核对或修改，也可保持未知。</p></template><a-button type="text" aria-label="穿着建议说明"><InfoCircleOutlined /></a-button></a-popover></div><dl class="summary-fields"><div v-for="key in layeringFields" :key="key"><dt>{{ key === 'fit' ? '版型' : key === 'thickness' ? '厚薄' : '用途' }}</dt><dd>{{ fieldValue(key) }}</dd></div></dl><p class="quiet-copy">{{ layeringVerified ? '穿着建议已根据实物核对。' : '照片建议尚未根据实物核对，之后仍可修改。' }}</p>
+            <div class="section-heading section-divider"><h3>穿着建议</h3><a-popover :trigger="['hover','click']" title="可按实物修改"><template #content><p class="help-copy">照片建议尚未核实时，不能保证实际叠穿。点击编辑资料可核对或修改，也可保持未知。</p></template><a-button type="text" aria-label="穿着建议说明"><InfoCircleOutlined /></a-button></a-popover></div><dl class="summary-fields"><div v-for="key in layeringFields" :key="key"><dt>{{ key === 'fit' ? '版型' : key === 'thickness' ? '厚薄' : '用途' }}</dt><dd>{{ fieldValue(key) }}</dd></div></dl><p class="quiet-copy">{{ layeringVerified ? '穿着建议已根据实物核对。' : '照片建议尚未根据实物核对，之后仍可修改。' }}<a-button v-if="!layeringVerified && garment.status === 'ACTIVE'" type="link" size="small" @click="openPanel('metadata')">厚薄、版型、用途是推测，核对后推荐更准</a-button></p>
             <a-alert v-if="summary && ['warning','error'].includes(summary.tone)" :type="summary.tone === 'error' ? 'error' : 'warning'" :message="summary.title" show-icon><template #description><span>{{ summary.description }}</span><a-button type="link" :disabled="processing || dirty || garment.status === 'TRASHED'" @click="startRun('recognize')">补充说明并重新识别</a-button><a-button type="link" @click="openPanel('history')">查看当前任务</a-button></template></a-alert>
             <a-alert v-for="(issue,index) in garment.issues" :key="index" type="warning" :message="issue.message" show-icon />
             <a-popover :trigger="['hover','click']" title="资料可以之后补充"><template #content><p class="help-copy">品牌、尺码、成分等资料未知可以留空，不影响入柜。</p></template><a-button type="text" class="summary-help"><InfoCircleOutlined /> 还有资料未知？也可以入柜</a-button></a-popover>
           </section>
+          <GarmentRecommendPanel v-if="garment.status === 'ACTIVE' && !processing" :garment-id="garment.id" />
         </div>
         <footer class="workspace-actionbar">
           <div class="actionbar-status"><span>{{ dirty ? '有未保存修改' : processing ? '任务已提交，结果会自动保留' : garment.status === 'ACTIVE' ? '图片与资料已保存' : '处理结果已保留，尚未入柜' }}</span><a-popover title="图片和处理说明" :trigger="['hover','click']"><template #content><p class="help-copy">{{ summary?.description }} 原图与已完成图片始终保留。贴纸暂停时可继续本地处理；重新识别或整理图片需要 AI 额度。</p></template><a-button type="text" aria-label="查看当前处理说明"><InfoCircleOutlined /></a-button></a-popover></div>

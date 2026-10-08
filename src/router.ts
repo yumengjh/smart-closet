@@ -21,6 +21,7 @@ export const router = createRouter({
     { path: '/batches/:id', component: () => import('./views/BatchPage.vue') },
     { path: '/quick-add', redirect: '/add' },
     { path: '/admin/processing', component: () => import('./views/AdminProcessingPage.vue') },
+    { path: '/admin/templates', component: () => import('./views/AdminTemplatesPage.vue') },
     { path: '/add', component: () => import('./views/AddGarmentPage.vue') },
     { path: '/garment/:id', component: () => import('./views/GarmentPage.vue') },
     { path: '/trash', component: () => import('./views/TrashPage.vue') },

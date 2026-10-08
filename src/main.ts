@@ -11,6 +11,7 @@ import './style.css'
 import './styles/outfit.css'
 import './styles/alert.css'
 import './agent/agent.css'
+import './recommend/recommend.css'
 
 // Remove only abandoned mannequin experiment settings, preserving outfits and drafts.
 try {
