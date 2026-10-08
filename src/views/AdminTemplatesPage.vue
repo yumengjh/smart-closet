@@ -6,21 +6,35 @@ import { playSound } from '../services/sound'
 
 /** 搭配模板审核 (D31): review state lives in the database and overrides the file defaults; changes apply to the next recommendation. */
 defineProps<{ embedded?: boolean }>()
-type Slot = { roles: string[]; categoryAny: string[]; colorAny: string[]; styleAny: string[]; patternMax: number | null }
-type Entry = { id: string; text: string; bonus: number; defaultBonus: number; enabled: boolean; reviewStatus: 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED'; reviewedBy: string | null; reviewedAtMs: number; slots: Slot[] }
+type Slot = { roles: string[]; categoryAny: string[]; colorAny: string[]; styleAny: string[]; patternMax: number | null; fitAny?: string[] }
+type Meta = { kind: 'CLASSIC' | 'TREND'; audience: string[]; occasions: string[]; seasons: string[]; validFrom: string | null; validUntil: string | null; reference: string }
+type Entry = { id: string; text: string; bonus: number; defaultBonus: number; enabled: boolean; reviewStatus: 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED'; reviewedBy: string | null; reviewedAtMs: number; slots: Slot[]; meta?: Meta }
 const { message } = App.useApp()
 const items = ref<Entry[]>([]); const active = ref(0); const loading = ref(true); const error = ref(''); const busy = ref('')
 const selected = ref<string[]>([]); const filter = ref<'ALL' | 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED'>('PENDING_REVIEW')
 const STATUS: Record<string, { label: string; color: string }> = { PENDING_REVIEW: { label: '待审核', color: 'default' }, APPROVED: { label: '已通过', color: 'green' }, REJECTED: { label: '已停用', color: 'red' } }
 const ROLE: Record<string, string> = { TOP: '上装', BOTTOM: '下装', ONE_PIECE: '连衣裙/连体', SHOES: '鞋', HAT: '帽', BAG: '包', OUTER: '外层' }
 const COLOR: Record<string, string> = { BLACK: '黑', WHITE: '白', GRAY: '灰', BEIGE: '米', BROWN: '棕', NAVY: '藏蓝', DENIM: '牛仔蓝', BLUE: '蓝', RED: '红', ORANGE: '橙', YELLOW: '黄', GREEN: '绿', PURPLE: '紫', PINK: '粉' }
-const shown = computed(() => filter.value === 'ALL' ? items.value : items.value.filter(i => i.reviewStatus === filter.value))
+const kind = ref<'ALL' | 'CLASSIC' | 'TREND'>('ALL')
+const shown = computed(() => items.value.filter(i => (filter.value === 'ALL' || i.reviewStatus === filter.value) && (kind.value === 'ALL' || (i.meta?.kind || 'CLASSIC') === kind.value)))
+const AUDIENCE: Record<string, string> = { FEMALE: '女', MALE: '男' }
+const OCCASION: Record<string, string> = { DAILY: '日常', COMMUTE: '通勤', DATE: '约会', SPORT: '运动', OUTDOOR: '户外', FORMAL: '正式', TRAVEL: '度假', HOME: '居家' }
+function metaText(m?: Meta) {
+  if (!m) return ''
+  const parts = [m.audience.length ? '适合' + m.audience.map(a => AUDIENCE[a] || a).join('/') : '男女皆可']
+  if (m.seasons.length) parts.push(m.seasons.join('/') + '季')
+  if (m.occasions.length) parts.push(m.occasions.map(o => OCCASION[o] || o).join('/'))
+  if (m.kind === 'TREND') parts.push(`有效期 ${m.validFrom || '—'} 至 ${m.validUntil || '—'}`)
+  return parts.join(' · ')
+}
+function expired(m?: Meta) { return !!m?.validUntil && m.validUntil < new Date().toISOString().slice(0, 10) }
 function slotText(s: Slot) {
   const parts = [s.roles.map(r => ROLE[r] || r).join('/') || '任意位置']
   if (s.categoryAny.length) parts.push(s.categoryAny.join('/'))
   if (s.colorAny.length) parts.push('颜色 ' + s.colorAny.map(c => COLOR[c] || c).join('/'))
   if (s.styleAny.length) parts.push('风格 ' + s.styleAny.join('/'))
   if (s.patternMax !== null && s.patternMax !== undefined) parts.push(s.patternMax === 0 ? '纯色' : `花纹≤${s.patternMax}`)
+  if (s.fitAny?.length) parts.push('版型 ' + s.fitAny.join('/'))
   return parts.join('，')
 }
 async function load() {
@@ -56,6 +70,7 @@ const columns = [
     <a-alert v-if="error" type="error" show-icon :message="error"><template #action><a-button size="small" @click="load">重试</a-button></template></a-alert>
     <div class="template-review-toolbar">
       <a-segmented v-model:value="filter" :options="[{ value: 'PENDING_REVIEW', label: '待审核' }, { value: 'APPROVED', label: '已通过' }, { value: 'REJECTED', label: '已停用' }, { value: 'ALL', label: '全部' }]" />
+      <a-segmented v-model:value="kind" :options="[{ value: 'ALL', label: '全部类型' }, { value: 'CLASSIC', label: '经典' }, { value: 'TREND', label: '流行' }]" />
       <span class="muted">共 {{ items.length }} 条 · 生效 {{ active }} 条</span>
       <a-button type="primary" :disabled="!selected.length" :loading="busy === 'batch'" @click="batch('APPROVED')">批量通过（{{ selected.length }}）</a-button>
       <a-button :disabled="!selected.length" :loading="busy === 'batch'" @click="batch('REJECTED')">批量停用</a-button>
@@ -63,7 +78,7 @@ const columns = [
     <a-table class="template-review-table" :data-source="shown" :columns="columns" row-key="id" size="small" :loading="loading" :pagination="{ pageSize: 20 }" :scroll="{ x: 760 }"
       :row-selection="{ selectedRowKeys: selected, onChange: (keys: (string | number)[]) => { selected = keys.map(String) } }">
       <template #bodyCell="{ column, record }">
-        <template v-if="column.key === 'text'"><strong>{{ record.text }}</strong><br /><small class="muted">{{ record.id }}</small></template>
+        <template v-if="column.key === 'text'"><strong>{{ record.text }}</strong> <a-tag v-if="record.meta?.kind === 'TREND'" color="magenta">流行</a-tag><a-tag v-if="expired(record.meta)">已过期</a-tag><br /><small class="muted">{{ metaText(record.meta) }}</small><br /><small v-if="record.meta?.reference" class="muted">参考：{{ record.meta.reference }}</small><br /><small class="muted">{{ record.id }}</small></template>
         <template v-else-if="column.key === 'slots'"><ul class="template-review-slots"><li v-for="(s, i) in record.slots" :key="i">{{ slotText(s) }}</li></ul></template>
         <template v-else-if="column.key === 'bonus'"><a-input-number :value="record.bonus" :min="0" :max="5" :step="0.5" size="small" :disabled="busy === record.id" aria-label="加分" @change="(v: number | string | null) => v !== null && Number(v) !== record.bonus && review(record.id, { bonus: Number(v) })" /></template>
         <template v-else-if="column.key === 'status'"><a-tag :color="STATUS[record.reviewStatus].color">{{ STATUS[record.reviewStatus].label }}</a-tag><a-tag v-if="!record.enabled">已关闭</a-tag></template>
