@@ -81,6 +81,12 @@ export const fieldLabels: Record<keyof Pick<Garment, 'category' | 'primaryColor'
 }
 
 export type ListQuery = { status: ClosetStatus; q: string; category: string; color: string; season: string; page: number; size: number }
+/** Hybrid wardrobe search result (server: GET /api/garments/search); reasons/parsed/hints are written by the server. */
+export type SearchResult = {
+  items: Garment[]; reasons: Record<string, string[]>; total: number; page: number; hasMore: boolean; mode: string
+  parsed: { filters: Record<string, string[] | string>; freeText: string } | null
+  emptyHint: string; notice: string; imageStyle: { applied: string; dominant: string } | null
+}
 export type GarmentPage = { items: Garment[]; total: number; page: number; size: number }
 export type ProcessingChoice = { value: string; label: string }
 
@@ -245,6 +251,18 @@ export const closetApi = {
     const generation = choices(generators)
     const recognition = choices(recognizers).sort((a, b) => Number(JSON.parse(b.value).provider === recognizers.find((provider) => provider.preferred)?.id) - Number(JSON.parse(a.value).provider === recognizers.find((provider) => provider.preferred)?.id))
     return { generation, recognition }
+  },
+  async search(q: string, page: number, imageStyle?: string): Promise<SearchResult> {
+    if (usingMocks) {
+      const list = await closetApi.list({ status: 'ACTIVE', q, category: '', color: '', season: '', page, size: 20 })
+      return { items: list.items, reasons: {}, total: list.total, page, hasMore: page * 20 < list.total, mode: 'KEYWORD', parsed: null, emptyHint: '', notice: '', imageStyle: null }
+    }
+    const params = new URLSearchParams({ q, page: String(page) }); if (imageStyle) params.set('imageStyle', imageStyle)
+    const result = await request<{ items: { garment: GarmentView; score: number; reasons: string[] }[]; total: number; page: number; hasMore: boolean; mode: string;
+      parsed: SearchResult['parsed']; emptyHint: string; notice: string; imageStyle: SearchResult['imageStyle'] }>(`/api/garments/search?${params}`)
+    const reasons: Record<string, string[]> = {}
+    const items = result.items.map(hit => { const g = fromView(hit.garment); reasons[g.id] = hit.reasons; return g })
+    return { ...result, items, reasons }
   },
   async list(query: ListQuery): Promise<GarmentPage> {
     if (!usingMocks) {
