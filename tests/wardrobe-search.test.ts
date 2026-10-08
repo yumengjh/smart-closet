@@ -18,3 +18,9 @@ test('closing a tag removes only its words', () => {
   assert.equal(removeWords('适合海边的白色上衣', color.words), '适合海边 上衣')
   assert.equal(removeWords('适合海边的白色上衣', role.words), '适合海边的白色')
 })
+
+test('style tags remove the words the user typed', () => {
+  const [tag] = buildTags({ filters: { styles: ['甜美（可爱）'], styleWords: ['可爱'] }, freeText: '' }, null)
+  assert.equal(tag.label, '风格：甜美（可爱）')
+  assert.equal(removeWords('可爱的裙子', tag.words), '裙子')
+})

@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
-import { SearchOutlined, SlidersOutlined, PlusOutlined } from '@ant-design/icons-vue'
+import { SearchOutlined, SlidersOutlined, PlusOutlined, QuestionCircleOutlined } from '@ant-design/icons-vue'
 import { useRouter } from 'vue-router'
 import { closetApi, type Garment, type ListQuery, type SearchResult } from '../services/api'
 import { useClosetStore } from '../stores/closet'
 import GarmentCard from '../components/GarmentCard.vue'
 import GarmentCardSkeleton from '../components/GarmentCardSkeleton.vue'
-import { buildTags, combineQuery, removeWords, IMAGE_STYLE_LABELS, type SearchTag } from '../wardrobe/search'
+import { buildTags, combineQuery, removeWords, IMAGE_STYLE_LABELS, SEARCH_EXAMPLES, type SearchTag } from '../wardrobe/search'
 
 const router = useRouter()
 const closet = useClosetStore()
@@ -49,6 +49,8 @@ function debounceLoad() {
   query.page = 1
   searchTimer = window.setTimeout(load, 220)
 }
+const helpOpen = ref(false)
+function tryExample(example: string) { query.q = example; helpOpen.value = false; debounceLoad() }
 function clearFilters() { query.q = ''; query.category = ''; query.color = ''; query.season = ''; imageStyle.value = ''; debounceLoad() }
 function closeTag(tag: SearchTag) {
   // A style typed in the box ("卡通的") is removed from the text; the closet default is turned off by choosing "全部风格".
@@ -72,7 +74,20 @@ watch(() => [query.category, query.color, query.season, imageStyle.value], debou
     <div class="wardrobe-stats"><strong>{{ total.toString().padStart(2, '0') }}</strong><span>{{ searching ? '件符合' : '件已入柜' }}</span></div>
   </div>
   <section class="wardrobe-tools" aria-label="搜索和筛选衣物">
-    <a-input v-model:value="query.q" class="search-input" allow-clear placeholder="搜颜色、品类，或描述：适合海边的白色上衣" @input="debounceLoad"><template #prefix><SearchOutlined /></template></a-input>
+    <a-input v-model:value="query.q" class="search-input" allow-clear placeholder="搜颜色、品类，或描述：适合海边的白色上衣" @input="debounceLoad"><template #prefix><SearchOutlined /></template>
+      <template #suffix>
+        <a-popover v-model:open="helpOpen" trigger="click" placement="bottomLeft" overlay-class-name="search-help">
+          <template #content>
+            <div class="search-help-body">
+              <p><strong>可以这样搜</strong>：颜色和品类会精确筛选（问红色不会给粉色），风格词会按衣柜的风格标签筛选（“可爱”≈甜美，聊天里学会的新词也能用），其余描述按本机语义理解，没有就直说没有。</p>
+              <p>默认只看衣柜里最多的图片风格，可在右侧“图片风格”切换。全部在本机计算，不消耗额度。</p>
+              <div class="search-help-examples"><a-tag v-for="example in SEARCH_EXAMPLES" :key="example" class="search-help-example" @click="tryExample(example)">{{ example }}</a-tag></div>
+            </div>
+          </template>
+          <a-button type="text" size="small" class="search-help-trigger" aria-label="搜索说明"><QuestionCircleOutlined /></a-button>
+        </a-popover>
+      </template>
+    </a-input>
     <div class="filter-row"><span class="filter-label"><SlidersOutlined /> 筛选</span>
       <a-select :value="query.category || undefined" @update:value="query.category = $event || ''" allow-clear placeholder="全部品类" class="filter-select"><a-select-option v-for="category in categories" :key="category" :value="category">{{ category }}</a-select-option></a-select>
       <a-select :value="query.color || undefined" @update:value="query.color = $event || ''" allow-clear placeholder="全部颜色" class="filter-select"><a-select-option v-for="color in colors" :key="color" :value="color">{{ color }}</a-select-option></a-select>

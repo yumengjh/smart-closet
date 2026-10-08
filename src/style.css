@@ -330,3 +330,4 @@ h3 { font-size: 15px; line-height: 1.5; font-weight: 600; }
 }
 
 @media (max-width: 767px) { .image-style-select { flex-basis: 100%; width: 100%; }.search-tags { margin-top: -6px; } }
+.search-help-trigger { color: var(--muted-copy); height: 24px; width: 24px; padding: 0; }.search-help .ant-popover-inner { max-width: 340px; }.search-help-body p { margin: 0 0 8px; font-size: 13px; line-height: 1.6; }.search-help-examples { display: flex; flex-wrap: wrap; gap: 6px; }.search-help-example { cursor: pointer; margin: 0; min-height: 28px; display: inline-flex; align-items: center; }

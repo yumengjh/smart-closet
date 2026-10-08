@@ -26,7 +26,8 @@ export function buildTags(parsed: ParsedQuery | null, scope: ImageStyleScope | n
     const roles = [...new Set(list(f.role).map(r => ROLE_LABELS[r]).filter(Boolean))]
     for (const label of roles) tags.push({ key: `role:${label}`, label: `位置：${label}`, words: Object.entries(ROLE_WORDS).filter(([r]) => ROLE_LABELS[r] === label).flatMap(([, w]) => w) })
     for (const word of list(f.seasons)) tags.push({ key: `season:${word}`, label: `季节：${word}`, words: [`${word}天`, `${word}季`, word] })
-    for (const word of list(f.styles)) tags.push({ key: `style:${word}`, label: `风格：${word}`, words: [word] })
+    const said = list(f.styleWords)
+    for (const word of list(f.styles)) tags.push({ key: `style:${word}`, label: `风格：${word}`, words: said.length ? said : [word.replace(/（.*$/, '')] })
     if (parsed.freeText) tags.push({ key: 'free', label: `描述：${parsed.freeText}`, words: parsed.freeText.split(/\s+/) })
   }
   if (scope && scope.applied !== 'ALL') {
@@ -36,9 +37,12 @@ export function buildTags(parsed: ParsedQuery | null, scope: ImageStyleScope | n
   return tags
 }
 
+/** Examples shown behind the help icon; clicking one runs it. */
+export const SEARCH_EXAMPLES = ['白色上衣', '适合海边的', '可爱的裙子', '千金风', '秋天穿的外套', '卡通的', '全部风格的裙子']
+
 /** Removes a tag's words from the typed query (longest first, so "白色" goes before "白"). */
 export function removeWords(q: string, words: string[]): string {
   let out = q
   for (const word of [...words].sort((a, b) => b.length - a.length)) if (word) out = out.split(word).join(' ')
-  return out.replace(/的(\s|$)/g, ' ').replace(/\s+/g, ' ').trim()
+  return out.replace(/的(\s|$)/g, ' ').replace(/\s+/g, ' ').trim().replace(/^的+/, '').trim()
 }
