@@ -37,7 +37,8 @@ test('maps familiar and open category names to editable outfit roles', () => {
     ['衬衫', 'TOP'], ['西装外套', 'OUTER'], ['牛仔裤', 'BOTTOM'], ['连衣裙', 'ONE_PIECE'],
     ['运动鞋', 'SHOES'], ['棒球帽', 'HAT'], ['斜挎包', 'BAG'], ['围巾', 'ACCESSORY'], ['古着', 'OTHER'],
     ['针织开衫', 'OUTER'], ['西装裤', 'BOTTOM'], ['连帽卫衣', 'TOP'], ['背心裙', 'ONE_PIECE'],
-    ['衬衫连衣裙', 'ONE_PIECE'], ['连体裤', 'ONE_PIECE'], ['裙装', 'OTHER'],
+    ['衬衫连衣裙', 'ONE_PIECE'], ['连体裤', 'ONE_PIECE'], ['裙装', 'OTHER'], ['马甲裙', 'ONE_PIECE'],
+    ['马甲', 'OUTER'], ['牛仔背心', 'OUTER'], ['针织背心', 'OUTER'], ['背心', 'TOP'], ['吊带背心', 'TOP'],
     ['cardigan', 'OUTER'], ['skirt', 'BOTTOM'], ['hoodie', 'TOP'], ['dress', 'ONE_PIECE'],
     // Full-body enhancement (D43): tights are not trousers; pinafores sit in the one-piece slot; hair accessories on the head.
     ['连裤袜', 'ACCESSORY'], ['过膝袜', 'ACCESSORY'], ['袜靴', 'SHOES'], ['小黑裙', 'ONE_PIECE'], ['礼服裙', 'ONE_PIECE'],
