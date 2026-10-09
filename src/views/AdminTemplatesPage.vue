@@ -13,7 +13,7 @@ const { message } = App.useApp()
 const items = ref<Entry[]>([]); const active = ref(0); const loading = ref(true); const error = ref(''); const busy = ref('')
 const selected = ref<string[]>([]); const filter = ref<'ALL' | 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED'>('PENDING_REVIEW')
 const STATUS: Record<string, { label: string; color: string }> = { PENDING_REVIEW: { label: '待审核', color: 'default' }, APPROVED: { label: '已通过', color: 'green' }, REJECTED: { label: '已停用', color: 'red' } }
-const ROLE: Record<string, string> = { TOP: '上装', BOTTOM: '下装', ONE_PIECE: '连衣裙/连体', SHOES: '鞋', HAT: '帽', BAG: '包', OUTER: '外层' }
+const ROLE: Record<string, string> = { TOP: '上装', BOTTOM: '下装', ONE_PIECE: '连衣裙/连体', OVERALL: '背带裙/背带裤', SHOES: '鞋', HAT: '帽', HEADWEAR: '头饰', BAG: '包', HANDHELD: '手持物', SOCKS: '袜子/裤袜', OUTER: '外层' }
 const COLOR: Record<string, string> = { BLACK: '黑', WHITE: '白', GRAY: '灰', BEIGE: '米', BROWN: '棕', NAVY: '藏蓝', DENIM: '牛仔蓝', BLUE: '蓝', RED: '红', ORANGE: '橙', YELLOW: '黄', GREEN: '绿', PURPLE: '紫', PINK: '粉' }
 const kind = ref<'ALL' | 'CLASSIC' | 'TREND'>('ALL')
 const shown = computed(() => items.value.filter(i => (filter.value === 'ALL' || i.reviewStatus === filter.value) && (kind.value === 'ALL' || (i.meta?.kind || 'CLASSIC') === kind.value)))

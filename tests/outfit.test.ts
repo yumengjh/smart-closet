@@ -39,7 +39,20 @@ test('maps familiar and open category names to editable outfit roles', () => {
     ['针织开衫', 'OUTER'], ['西装裤', 'BOTTOM'], ['连帽卫衣', 'TOP'], ['背心裙', 'ONE_PIECE'],
     ['衬衫连衣裙', 'ONE_PIECE'], ['连体裤', 'ONE_PIECE'], ['裙装', 'OTHER'],
     ['cardigan', 'OUTER'], ['skirt', 'BOTTOM'], ['hoodie', 'TOP'], ['dress', 'ONE_PIECE'],
-  ] as const) assert.equal(roleFromGarment({ category: [category] }), role)
+    // Full-body enhancement (D43): tights are not trousers; pinafores sit in the one-piece slot; hair accessories on the head.
+    ['连裤袜', 'ACCESSORY'], ['过膝袜', 'ACCESSORY'], ['袜靴', 'SHOES'], ['小黑裙', 'ONE_PIECE'], ['礼服裙', 'ONE_PIECE'],
+    ['洛丽塔OP', 'ONE_PIECE'], ['洛丽塔SK', 'BOTTOM'], ['洛丽塔JSK', 'ONE_PIECE'], ['背带裙', 'ONE_PIECE'], ['水手服套装', 'ONE_PIECE'],
+    ['伞裙', 'BOTTOM'], ['发箍', 'HAT'], ['KC', 'HAT'], ['小熊玩偶', 'ACCESSORY'], ['娃娃领衬衫', 'TOP'], ['手拿包', 'BAG'],
+  ] as const) assert.equal(roleFromGarment({ category: [category] }), role, category)
+})
+
+test('a pinafore is painted over its top and overlaps it', () => {
+  const scene: OutfitScene = { version: 2, elements: [minimal({ garmentId: 'jsk', role: 'ONE_PIECE' }), minimal({ garmentId: 'blouse', role: 'TOP', zIndex: 1 })] }
+  const arranged = arrangeOutfit(scene).elements
+  assert.deepEqual(arranged.map(item => item.garmentId), ['blouse', 'jsk'])
+  const [blouse, jsk] = arranged
+  assert.ok(jsk.y - jsk.height / 2 < blouse.y + blouse.height / 2, 'pinafore starts inside the top')
+  assert.ok(jsk.y > blouse.y, 'pinafore hangs below the top')
 })
 
 test('AI layouts keep outerwear above tops and dresses regardless of selection order', () => {

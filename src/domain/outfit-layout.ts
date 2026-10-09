@@ -3,6 +3,9 @@ import { normalizeScene, type OutfitElement, type OutfitScene } from './outfit.t
 // Paint body garments first and outerwear above them, independently of selection order.
 export function orderOutfitLayers(scene: OutfitScene): OutfitScene {
   const order: Record<string, number> = { BOTTOM: 1, ONE_PIECE: 2, TOP: 3, OUTER: 4, SHOES: 5, HAT: 6, BAG: 7, ACCESSORY: 8, OTHER: 9 }
+  // A one-piece next to a top is a pinafore (背带裙/JSK) worn over that top.
+  const roles = new Set(scene.elements.filter(item => item.kind !== 'PERSON_PART').map(item => item.role))
+  if (roles.has('TOP') && roles.has('ONE_PIECE')) order.ONE_PIECE = 3.5
   const items = [...scene.elements].sort((a, b) => (a.kind === 'PERSON_PART' ? 0 : order[a.role] || 9) - (b.kind === 'PERSON_PART' ? 0 : order[b.role] || 9))
   return normalizeScene({ ...scene, elements: items.map((item, zIndex) => ({ ...item, zIndex })) })
 }
@@ -22,11 +25,13 @@ export function arrangeOutfit(scene: OutfitScene): OutfitScene {
     item.height = item.width / Math.max(.15, Math.min(5, aspect))
     item.rotation = 0; item.freeStretch = false
   }
-  const body = whole ? [whole] : [top, bottom].filter((item): item is OutfitElement => !!item)
+  // A pinafore (one-piece together with a top) overlaps the upper half of its top instead of replacing it.
+  const pinafore = !!(whole && top)
+  const body = pinafore ? [top!, whole!] : whole ? [whole] : [top, bottom].filter((item): item is OutfitElement => !!item)
   if (!body.length && outer) body.push(outer)
   // A collage shows separate garments, not a fitted virtual try-on: keep opaque outerwear beside the body.
   const bodyX = outer && !body.includes(outer) ? 340 : 540
-  const overlap = body.length > 1 ? 22 : 0
+  const overlap = pinafore ? Math.round(top!.height * 0.55) : body.length > 1 ? 22 : 0
   const naturalHeight = body.reduce((sum, item) => sum + item.height, 0) - overlap + (shoes?.height || 0) + (shoes ? 10 : 0)
   const scale = Math.min(1, 1090 / Math.max(1, naturalHeight))
   for (const item of garments) { item.width *= scale; item.height *= scale }

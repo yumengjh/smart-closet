@@ -62,8 +62,8 @@ export type StyleProfileView = {
 }
 
 export const ROLE_LABELS: Record<string, string> = {
-  TOP: '上装', INNER: '打底', OUTER: '外层', BOTTOM: '下装', ONE_PIECE: '连衣裙/连体', SHOES: '鞋',
-  HAT: '帽子', BAG: '包', GLASSES: '眼镜', SCARF: '围巾', BELT: '腰带', SOCKS: '袜子', GLOVES: '手套', ACCESSORY: '配饰', OTHER: '其他',
+  TOP: '上装', INNER: '打底', OUTER: '外层', BOTTOM: '下装', ONE_PIECE: '连衣裙/连体', OVERALL: '背带裙/背带裤', SHOES: '鞋',
+  HAT: '帽子', HEADWEAR: '头饰', BAG: '包', HANDHELD: '手持物', GLASSES: '眼镜', SCARF: '围巾', BELT: '腰带', SOCKS: '袜子/裤袜', GLOVES: '手套', ACCESSORY: '配饰', OTHER: '其他',
 }
 
 export function scoreTone(score: number): 'success' | 'normal' | 'exception' {
