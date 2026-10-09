@@ -133,11 +133,20 @@ async function marked(hint?: Hint) {
   catch (cause) { error.value = cause instanceof Error ? cause.message : '目标保存失败，请重试' }
 }
 async function retry(row: LocalPhoto) { await retryPhoto(row.id, owner()!); await refreshUploads(owner()!); void pumpUploads(owner) }
+const POLL_BATCH = 4
+// Roughly 8 requests/second at most however many photos are in flight; quiet pages relax to 4 s.
+function pollDelay() {
+  const busy = rows.value.filter(row => row.state === 'SAVED' && active(row)).length
+  if (busy) return Math.min(10_000, Math.max(1200, busy * 125))
+  return localCount.value ? 1200 : 4000
+}
 async function refresh() {
   const account = owner(); if (!alive || !account) return
   try {
     await refreshUploads(account)
-    await Promise.all(rows.value.filter(row => row.state === 'SAVED' && active(row)).map(async row => {
+    // Bulk intake (100+ photos) must not fan out one request per photo every tick: poll in small batches.
+    const pending = rows.value.filter(row => row.state === 'SAVED' && active(row))
+    for (let i = 0; i < pending.length && alive; i += POLL_BATCH) await Promise.all(pending.slice(i, i + POLL_BATCH).map(async row => {
       const view = await quickApi.get(row.id)
       if (!alive || account !== owner()) return
       await updateSavedResult(row.id, account, view)
@@ -146,7 +155,7 @@ async function refresh() {
     }))
     error.value = ''
   } catch { if (rows.value.some(row => row.state === 'SAVED' && active(row))) error.value = '暂时无法刷新进度，已保存的照片不受影响，连接恢复后继续。' }
-  if (alive) timer = window.setTimeout(refresh, rows.value.some(active) || localCount.value ? 1200 : 4000)
+  if (alive) timer = window.setTimeout(refresh, pollDelay())
 }
 watch(rows, list => {
   for (const [id, url] of thumbnails) if (!list.some(row => row.id === id && row.blob)) { URL.revokeObjectURL(url); thumbnails.delete(id) }
