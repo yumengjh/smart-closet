@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { App as AntApp } from 'ant-design-vue'
-import { SearchOutlined, SlidersOutlined, PlusOutlined, QuestionCircleOutlined, CheckSquareOutlined, ThunderboltOutlined } from '@ant-design/icons-vue'
+import { SearchOutlined, SlidersOutlined, PlusOutlined, QuestionCircleOutlined, CheckSquareOutlined, ThunderboltOutlined, PictureOutlined } from '@ant-design/icons-vue'
 import { useRouter } from 'vue-router'
 import { closetApi, type Garment, type ListQuery, type SearchResult } from '../services/api'
 import { useClosetStore } from '../stores/closet'
 import GarmentCard from '../components/GarmentCard.vue'
 import GarmentCardSkeleton from '../components/GarmentCardSkeleton.vue'
 import { isProcessing } from '../domain/workflow'
+import ImageSearchModal from '../similar/ImageSearchModal.vue'
 import { buildTags, combineQuery, removeWords, IMAGE_STYLE_LABELS, SEARCH_EXAMPLES, type SearchTag } from '../wardrobe/search'
 
 const router = useRouter()
@@ -20,6 +21,7 @@ const error = ref('')
 // Hybrid search (colour/category filters + keywords + local semantics) whenever there is text or an image-style choice.
 const imageStyle = ref('')
 const searchResult = ref<SearchResult | null>(null)
+const imageSearchOpen = ref(false)
 const searching = computed(() => Boolean(query.q.trim() || imageStyle.value))
 const pageSize = computed(() => searching.value ? 20 : query.size)
 const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
@@ -115,7 +117,7 @@ watch(() => [query.category, query.color, query.season, imageStyle.value], debou
 <template>
   <div class="page-heading wardrobe-heading">
     <div><p class="eyebrow">衣橱空间</p><h1>我的衣柜</h1><p class="page-subtitle">已经核对并确认入柜的衣物，按最近更新排序。</p></div>
-    <div class="wardrobe-heading-side"><a-button v-if="!selecting && items.length" @click="selecting = true; batchResult = null"><CheckSquareOutlined /> 批量处理</a-button><div class="wardrobe-stats"><strong>{{ total.toString().padStart(2, '0') }}</strong><span>{{ searching ? '件符合' : '件已入柜' }}</span></div></div>
+    <div class="wardrobe-heading-side"><a-button v-if="!selecting" @click="imageSearchOpen = true"><PictureOutlined /> 以图搜图</a-button><a-button v-if="!selecting && items.length" @click="selecting = true; batchResult = null"><CheckSquareOutlined /> 批量处理</a-button><div class="wardrobe-stats"><strong>{{ total.toString().padStart(2, '0') }}</strong><span>{{ searching ? '件符合' : '件已入柜' }}</span></div></div>
   </div>
   <section class="wardrobe-tools" aria-label="搜索和筛选衣物">
     <a-input v-model:value="query.q" class="search-input" allow-clear placeholder="搜颜色、品类，或描述：适合海边的白色上衣" @input="debounceLoad"><template #prefix><SearchOutlined /></template>
@@ -176,6 +178,7 @@ watch(() => [query.category, query.color, query.season, imageStyle.value], debou
     <a-button v-if="hasFilters" class="outline-button" @click="clearFilters">清除筛选</a-button><button v-else class="outline-button" @click="router.push('/add')"><PlusOutlined /> 添加第一件衣物</button>
   </section>
   <footer v-if="total > pageSize" class="pagination-row"><span>第 {{ query.page }} / {{ pageCount }} 页</span><div><a-button :disabled="query.page <= 1 || loading" @click="query.page--; load()">上一页</a-button><a-button :disabled="query.page >= pageCount || loading" @click="query.page++; load()">下一页</a-button></div></footer>
+  <ImageSearchModal v-model:open="imageSearchOpen" />
 </template>
 
 <style scoped>

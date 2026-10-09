@@ -3,7 +3,7 @@ import { computed, defineAsyncComponent } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   LockOutlined, ThunderboltOutlined, LinkOutlined, RobotOutlined, UserOutlined, DashboardOutlined,
-  DeleteOutlined, ArrowRightOutlined, ArrowLeftOutlined, DownloadOutlined, SkinOutlined, AuditOutlined, CameraOutlined,
+  DeleteOutlined, ArrowRightOutlined, ArrowLeftOutlined, DownloadOutlined, SkinOutlined, AuditOutlined, CameraOutlined, CopyOutlined,
 } from '@ant-design/icons-vue'
 import { useClosetStore } from '../stores/closet'
 
@@ -47,6 +47,15 @@ const categories: SettingsCategory[] = [
     icon: RobotOutlined,
     hidden: () => firstLogin.value,
     component: defineAsyncComponent(() => import('./settings/SettingsAssistantSection.vue')),
+  },
+  {
+    key: 'tidy',
+    label: '整理衣柜',
+    eyebrow: '可能重复的衣物',
+    description: '找出可能重复录入的衣物，确认后可移入回收站。',
+    icon: CopyOutlined,
+    hidden: () => firstLogin.value,
+    component: defineAsyncComponent(() => import('./settings/SettingsTidySection.vue')),
   },
   {
     key: 'style',

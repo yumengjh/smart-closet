@@ -4,6 +4,7 @@ import { quickApi } from '../services/quickIntake'
 import { mediaUrl } from '../services/urls'
 import { computed, onMounted, onUnmounted, reactive, ref, toRaw, watch } from 'vue'
 import GarmentRecommendPanel from '../recommend/GarmentRecommendPanel.vue'
+import SimilarGarmentsPanel from '../similar/SimilarGarmentsPanel.vue'
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import { ArrowLeftOutlined, CheckOutlined, DeleteOutlined, ReloadOutlined, RollbackOutlined, PictureOutlined, StopOutlined, EyeOutlined, InfoCircleOutlined, EditOutlined, SettingOutlined, HistoryOutlined } from '@ant-design/icons-vue'
 import { App as AntApp } from 'ant-design-vue'
@@ -337,6 +338,7 @@ watch(() => route.query.task, async () => { await load(); schedulePoll() })
             <a-popover :trigger="['hover','click']" title="资料可以之后补充"><template #content><p class="help-copy">品牌、尺码、成分等资料未知可以留空，不影响入柜。</p></template><a-button type="text" class="summary-help"><InfoCircleOutlined /> 还有资料未知？也可以入柜</a-button></a-popover>
           </section>
           <GarmentRecommendPanel v-if="garment.status === 'ACTIVE' && !processing" :garment-id="garment.id" />
+          <SimilarGarmentsPanel v-if="['ACTIVE', 'DRAFT'].includes(garment.status) && !processing" :garment-id="garment.id" :draft="garment.status === 'DRAFT'" />
         </div>
         <footer class="workspace-actionbar">
           <div class="actionbar-status"><span>{{ dirty ? '有未保存修改' : processing ? '任务已提交，结果会自动保留' : garment.status === 'ACTIVE' ? '图片与资料已保存' : '处理结果已保留，尚未入柜' }}</span><a-popover title="图片和处理说明" :trigger="['hover','click']"><template #content><p class="help-copy">{{ summary?.description }} 原图与已完成图片始终保留。贴纸暂停时可继续本地处理；重新识别或整理图片需要 AI 额度。</p></template><a-button type="text" aria-label="查看当前处理说明"><InfoCircleOutlined /></a-button></a-popover></div>
