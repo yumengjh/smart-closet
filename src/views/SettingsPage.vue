@@ -3,7 +3,7 @@ import { computed, defineAsyncComponent } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   LockOutlined, ThunderboltOutlined, LinkOutlined, RobotOutlined, UserOutlined, DashboardOutlined,
-  DeleteOutlined, ArrowRightOutlined, ArrowLeftOutlined, DownloadOutlined, SkinOutlined, AuditOutlined,
+  DeleteOutlined, ArrowRightOutlined, ArrowLeftOutlined, DownloadOutlined, SkinOutlined, AuditOutlined, CameraOutlined,
 } from '@ant-design/icons-vue'
 import { useClosetStore } from '../stores/closet'
 
@@ -28,6 +28,7 @@ interface SettingsCategory {
 const categories: SettingsCategory[] = [
   { key: 'personal', label: '个人形象', eyebrow: '资料与基准人物', description: '管理真实资料、全身照或半身照与自己的基准人物。', icon: UserOutlined, hidden: () => firstLogin.value, component: defineAsyncComponent(() => import('./settings/SettingsPersonalSection.vue')) },
   { key: 'templates', label: '搭配模板审核', eyebrow: '管理员', description: '审核经典搭法模板，通过后参与推荐加分。', icon: AuditOutlined, hidden: () => firstLogin.value || closet.user?.role !== 'ADMIN', component: defineAsyncComponent(() => import('./AdminTemplatesPage.vue')) },
+  { key: 'ootd-samples', label: '整套穿搭样本', eyebrow: '管理员', description: '收集整套穿搭图，提取物品与姿势，审核后生成搭配模板。', icon: CameraOutlined, hidden: () => firstLogin.value || closet.user?.role !== 'ADMIN', component: defineAsyncComponent(() => import('./AdminOotdSamplesPage.vue')) },
   { key: 'processing', label: '任务与资源', eyebrow: '管理员', description: '查看积压、共享账户与调度容量。', icon: DashboardOutlined, hidden: () => firstLogin.value || closet.user?.role !== 'ADMIN', component: defineAsyncComponent(() => import('./AdminProcessingPage.vue')) },
   {
     key: 'account',
@@ -185,7 +186,7 @@ function goBack() {
       </header>
 
       <Suspense>
-        <component :is="activeCategory.component" v-bind="['processing', 'templates'].includes(activeCategory.key) ? { embedded: true } : {}" />
+        <component :is="activeCategory.component" v-bind="['processing', 'templates', 'ootd-samples'].includes(activeCategory.key) ? { embedded: true } : {}" />
         <template #fallback>
           <div class="settings-group"><a-skeleton active :paragraph="{ rows: 5 }" /></div>
         </template>

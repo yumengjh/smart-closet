@@ -23,6 +23,8 @@ onMounted(load); watch(() => props.outfit.key, load)
     <div v-if="outfit.tags.length" class="recommend-tags"><a-tag v-for="tag in outfit.tags" :key="tag" :color="tag === '新尝试' ? 'blue' : tag.endsWith('没穿了') ? 'gold' : 'green'">{{ tag }}</a-tag></div>
     <ul class="recommend-highlights"><li v-for="h in outfit.highlights.slice(0, 3)" :key="h">{{ h }}</li></ul>
     <ul v-if="outfit.warnings.length" class="recommend-warnings"><li><WarningOutlined />{{ outfit.warnings[0] }}<template v-if="outfit.warnings.length > 1"> 等 {{ outfit.warnings.length }} 条</template></li></ul>
+    <p v-if="outfit.accessories?.length" class="recommend-accessories muted">可以搭配：{{ outfit.accessories.map(a => a.name).join('、') }}</p>
+    <p v-else-if="outfit.tips?.length" class="recommend-accessories muted">{{ outfit.tips[0] }}</p>
     <footer class="recommend-card-actions">
       <RecommendationFeedback :log-id="outfit.logId" :garments="outfit.garments" />
       <a-button size="small" @click="emit('open')">详情</a-button>

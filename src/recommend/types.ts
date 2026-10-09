@@ -3,10 +3,14 @@ export type EvidenceLine = { text: string; positive: boolean }
 export type Dimension = { key: string; label: string; score: number; weight: number; evidence: EvidenceLine[] }
 export type RecommendedGarment = { id: string; name: string; role: string; color: string; categories: string[]; reasons: string[]; imageStyle?: string | null }
 export type OuterSuggestion = { id: string; name: string; reasons: string[] }
+/** D45: optional accessories shown next to the outfit (never part of it, never scored). */
+export type AccessorySuggestion = { id: string; name: string; role: string; reasons: string[] }
 export type RecommendedOutfit = {
   key: string; logId: string | null; rank: number; name: string; score: number
   highlights: string[]; warnings: string[]; tags: string[]
   garments: RecommendedGarment[]; dimensions: Dimension[]; outers: OuterSuggestion[]; template: string | null
+  /** Absent on cards stored before the full-body enhancement. */
+  accessories?: AccessorySuggestion[]; tips?: string[]
 }
 export type Verdict = 'UP' | 'DOWN'
 

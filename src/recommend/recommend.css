@@ -75,3 +75,5 @@
 .recommend-inspiration-meta { margin: 0; font-size: 13px; }
 .recommend-gaps { padding: 10px 12px; border: 1px dashed var(--line); border-radius: 10px; }
 .recommend-gaps ul { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 4px; font-size: 13px; }
+
+.recommend-accessories { margin: 4px 0 0; font-size: 12px; line-height: 1.5; }
