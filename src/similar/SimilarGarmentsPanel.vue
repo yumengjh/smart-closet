@@ -44,6 +44,7 @@ onMounted(load); watch(() => props.garmentId, load)
       </li>
     </ul>
     <p v-if="view && !view.ready.image" class="muted">这件的图片指纹还在后台计算，稍后刷新会更准。</p>
+    <p v-if="view?.imageModel && ['LOW_MEMORY', 'FAILED', 'INDEXING'].includes(view.imageModel.state)" class="muted">{{ view.imageModel.message }}</p>
   </section>
 </template>
 <style scoped>

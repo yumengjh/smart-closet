@@ -46,3 +46,16 @@ export function removeWords(q: string, words: string[]): string {
   for (const word of [...words].sort((a, b) => b.length - a.length)) if (word) out = out.split(word).join(' ')
   return out.replace(/的(\s|$)/g, ' ').replace(/\s+/g, ' ').trim().replace(/^的+/, '').trim()
 }
+
+/** The image model block every search response carries (design 模型内存与图像向量 G17). */
+export type ImageModelState = { state: string; message: string }
+
+/**
+ * What to tell the user about image understanding: picture searches always say when it is not fully available
+ * (not installed, still indexing, low memory); word searches only when "find pictures by words" is switched off by a fault.
+ */
+export function imageModelNotice(model: ImageModelState | null | undefined, withPicture: boolean): string {
+  if (!model || model.state === 'READY') return ''
+  if (withPicture) return model.message
+  return model.state === 'LOW_MEMORY' || model.state === 'FAILED' ? model.message.replace('已按颜色、轮廓比对', '文字找图片暂时关闭') : ''
+}

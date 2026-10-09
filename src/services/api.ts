@@ -86,6 +86,17 @@ export type SearchResult = {
   items: Garment[]; reasons: Record<string, string[]>; total: number; page: number; hasMore: boolean; mode: string
   parsed: { filters: Record<string, string[] | string>; freeText: string } | null
   emptyHint: string; notice: string; imageStyle: { applied: string; dominant: string } | null
+  /** Image understanding right now (design 模型内存与图像向量 G17): READY, INDEXING, NOT_INSTALLED, LOW_MEMORY or FAILED with a message to show. */
+  imageModel?: ImageModelStatus | null
+  /** Picture searches only: how the picture was compared, and the matting used. */
+  note?: string; matting?: string
+}
+export type ImageModelStatus = { state: 'READY' | 'INDEXING' | 'NOT_INSTALLED' | 'LOW_MEMORY' | 'FAILED'; message: string; indexed: number; total: number; textSearch: boolean }
+type SearchResponse = Omit<SearchResult, 'items' | 'reasons'> & { items: { garment: GarmentView; score: number; reasons: string[] }[] }
+function searchResult(result: SearchResponse): SearchResult {
+  const reasons: Record<string, string[]> = {}
+  const items = result.items.map(hit => { const g = fromView(hit.garment); reasons[g.id] = hit.reasons; return g })
+  return { ...result, items, reasons }
 }
 export type GarmentPage = { items: Garment[]; total: number; page: number; size: number }
 export type ProcessingChoice = { value: string; label: string }
@@ -258,11 +269,13 @@ export const closetApi = {
       return { items: list.items, reasons: {}, total: list.total, page, hasMore: page * 20 < list.total, mode: 'KEYWORD', parsed: null, emptyHint: '', notice: '', imageStyle: null }
     }
     const params = new URLSearchParams({ q, page: String(page) }); if (imageStyle) params.set('imageStyle', imageStyle)
-    const result = await request<{ items: { garment: GarmentView; score: number; reasons: string[] }[]; total: number; page: number; hasMore: boolean; mode: string;
-      parsed: SearchResult['parsed']; emptyHint: string; notice: string; imageStyle: SearchResult['imageStyle'] }>(`/api/garments/search?${params}`)
-    const reasons: Record<string, string[]> = {}
-    const items = result.items.map(hit => { const g = fromView(hit.garment); reasons[g.id] = hit.reasons; return g })
-    return { ...result, items, reasons }
+    return searchResult(await request<SearchResponse>(`/api/garments/search?${params}`))
+  },
+  /** 超级搜索: a picture (and optional words) against the closet; same result shape as {@link search}. */
+  async superSearch(image: File, q: string, page: number): Promise<SearchResult> {
+    if (usingMocks) return closetApi.search(q, page)
+    const form = new FormData(); form.append('image', image); form.append('q', q); form.append('page', String(page))
+    return searchResult(await request<SearchResponse>('/api/garments/search', { method: 'POST', body: form }))
   },
   async list(query: ListQuery): Promise<GarmentPage> {
     if (!usingMocks) {

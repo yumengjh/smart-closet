@@ -1,0 +1,42 @@
+import { computed, ref } from 'vue'
+import { defineStore } from 'pinia'
+import { notificationApi, type ClosetNotification } from '../notifications/api'
+
+/** Notifications for the processing centre: refreshed every minute while the page is visible and whenever the panel opens. */
+export const useNotificationStore = defineStore('notifications', () => {
+  const items = ref<ClosetNotification[]>([])
+  const unread = ref(0)
+  const error = ref(false)
+  const latest = ref<ClosetNotification | null>(null)
+  const unreadItems = computed(() => items.value.filter(item => !item.read))
+  let timer: ReturnType<typeof setInterval> | undefined
+  let seen = new Set<string>()
+  let started = false
+
+  async function refresh() {
+    try {
+      const list = await notificationApi.list()
+      // Something new since the last refresh (not the first load) pops up once as a toast.
+      if (started) latest.value = list.items.find(item => !item.read && !seen.has(item.id)) ?? latest.value
+      seen = new Set(list.items.map(item => item.id))
+      items.value = list.items; unread.value = list.unread; error.value = false; started = true
+    } catch { error.value = true }
+  }
+  async function read(item: ClosetNotification) {
+    if (item.read) return
+    item.read = true; unread.value = Math.max(0, unread.value - 1)
+    try { unread.value = (await notificationApi.read(item.id)).unread } catch { /* The next refresh corrects the count. */ }
+  }
+  async function readAll() {
+    items.value.forEach(item => { item.read = true }); unread.value = 0
+    try { unread.value = (await notificationApi.readAll()).unread } catch { /* The next refresh corrects the count. */ }
+  }
+  function start() {
+    if (timer) return
+    void refresh()
+    timer = setInterval(() => { if (document.visibilityState === 'visible') void refresh() }, 60_000)
+  }
+  function stop() { clearInterval(timer); timer = undefined; started = false; items.value = []; unread.value = 0; seen = new Set(); latest.value = null }
+  function dismissLatest() { latest.value = null }
+  return { items, unread, error, latest, unreadItems, refresh, read, readAll, start, stop, dismissLatest }
+})
