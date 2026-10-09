@@ -80,7 +80,7 @@ export const fieldLabels: Record<keyof Pick<Garment, 'category' | 'primaryColor'
   seasons: '季节', brand: '品牌', size: '尺码', materialComposition: '成分', careInstructions: '洗护', visibleText: '可见文字',
 }
 
-export type ListQuery = { status: ClosetStatus; q: string; category: string; color: string; season: string; page: number; size: number }
+export type ListQuery = { status: ClosetStatus; q: string; category: string; color: string; season: string; page: number; size: number; sort?: string }
 /** Hybrid wardrobe search result (server: GET /api/garments/search); reasons/parsed/hints are written by the server. */
 export type SearchResult = {
   items: Garment[]; reasons: Record<string, string[]>; total: number; page: number; hasMore: boolean; mode: string
@@ -279,7 +279,7 @@ export const closetApi = {
   },
   async list(query: ListQuery): Promise<GarmentPage> {
     if (!usingMocks) {
-      const page = await request<{ items: GarmentView[]; total: number; page: number; size: number }>(`/api/closet/garments?${new URLSearchParams({ ...query, q: query.q || '', category: query.category || '', color: query.color || '', season: query.season || '', size: String(query.size), page: String(query.page) })}`)
+      const page = await request<{ items: GarmentView[]; total: number; page: number; size: number }>(`/api/closet/garments?${new URLSearchParams({ ...query, q: query.q || '', category: query.category || '', color: query.color || '', season: query.season || '', size: String(query.size), page: String(query.page), sort: query.sort || 'updated' })}`)
       return { ...page, items: page.items.map(fromView) }
     }
     await delay()

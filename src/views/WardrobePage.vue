@@ -8,11 +8,12 @@ import { useClosetStore } from '../stores/closet'
 import GarmentCard from '../components/GarmentCard.vue'
 import GarmentCardSkeleton from '../components/GarmentCardSkeleton.vue'
 import { isProcessing } from '../domain/workflow'
+import { DEFAULT_SORT, SORT_OPTIONS, readSort, saveSort, sortLabel } from '../wardrobe/sort'
 import { buildTags, combineQuery, imageModelNotice, removeWords, IMAGE_STYLE_LABELS, SEARCH_EXAMPLES, type SearchTag } from '../wardrobe/search'
 
 const router = useRouter()
 const closet = useClosetStore()
-const query = reactive<ListQuery>({ status: 'ACTIVE', q: '', category: '', color: '', season: '', page: 1, size: 24 })
+const query = reactive<ListQuery>({ status: 'ACTIVE', q: '', category: '', color: '', season: '', page: 1, size: 24, sort: readSort() })
 const items = ref<Garment[]>([])
 const total = ref(0)
 const loading = ref(false)
@@ -128,12 +129,14 @@ function closeTag(tag: SearchTag) {
 }
 onMounted(async () => { await Promise.all([load(), closet.refreshCounts(), closetApi.metadataOptions().then(values => { options.value = values }).catch(cause => { error.value = String(cause) })]) })
 onUnmounted(() => { window.clearTimeout(searchTimer); if (queryPreview.value) URL.revokeObjectURL(queryPreview.value) })
+// Choosing an order is remembered on this browser; searching ranks by relevance, so the order only applies when browsing.
+function chooseSort(value: string) { query.sort = value; saveSort(value); query.page = 1; void load() }
 watch(() => [query.category, query.color, query.season, imageStyle.value], debounceLoad)
 </script>
 
 <template>
   <div class="page-heading wardrobe-heading">
-    <div><p class="eyebrow">衣橱空间</p><h1>我的衣柜</h1><p class="page-subtitle">已经核对并确认入柜的衣物，按最近更新排序。</p></div>
+    <div><p class="eyebrow">衣橱空间</p><h1>我的衣柜</h1><p class="page-subtitle">已经核对并确认入柜的衣物，{{ searching ? '搜索结果按相关度排序。' : `按“${sortLabel(query.sort || DEFAULT_SORT)}”排序。` }}</p></div>
     <div class="wardrobe-heading-side"><a-button v-if="!selecting" @click="picker?.click()"><CameraOutlined /> 用图片搜</a-button><a-button v-if="!selecting && items.length" @click="selecting = true; batchResult = null"><CheckSquareOutlined /> 批量处理</a-button><div class="wardrobe-stats"><strong>{{ total.toString().padStart(2, '0') }}</strong><span>{{ searching ? '件符合' : '件已入柜' }}</span></div></div>
   </div>
   <section class="wardrobe-tools" aria-label="搜索和筛选衣物" @dragover.prevent @drop.prevent="dropped">
@@ -159,6 +162,7 @@ watch(() => [query.category, query.color, query.season, imageStyle.value], debou
       <a-select :value="query.color || undefined" @update:value="query.color = $event || ''" allow-clear placeholder="全部颜色" class="filter-select"><a-select-option v-for="color in colors" :key="color" :value="color">{{ color }}</a-select-option></a-select>
       <a-select :value="query.season || undefined" @update:value="query.season = $event || ''" allow-clear placeholder="全部季节" class="filter-select"><a-select-option v-for="season in seasons" :key="season" :value="season">{{ season }}</a-select-option></a-select>
       <a-select v-model:value="imageStyle" :options="imageStyleOptions" class="filter-select image-style-select" aria-label="图片风格" />
+      <a-select :value="query.sort" :options="[...SORT_OPTIONS]" :disabled="searching" class="filter-select sort-select" aria-label="排序方式" @update:value="chooseSort($event as string)" />
       <a-button v-if="hasFilters" type="text" class="clear-filters" @click="clearFilters">清除筛选</a-button>
     </div>
   </section>
