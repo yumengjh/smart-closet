@@ -12,6 +12,7 @@ import RecommendationExplain from '../recommend/RecommendationExplain.vue'
 import RecommendationFeedback from '../recommend/RecommendationFeedback.vue'
 import { recommendApi } from '../recommend/api'
 import GarmentChoiceCard from '../recommend/GarmentChoiceCard.vue'
+import GarmentListCard from '../recommend/GarmentListCard.vue'
 import RecommendationDetailModal from '../recommend/RecommendationDetailModal.vue'
 import RecommendationGroup from '../recommend/RecommendationGroup.vue'
 import RecommendIntentBar from '../recommend/RecommendIntentBar.vue'
@@ -94,6 +95,7 @@ function confirmApply(index: number, intoCurrent: boolean) {
 <template>
   <section class="agent-proposal" aria-label="待确认操作">
     <GarmentChoiceCard v-if="proposal.kind === 'GARMENT_CHOICE'" :payload="proposal.payload" />
+    <GarmentListCard v-else-if="proposal.kind === 'GARMENT_LIST'" :payload="proposal.payload" />
     <template v-else-if="proposal.kind !== 'SAVE'">
       <a-button class="agent-proposal-card" block @click="openPreview" :aria-label="isOutfits ? `查看${count}套推荐搭配` : '查看画布修改预览'">
         <div class="agent-proposal-minis"><OutfitThumbnail v-for="(scene, index) in scenes" :key="index" :scene="scene" :title="isOutfits ? proposal.payload.candidates![index].name : '修改后画布'" /><ExpandOutlined v-if="!scenes.length" /></div>
