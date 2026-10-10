@@ -1,14 +1,15 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { App as AntApp } from 'ant-design-vue'
 import { SearchOutlined, SlidersOutlined, PlusOutlined, QuestionCircleOutlined, CheckSquareOutlined, ThunderboltOutlined, CameraOutlined, CloseOutlined } from '@ant-design/icons-vue'
-import { useRouter } from 'vue-router'
+import { onBeforeRouteLeave, useRouter } from 'vue-router'
 import { closetApi, type Garment, type ListQuery, type SearchResult } from '../services/api'
 import { useClosetStore } from '../stores/closet'
 import GarmentCard from '../components/GarmentCard.vue'
 import GarmentCardSkeleton from '../components/GarmentCardSkeleton.vue'
 import { isProcessing } from '../domain/workflow'
 import { DEFAULT_SORT, SORT_OPTIONS, readSort, saveSort, sortLabel } from '../wardrobe/sort'
+import { readView, saveView } from '../wardrobe/viewMemory'
 import { buildTags, combineQuery, imageModelNotice, removeWords, IMAGE_STYLE_LABELS, SEARCH_EXAMPLES, type SearchTag } from '../wardrobe/search'
 
 const router = useRouter()
@@ -20,6 +21,12 @@ const loading = ref(false)
 const error = ref('')
 // Hybrid search (colour/category filters + keywords + local semantics) whenever there is text or an image-style choice.
 const imageStyle = ref('')
+// Issue #3: coming back from a garment restores the filters, page and scroll position (this tab only, 30 minutes).
+// Applied before the filter watcher below exists, so restoring does not reset the page to 1.
+const remembered = readView()
+if (remembered) { Object.assign(query, { q: remembered.q, category: remembered.category, color: remembered.color, season: remembered.season, page: remembered.page }); imageStyle.value = remembered.imageStyle }
+function rememberView() { saveView({ q: query.q, category: query.category, color: query.color, season: query.season, imageStyle: imageStyle.value, page: query.page, scrollY: Math.round(window.scrollY) }) }
+onBeforeRouteLeave(() => { rememberView() })
 const searchResult = ref<SearchResult | null>(null)
 // 超级搜索 (design 模型内存与图像向量 §9): a picture can join the words in the same box (camera button, paste or drop).
 const queryImage = ref<File | null>(null)
@@ -127,8 +134,15 @@ function closeTag(tag: SearchTag) {
   }
   debounceLoad()
 }
-onMounted(async () => { await Promise.all([load(), closet.refreshCounts(), closetApi.metadataOptions().then(values => { options.value = values }).catch(cause => { error.value = String(cause) })]) })
-onUnmounted(() => { window.clearTimeout(searchTimer); if (queryPreview.value) URL.revokeObjectURL(queryPreview.value) })
+onMounted(async () => {
+  window.scrollTo({ top: 0, behavior: 'instant' })
+  window.addEventListener('pagehide', rememberView)
+  await Promise.all([load(), closet.refreshCounts(), closetApi.metadataOptions().then(values => { options.value = values }).catch(cause => { error.value = String(cause) })])
+  // The remembered page may no longer exist (garments were removed meanwhile): fall back to the last page.
+  if (remembered && !items.value.length && query.page > 1 && total.value > 0) { query.page = pageCount.value; await load() }
+  if (remembered?.scrollY) { await nextTick(); window.scrollTo({ top: Math.min(remembered.scrollY, document.documentElement.scrollHeight), behavior: 'instant' }) }
+})
+onUnmounted(() => { window.removeEventListener('pagehide', rememberView); window.clearTimeout(searchTimer); if (queryPreview.value) URL.revokeObjectURL(queryPreview.value) })
 // Choosing an order is remembered on this browser; searching ranks by relevance, so the order only applies when browsing.
 function chooseSort(value: string) { query.sort = value; saveSort(value); query.page = 1; void load() }
 watch(() => [query.category, query.color, query.season, imageStyle.value], debounceLoad)
