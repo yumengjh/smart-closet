@@ -1,10 +1,22 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, ref } from 'vue'
+import { App } from 'ant-design-vue'
 import { processingApi, poolLabels, executionLabels, type AdminProcessing, type Limits } from '../services/processing'
 defineProps<{ embedded?: boolean }>()
+const { message } = App.useApp()
 const state = ref<AdminProcessing>(); const draft = ref<Limits>(); const error = ref(''); const saving = ref(false); const page = ref(1); let timer = 0; let alive = true; let draftRevision = 0
 async function load(reset = false) { try { state.value = await processingApi.admin(page.value); if (!draft.value || reset) { draft.value = JSON.parse(JSON.stringify(state.value.resources.config.limits)); draftRevision = state.value.resources.config.revision } if (reset) error.value = '' } catch (cause) { error.value = String(cause) } }
-async function save() { if (!draft.value || !state.value) return; saving.value = true; try { await processingApi.config(draft.value, draftRevision); await load(true) } catch (cause) { error.value = String(cause) } finally { saving.value = false } }
+// Issue #16: saving was silent, and a revision conflict (someone else saved first) showed a raw error.
+async function save() {
+  if (!draft.value || !state.value) return; saving.value = true
+  try { await processingApi.config(draft.value, draftRevision); await load(true); message.success('调度配置已保存，新任务按新容量排队；正在运行的任务不受影响。') }
+  catch (cause) {
+    const text = cause instanceof Error ? cause.message : String(cause)
+    if (/CONFIG_CONFLICT|配置已变化|conflict/i.test(text)) { await load(true); message.warning('配置刚被其他人或其他页面修改过，已重新读取最新配置，请确认后再保存。') }
+    else error.value = text
+  } finally { saving.value = false }
+}
+async function reload() { await load(true); message.info('已重新读取配置，未保存的修改已放弃。') }
 async function poll() { await load(); if (alive) timer = window.setTimeout(poll, 3000) }
 onMounted(poll); onBeforeUnmount(() => { alive = false; clearTimeout(timer) })
 </script>
@@ -35,7 +47,7 @@ onMounted(poll); onBeforeUnmount(() => { alive = false; clearTimeout(timer) })
           <a-form-item label="暂停资源池"><a-checkbox-group v-model:value="draft.paused" :options="Object.entries(poolLabels).map(([value,label]) => ({ value, label }))" /></a-form-item>
           <div class="settings-group-actions">
             <a-button type="primary" html-type="submit" :loading="saving">保存调度配置</a-button>
-            <a-button @click="load(true)">重新读取配置</a-button>
+            <a-button @click="reload">放弃修改并重新读取</a-button>
           </div>
         </a-form>
       </section>
