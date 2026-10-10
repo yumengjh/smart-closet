@@ -22,7 +22,12 @@ export const FEEDBACK_REASONS = [
   { value: 'TOO_CASUAL', label: '太随意' },
   { value: 'DISLIKE_ITEM', label: '不喜欢某一件' },
   { value: 'STYLE_MISMATCH', label: '画风不统一' },
+  { value: 'NOT_MY_STYLE', label: '不是我要的风格' },
+  { value: 'INCOMPLETE', label: '不成套（缺上衣或下装）' },
+  { value: 'WRONG_CATEGORY', label: '某件品类识别错了' },
 ] as const
+/** Reasons that need the garment they are about. */
+export const GARMENT_REASONS = ['DISLIKE_ITEM', 'WRONG_CATEGORY'] as const
 
 export const OCCASIONS = [
   { value: 'DAILY', label: '日常' }, { value: 'COMMUTE', label: '通勤' }, { value: 'DATE', label: '约会' }, { value: 'SPORT', label: '运动' },
