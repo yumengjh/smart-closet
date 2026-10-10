@@ -28,7 +28,8 @@ export const router = createRouter({
     { path: '/trash', component: () => import('./views/TrashPage.vue') },
     { path: '/:pathMatch(.*)*', redirect: '/wardrobe' },
   ],
-  scrollBehavior: () => ({ top: 0, behavior: 'smooth' }),
+  // The wardrobe restores its own position after its list has loaded (issue #3); everything else starts at the top.
+  scrollBehavior: (to) => to.path === '/wardrobe' ? false : { top: 0, behavior: 'smooth' },
 })
 
 installRouteProgress(router)
