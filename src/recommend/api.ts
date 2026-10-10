@@ -42,7 +42,7 @@ export const recommendApi = {
     return request<Explanation>(`/api/recommendations/${runId}/explain?${q}`)
   },
   feedback(logId: string, verdict: Verdict, reasons: string[] = [], garmentId?: string) {
-    return request<{ logId: string; verdict: Verdict; reasons: string[] }>(`/api/recommendations/logs/${logId}/feedback`, {
+    return request<{ logId: string; verdict: Verdict; reasons: string[]; doubted?: { garmentId: string; name: string } }>(`/api/recommendations/logs/${logId}/feedback`, {
       method: 'POST', body: JSON.stringify({ verdict, reasons, garmentId }),
     })
   },
