@@ -5,6 +5,7 @@ import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { CameraOutlined, PictureOutlined, SettingOutlined, CheckCircleFilled, LoadingOutlined, ClockCircleOutlined, ArrowRightOutlined, InboxOutlined, CloseOutlined } from '@ant-design/icons-vue'
 import { useClosetStore } from '../stores/closet'
+import { useNotificationStore } from '../stores/notifications'
 import { mediaUrl } from '../services/urls'
 import { prefersNativeCamera } from '../services/camera'
 import { playSound } from '../services/sound'
@@ -12,6 +13,7 @@ import CameraCapture from './CameraCapture.vue'
 import TargetMarker from './TargetMarker.vue'
 import { savePhoto, checkLocalStorage, updateSavedResult, refreshUploads, pumpUploads, uploadRows, uploadError, markPhoto, retryPhoto, removePhoto, quickApi, type LocalPhoto, type Hint } from '../services/quickIntake'
 
+const notifications = useNotificationStore()
 const closet = useClosetStore(), router = useRouter()
 const compact = ref(window.matchMedia('(max-width: 1023px)').matches)
 const mode = ref('BASE_READY'), camera = ref(false), settings = ref(false), markerMode = ref(false)
@@ -151,6 +153,8 @@ async function refresh() {
       if (!alive || account !== owner()) return
       await updateSavedResult(row.id, account, view)
       const current = uploadRows.value.find(item => item.id === row.id)
+      // A garment just reached the closet: its duplicate notice usually follows within seconds (issue #14).
+      if (current && view.garmentId && !current.result?.garmentId) notifications.expectSoon()
       if (current) current.result = view
     }))
     error.value = ''
