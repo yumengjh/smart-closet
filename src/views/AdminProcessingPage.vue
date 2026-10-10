@@ -23,7 +23,7 @@ onMounted(poll); onBeforeUnmount(() => { alive = false; clearTimeout(timer) })
 
       <section class="settings-group">
         <header class="settings-group-head"><h3>调度配置</h3><p>各资源池容量与上游账户并发。</p></header>
-        <a-form layout="vertical" @finish="save">
+        <a-form :model="draft" layout="vertical" @finish="save">
           <div class="limits-grid">
             <a-form-item label="本地处理容量"><a-input-number v-model:value="draft.cpu" :min="1" :max="16" /></a-form-item>
             <a-form-item label="识别容量"><a-input-number v-model:value="draft.recognition" :min="1" :max="32" /></a-form-item>

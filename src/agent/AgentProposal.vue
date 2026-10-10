@@ -11,6 +11,11 @@ import { ExpandOutlined, RightOutlined, WarningOutlined } from '@ant-design/icon
 import RecommendationExplain from '../recommend/RecommendationExplain.vue'
 import RecommendationFeedback from '../recommend/RecommendationFeedback.vue'
 import { recommendApi } from '../recommend/api'
+import GarmentChoiceCard from '../recommend/GarmentChoiceCard.vue'
+import RecommendationDetailModal from '../recommend/RecommendationDetailModal.vue'
+import RecommendationGroup from '../recommend/RecommendationGroup.vue'
+import RecommendIntentBar from '../recommend/RecommendIntentBar.vue'
+import type { IntentInput, RecommendationView, RecommendedOutfit } from '../recommend/types'
 import type { OutfitScene } from '../domain/outfit'
 const props = defineProps<{ proposal: Proposal }>()
 const emit = defineEmits<{ applied: [] }>()
@@ -42,6 +47,19 @@ async function preview() {
   } catch (e) { error.value = e instanceof Error ? e.message : '预览无法加载。' }
 }
 onMounted(preview)
+// Swap / explain on chat cards reuse the page's detail modal; editing the echoed intent re-runs with no model call.
+const detailOpen = ref(false); const detailIndex = ref(0)
+const recommended = ref<RecommendedOutfit[]>((props.proposal.payload.candidates || []).flatMap(c => c.recommendation ? [c.recommendation] : []))
+function openDetail(index: number) { detailIndex.value = index; detailOpen.value = true }
+function replaceOutfit(index: number, outfit: RecommendedOutfit) { recommended.value.splice(index, 1, outfit) }
+const editing = ref(false); const rerunning = ref(false); const rerun = ref<RecommendationView | null>(null)
+const editIntent = ref<IntentInput>({ ...(props.proposal.payload.intentInput || {}) })
+async function recompute() {
+  rerunning.value = true
+  try { rerun.value = await recommendApi.recommend({ ...editIntent.value, temperatureC: editIntent.value.temperatureC ?? undefined }) }
+  catch (e) { message.error(e instanceof Error ? e.message : '重新计算失败。') }
+  finally { rerunning.value = false }
+}
 function confirmApply(index: number, intoCurrent: boolean) {
   modal.confirm({ title: props.proposal.kind === 'SAVE' ? '确认保存当前搭配？' : intoCurrent ? '确认将预览应用到当前画布？' : '新建一份独立搭配草稿？',
     content: props.proposal.kind === 'SAVE' ? '保存到账号后可在其他设备继续编辑，版本冲突时不会覆盖。' : '应用后仍是未保存草稿；保存到账号需要你再次确认。',
@@ -75,13 +93,15 @@ function confirmApply(index: number, intoCurrent: boolean) {
 </script>
 <template>
   <section class="agent-proposal" aria-label="待确认操作">
-    <template v-if="proposal.kind !== 'SAVE'">
+    <GarmentChoiceCard v-if="proposal.kind === 'GARMENT_CHOICE'" :payload="proposal.payload" />
+    <template v-else-if="proposal.kind !== 'SAVE'">
       <a-button class="agent-proposal-card" block @click="openPreview" :aria-label="isOutfits ? `查看${count}套推荐搭配` : '查看画布修改预览'">
         <div class="agent-proposal-minis"><OutfitThumbnail v-for="(scene, index) in scenes" :key="index" :scene="scene" :title="isOutfits ? proposal.payload.candidates![index].name : '修改后画布'" /><ExpandOutlined v-if="!scenes.length" /></div>
         <div class="agent-proposal-copy"><strong>{{ cardTitle }}</strong><small v-if="isRecommendation && proposal.payload.intent">{{ proposal.payload.intent }}</small><small>{{ used ? '已处理 · 点击查看' : isRecommendation ? '点开查看搭配和打分依据' : '点开大图，再选择怎么应用' }}</small></div><RightOutlined />
       </a-button>
       <a-modal v-model:open="expanded" :title="isOutfits ? '从你的衣柜，为你组合' : '确认画布修改'" :width="1100" :footer="null" wrap-class-name="agent-preview-modal">
-        <p v-if="isRecommendation && proposal.payload.intent" class="recommend-intent">按“{{ proposal.payload.intent }}”推荐 · 分数与理由由系统按规则计算，可展开查看</p>
+        <p v-if="isRecommendation && proposal.payload.intent" class="recommend-intent">按“{{ proposal.payload.intent }}”推荐 · 分数与理由由系统按规则计算，可展开查看<a-button v-if="proposal.payload.intentInput" type="link" size="small" @click="editing = !editing">{{ editing ? '收起' : '理解错了？修改条件' }}</a-button></p>
+        <div v-if="isRecommendation && editing" class="recommend-rerun"><RecommendIntentBar v-model="editIntent" :loading="rerunning" submit-label="按新条件重算" @submit="recompute" /><small class="muted">直接重新计算，不调用大模型。</small><RecommendationGroup v-if="rerun" :key="rerun.runId" :view="rerun" /></div>
         <a-alert v-if="notices.length" class="recommend-notices" type="info" show-icon message="本次推荐的限制与说明"><template #description><ul><li v-for="n in notices" :key="n">{{ n }}</li></ul></template></a-alert>
         <p class="agent-preview-intro">{{ used ? '这份建议已经处理，仍可查看预览。' : '先看看整体效果。应用后仍是草稿，保存时会再次请你确认。' }}</p>
         <a-alert v-if="error" type="warning" :message="error" show-icon /><a-button v-if="error" @click="preview">重新加载预览</a-button>
@@ -97,12 +117,14 @@ function confirmApply(index: number, intoCurrent: boolean) {
               <ul v-if="candidate.recommendation.warnings.length" class="recommend-warnings"><li v-for="w in candidate.recommendation.warnings" :key="w"><WarningOutlined />{{ w }}</li></ul>
               <a-collapse ghost class="recommend-collapse" :active-key="explained" @change="viewDetail"><a-collapse-panel :key="candidate.recommendation.key" header="为什么这样搭"><RecommendationExplain :outfit="candidate.recommendation" /></a-collapse-panel></a-collapse>
               <RecommendationFeedback :log-id="candidate.recommendation.logId" :garments="candidate.recommendation.garments" />
+              <a-button v-if="proposal.payload.runId" size="small" type="link" @click="openDetail(index)">换一件 · 为什么这样排</a-button>
             </template>
             <p v-else>{{ candidate.reason }}</p><div class="agent-candidate-actions"><a-button :disabled="used || !scenes[index] || busy" @click="confirmApply(index, false)">新建草稿</a-button><a-button v-if="current" type="primary" :disabled="used || !scenes[index] || busy" @click="confirmApply(index, true)">应用当前</a-button></div>
           </article>
         </div>
         <div v-else class="agent-edit-preview"><OutfitThumbnail v-if="scenes[0]" :resolution="640" :scene="scenes[0]" title="修改后画布" /><div><h3>调整后的效果</h3><p>{{ proposal.payload.summary }}</p><a-button type="primary" :disabled="used || !current || !scenes[0] || busy" @click="confirmApply(0, true)">确认应用修改</a-button><p v-if="!current" class="assistant-dialog-note">请先回到生成建议时的组合台。</p></div></div>
       </a-modal>
+      <RecommendationDetailModal v-if="isRecommendation && proposal.payload.runId" v-model:open="detailOpen" v-model:index="detailIndex" :run-id="proposal.payload.runId" :outfits="recommended" :intent="proposal.payload.intent" @replace="replaceOutfit" />
     </template>
     <div v-else class="agent-save-card"><div><strong>准备保存这份搭配？</strong><small>{{ used ? '已处理' : '确认后保存到你的账号' }}</small></div><a-button size="small" type="primary" :disabled="used || !current || busy" @click="confirmApply(0, true)">确认保存</a-button></div>
   </section>

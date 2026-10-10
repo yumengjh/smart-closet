@@ -6,12 +6,16 @@ import { isProcessing } from '../domain/workflow'
 import { useClosetStore } from '../stores/closet'
 import GarmentCard from '../components/GarmentCard.vue'
 import GarmentCardSkeleton from '../components/GarmentCardSkeleton.vue'
+import { similarApi, type SimilarItem } from '../similar/api'
 const closet = useClosetStore(); const items = ref<Garment[]>([]); const loading = ref(true); const error = ref(''); const filter = ref('全部')
+const duplicates = ref<Record<string, SimilarItem>>({})
 const page = ref(1); const total = ref(0); let timer = 0; let alive = false; let delay = 2000
 const needsAction = (item: Garment) => !isProcessing(item.taskStatus) && (Boolean(item.imageProcessing?.stickerRequired && !item.imageProcessing.stickerReady) || ['FAILED', 'UNKNOWN', 'CANCELLED', 'NEEDS_REVIEW'].includes(item.taskStatus || ''))
 const filtered = computed(() => items.value.filter(item => filter.value === '全部' || (filter.value === '处理中' ? isProcessing(item.taskStatus) : filter.value === '需处理' ? needsAction(item) : !isProcessing(item.taskStatus) && !needsAction(item))))
 async function load() {
-  try { const response = await closetApi.list({ status: 'DRAFT', q: '', category: '', color: '', season: '', page: page.value, size: 24 }); if (!alive) return; items.value = response.items; total.value = response.total; error.value = ''; delay = 2000 }
+  try { const response = await closetApi.list({ status: 'DRAFT', q: '', category: '', color: '', season: '', page: page.value, size: 24 }); if (!alive) return; items.value = response.items; total.value = response.total; error.value = ''; delay = 2000
+    // Hint only (design 相似衣物 S2): drafts that look like something already in the closet.
+    similarApi.flags(response.items.filter(i => !isProcessing(i.taskStatus)).map(i => i.id)).then(r => { if (alive) duplicates.value = r.flags }).catch(() => {}) }
   catch (cause) { error.value = cause instanceof Error ? cause.message : '未入柜衣物暂时无法加载。'; delay = Math.min(30000, delay * 2) }
   finally { loading.value = false }
 }
@@ -24,7 +28,11 @@ onMounted(async () => { alive = true; await load(); await closet.refreshCounts()
   <div class="list-toolbar"><a-segmented v-model:value="filter" :options="['全部', '处理中', '待核对', '需处理']" /><span class="muted">状态筛选当前页</span></div>
   <a-alert v-if="error" type="error" :message="error" show-icon class="page-alert" />
   <GarmentCardSkeleton v-if="loading" label="正在加载未入柜衣物…" />
-  <section v-else-if="filtered.length" class="garment-grid"><GarmentCard v-for="item in filtered" :key="item.id" :garment="item" pending /></section>
+  <section v-else-if="filtered.length" class="garment-grid"><div v-for="item in filtered" :key="item.id" class="pending-card"><GarmentCard :garment="item" pending /><RouterLink v-if="duplicates[item.id]" :to="`/garment/${item.id}`" class="pending-duplicate"><a-tag color="orange">可能重复：{{ duplicates[item.id].name }}</a-tag></RouterLink></div></section>
   <section v-else class="empty-wardrobe compact-empty"><span class="empty-spark"><CheckCircleOutlined /></span><h2>{{ total ? '当前页没有此状态的衣物' : '没有未入柜的衣物' }}</h2><p>上传后可查看处理进度，处理结束后在工作台核对结果。</p><RouterLink to="/add" class="outline-button"><PlusOutlined /> 添加衣物</RouterLink></section>
   <footer v-if="total > 24" class="pagination-row"><span>第 {{ page }} / {{ Math.ceil(total / 24) }} 页</span><div><a-button :disabled="page === 1" @click="turnPage(-1)">上一页</a-button><a-button :disabled="page * 24 >= total" @click="turnPage(1)">下一页</a-button></div></footer>
 </template>
+<style scoped>
+.pending-card { display: grid; gap: 6px; align-content: start; }
+.pending-duplicate { justify-self: start; }
+</style>

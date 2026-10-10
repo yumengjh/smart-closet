@@ -27,6 +27,10 @@ import OutfitInspector from '../components/OutfitInspector.vue'
 import OutfitPersonPicker from '../components/OutfitPersonPicker.vue'
 import { createPersonElement, type PersonCatalog, type PersonPart } from '../domain/person-stickers'
 import OutfitLayers from '../components/OutfitLayers.vue'
+import RecommendationStrip from '../recommend/RecommendationStrip.vue'
+import ExplainButton from '../recommend/ExplainButton.vue'
+import { recommendApi } from '../recommend/api'
+import { wornLabel as formatWorn } from '../recommend/format'
 import SoundToggle from '../components/SoundToggle.vue'
 import { arrangeOutfit } from '../domain/outfit-layout'
 import { canvasBridge } from '../agent/bridge'
@@ -263,9 +267,22 @@ async function loadPage() {
   }
 }
 
+const wornDates = ref<Record<string, string>>({})
+const wearing = ref(false)
+/** "今天穿了这套" (D6): records the saved outfit's garments for freshness, idle activation and the wear history. */
+async function wearOutfit(id: string) {
+  wearing.value = true
+  try {
+    const r = await recommendApi.wear({ outfitId: id }); wornDates.value = { ...wornDates.value, [id]: r.wornOn }
+    playSound('success'); message.success('已记下今天穿了这套。')
+  } catch (cause) { playSound('error'); message.error(cause instanceof Error ? cause.message : '没有记录成功。') }
+  finally { wearing.value = false }
+}
+function wornLabel(id: string) { return formatWorn(wornDates.value[id]) }
 async function loadLibrary() {
   pageLoading.value = true
   error.value = ''
+  recommendApi.outfitWear().then(v => { wornDates.value = v }).catch(() => {})
   try { saved.value = await closetApi.outfits() }
   catch (cause) { error.value = cause instanceof Error ? cause.message : '搭配列表暂时无法加载。' }
   finally { pageLoading.value = false }
@@ -954,6 +971,7 @@ defineExpose({ flush: persistDraft, exportPng })
 <template>
   <div v-if="!editing" class="outfit-library-page">
     <div class="page-heading outfit-library-heading"><div><h1>穿搭组合台</h1><p class="page-subtitle">从自己的衣柜选单品，保存一套随时可以穿的搭配。</p></div><div><a-button @click="router.push('/outfits/workspace')">打开多画板工作区</a-button><a-button type="primary" @click="router.push('/outfits/new')"><PlusOutlined /> 新建搭配</a-button></div></div>
+    <RecommendationStrip />
     <a-alert v-if="error" type="error" show-icon :message="error" class="outfit-alert"><template #action><a-button @click="loadLibrary">重新加载</a-button></template></a-alert>
     <a-skeleton v-if="pageLoading" active :paragraph="{ rows: 7 }" />
     <template v-else-if="saved.length">
@@ -961,7 +979,7 @@ defineExpose({ flush: persistDraft, exportPng })
       <section v-if="displayedOutfits.length" class="outfit-library-grid" aria-label="已保存的穿搭">
         <article v-for="outfit in displayedOutfits" :key="outfit.id" class="outfit-card">
           <RouterLink :to="`/outfits/${outfit.id}`" class="outfit-card-preview" @click="playSound('tap')"><OutfitThumbnail :scene="outfit.scene" :title="outfit.name" /><a-tag class="outfit-card-count">{{ outfit.scene.elements.length }} 张贴纸</a-tag><a-tag v-if="outfit.scene.elements.some(item => item.garmentChanged || item.garmentStatus === 'TRASHED')" color="warning" class="outfit-card-status">衣物有更新</a-tag></RouterLink>
-          <div class="outfit-card-details"><div><RouterLink :to="`/outfits/${outfit.id}`" class="outfit-card-name">{{ outfit.name }}</RouterLink><span>{{ new Date(outfit.updatedAtMs).toLocaleDateString() }} 更新</span></div><a-dropdown :trigger="['click']"><a-button type="text" aria-label="搭配更多操作"><MoreOutlined /></a-button><template #overlay><a-menu><a-menu-item @click="router.push(`/outfits/${outfit.id}`)">编辑搭配</a-menu-item><a-menu-item @click="startCopy(outfit)"><CopyOutlined /> 复制搭配</a-menu-item><a-menu-divider /><a-menu-item danger @click="confirmDelete(outfit)"><DeleteOutlined /> 删除搭配</a-menu-item></a-menu></template></a-dropdown></div>
+          <div class="outfit-card-details"><div><RouterLink :to="`/outfits/${outfit.id}`" class="outfit-card-name">{{ outfit.name }}</RouterLink><span>{{ new Date(outfit.updatedAtMs).toLocaleDateString() }} 更新<template v-if="wornLabel(outfit.id)"> · {{ wornLabel(outfit.id) }}</template></span></div><a-dropdown :trigger="['click']"><a-button type="text" aria-label="搭配更多操作"><MoreOutlined /></a-button><template #overlay><a-menu><a-menu-item @click="router.push(`/outfits/${outfit.id}`)">编辑搭配</a-menu-item><a-menu-item @click="startCopy(outfit)"><CopyOutlined /> 复制搭配</a-menu-item><a-menu-item :disabled="wearing" @click="wearOutfit(outfit.id)"><CheckOutlined /> 今天穿了这套</a-menu-item><a-menu-divider /><a-menu-item danger @click="confirmDelete(outfit)"><DeleteOutlined /> 删除搭配</a-menu-item></a-menu></template></a-dropdown></div>
         </article>
       </section>
       <a-empty v-else :image="Empty.PRESENTED_IMAGE_SIMPLE" description="没有找到这套搭配"><a-button @click="librarySearch = ''">清除搜索</a-button></a-empty>
@@ -974,8 +992,9 @@ defineExpose({ flush: persistDraft, exportPng })
   <div v-else class="outfit-editor-page" :inert="props.board?.locked ? true : undefined">
     <header v-if="!props.board" class="outfit-editor-header">
       <div class="outfit-editor-title"><a-tooltip v-if="!props.board" title="返回搭配列表，草稿会自动保留"><a-button aria-label="返回搭配列表" @click="router.push('/outfits')"><ArrowLeftOutlined /></a-button></a-tooltip><div class="outfit-title-field"><a-input v-model:value="name" maxlength="100" aria-label="搭配名称" placeholder="给搭配起个名字" /></div><a-tooltip :title="saveState"><span class="outfit-save-state" role="status"><CheckOutlined v-if="localDraftNotice || (!isNew && !hasChanges)" />{{ localDraftNotice ? '本机草稿' : !isNew && !hasChanges ? '已保存' : '未保存' }}</span></a-tooltip></div>
-      <div class="outfit-header-actions"><SoundToggle /><a-button @click="reviewOpen=true">穿搭检查</a-button><a-button :disabled="isNew || hasChanges || !!remoteConflict" title="请先保存当前修改，再生成 OOTD" @click="router.push({ path: '/ootd', query: { outfit: outfitId } })">OOTD</a-button><a-button class="outfit-desktop-export" :loading="exporting" :disabled="!dirty || !!failedImage" @click="exportPng"><DownloadOutlined /> 导出图片</a-button><a-button type="primary" aria-label="保存搭配" :loading="saving" :disabled="!dirty || remoteConflict" @click="saveOutfit"><SaveOutlined /><span>{{ compact ? '保存' : '保存搭配' }}</span></a-button></div>
+      <div class="outfit-header-actions"><SoundToggle /><a-button v-if="!isNew && !hasChanges && !remoteConflict" :loading="wearing" @click="wearOutfit(outfitId)"><CheckOutlined /> 今天穿了</a-button><a-button @click="reviewOpen=true">穿搭检查</a-button><a-button :disabled="isNew || hasChanges || !!remoteConflict" title="请先保存当前修改，再生成 OOTD" @click="router.push({ path: '/ootd', query: { outfit: outfitId } })">OOTD</a-button><a-button class="outfit-desktop-export" :loading="exporting" :disabled="!dirty || !!failedImage" @click="exportPng"><DownloadOutlined /> 导出图片</a-button><a-button type="primary" aria-label="保存搭配" :loading="saving" :disabled="!dirty || remoteConflict" @click="saveOutfit"><SaveOutlined /><span>{{ compact ? '保存' : '保存搭配' }}</span></a-button></div>
     </header>
+    <a-alert v-if="!props.board && actualRoute.query.from === 'recommend'" type="info" show-icon closable class="outfit-alert" message="来自推荐 · 这是一份草稿，保存前可以随意调整"><template v-if="typeof actualRoute.query.run === 'string' && typeof actualRoute.query.key === 'string'" #action><ExplainButton :run-id="actualRoute.query.run" :outfit-key="actualRoute.query.key" label="查看依据" /></template></a-alert>
     <a-alert v-if="remoteConflict" type="warning" show-icon message="另一处已更新这套搭配，你的草稿仍保留。" class="outfit-alert"><template #action><div class="outfit-conflict-actions"><a-button @click="loadLatest">重新加载</a-button><a-button type="primary" @click="saveConflictAsCopy">另存副本</a-button></div></template></a-alert>
     <a-alert v-else-if="error" type="error" show-icon closable :message="error" class="outfit-alert" @close="error = ''" />
     <div class="outfit-editor-layout">

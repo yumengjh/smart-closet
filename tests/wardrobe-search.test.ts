@@ -24,3 +24,15 @@ test('style tags remove the words the user typed', () => {
   assert.equal(tag.label, '风格：甜美（可爱）')
   assert.equal(removeWords('可爱的裙子', tag.words), '裙子')
 })
+
+test('image model notices: pictures always explain, words only on faults', async () => {
+  const { imageModelNotice } = await import('../src/wardrobe/search.ts')
+  const low = { state: 'LOW_MEMORY', message: '服务器内存紧张，图像识别暂时关闭，已按颜色、轮廓比对。' }
+  assert.equal(imageModelNotice(low, true), low.message)
+  assert.equal(imageModelNotice(low, false), '服务器内存紧张，图像识别暂时关闭，文字找图片暂时关闭。')
+  assert.equal(imageModelNotice({ state: 'NOT_INSTALLED', message: '未安装图文模型' }, false), '')
+  assert.equal(imageModelNotice({ state: 'NOT_INSTALLED', message: '未安装图文模型' }, true), '未安装图文模型')
+  assert.equal(imageModelNotice({ state: 'INDEXING', message: '图像识别准备中' }, false), '')
+  assert.equal(imageModelNotice({ state: 'READY', message: '' }, true), '')
+  assert.equal(imageModelNotice(null, true), '')
+})

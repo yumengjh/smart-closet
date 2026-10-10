@@ -84,14 +84,21 @@ export const outfitRoleOptions: OutfitRoleOption[] = [
 export function roleFromGarment(garment: Pick<Garment, 'category'>): OutfitRole {
   const name = garment.category.join(' ').trim()
   if (name === '裙装') return 'OTHER'
-  if (/连衣裙|背心裙|吊带裙|连体|连身|\b(dress|jumpsuit|romper)\b/i.test(name)) return 'ONE_PIECE'
+  // Same order as the server (OutfitRules, D43). The collage has no own slot for pinafores, hair accessories or
+  // hand-held objects: a pinafore sits in the one-piece slot over its top, hair accessories on the head, the rest aside.
+  if (/袜(?![靴鞋])|腿套|\b(socks|tights|stockings|pantyhose)\b/i.test(name)) return 'ACCESSORY'
+  if (/发箍|发夹|发卡|发带|发饰|头花|头饰|头纱|头箍|抓夹|发圈|(?<![A-Za-z])KC(?![A-Za-z])|\b(headband|hair ?clip|hairpin|scrunchie)\b/i.test(name)) return 'HAT'
+  if (/背带裙|背带裤|吊带裤|(?<![A-Za-z])JSK(?![A-Za-z])|\b(pinafore|overalls|jumper ?skirt|dungarees)\b/i.test(name)) return 'ONE_PIECE'
+  if (/连衣裙|背心裙|马甲裙|吊带裙|连体|连身|小黑裙|礼服|婚纱|旗袍|晚装|套装|(?<![A-Za-z])OP(?![A-Za-z])|\b(dress|jumpsuit|romper|gown)\b/i.test(name)) return 'ONE_PIECE'
+  if (/马甲|(牛仔|西装|西服|针织|毛衣|毛线|羊毛|羽绒|皮|工装)背心|\b(waistcoat|gilet)\b/i.test(name)) return 'OUTER'
   if (/外套|夹克|西装外套|西装上衣|西服上衣|^西装$|大衣|风衣|羽绒|冲锋衣|罩衫|开衫|\b(coat|jacket|blazer|cardigan|parka)\b/i.test(name)) return 'OUTER'
-  if (/长裤|短裤|牛仔裤|半身裙|下装|裤|裙|\b(pants|trousers|jeans|shorts|skirt)\b/i.test(name)) return 'BOTTOM'
-  if (/T恤|衬衫|卫衣|毛衣|针织|背心|上装|马甲|Polo|\b(t-shirt|shirt|sweater|hoodie|sweatshirt|top|vest)\b/i.test(name)) return 'TOP'
+  if (/长裤|短裤|牛仔裤|半身裙|下装|裤|裙|(?<![A-Za-z])SK(?![A-Za-z])|\b(pants|trousers|jeans|shorts|skirt)\b/i.test(name)) return 'BOTTOM'
+  if (/T恤|衬衫|卫衣|毛衣|针织|背心|上装|Polo|\b(t-shirt|shirt|sweater|hoodie|sweatshirt|top|vest|blouse)\b/i.test(name)) return 'TOP'
   if (/鞋|靴|\b(shoes|boots|sneakers|sandals)\b/i.test(name)) return 'SHOES'
   if (/帽|\b(hat|cap|beret)\b/i.test(name)) return 'HAT'
   if (/背包|手提包|斜挎包|包袋|包|\b(bag|backpack|handbag)\b/i.test(name)) return 'BAG'
-  if (/围巾|腰带|袜|首饰|眼镜|配饰|手套|领带|\b(scarf|belt|socks|jewelry|glasses|gloves|tie|accessory)\b/i.test(name)) return 'ACCESSORY'
+  if (/玩偶|公仔|毛绒|玩具|娃娃|雨伞|阳伞|遮阳伞|折叠伞|^伞$|扇子|团扇|折扇|相机|拍立得|花束|手持|\b(plush|teddy|umbrella|parasol|camera|bouquet|fan)\b/i.test(name)) return 'ACCESSORY'
+  if (/围巾|腰带|首饰|眼镜|配饰|手套|领带|耳环|耳饰|项链|手链|手镯|手表|戒指|\b(scarf|belt|jewelry|glasses|gloves|tie|accessory)\b/i.test(name)) return 'ACCESSORY'
   return 'OTHER'
 }
 

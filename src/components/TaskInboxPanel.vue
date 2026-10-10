@@ -1,14 +1,20 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { CheckOutlined, ExclamationOutlined, MinusOutlined, RightOutlined, InboxOutlined, PictureOutlined } from '@ant-design/icons-vue'
+import { CheckOutlined, ExclamationOutlined, MinusOutlined, RightOutlined, InboxOutlined, PictureOutlined, CopyOutlined, BellOutlined } from '@ant-design/icons-vue'
 import { closetApi, type ClosetTask } from '../services/api'
 import { mediaUrl } from '../services/urls'
 import { taskLabels, isProcessing } from '../domain/workflow'
 import { useProcessingStore } from '../stores/processing'
 import { useClosetStore } from '../stores/closet'
 import type { WaitingEntry } from '../domain/waiting'
+import { useNotificationStore } from '../stores/notifications'
+import type { ClosetNotification } from '../notifications/api'
 const props = defineProps<{ open: boolean }>()
-const emit = defineEmits<{ visit: [entry: WaitingEntry]; go: [path: string] }>()
+const emit = defineEmits<{ visit: [entry: WaitingEntry]; go: [path: string]; notice: [item: ClosetNotification] }>()
+// Notifications (likely duplicates, scan results): unread first, a few recent read ones after.
+const notices = useNotificationStore()
+const shownNotices = computed(() => [...notices.unreadItems, ...notices.items.filter(item => item.read).slice(0, Math.max(0, 3 - notices.unreadItems.length))].slice(0, 8))
+const noticeIcon = (item: ClosetNotification) => item.kind.startsWith('DUPLICATE') ? CopyOutlined : BellOutlined
 // Server-side history, so the panel also replaces the old standalone task-record link.
 const history = ref<ClosetTask[] | null>(null), historyError = ref(false)
 const needsCheck = (task: ClosetTask) => ['FAILED', 'UNKNOWN', 'NEEDS_REVIEW'].includes(task.status)
@@ -29,7 +35,7 @@ const processing = useProcessingStore(), closet = useClosetStore(), now = ref(Da
 let clock: ReturnType<typeof setInterval> | undefined
 const active = computed(() => processing.ordered.filter(entry => entry.state === 'processing'))
 const finished = computed(() => processing.ordered.filter(entry => entry.state !== 'processing'))
-const summary = computed(() => [processing.activeCount && `${processing.activeCount} 个处理中`, processing.unreadCount && `${processing.unreadCount} 个新结果`].filter(Boolean).join(' · ') || '离开页面也会继续处理')
+const summary = computed(() => [processing.activeCount && `${processing.activeCount} 个处理中`, processing.unreadCount && `${processing.unreadCount} 个新结果`, notices.unread && `${notices.unread} 条提醒`].filter(Boolean).join(' · ') || '离开页面也会继续处理')
 const stateIcon = { ready: CheckOutlined, attention: ExclamationOutlined, cancelled: MinusOutlined } as const
 const actionLabel = (entry: WaitingEntry) => entry.state === 'processing' ? '进度' : entry.state === 'ready' ? '去核对' : '查看'
 function waited(start: number) {
@@ -48,11 +54,18 @@ onUnmounted(() => clearInterval(clock))
 </script>
 <template>
   <div class="inbox-panel">
-    <header class="inbox-head"><div><strong>处理中心</strong><small>{{ summary }}</small></div></header>
+    <header class="inbox-head"><div><strong>处理中心</strong><small>{{ summary }}</small></div><a-button v-if="notices.unread" type="link" size="small" @click="notices.readAll()">提醒全部已读</a-button></header>
     <div v-if="stats" class="inbox-stats" aria-label="最近 50 项任务统计"><a-button v-for="item in stats" :key="item.key" type="text" class="inbox-stat" :class="[item.key, { zero: !item.value }]" @click="emit('go', '/tasks')"><strong>{{ item.value }}</strong><small>{{ item.label }}</small></a-button></div>
     <a-alert v-if="processing.connectionError" type="warning" message="暂时无法更新进度，稍后继续查询" show-icon banner class="inbox-error" />
     <div class="inbox-scroll">
-      <div v-if="!processing.entries.length && history && !recent.length" class="inbox-empty"><span class="inbox-empty-icon"><InboxOutlined /></span><strong>一切都处理好了</strong><small>上传衣物后，整理进度会出现在这里</small></div>
+      <section v-if="shownNotices.length"><h3>提醒</h3>
+        <a-button v-for="item in shownNotices" :key="item.id" type="text" block class="inbox-row notice" :class="{ unread: !item.read }" @click="emit('notice', item)">
+          <span class="inbox-state"><component :is="noticeIcon(item)" /></span>
+          <span class="inbox-copy"><strong>{{ item.title }}<i v-if="!item.read" class="inbox-unread" aria-label="未读" /></strong><span class="notice-body">{{ item.body }}</span><small>{{ started(item.createdAt) }}</small></span>
+          <span class="inbox-action">查看<RightOutlined /></span>
+        </a-button>
+      </section>
+      <div v-if="!processing.entries.length && history && !recent.length && !shownNotices.length" class="inbox-empty"><span class="inbox-empty-icon"><InboxOutlined /></span><strong>一切都处理好了</strong><small>上传衣物后，整理进度会出现在这里</small></div>
       <section v-if="active.length"><h3>进行中</h3>
         <a-button v-for="entry in active" :key="entry.key" type="text" block class="inbox-row processing" @click="emit('visit', entry)">
           <span class="inbox-state"><span class="inbox-ring" /></span>
@@ -96,6 +109,8 @@ onUnmounted(() => clearInterval(clock))
 .processing .inbox-state { background: var(--accent-soft); }
 .ready .inbox-state { background: var(--success-bg); color: var(--success); }
 .attention .inbox-state { background: var(--warning-bg); color: var(--warning); }
+.notice .inbox-state { background: var(--warning-bg); color: var(--warning); }
+.notice-body { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .inbox-ring { width: 16px; height: 16px; border-radius: 50%; border: 2px solid color-mix(in srgb, var(--accent) 25%, transparent); border-top-color: var(--accent); animation: inbox-spin .9s linear infinite; }
 .inbox-copy { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .inbox-copy strong { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

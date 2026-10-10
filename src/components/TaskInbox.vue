@@ -1,36 +1,51 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, h, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { App, Button } from 'ant-design-vue'
 import { BellOutlined } from '@ant-design/icons-vue'
 import { useProcessingStore } from '../stores/processing'
 import { useClosetStore } from '../stores/closet'
+import { useNotificationStore } from '../stores/notifications'
 import type { WaitingEntry } from '../domain/waiting'
+import type { ClosetNotification } from '../notifications/api'
 import TaskInboxPanel from './TaskInboxPanel.vue'
-const processing = useProcessingStore(), closet = useClosetStore(), router = useRouter()
+const processing = useProcessingStore(), closet = useClosetStore(), notices = useNotificationStore(), router = useRouter(), { notification } = App.useApp()
 const open = ref(false)
 // Anchored popover on desktop; phones get a bottom drawer within thumb reach.
 const phoneQuery = window.matchMedia('(max-width: 767px)'), phone = ref(phoneQuery.matches)
 // The server count also covers tasks started in another tab or before a reload.
 const running = computed(() => Math.max(processing.activeCount, closet.taskCount))
-const label = computed(() => running.value ? `${running.value} 个处理中` : processing.unreadCount ? `${processing.unreadCount} 个新结果` : '')
-function show(visible: boolean) { open.value = visible; if (visible) { void processing.refresh(true); void closet.refreshCounts() } }
+const unread = computed(() => processing.unreadCount + notices.unread)
+const label = computed(() => running.value ? `${running.value} 个处理中` : processing.unreadCount ? `${processing.unreadCount} 个新结果` : notices.unread ? `${notices.unread} 条提醒` : '')
+function show(visible: boolean) { open.value = visible; if (visible) { void processing.refresh(true); void closet.refreshCounts(); void notices.refresh() } }
+function openNotice(item: ClosetNotification) { void notices.read(item); open.value = false; notification.destroy(`notice:${item.id}`); void router.push(item.href || '/settings?section=tidy') }
+// A new notification (e.g. a likely duplicate found after adoption) pops up once, like a finished task.
+watch(() => notices.latest, item => {
+  if (!item) return
+  notification.open({
+    key: `notice:${item.id}`, class: 'task-toast attention', duration: 10, placement: window.innerWidth < 768 ? 'top' : 'topRight',
+    message: item.title, description: item.body,
+    btn: h(Button, { size: 'small', type: 'primary', onClick: () => openNotice(item) }, () => '去看看'),
+    onClose: () => notices.dismissLatest(),
+  })
+})
 function visit(entry: WaitingEntry) { processing.viewed(entry); open.value = false; void router.push(entry.href) }
 function go(path: string) { open.value = false; void router.push(path) }
 function media() { phone.value = phoneQuery.matches; open.value = false }
-onMounted(() => phoneQuery.addEventListener('change', media))
-onUnmounted(() => phoneQuery.removeEventListener('change', media))
+onMounted(() => { phoneQuery.addEventListener('change', media); notices.start() })
+onUnmounted(() => { phoneQuery.removeEventListener('change', media); notices.stop() })
 </script>
 <template>
   <a-popover :open="open && !phone" trigger="click" placement="bottomRight" :arrow="false" overlay-class-name="task-inbox-popover" @update:open="(value: boolean) => !phone && show(value)">
-    <a-tooltip :title="label || open ? '' : '衣物处理任务'">
-      <a-button type="text" class="task-inbox-trigger" :class="{ busy: running, unread: !running && processing.unreadCount }" :aria-label="label ? `衣物处理任务：${label}` : '衣物处理任务'" :aria-expanded="open" @click="phone && show(!open)">
-        <span class="inbox-glyph"><span v-if="running" class="inbox-trigger-ring" aria-hidden="true" /><BellOutlined v-else /><i v-if="processing.unreadCount" class="inbox-trigger-dot" /></span>
+    <a-tooltip :title="label || open ? '' : '处理中心与提醒'">
+      <a-button type="text" class="task-inbox-trigger" :class="{ busy: running, unread: !running && unread }" :aria-label="label ? `衣物处理任务：${label}` : '衣物处理任务'" :aria-expanded="open" @click="phone && show(!open)">
+        <span class="inbox-glyph"><span v-if="running" class="inbox-trigger-ring" aria-hidden="true" /><BellOutlined v-else /><i v-if="unread" class="inbox-trigger-dot" /></span>
         <span v-if="label" class="inbox-trigger-label">{{ label }}</span>
       </a-button>
     </a-tooltip>
-    <template #content><TaskInboxPanel :open="open" @visit="visit" @go="go" /></template>
+    <template #content><TaskInboxPanel :open="open" @visit="visit" @go="go" @notice="openNotice" /></template>
   </a-popover>
-  <a-drawer v-if="phone" :open="open" placement="bottom" height="auto" :closable="false" root-class-name="task-inbox-drawer" @close="open = false"><TaskInboxPanel :open="open" @visit="visit" @go="go" /></a-drawer>
+  <a-drawer v-if="phone" :open="open" placement="bottom" height="auto" :closable="false" root-class-name="task-inbox-drawer" @close="open = false"><TaskInboxPanel :open="open" @visit="visit" @go="go" @notice="openNotice" /></a-drawer>
 </template>
 <style scoped>
 .task-inbox-trigger.ant-btn { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 10px; border-radius: 999px; color: var(--muted-strong); transition: background .2s, color .2s; }

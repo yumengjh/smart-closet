@@ -9,6 +9,9 @@ import { agentRequest, streamMessage, type AgentSession, type AgentMessage, type
 import { pageContext } from './bridge'
 import AgentCommandCard from './AgentCommandCard.vue'
 import AgentProposal from './AgentProposal.vue'
+import QuickRecommend from '../recommend/QuickRecommend.vue'
+import RecommendationGroup from '../recommend/RecommendationGroup.vue'
+import type { RecommendationView } from '../recommend/types'
 import AgentTraceModal from './AgentTraceModal.vue'
 import { discardSessionTrace, flushBoardTrace } from './trace-client'
 import { handleCanvasCommand, failCanvasExecution, canvasExecution } from './canvas-runtime'
@@ -173,6 +176,12 @@ function deleteChats(all = false) {
 }
 async function undoMemory(memory: Memory) { try { await agentRequest(`/memories/${memory.id}`, 'DELETE'); Object.assign(memory, { revoked: true }); window.dispatchEvent(new Event('closet-agent-memory-changed')); message.success('已删除这条记忆。') } catch (e) { message.error(String(e)) } }
 async function scrollBottom() { await nextTick(); if (transcript.value) transcript.value.scrollTop = transcript.value.scrollHeight }
+// "今天穿什么" quick entry: shown when the chat is empty or the last reply is not already a recommendation (design 8.4).
+const showQuick = computed(() => { const last = messages.value.at(-1); return !last || !last.events.some(e => e.event === 'local_recommendation' || (e.event === 'proposal' && e.data?.kind === 'RECOMMENDATION')) })
+function quickResult(view: RecommendationView) {
+  // Shown in this chat only (not sent to the model and not saved to the conversation).
+  messages.value.push({ id: createUuid(), role: 'assistant', content: `按“${view.intent.description}”为你推荐（规则计算，未调用大模型，不占对话次数）`, status: 'COMPLETE', events: [{ event: 'local_recommendation', data: view }] })
+}
 async function send() {
   if (busy.value || !input.value.trim() || !models.value.configured) return
   avatarCue.value=null;taskFailed.value=false;activityTool.value=''; error.value = ''; busy.value = true; activityPhase.value = 'thinking'; status.value = '正在理解你的请求'; playSound('bubble'); let reply: AgentMessage | undefined
@@ -284,6 +293,7 @@ onUnmounted(() => { window.removeEventListener('closet-assistant-open', openFrom
               <AgentWorkspaceResult v-if="event.event === 'workspace_result'" :result="event.data" @open="showPage" />
               <AgentCommandCard v-else-if="event.event === 'command'" :command="event.data" />
               <AgentProposal v-else-if="event.event === 'proposal'" :proposal="event.data" @applied="showPage" />
+              <RecommendationGroup v-else-if="event.event === 'local_recommendation'" :view="event.data" dense />
               <div v-else-if="event.event === 'memory'" class="assistant-memory-notice"><span>{{ event.data.revoked ? '已撤销' : '已记住' }}：{{ event.data.content }}</span><a-button v-if="!event.data.revoked" type="link" size="small" @click="undoMemory(event.data)">撤销记忆</a-button></div>
               <div v-else-if="event.event === 'sources' && event.data.articles?.length" class="assistant-sources"><RouterLink v-for="article in event.data.articles" :key="article.id" :to="article.href" @click="showPage">{{ article.title }} ↗</RouterLink></div>
             </template>
@@ -293,6 +303,7 @@ onUnmounted(() => { window.removeEventListener('closet-assistant-open', openFrom
         <footer class="assistant-composer">
           <a-alert v-if="error" type="error" :message="error" show-icon closable @close="error = ''" />
           <p v-if="!models.configured && !loading" class="assistant-not-configured">{{ usingMocks ? '演示模式不调用助手' : '助手尚未配置，请联系平台维护者。' }}</p>
+          <QuickRecommend v-if="showQuick" :disabled="busy" @result="quickResult" />
           <form class="assistant-input-box" @submit.prevent="send">
             <a-textarea ref="textarea" v-model:value="input" aria-label="发送给助手的消息" :maxlength="4000" :auto-size="{ minRows: 1, maxRows: 4 }" placeholder="想怎么搭？或者问问平台用法…" :bordered="false" :disabled="busy || !models.configured" @keydown.enter.exact="enter" />
             <a-button type="primary" html-type="submit" shape="circle" aria-label="发送消息" data-sound="off" :loading="busy" :disabled="busy || !input.trim() || !models.configured"><template #icon><SendOutlined /></template></a-button>

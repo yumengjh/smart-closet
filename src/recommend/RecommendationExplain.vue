@@ -28,6 +28,16 @@ defineProps<{ outfit: RecommendedOutfit }>()
         </li>
       </ul>
     </section>
+    <section v-if="outfit.accessories?.length || outfit.tips?.length" aria-label="可以搭配的配件" class="recommend-outers">
+      <h4>可以搭配的配件</h4>
+      <a-alert v-for="t in outfit.tips || []" :key="t" type="info" show-icon :message="t" />
+      <ul v-if="outfit.accessories?.length" class="recommend-garments">
+        <li v-for="a in outfit.accessories" :key="a.id">
+          <div><strong>{{ a.name }}</strong><a-tag>{{ ROLE_LABELS[a.role] || a.role }}</a-tag></div>
+          <p v-if="a.reasons.length">{{ a.reasons.join(' · ') }}</p>
+        </li>
+      </ul>
+    </section>
     <section v-if="outfit.outers.length" aria-label="建议外层" class="recommend-outers">
       <h4>建议外层</h4>
       <a-alert type="info" show-icon message="天气偏凉，可以自行加一件外套。叠穿资料未核对，请自行确认，它不会放进这套搭配。" />
