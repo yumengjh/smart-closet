@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import GarmentProcessingStatus from '../components/GarmentProcessingStatus.vue'
 import { createUuid } from '../domain/id'
 import { quickApi } from '../services/quickIntake'
 import { mediaUrl } from '../services/urls'
@@ -284,7 +285,7 @@ watch(() => route.query.task, async () => { await load(); schedulePoll() })
   <div class="detail-page garment-workspace">
     <div class="workspace-toolbar">
       <a-button type="text" @click="panel === 'result' ? leaveWorkspace() : returnResult(true)"><ArrowLeftOutlined /> {{ panel !== 'result' ? '返回处理结果' : source.batchId ? '返回本批次' : garment?.status === 'ACTIVE' ? '返回衣柜' : '所有未入柜衣物' }}</a-button>
-      <a-tooltip title="处理记录"><a-button v-if="garment && panel !== 'history' && !completed" type="text" aria-label="查看处理记录" @click="openPanel('history')"><HistoryOutlined /></a-button></a-tooltip>
+      <a-tooltip title="处理记录与后台处理状态"><a-button v-if="garment && panel !== 'history' && !completed" type="text" aria-label="查看处理记录与后台处理状态" @click="openPanel('history')"><HistoryOutlined /></a-button></a-tooltip>
     </div>
     <a-skeleton v-if="loading" active :paragraph="{ rows: 8 }" />
     <a-alert v-else-if="!garment" type="error" :message="connectionError" show-icon><template #action><a-button @click="refresh">重试</a-button></template></a-alert>
@@ -322,7 +323,7 @@ watch(() => route.query.task, async () => { await load(); schedulePoll() })
             <a-collapse :bordered="false"><a-collapse-panel key="rework" header="重新处理"><div class="advanced-actions"><a-button :disabled="processing || dirty || usingMocks || garment.status === 'TRASHED'" @click="startRun('reprocess')">重新整理图片 · 1 次</a-button><a-button :disabled="processing || dirty || usingMocks || garment.status === 'TRASHED'" @click="startRun('recognize')">重新识别信息 · 1 次</a-button></div></a-collapse-panel></a-collapse>
           </section>
         </div>
-        <div v-else-if="panel === 'history'" class="task-history"><section v-for="(run, index) in historyTasks" :key="run.id"><h2>{{ index === 0 ? '当前任务' : '较早处理记录' }}</h2><TaskProgress :task="run" :now="now" /></section><a-empty v-if="!historyTasks.length" description="本次没有处理任务" /></div>
+        <div v-else-if="panel === 'history'" class="task-history"><GarmentProcessingStatus :garment-id="garment.id" :revision="garment.revision" /><section v-for="(run, index) in historyTasks" :key="run.id"><h2>{{ index === 0 ? '当前任务' : '较早处理记录' }}</h2><TaskProgress :task="run" :now="now" /></section><a-empty v-if="!historyTasks.length" description="本次没有处理任务" /></div>
         <div v-else class="garment-layout" :class="{'result-layout': !processing && !blocked && !stickerPending, 'processing-layout': processing || blocked || stickerPending}">
           <section class="garment-surface main-preview"><div class="section-heading"><h2>{{ processing || blocked ? '上传原图' : stickerPending ? '当前中间结果' : ['INPUT','ORIGINAL'].includes(selectedImage?.kind || '') ? '当前展示图' : '整理后的衣物' }}</h2><a-tooltip title="查看原图与当前展示图"><a-button type="text" aria-label="放大对照原图" @click="originalOpen=true"><PictureOutlined /></a-button></a-tooltip></div>
             <div class="garment-canvas"><img :src="mediaUrl(stickerPending && latestResult ? latestResult.url : previewUrl)" :alt="processing || blocked ? '上传原图' : '当前衣物展示图'" /></div>
