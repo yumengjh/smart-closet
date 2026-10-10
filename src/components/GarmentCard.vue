@@ -15,6 +15,8 @@ const title = computed(() => props.garment.name || (props.garment.category[0] &&
   ? `${props.garment.primaryColor[0] === '未知颜色' ? '' : props.garment.primaryColor[0] || ''}${props.garment.category[0]}`
   : '未分类衣物'))
 const aiGenerated = computed(() => Boolean(props.garment.images.find(image => image.id === props.garment.displayAssetId)?.aiGenerated))
+// Issue #1: a picture still waiting in the queue looks like a finished (possibly broken) result; say so on the card.
+const queueLabel = computed(() => props.garment.taskStatus === 'QUEUED' ? '排队中' : props.garment.taskStatus === 'RUNNING' ? '处理中' : props.garment.taskStatus === 'CANCEL_REQUESTED' ? '正在取消' : '')
 const pendingLabel = computed(() => `${stickerPending.value ? '贴纸待继续' : props.garment.taskStatus ? taskLabels[props.garment.taskStatus] : '待核对'} · 未入柜`)
 function openGarment() { if (props.selectable) { emit('toggle'); return }
   if (!props.pending && !props.trashed) playSound('tap'); void router.push(`/garment/${props.garment.id}`) }
@@ -24,6 +26,7 @@ function openGarment() { if (props.selectable) { emit('toggle'); return }
   <article class="garment-card" :class="{ selected }" tabindex="0" :role="selectable ? 'checkbox' : 'link'" :aria-checked="selectable ? selected : undefined" :aria-label="selectable ? `选择${title}` : `打开${title}`" @keydown.enter="openGarment()" @click="openGarment()">
     <div class="card-image-wrap">
       <GarmentArt :garment="garment" />
+      <a-tag v-if="queueLabel && !trashed" class="card-queue" :color="garment.taskStatus === 'QUEUED' ? 'default' : 'processing'" :aria-label="`图片${queueLabel}，展示图可能还不是最终结果`" :title="`图片${queueLabel}，展示图可能还不是最终结果`">{{ queueLabel }}</a-tag>
       <a-checkbox v-if="selectable" class="card-check" :checked="selected" tabindex="-1" @click.stop @change="emit('toggle')" />
       <button v-if="!pending && !trashed && !selectable" class="card-more" aria-label="打开衣物详情" @click.stop="openGarment()"><ArrowRightOutlined /></button>
     </div>
@@ -58,5 +61,6 @@ function openGarment() { if (props.selectable) { emit('toggle'); return }
 .card-badge.pending{color:var(--warning)}
 .card-badge.done{color:var(--success)}
 .card-check{position:absolute;left:10px;top:10px;z-index:1}
+.card-queue{position:absolute;right:8px;bottom:8px;z-index:1;margin:0;font-size:11px;line-height:18px;padding:0 6px;pointer-events:none}
 .garment-card.selected .card-image-wrap{box-shadow:0 0 0 2px var(--accent)}
 </style>
