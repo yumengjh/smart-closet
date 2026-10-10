@@ -23,7 +23,9 @@ import { playSound } from '../services/sound'
 const quickIntakeId = ref(''), enhanceOpen = ref(false), enhanceFeedback = ref(''), enhanceKey = ref('')
 async function enhanceQuick() { if (!quickIntakeId.value || busy.value) return; busy.value = 'enhance'; try { enhanceKey.value ||= createUuid(); const view = await quickApi.enhance(quickIntakeId.value, enhanceKey.value, enhanceFeedback.value); quickIntakeId.value = view.intakeId; enhanceKey.value = ''; enhanceOpen.value = false; await load(); schedulePoll() } catch (cause) { error.value = String(cause) } finally { busy.value = '' } }
 const source = ref<{batchId?: string; originalUrl?: string; previewUrl?: string; completion?: boolean}>({})
-const { modal } = AntApp.useApp()
+const { modal, message } = AntApp.useApp()
+/** Set once the garment is in the trash: leaving must not be blocked by the busy or unsaved-changes guard (issue #13). */
+let trashed = false
 const route = useRoute(); const router = useRouter(); const closet = useClosetStore()
 const garment = ref<Garment | null>(null); const task = ref<ClosetTask | null>(null)
 const imageTask = ref<ClosetTask | null>(null); const parentTask = ref<ClosetTask | null>(null)
@@ -130,6 +132,7 @@ async function loadSource() {
 }
 
 onBeforeRouteLeave(() => {
+  if (trashed) return true
   if (busy.value) return false
   if (!dirty.value) return true
   return new Promise<boolean>(resolve => modal.confirm({ title: '离开前保存修改？', content: '当前资料或展示图还有未保存的修改。', okText: '保存并离开', cancelText: '继续编辑', closable: false, maskClosable: false, onCancel: () => resolve(false), onOk: async () => { await save(false); resolve(!error.value) } }))
@@ -253,7 +256,12 @@ function remove() {
   if (!garment.value || busy.value) return
   modal.confirm({ title: '移入回收站？', content: processing.value ? '会先取消活动任务，等待终止后移入回收站。图片与历史保留，可以恢复。' : '图片与处理历史会保留，可以在回收站恢复。', okText: '移入回收站', cancelText: '取消', onOk: async () => {
     busy.value = 'trash'
-    try { if (processing.value) { for (const id of [...new Set([garment.value!.taskId, imageTask.value?.id].filter((id): id is string => Boolean(id)))]) await closetApi.cancelAndWait(id) }; const record = await closetApi.detail(garment.value!.id); await closetApi.trash(record.id, record.revision); await closet.refreshCounts(); await router.replace('/pending') }
+    try { if (processing.value) { for (const id of [...new Set([garment.value!.taskId, imageTask.value?.id].filter((id): id is string => Boolean(id)))]) await closetApi.cancelAndWait(id) }; const record = await closetApi.detail(garment.value!.id); await closetApi.trash(record.id, record.revision)
+      // Back to the list the garment was in (issue #13); the guard above lets the page go.
+      trashed = true; busy.value = ''
+      message.success({ content: `「${title.value || '这件衣物'}」已移入回收站，可在回收站恢复。`, duration: 4 })
+      void closet.refreshCounts()
+      await router.replace(record.status === 'ACTIVE' ? '/wardrobe' : '/pending') }
     catch (cause) { error.value = cause instanceof Error ? cause.message : '操作失败。' }
     finally { busy.value = '' }
   } })
@@ -262,7 +270,7 @@ async function restore() { if (!garment.value) return; busy.value = 'restore'; t
 async function refresh() { await load(); schedulePoll() }
 onMounted(async () => { alive = true; void loadSource(); await load(true); schedulePoll(); elapsedTimer = window.setInterval(() => { now.value = Date.now() }, 1000) })
 onUnmounted(() => { alive = false; generation++; window.clearTimeout(timer); window.clearInterval(elapsedTimer) })
-watch(() => route.params.id, async () => { generation++; window.clearTimeout(timer); panel.value = 'result'; completed.value = false; editorSnapshot = undefined; advanced.value = ''; void loadSource(); baseline.value = null; task.value = null; imageTask.value = null; parentTask.value = null; continuationKeys.clear(); garment.value = null; loading.value = true; await load(true); schedulePoll() })
+watch(() => route.params.id, async () => { trashed = false; generation++; window.clearTimeout(timer); panel.value = 'result'; completed.value = false; editorSnapshot = undefined; advanced.value = ''; void loadSource(); baseline.value = null; task.value = null; imageTask.value = null; parentTask.value = null; continuationKeys.clear(); garment.value = null; loading.value = true; await load(true); schedulePoll() })
 watch(() => route.query.task, async () => { await load(); schedulePoll() })
 </script>
 
