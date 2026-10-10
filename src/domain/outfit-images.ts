@@ -108,6 +108,8 @@ export async function drawOutfit(scene: { elements: OutfitElement[] }, width: nu
   const context = canvas.getContext('2d')
   if (!context) throw new Error('无法导出画板，请重试。')
   context.fillStyle = '#fff'; context.fillRect(0, 0, width, height)
+  // Large garment pictures are scaled down a lot for thumbnails; high-quality smoothing keeps edges crisp (issue #4).
+  context.imageSmoothingEnabled = true; context.imageSmoothingQuality = 'high'
   const scaleX = width / 1080, scaleY = height / 1350
   const layers = [...scene.elements].sort((a, b) => a.zIndex - b.zIndex)
   const images = await Promise.all(layers.map((element) => loadOutfitImage(element.assetUrl)))
