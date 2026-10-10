@@ -1,3 +1,4 @@
+import { useNotificationStore } from './notifications'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { closetApi, usingMocks } from '../services/api'
@@ -33,6 +34,8 @@ export const useClosetStore = defineStore('closet', () => {
       ])
       if (user.value?.username !== requestedUser) return
       taskCount.value = tasks.filter((task) => ['QUEUED', 'RUNNING', 'CANCEL_REQUESTED'].includes(task.status)).length
+      // Fewer garments waiting for review usually means one just entered the closet: its duplicate check follows shortly.
+      if (pending.total < pendingCount.value) useNotificationStore().expectSoon()
       pendingCount.value = pending.total
     } catch { /* Keep the last known counts until the next successful response. */ }
   }
