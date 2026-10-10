@@ -3,10 +3,11 @@ import { computed, onMounted, ref } from 'vue'
 import { App } from 'ant-design-vue'
 import { request } from '../services/api'
 import { playSound } from '../services/sound'
+import TemplatePreview from '../components/TemplatePreview.vue'
 
 /** 搭配模板审核 (D31): review state lives in the database and overrides the file defaults; changes apply to the next recommendation. */
 defineProps<{ embedded?: boolean }>()
-type Slot = { roles: string[]; categoryAny: string[]; colorAny: string[]; styleAny: string[]; patternMax: number | null; fitAny?: string[]; patternMin?: number | null }
+type Slot = { roles: string[]; categoryAny: string[]; colorAny: string[]; styleAny: string[]; patternMax: number | null; fitAny?: string[]; patternMin?: number | null; describe?: string[] }
 type Meta = { kind: 'CLASSIC' | 'TREND'; audience: string[]; occasions: string[]; seasons: string[]; validFrom: string | null; validUntil: string | null; reference: string }
 type Entry = { id: string; text: string; bonus: number; defaultBonus: number; enabled: boolean; reviewStatus: 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED'; reviewedBy: string | null; reviewedAtMs: number; slots: Slot[]; meta?: Meta }
 const { message } = App.useApp()
@@ -62,7 +63,7 @@ async function batch(status: 'APPROVED' | 'REJECTED') {
   finally { busy.value = '' }
 }
 const columns = [
-  { title: '搭法', key: 'text' }, { title: '条件', key: 'slots' }, { title: '加分', key: 'bonus', width: 120 }, { title: '状态', key: 'status', width: 110 }, { title: '操作', key: 'actions', width: 200 },
+  { title: '示意', key: 'preview', width: 112 }, { title: '搭法', key: 'text' }, { title: '条件', key: 'slots' }, { title: '加分', key: 'bonus', width: 120 }, { title: '状态', key: 'status', width: 110 }, { title: '操作', key: 'actions', width: 200 },
 ]
 </script>
 <template>
@@ -76,11 +77,17 @@ const columns = [
       <a-button type="primary" :disabled="!selected.length" :loading="busy === 'batch'" @click="batch('APPROVED')">批量通过（{{ selected.length }}）</a-button>
       <a-button :disabled="!selected.length" :loading="busy === 'batch'" @click="batch('REJECTED')">批量停用</a-button>
     </div>
-    <a-table class="template-review-table" :data-source="shown" :columns="columns" row-key="id" size="small" :loading="loading" :pagination="{ pageSize: 20 }" :scroll="{ x: 760 }"
+    <a-table class="template-review-table" :data-source="shown" :columns="columns" row-key="id" size="small" :loading="loading" :pagination="{ pageSize: 20 }" :scroll="{ x: 880 }"
       :row-selection="{ selectedRowKeys: selected, onChange: (keys: (string | number)[]) => { selected = keys.map(String) } }">
       <template #bodyCell="{ column, record }">
-        <template v-if="column.key === 'text'"><strong>{{ record.text }}</strong> <a-tag v-if="record.meta?.kind === 'TREND'" color="magenta">流行</a-tag><a-tag v-if="expired(record.meta)">已过期</a-tag><br /><small class="muted">{{ metaText(record.meta) }}</small><br /><small v-if="record.meta?.reference" class="muted">参考：{{ record.meta.reference }}</small><br /><small class="muted">{{ record.id }}</small></template>
-        <template v-else-if="column.key === 'slots'"><ul class="template-review-slots"><li v-for="(s, i) in record.slots" :key="i">{{ slotText(s) }}</li></ul></template>
+        <template v-if="column.key === 'preview'">
+          <a-popover placement="right" :title="record.text">
+            <template #content><div class="template-preview-large"><TemplatePreview :slots="record.slots" :size="180" :uid="`l-${record.id}`" /><ul><li v-for="(s, i) in record.slots" :key="i">{{ s.describe?.length ? s.describe.join(' 或 ') : slotText(s) }}</li></ul></div></template>
+            <TemplatePreview :slots="record.slots" :uid="`s-${record.id}`" />
+          </a-popover>
+        </template>
+        <template v-else-if="column.key === 'text'"><strong>{{ record.text }}</strong> <a-tag v-if="record.meta?.kind === 'TREND'" color="magenta">流行</a-tag><a-tag v-if="expired(record.meta)">已过期</a-tag><br /><small class="muted">{{ metaText(record.meta) }}</small><br /><small v-if="record.meta?.reference" class="muted">参考：{{ record.meta.reference }}</small><br /><small class="muted">{{ record.id }}</small></template>
+        <template v-else-if="column.key === 'slots'"><ul class="template-review-slots"><li v-for="(s, i) in record.slots" :key="i">{{ slotText(s) }}<template v-if="s.describe?.length"><br /><small class="muted">例：{{ s.describe.join('、') }}</small></template></li></ul></template>
         <template v-else-if="column.key === 'bonus'"><a-input-number :value="record.bonus" :min="0" :max="5" :step="0.5" size="small" :disabled="busy === record.id" aria-label="加分" @change="(v: number | string | null) => v !== null && Number(v) !== record.bonus && review(record.id, { bonus: Number(v) })" /></template>
         <template v-else-if="column.key === 'status'"><a-tag :color="STATUS[record.reviewStatus].color">{{ STATUS[record.reviewStatus].label }}</a-tag><a-tag v-if="!record.enabled">已关闭</a-tag></template>
         <template v-else-if="column.key === 'actions'">
@@ -95,5 +102,7 @@ const columns = [
   </div>
 </template>
 <style scoped>
+.template-preview-large { display: flex; gap: 14px; align-items: flex-start; max-width: 420px; }
+.template-preview-large ul { margin: 0; padding-left: 18px; font-size: 12px; line-height: 1.8; }
 .template-review-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
 </style>
