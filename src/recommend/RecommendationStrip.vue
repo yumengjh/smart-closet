@@ -6,6 +6,7 @@ import RecommendIntentBar from './RecommendIntentBar.vue'
 import RecommendationGroup from './RecommendationGroup.vue'
 import InspirationBlock from './InspirationBlock.vue'
 import { recommendApi } from './api'
+import { latestRequest } from './latest'
 import type { IntentInput, RecommendationView } from './types'
 
 /** "今天穿什么" strip at the top of the outfit list (design 8.1). Zero model calls; collapsed state stays on this device. */
@@ -21,17 +22,29 @@ function readMode() { try { return localStorage.getItem(MODE) === 'inspiration' 
 watch(mode, v => { try { localStorage.setItem(MODE, v) } catch { /* storage blocked */ } })
 function read() { try { return localStorage.getItem(COLLAPSED) === '1' } catch { return false } }
 watch(collapsed, v => { try { localStorage.setItem(COLLAPSED, v ? '1' : '0') } catch { /* storage blocked */ } })
+const runs = latestRequest()
 async function run() {
+  const ticket = runs.next()
   loading.value = true; error.value = ''
-  try { view.value = await recommendApi.recommend({ ...intent.value, temperatureC: intent.value.temperatureC ?? undefined, requiredGarmentIds: required.value ? [required.value] : [], count: 3 }) }
-  catch (e) { error.value = e instanceof Error ? e.message : '推荐暂时不可用。' }
-  finally { loading.value = false }
+  try {
+    const next = await recommendApi.recommend({ ...intent.value, temperatureC: intent.value.temperatureC ?? undefined, requiredGarmentIds: required.value ? [required.value] : [], count: 3 })
+    if (runs.isLatest(ticket)) view.value = next
+  } catch (e) { if (runs.isLatest(ticket)) error.value = e instanceof Error ? e.message : '推荐暂时不可用。' }
+  finally { if (runs.isLatest(ticket)) loading.value = false }
 }
 function clearRequired() { required.value = null; router.replace({ query: { ...route.query, with: undefined } }); run() }
 onMounted(() => {
   recommendApi.profile().catch(() => {})
   // "用它搭一套" from a garment page arrives as ?with=<garmentId>.
   if (typeof route.query.with === 'string') { required.value = route.query.with; collapsed.value = false; mode.value = 'recommend' }
+  if (!collapsed.value && mode.value === 'recommend') run()
+})
+// Back/forward can change ?with without remounting; clearRequired() already nulls it first, so it does not re-run here.
+watch(() => route.query.with, value => {
+  const next = typeof value === 'string' ? value : null
+  if (next === required.value) return
+  required.value = next
+  if (next) { collapsed.value = false; mode.value = 'recommend' }
   if (!collapsed.value && mode.value === 'recommend') run()
 })
 watch([collapsed, mode], ([c, m]) => { if (!c && m === 'recommend' && !view.value && !loading.value) run() })

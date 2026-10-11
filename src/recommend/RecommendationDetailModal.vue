@@ -13,6 +13,7 @@ import RecommendationExplain from './RecommendationExplain.vue'
 import RecommendationFeedback from './RecommendationFeedback.vue'
 import SwapPicker from './SwapPicker.vue'
 import { recommendApi } from './api'
+import { latestRequest } from './latest'
 import { outfitScene } from './sceneCache'
 import { openInWorkspace } from './workspace'
 import { ROLE_LABELS, type RecommendedOutfit } from './types'
@@ -28,15 +29,19 @@ const outfit = computed(() => props.outfits[Math.min(index.value, props.outfits.
 const scene = ref<OutfitScene | null>(null); const sceneError = ref('')
 const wearing = ref(false); const worn = ref<Set<string>>(new Set()); const opening = ref(false)
 const viewed = new Set<string>()
+const sceneLoads = latestRequest()
 watch([open, outfit], async () => {
   if (!open.value || !outfit.value) return
   if (outfit.value.logId && !viewed.has(outfit.value.key)) { viewed.add(outfit.value.key); recommendApi.signal({ kind: 'VIEW_DETAIL', logId: outfit.value.logId }) }
+  const ticket = sceneLoads.next()
   scene.value = null; sceneError.value = ''
-  try { scene.value = await outfitScene(outfit.value) } catch (e) { sceneError.value = e instanceof Error ? e.message : '预览无法加载。' }
+  try { const next = await outfitScene(outfit.value); if (sceneLoads.isLatest(ticket)) scene.value = next }
+  catch (e) { if (sceneLoads.isLatest(ticket)) sceneError.value = e instanceof Error ? e.message : '预览无法加载。' }
 }, { immediate: true })
 async function wear() {
+  const { key, garments } = outfit.value
   wearing.value = true
-  try { await recommendApi.wear({ garmentIds: outfit.value.garments.map(g => g.id) }); worn.value = new Set([...worn.value, outfit.value.key]); playSound('success'); message.success('已记下今天穿了这套，之后推荐会参考。') }
+  try { await recommendApi.wear({ garmentIds: garments.map(g => g.id) }); worn.value = new Set([...worn.value, key]); playSound('success'); message.success('已记下今天穿了这套，之后推荐会参考。') }
   catch (e) { playSound('error'); message.error(e instanceof Error ? e.message : '没有记录成功。') }
   finally { wearing.value = false }
 }
