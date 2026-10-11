@@ -40,6 +40,28 @@ jobs:
           [ ${#missing[@]} -eq 0 ] || { echo "缺少 secrets：${missing[*]}"; exit 1; }
           case "$DEPLOY_PATH" in /*/*/*) ;; *) echo "DEPLOY_PATH 太短，拒绝覆盖：$DEPLOY_PATH"; exit 1 ;; esac
 
+      # The site only works if its API answers: FRONTEND_API_BASE_URL (a separate API host, which must allow this site in
+      # the backend's CLOSET_CORS_ALLOWED_ORIGINS), or, when empty, a reverse proxy for /api on the site's own domain.
+      # Checked before building, so a site that cannot reach the backend is never deployed.
+      - name: Check the API the site will call
+        run: |
+          set -uo pipefail
+          if [ -n "$API_BASE" ]; then
+            case "$API_BASE" in https://*) ;; *) echo "FRONTEND_API_BASE_URL 必须是 https:// 开头的后端地址（不带路径）：$API_BASE"; exit 1 ;; esac
+            api="${API_BASE%/}"; how="FRONTEND_API_BASE_URL"
+          else
+            api="$(printf '%s' "$SITE_URL" | sed -E 's#^(https?://[^/]+).*#\1#')"; how="站点同域的 /api 反向代理"
+          fi
+          body=$(curl -sS -m 20 -H 'Accept: application/json' "$api/api/health" || true)
+          if printf '%s' "$body" | grep -q '"status" *: *"UP"'; then echo "API 可用（$how）：$api/api/health → $body"; exit 0; fi
+          echo "::error::$api/api/health 没有返回后端健康检查（收到：$(printf '%s' "$body" | tr -s '\n ' ' ' | head -c 100)）"
+          if [ -z "$API_BASE" ]; then
+            echo "未设置 FRONTEND_API_BASE_URL，页面会请求 $api/api，但该域名没有把 /api 转发到后端。二选一："
+            echo "  1. 在仓库 secrets 里设置 FRONTEND_API_BASE_URL=后端的 https 地址，并在后端 .env 的 CLOSET_CORS_ALLOWED_ORIGINS 加入 ${api}"
+            echo "  2. 在 1Panel 给站点加反向代理：/api → 后端地址（同域，无需 CORS）"
+          fi
+          exit 1
+
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
