@@ -1,15 +1,23 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent } from 'vue'
+import { computed, defineAsyncComponent, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   LockOutlined, ThunderboltOutlined, LinkOutlined, RobotOutlined, UserOutlined, DashboardOutlined,
   DeleteOutlined, ArrowRightOutlined, ArrowLeftOutlined, DownloadOutlined, SkinOutlined, AuditOutlined, CameraOutlined, CopyOutlined,
 } from '@ant-design/icons-vue'
 import { useClosetStore } from '../stores/closet'
+import { formatBuildTime, formatVersion, type ServerInfo } from '../domain/app-version'
+import { serverBuild, webBuild } from '../services/version'
 
 const closet = useClosetStore()
 const route = useRoute()
 const router = useRouter()
+
+const webVersion = formatVersion(webBuild)
+const webBuiltAt = formatBuildTime(webBuild.builtAt)
+const server = ref<ServerInfo | null | undefined>(undefined)
+onMounted(async () => { server.value = await serverBuild() })
+const serverVersion = computed(() => server.value === undefined ? '读取中…' : server.value ? formatVersion(server.value) : '无法连接')
 
 const firstLogin = computed(() => Boolean(closet.user?.mustChangePassword))
 const isPortableLogin = computed(() => Boolean(closet.user?.portableLogin))
@@ -178,6 +186,11 @@ function goBack() {
         </span>
         <ArrowRightOutlined class="settings-nav-arrow" />
       </RouterLink>
+
+      <footer class="settings-version" aria-label="版本信息">
+        <span :title="webBuiltAt ? `构建于 ${webBuiltAt}` : undefined">前端 {{ webVersion }}</span>
+        <span>服务端 {{ serverVersion }}</span>
+      </footer>
     </nav>
 
     <!-- 内容面板（PC 显示；移动端仅 mobileInSection 时显示） -->
