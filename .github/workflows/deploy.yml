@@ -1,0 +1,123 @@
+name: Deploy frontend
+
+# Pushing a tag v* (or running it by hand) tests and builds the site, then replaces every file in the site directory on
+# the web server over SSH (1Panel static site, default /opt/1panel/www/sites/yuda.yumg.cn/index). No container involved.
+# Settings: repository secrets (Settings → Secrets and variables → Actions).
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-frontend
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build and deploy site
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SSH_HOST: ${{ secrets.DEPLOY_SSH_HOST }}
+      SSH_PORT: ${{ secrets.DEPLOY_SSH_PORT }}
+      SSH_USER: ${{ secrets.DEPLOY_SSH_USER }}
+      SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      SSHPASS: ${{ secrets.DEPLOY_SSH_PASSWORD }}
+      KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/opt/1panel/www/sites/yuda.yumg.cn/index' }}
+      SITE_URL: ${{ secrets.DEPLOY_SITE_URL || 'https://yuda.yumg.cn/' }}
+      API_BASE: ${{ secrets.FRONTEND_API_BASE_URL }}
+    steps:
+      - name: Check deployment secrets
+        run: |
+          missing=()
+          [ -n "$SSH_HOST" ] || missing+=(DEPLOY_SSH_HOST)
+          [ -n "$SSH_USER" ] || missing+=(DEPLOY_SSH_USER)
+          [ -n "$SSH_KEY$SSHPASS" ] || missing+=("DEPLOY_SSH_KEY 或 DEPLOY_SSH_PASSWORD")
+          [ ${#missing[@]} -eq 0 ] || { echo "缺少 secrets：${missing[*]}"; exit 1; }
+          case "$DEPLOY_PATH" in /*/*/*) ;; *) echo "DEPLOY_PATH 太短，拒绝覆盖：$DEPLOY_PATH"; exit 1 ;; esac
+
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - name: Build
+        env:
+          VITE_USE_MOCKS: "false"
+          # Empty: the site calls /api on its own domain (reverse proxy). Set FRONTEND_API_BASE_URL for a separate API host.
+          VITE_API_BASE_URL: ${{ secrets.FRONTEND_API_BASE_URL }}
+        run: |
+          npm run build
+          test -s dist/index.html
+          tar -C dist -czf site.tar.gz .
+          sha256sum dist/index.html | awk '{print $1}' > index.sha256
+          echo "构建完成：$(find dist -type f | wc -l) 个文件，$(du -sh dist | cut -f1)"
+
+      - name: Set up SSH
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          port=${SSH_PORT:-22}
+          if [ -n "$KNOWN_HOSTS" ]; then printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else ssh-keyscan -p "$port" -T 15 "$SSH_HOST" > ~/.ssh/known_hosts 2>/dev/null; echo "::warning::未设置 DEPLOY_SSH_KNOWN_HOSTS，本次信任扫描到的主机指纹"; fi
+          opts=(-p "$port" -o ServerAliveInterval=30 -o ConnectTimeout=20 -o StrictHostKeyChecking=yes)
+          if [ -n "$SSH_KEY" ]; then
+            printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+            opts+=(-i ~/.ssh/deploy_key -o IdentitiesOnly=yes); pre=""
+          else
+            sudo apt-get install -y -qq sshpass >/dev/null
+            pre="sshpass -e"; opts+=(-o PubkeyAuthentication=no)
+          fi
+          printf '#!/usr/bin/env bash\nexec %s ssh %s "%s@%s" "$@"\n' "$pre" "${opts[*]}" "$SSH_USER" "$SSH_HOST" > ~/remote && chmod +x ~/remote
+          printf '#!/usr/bin/env bash\nexec %s scp %s "$@"\n' "$pre" "${opts[*]/-p/-P}" > ~/upload && chmod +x ~/upload
+          ~/remote 'echo "已连接 $(hostname)"'
+
+      - name: Upload and replace site files
+        run: |
+          set -euo pipefail
+          tmp="/tmp/yuda-frontend-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.tar.gz"
+          ~/upload site.tar.gz "$SSH_USER@$SSH_HOST:$tmp"
+          ~/remote "bash -s -- $(printf %q "$DEPLOY_PATH") $(printf %q "$tmp")" <<'REMOTE'
+          set -euo pipefail
+          target=$1; archive=$2
+          trap 'rm -f "$archive"' EXIT
+          [ -d "$target" ] || { echo "站点目录不存在：$target"; exit 1; }
+          SUDO=(); [ -w "$target" ] || SUDO=(sudo -n)
+          owner=$(stat -c '%u:%g' "$target")
+          # Unpack next to the site (same file system), keep the previous version for a manual rollback.
+          stage=$("${SUDO[@]}" mktemp -d "$(dirname "$target")/.deploy-XXXXXX")
+          "${SUDO[@]}" tar -xzf "$archive" -C "$stage"
+          [ -s "$stage/index.html" ] || { "${SUDO[@]}" rm -rf "$stage"; echo "上传的包里没有 index.html"; exit 1; }
+          "${SUDO[@]}" tar -czf "$(dirname "$target")/.index-previous.tar.gz" -C "$target" . 2>/dev/null || true
+          # Full overwrite: every old file goes, except 1Panel's protected .user.ini (chattr +i on PHP sites).
+          if command -v rsync >/dev/null; then
+            "${SUDO[@]}" rsync -a --delete --exclude .user.ini "$stage/" "$target/"
+          else
+            "${SUDO[@]}" find "$target" -mindepth 1 -maxdepth 1 ! -name .user.ini -exec rm -rf {} +
+            "${SUDO[@]}" cp -a "$stage/." "$target/"
+          fi
+          "${SUDO[@]}" chown -R "$owner" "$target"
+          "${SUDO[@]}" rm -rf "$stage"
+          echo "已覆盖 $target：$(find "$target" -type f | wc -l) 个文件；上一版备份在 $(dirname "$target")/.index-previous.tar.gz"
+          REMOTE
+
+      - name: Verify the live site
+        run: |
+          set -euo pipefail
+          want=$(cat index.sha256)
+          for _ in 1 2 3 4 5 6; do
+            got=$(curl -fsSL --max-time 20 -H 'Cache-Control: no-cache' "$SITE_URL?deploy=$GITHUB_RUN_ID" | sha256sum | awk '{print $1}' || true)
+            [ "$got" = "$want" ] && { echo "线上 $SITE_URL 已是本次构建"; exit 0; }
+            sleep 5
+          done
+          echo "::warning::线上 index.html 与本次构建不一致（可能有 CDN 缓存，或 DEPLOY_SITE_URL 不对）"
+
+      - name: Clean up
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
