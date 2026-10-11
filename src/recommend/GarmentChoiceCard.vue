@@ -4,6 +4,7 @@ import { App } from 'ant-design-vue'
 import GarmentThumb from './GarmentThumb.vue'
 import RecommendationGroup from './RecommendationGroup.vue'
 import { recommendApi } from './api'
+import { latestRequest } from './latest'
 import type { RecommendationView } from './types'
 
 /**
@@ -13,11 +14,13 @@ import type { RecommendationView } from './types'
 const props = defineProps<{ payload: { query?: string; total?: number; candidates?: { name: string; garmentIds: string[]; reasons?: string[] }[] } }>()
 const { message } = App.useApp()
 const picked = ref(''); const loading = ref(false); const view = ref<RecommendationView | null>(null)
+const picks = latestRequest()
 async function pick(id: string) {
+  const ticket = picks.next()
   picked.value = id; loading.value = true
-  try { view.value = await recommendApi.recommend({ requiredGarmentIds: [id], count: 3 }) }
-  catch (e) { message.error(e instanceof Error ? e.message : '推荐暂时不可用。') }
-  finally { loading.value = false }
+  try { const next = await recommendApi.recommend({ requiredGarmentIds: [id], count: 3 }); if (picks.isLatest(ticket)) view.value = next }
+  catch (e) { if (picks.isLatest(ticket)) message.error(e instanceof Error ? e.message : '推荐暂时不可用。') }
+  finally { if (picks.isLatest(ticket)) loading.value = false }
 }
 </script>
 <template>

@@ -152,7 +152,8 @@ const saveState = computed(() => localDraftNotice.value ? '草稿已保存在此
 const dirty = computed(() => elements.value.length > 0)
 const roleNames = Object.fromEntries(outfitRoleOptions.map((option) => [option.value, option.label])) as Record<OutfitRole, string>
 const sceneLabel = computed(() => `${elements.value.length} 张贴纸`)
-const draftKey = computed(() => `yixu.outfit-draft.v1:${draftOwner.value || closet.user?.username || 'anonymous'}:${route.params.id || 'new'}${isNew.value && typeof route.query.draft === 'string' ? ':' + route.query.draft : ''}`)
+function draftKeyFor(id: string) { return `yixu.outfit-draft.v1:${draftOwner.value || closet.user?.username || 'anonymous'}:${id}` }
+const draftKey = computed(() => `${draftKeyFor(String(route.params.id || 'new'))}${isNew.value && typeof route.query.draft === 'string' ? ':' + route.query.draft : ''}`)
 
 function getDraft() {
   try { return JSON.parse(localStorage.getItem(draftKey.value) || 'null') as OutfitDraft | null }
@@ -280,12 +281,14 @@ async function wearOutfit(id: string) {
 }
 function wornLabel(id: string) { return formatWorn(wornDates.value[id]) }
 async function loadLibrary() {
+  // Shares loadRevision with loadPage so only the newest list/page load may write results or clear pageLoading.
+  const request = ++loadRevision
   pageLoading.value = true
   error.value = ''
-  recommendApi.outfitWear().then(v => { wornDates.value = v }).catch(() => {})
-  try { saved.value = await closetApi.outfits() }
-  catch (cause) { error.value = cause instanceof Error ? cause.message : '搭配列表暂时无法加载。' }
-  finally { pageLoading.value = false }
+  recommendApi.outfitWear().then(v => { if (request === loadRevision) wornDates.value = v }).catch(() => {})
+  try { const outfits = await closetApi.outfits(); if (request === loadRevision) saved.value = outfits }
+  catch (cause) { if (request === loadRevision) error.value = cause instanceof Error ? cause.message : '搭配列表暂时无法加载。' }
+  finally { if (request === loadRevision) pageLoading.value = false }
 }
 
 function sceneSnapshot() { return elements.value.map((item) => ({ ...item })) }
@@ -349,9 +352,12 @@ async function selectGarment(garment: Garment, position?: { x: number; y: number
   const target = replacementTarget.value
   const old = target ? elements.value.find(item => elementKey(item) === target) : null
   if (!old) { const limit = stickerLimit(elements.value, 'GARMENT'); if (limit) { playSound('denied'); message.warning(limit); return } }
+  const request = loadRevision
   addingGarments.add(garment.id)
   try {
     const candidate = await createOutfitElement(garment, old ? elements.value.filter(item => elementKey(item) !== target) : elements.value)
+    // The user may have switched outfit, left the page or changed the replace target while the image loaded.
+    if (request !== loadRevision || !loaded || replacementTarget.value !== target) return
     if (!old) { const limit = stickerLimit(elements.value, 'GARMENT'); if (limit) { playSound('denied'); message.warning(limit); return } }
     const next = [...elements.value]
     if (old) {
@@ -764,30 +770,44 @@ function retryImage(url: string) {
 
 async function saveOutfit() {
   if (props.board) { persistDraft(); await props.saveBoard?.(); return }
+  if (saving.value) return
   if (!name.value.trim() || name.value.trim().length > 100) { message.warning('搭配名称需为 1 到 100 个字符。'); return }
   if (!elements.value.length) { message.warning('先加入一张衣物或人物贴纸。'); return }
   if (failedImage.value) { message.error('请先重新加载无法打开的贴纸图片，再保存。'); return }
   persistDraft()
+  const request = loadRevision
+  const submitted = JSON.stringify({ name: name.value, elements: elements.value })
   saving.value = true
   try {
     const result = await closetApi.saveOutfit(isNew.value ? null : outfitId.value, isNew.value ? null : revision.value,
       name.value.trim(), scene.value)
+    if (request !== loadRevision) { window.dispatchEvent(new Event('closet-outfit-saved')); return }
+    // Edits made while the request was in flight stay on the canvas and in the draft, against the new revision.
+    const editedMeanwhile = JSON.stringify({ name: name.value, elements: elements.value }) !== submitted
     loaded = false
     localStorage.removeItem(draftKey.value)
     outfitId.value = result.id
     revision.value = result.revision
     draftRevision = result.revision
-    elements.value = result.scene.elements
-    name.value = result.name
-    baselineSignature = JSON.stringify({ name: name.value, elements: elements.value })
-    localDraftNotice.value = false
+    baselineSignature = JSON.stringify({ name: result.name, elements: result.scene.elements })
+    if (editedMeanwhile) {
+      try { localStorage.setItem(draftKeyFor(result.id), JSON.stringify({ name: name.value, revision: result.revision, scene: scene.value, savedAt: Date.now() })) }
+      catch { /* The newer edits remain on the canvas even without local storage. */ }
+      localDraftNotice.value = true
+    } else {
+      elements.value = result.scene.elements
+      name.value = result.name
+      localDraftNotice.value = false
+    }
     remoteConflict.value = false
     if (isNew.value) await router.replace(`/outfits/${result.id}`)
     else loaded = true
     playSound('success')
-    window.dispatchEvent(new Event('closet-outfit-saved')); message.success('搭配已保存，可在手机和电脑继续编辑。')
+    window.dispatchEvent(new Event('closet-outfit-saved'))
+    message.success(editedMeanwhile ? '已保存提交时的版本，之后的修改仍保留在此设备，记得再次保存。' : '搭配已保存，可在手机和电脑继续编辑。')
   } catch (cause) {
     const text = cause instanceof Error ? cause.message : '搭配暂时无法保存。'
+    if (request !== loadRevision) { message.error(text); return }
     if (/已在另一处更新|版本|conflict/i.test(text)) remoteConflict.value = true
     error.value = text
     playSound('denied')
