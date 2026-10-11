@@ -52,6 +52,8 @@ jobs:
           VITE_USE_MOCKS: "false"
           # Empty: the site calls /api on its own domain (reverse proxy). Set FRONTEND_API_BASE_URL for a separate API host.
           VITE_API_BASE_URL: ${{ secrets.FRONTEND_API_BASE_URL }}
+          # Shown at the bottom of Settings: the tag (v1.2.0 → 1.2.0) on a tag build, else package.json's version.
+          CLOSET_APP_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
         run: |
           npm run build
           test -s dist/index.html
