@@ -990,7 +990,7 @@ defineExpose({ flush: persistDraft, exportPng })
 
 <template>
   <div v-if="!editing" class="outfit-library-page">
-    <div class="page-heading outfit-library-heading"><div><h1>穿搭组合台</h1><p class="page-subtitle">从自己的衣柜选单品，保存一套随时可以穿的搭配。</p></div><div><a-button @click="router.push('/outfits/workspace')">打开多画板工作区</a-button><a-button type="primary" @click="router.push('/outfits/new')"><PlusOutlined /> 新建搭配</a-button></div></div>
+    <div class="page-heading outfit-library-heading"><div><h1>穿搭组合台</h1><p class="page-subtitle">从自己的衣柜选单品，保存一套随时可以穿的搭配。</p></div><div><a-button @click="router.push('/ootd')">OOTD 试穿</a-button><a-button class="outfit-workspace-link" @click="router.push('/outfits/workspace')">多画板</a-button><a-button type="primary" @click="router.push('/outfits/new')"><PlusOutlined /> 新建搭配</a-button></div></div>
     <RecommendationStrip />
     <a-alert v-if="error" type="error" show-icon :message="error" class="outfit-alert"><template #action><a-button @click="loadLibrary">重新加载</a-button></template></a-alert>
     <a-skeleton v-if="pageLoading" active :paragraph="{ rows: 7 }" />

@@ -5,7 +5,7 @@ import { theme as antTheme } from 'ant-design-vue'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import {
   AppstoreOutlined, CheckCircleOutlined, PictureOutlined, PlusOutlined,
-  SettingOutlined, LogoutOutlined,
+  SettingOutlined, LogoutOutlined, SkinOutlined,
 } from '@ant-design/icons-vue'
 import { useClosetStore } from '../stores/closet'
 import { useThemeStore } from '../stores/theme'
@@ -13,6 +13,8 @@ import { antTokens, antComponentTokens } from '../theme/tokens'
 import { usingMocks } from '../services/api'
 import SoundToggle from './SoundToggle.vue'
 import ThemeToggle from './ThemeToggle.vue'
+import MinimalToggle from './MinimalToggle.vue'
+import { usePreferencesStore } from '../stores/preferences'
 import BloubAvatar from '../agent/BloubAvatar.vue'
 import AssistantPanel from '../agent/AssistantPanel.vue'
 import TaskInbox from './TaskInbox.vue'
@@ -43,6 +45,8 @@ const navItems = [
   { path: '/wardrobe', label: '我的衣柜', icon: AppstoreOutlined },
   { path: '/pending', label: '未入柜', icon: CheckCircleOutlined },
   { path: '/outfits', label: '组合台', icon: PictureOutlined },
+  // OOTD was only reachable from settings and the editor; the bottom bar keeps its five slots, so it is desktop-only there.
+  { path: '/ootd', label: 'OOTD 试穿', icon: SkinOutlined, desktopOnly: true },
   { path: '/settings', label: '我的', icon: SettingOutlined },
 ]
 // Highlight the clicked destination immediately; on slow networks the route itself resolves later.
@@ -54,6 +58,8 @@ function isNavActive(path: string) {
 const assistantShortcut = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘K' : 'Ctrl K'
 function openAssistant() { window.dispatchEvent(new CustomEvent('closet-assistant-open')) }
 const visibleNavItems = computed(() => closet.user?.mustChangePassword ? navItems.filter(item => item.path === '/settings') : navItems)
+const mobileNavItems = computed(() => visibleNavItems.value.filter(item => !item.desktopOnly))
+usePreferencesStore()
 const prefetch = (path: string) => prefetchRoute(router, path)
 watch(() => closet.isSignedIn && !closet.user?.mustChangePassword, ready => { if (ready) prefetchWhenIdle(router, [...navItems.map(item => item.path), '/add', '/tasks']) }, { immediate: true })
 // Show the progress bar only when navigation is noticeably slow, so fast switches stay calm.
@@ -121,14 +127,14 @@ async function signOut() {
         </aside>
         <main class="main-area">
           <div v-if="usingMocks" class="mock-banner"><span class="mock-pulse"></span><span>界面演示 · 示例数据不是 AI 结果，演示模式禁止提交模型任务</span><span class="mock-banner-end">{{ closet.user?.username }} 的衣橱</span></div>
-          <header class="topbar"><div class="topbar-actions"><a-button v-if="!closet.user?.mustChangePassword" class="topbar-assistant" :aria-label="`问鱼搭助手（${assistantShortcut}）`" @click="openAssistant"><BloubAvatar :size="28" expression="happy" /><span>问鱼搭</span><kbd>{{ assistantShortcut }}</kbd></a-button><ThemeToggle /><SoundToggle /><TaskInbox v-if="!closet.user?.mustChangePassword" /></div></header>
+          <header class="topbar"><div class="topbar-actions"><a-button v-if="!closet.user?.mustChangePassword" class="topbar-assistant" :aria-label="`问鱼搭助手（${assistantShortcut}）`" @click="openAssistant"><BloubAvatar :size="28" expression="happy" /><span>问鱼搭</span><kbd>{{ assistantShortcut }}</kbd></a-button><MinimalToggle v-if="!closet.user?.mustChangePassword" /><ThemeToggle /><SoundToggle /><TaskInbox v-if="!closet.user?.mustChangePassword" /></div></header>
           <section class="route-content" :aria-busy="!!pendingPath"><TaskToast /><RouterView v-slot="{ Component }"><Transition name="route-fade" mode="out-in"><div :key="viewKey(Component)" class="route-view"><component :is="Component" /></div></Transition></RouterView></section>
           <WaitingGame v-if="!closet.user?.mustChangePassword" />
           <WaitingStarted v-if="!closet.user?.mustChangePassword" />
           <AssistantPanel v-if="!closet.user?.mustChangePassword" :key="closet.user?.username" />
         </main>
         <nav v-if="!closet.user?.mustChangePassword" class="mobile-nav" aria-label="移动端主导航">
-          <RouterLink v-for="item in visibleNavItems" :key="item.path" :to="item.path" :class="{ active: isNavActive(item.path), pending: pendingPath === item.path }" @touchstart.passive="prefetch(item.path)"><component :is="item.icon" /><span>{{ item.label }}</span><i v-if="item.path === '/pending' && closet.pendingCount"></i></RouterLink>
+          <RouterLink v-for="item in mobileNavItems" :key="item.path" :to="item.path" :class="{ active: isNavActive(item.path), pending: pendingPath === item.path }" @touchstart.passive="prefetch(item.path)"><component :is="item.icon" /><span>{{ item.label }}</span><i v-if="item.path === '/pending' && closet.pendingCount"></i></RouterLink>
           <RouterLink to="/add" class="mobile-add"><PlusOutlined /><span>添加</span></RouterLink>
         </nav>
       </div>
