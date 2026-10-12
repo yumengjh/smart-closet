@@ -18,6 +18,8 @@ const query = reactive<ListQuery>({ status: 'ACTIVE', q: '', category: '', color
 const items = ref<Garment[]>([])
 const total = ref(0)
 const loading = ref(false)
+// Phones: the five filters took four rows above the first garment; they now open from one button.
+const filtersOpen = ref(false)
 const error = ref('')
 // Hybrid search (colour/category filters + keywords + local semantics) whenever there is text or an image-style choice.
 const imageStyle = ref('')
@@ -151,7 +153,7 @@ watch(() => [query.category, query.color, query.season, imageStyle.value], debou
 <template>
   <div class="page-heading wardrobe-heading">
     <div><p class="eyebrow">衣橱空间</p><h1>我的衣柜</h1><p class="page-subtitle">已经核对并确认入柜的衣物，{{ searching ? '搜索结果按相关度排序。' : `按“${sortLabel(query.sort || DEFAULT_SORT)}”排序。` }}</p></div>
-    <div class="wardrobe-heading-side"><a-button v-if="!selecting" @click="picker?.click()"><CameraOutlined /> 用图片搜</a-button><a-button v-if="!selecting && items.length" @click="selecting = true; batchResult = null"><CheckSquareOutlined /> 批量处理</a-button><div class="wardrobe-stats"><strong>{{ total.toString().padStart(2, '0') }}</strong><span>{{ searching ? '件符合' : '件已入柜' }}</span></div></div>
+    <div class="wardrobe-heading-side"><a-button v-if="!selecting" @click="picker?.click()"><CameraOutlined /> 用图片搜</a-button><a-button v-if="!selecting && items.length" @click="selecting = true; batchResult = null"><CheckSquareOutlined /> 批量处理</a-button><div class="wardrobe-stats"><strong>{{ total }}</strong><span>{{ searching ? '件符合' : '件已入柜' }}</span></div></div>
   </div>
   <section class="wardrobe-tools" aria-label="搜索和筛选衣物" @dragover.prevent @drop.prevent="dropped">
     <input ref="picker" type="file" accept="image/jpeg,image/png,image/webp" hidden @change="picked" />
@@ -171,7 +173,8 @@ watch(() => [query.category, query.color, query.season, imageStyle.value], debou
         </a-popover>
       </template>
     </a-input>
-    <div class="filter-row"><span class="filter-label"><SlidersOutlined /> 筛选</span>
+    <a-button v-if="total || hasFilters" class="filter-toggle" :class="{ active: filtersOpen || hasFilters }" @click="filtersOpen = !filtersOpen"><SlidersOutlined /> 筛选<span v-if="hasFilters" class="filter-dot"></span></a-button>
+    <div v-if="total || hasFilters" class="filter-row" :class="{ open: filtersOpen }"><span class="filter-label"><SlidersOutlined /> 筛选</span>
       <a-select :value="query.category || undefined" @update:value="query.category = $event || ''" allow-clear placeholder="全部品类" class="filter-select"><a-select-option v-for="category in categories" :key="category" :value="category">{{ category }}</a-select-option></a-select>
       <a-select :value="query.color || undefined" @update:value="query.color = $event || ''" allow-clear placeholder="全部颜色" class="filter-select"><a-select-option v-for="color in colors" :key="color" :value="color">{{ color }}</a-select-option></a-select>
       <a-select :value="query.season || undefined" @update:value="query.season = $event || ''" allow-clear placeholder="全部季节" class="filter-select"><a-select-option v-for="season in seasons" :key="season" :value="season">{{ season }}</a-select-option></a-select>
@@ -236,5 +239,7 @@ watch(() => [query.category, query.color, query.season, imageStyle.value], debou
 .query-image-remove.ant-btn.ant-btn-text:hover{background:var(--ink);color:var(--canvas);opacity:.85}
 .search-camera.ant-btn{color:var(--muted-strong)}
 .search-image-note{margin:-8px 2px 16px;font-size:12px;color:var(--muted-copy)}
-@media(max-width:767px){.search-image-note{margin-top:-4px}.wardrobe-heading-side{flex-direction:column-reverse;align-items:flex-end;gap:8px}.batch-actions{margin-left:0;width:100%}}
+.filter-toggle{display:none}
+.filter-dot{display:inline-block;width:6px;height:6px;margin-left:4px;border-radius:50%;background:var(--accent);vertical-align:middle}
+@media(max-width:767px){.wardrobe-tools{flex-direction:row;flex-wrap:wrap}.wardrobe-tools .search-input{flex:1;min-width:0}.filter-toggle{display:inline-flex;align-items:center;gap:4px;height:auto}.filter-toggle.active{border-color:var(--ink)}.filter-row{display:none!important}.filter-row.open{display:flex!important;flex-wrap:wrap}.filter-row.open .filter-select{flex:1 1 calc(50% - 8px);width:auto}.search-image-note{margin-top:-4px}.wardrobe-heading-side{flex-direction:column-reverse;align-items:flex-end;gap:8px}.batch-actions{margin-left:0;width:100%}}
 </style>

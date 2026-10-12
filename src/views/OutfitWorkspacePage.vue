@@ -87,7 +87,8 @@ function confirmSave(boards = selection.value) {
     if (pending.length === 1 && pending[0].sourceOutfitId && !pending[0].outfitId) {
       modal.confirm({ title: '如何保存调整后的搭配？', content: '原搭配仍未改变。可以另存一套，或覆盖原搭配；版本冲突时保留草稿。', okText: '另存新搭配', cancelText: '取消', onOk: () => finish(false), onCancel: () => resolve(), footer: undefined })
       // Overwrite is a separate explicit action in the board toolbar.
-    } else modal.confirm({ title: `保存 ${pending.length} 套搭配？`, content: '每块画板独立保存到账号。部分失败时只需重试失败项；批量保存调整副本时默认另存。', okText: '确认保存', cancelText: '取消', onOk: () => finish(false), onCancel: () => resolve() })
+    } else if (pending.length === 1) void finish(false) // One board: saving is the obvious intent, no extra dialog.
+    else modal.confirm({ title: `保存 ${pending.length} 套搭配？`, content: '每块画板独立保存到账号。部分失败时只需重试失败项；批量保存调整副本时默认另存。', okText: '确认保存', cancelText: '取消', onOk: () => finish(false), onCancel: () => resolve() })
   })
 }
 function saveCopy(board: WorkspaceBoard) { editor.value?.flush(); modal.confirm({ title: '另存为新搭配？', content: '保留当前草稿并保存为独立搭配，原搭配不变。', okText: '另存新搭配', cancelText: '取消', async onOk() { try { await writeBoard(board, false, true); message.success('已另存新搭配。'); playSound('success') } catch (e) { board.error = String(e); message.error(String(e)); throw e } } }) }

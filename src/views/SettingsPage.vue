@@ -34,7 +34,7 @@ interface SettingsCategory {
 }
 
 const categories: SettingsCategory[] = [
-  { key: 'personal', label: '个人形象', eyebrow: '资料与基准人物', description: '管理真实资料、全身照或半身照与自己的基准人物。', icon: UserOutlined, hidden: () => firstLogin.value, component: defineAsyncComponent(() => import('./settings/SettingsPersonalSection.vue')) },
+  { key: 'personal', label: '个人形象', eyebrow: '资料与模特', description: '身材资料、参考照片和你的模特。', icon: UserOutlined, hidden: () => firstLogin.value, component: defineAsyncComponent(() => import('./settings/SettingsPersonalSection.vue')) },
   { key: 'templates', label: '搭配模板审核', eyebrow: '管理员', description: '审核经典搭法模板，通过后参与推荐加分。', icon: AuditOutlined, hidden: () => firstLogin.value || closet.user?.role !== 'ADMIN', component: defineAsyncComponent(() => import('./AdminTemplatesPage.vue')) },
   { key: 'ootd-samples', label: '整套穿搭样本', eyebrow: '管理员', description: '收集整套穿搭图，提取物品与姿势，审核后生成搭配模板。', icon: CameraOutlined, hidden: () => firstLogin.value || closet.user?.role !== 'ADMIN', component: defineAsyncComponent(() => import('./AdminOotdSamplesPage.vue')) },
   { key: 'processing', label: '任务与资源', eyebrow: '管理员', description: '查看积压、共享账户与调度容量。', icon: DashboardOutlined, hidden: () => firstLogin.value || closet.user?.role !== 'ADMIN', component: defineAsyncComponent(() => import('./AdminProcessingPage.vue')) },
@@ -133,8 +133,8 @@ function goBack() {
   <div class="page-heading simple-heading settings-heading" :class="{ 'mobile-hidden': mobileInSection }">
     <div>
       <p class="eyebrow">账户与设置</p>
-      <h1>{{ firstLogin ? '设置新密码' : '我的' }}</h1>
-      <p class="page-subtitle">{{ firstLogin ? '完成后即可上传照片、查看任务和管理衣柜。' : '账户、助手和衣橱偏好。' }}</p>
+      <h1>{{ firstLogin ? '欢迎使用鱼搭' : '我的' }}</h1>
+      <p v-if="!firstLogin" class="page-subtitle">账户、助手和衣橱偏好。</p>
     </div>
     <div class="settings-avatar">{{ closet.user?.username?.slice(0, 1).toUpperCase() }}</div>
   </div>
@@ -195,7 +195,7 @@ function goBack() {
 
     <!-- 内容面板（PC 显示；移动端仅 mobileInSection 时显示） -->
     <main v-if="activeCategory" class="settings-panel" :class="{ 'mobile-shown': mobileInSection }">
-      <header class="settings-panel-head">
+      <header v-if="!firstLogin" class="settings-panel-head">
         <a-button type="text" class="settings-panel-back" aria-label="返回设置" @click="goBack">
           <ArrowLeftOutlined />
         </a-button>
