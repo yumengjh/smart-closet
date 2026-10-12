@@ -10,8 +10,7 @@ defineEmits<{ select: [] }>()
 
 <template>
   <button type="button" class="pose-card" :class="{ selected }" :aria-pressed="selected" @click="$emit('select')">
-    <span class="pose-card-art"><PoseFigure :pose="pose" :animate="animate" /></span>
-    <span v-if="pose.source !== 'PRESET'" class="pose-card-badge">{{ SOURCE_LABEL[pose.source] }}</span>
+    <span class="pose-card-art"><PoseFigure :pose="pose" :animate="animate" /><span v-if="pose.source !== 'PRESET'" class="pose-card-badge">{{ SOURCE_LABEL[pose.source] }}</span></span>
     <span v-if="selected" class="pose-card-check"><CheckOutlined /></span>
     <span class="pose-card-body">
       <strong>{{ pose.name }}</strong>
@@ -26,8 +25,8 @@ defineEmits<{ select: [] }>()
 .pose-card:hover { transform: translateY(-2px); box-shadow: 0 8px 22px rgb(0 0 0 / 8%); }
 .pose-card:focus-visible { outline: 2px solid var(--focus-ring, var(--accent)); outline-offset: 2px; }
 .pose-card.selected { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
-.pose-card-art { display: block; aspect-ratio: 3 / 4; }
-.pose-card-badge { position: absolute; top: 8px; left: 8px; padding: 1px 8px; border-radius: 999px; background: #ffffffd9; color: #3a3d45; font-size: 11px; line-height: 18px; }
+.pose-card-art { position: relative; display: block; aspect-ratio: 3 / 4; }
+.pose-card-badge { position: absolute; bottom: 6px; left: 6px; padding: 1px 8px; border-radius: 999px; background: #ffffffd9; color: #3a3d45; font-size: 11px; line-height: 18px; }
 .pose-card-check { position: absolute; top: 8px; right: 8px; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--action-bg); color: var(--action-fg); font-size: 12px; }
 .pose-card-body { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px 10px; }
 .pose-card-body strong { overflow: hidden; font-size: 13px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
