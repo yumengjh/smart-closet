@@ -3,8 +3,9 @@ import { usingMocks } from './api'
 export class PlatformRequestError extends Error {
   readonly uncertain: boolean
   readonly status?: number
-  constructor(message: string, uncertain = false, status?: number) {
-    super(message); this.name = 'PlatformRequestError'; this.uncertain = uncertain; this.status = status
+  readonly code?: string
+  constructor(message: string, uncertain = false, status?: number, code?: string) {
+    super(message); this.name = 'PlatformRequestError'; this.uncertain = uncertain; this.status = status; this.code = code
   }
 }
 export async function platformRequest<T>(path: string, method = 'GET', body?: unknown, idempotencyKey?: string, options: { timeoutMs?: number } = {}): Promise<T> {
@@ -26,7 +27,7 @@ export async function platformRequest<T>(path: string, method = 'GET', body?: un
     if (!response.ok) {
       if (response.status === 401) window.dispatchEvent(new Event('closet-session-expired'))
       const error = await response.json().catch(() => ({}))
-      throw new PlatformRequestError(error.message || `请求未完成 (${response.status})`, write && (response.status >= 500 || response.status === 408), response.status)
+      throw new PlatformRequestError(error.message || `请求未完成 (${response.status})`, write && (response.status >= 500 || response.status === 408), response.status, error.code)
     }
     return response.status === 204 ? undefined as T : await response.json()
   } catch (error) {
@@ -38,8 +39,14 @@ export type Worn = { garmentId: string; revision: number; label: string; role: s
 export type Review = { items: Worn[]; slots: { role: string; label: string; state: string; items: Worn[] }[]; blockers: { code: string; message: string; action: string }[]; warnings: { code: string; message: string }[]; fingerprint: string; ruleVersion: string }
 export type Profile = { revision: number; sex: string | null; heightCm: number | null; weightKg: number | null; bodyShape: string | null; measurements: Record<string, number>; preferences: Record<string, string>; defaultBaselineId: string | null }
 export type ProfileSnapshot = { sex: string; heightCm: number; weightKg: number; bodyShape: string; sources: Record<string, string>; profileRevision: number }
-export type Baseline = { id: string; revision: number; status: string; mediaUrl: string | null; sourcePhotoId: string | null; profile: ProfileSnapshot; createdAt: number; currentDefault: boolean }
-export type RenderJob = { id: string; purpose: string; status: string; mediaUrl: string | null; baselineId: string | null; planId: string | null; error: string | null; feedback: string | null; createdAt: number }
+export type Baseline = { id: string; revision: number; status: string; mediaUrl: string | null; sourcePhotoId: string | null; profile: ProfileSnapshot; createdAt: number; currentDefault: boolean; name: string | null }
+export type RenderJob = { id: string; purpose: string; status: string; mediaUrl: string | null; baselineId: string | null; planId: string | null; error: string | null; feedback: string | null; createdAt: number; parentJobId: string | null; summary: RenderSummary | null }
+export type BodyAdjustments = Partial<Record<'build' | 'shoulders' | 'waist' | 'hips' | 'legs', number>>
+export type RenderSummary = { kind?: 'OOTD' | 'ADJUST'; model?: string; pose?: string; adjustments?: BodyAdjustments }
+export type PoseJoint = 'HEAD' | 'NECK' | 'L_SHOULDER' | 'R_SHOULDER' | 'L_ELBOW' | 'R_ELBOW' | 'L_WRIST' | 'R_WRIST' | 'L_HIP' | 'R_HIP' | 'L_KNEE' | 'R_KNEE' | 'L_ANKLE' | 'R_ANKLE'
+export type Pose = { id: string; name: string; source: 'PRESET' | 'PHOTO' | 'TEXT'; description: string; tags: string[]; keypoints: Partial<Record<PoseJoint, [number, number]>>; viewAngle: string | null; createdAt: number }
+export type PoseCatalog = { presets: Pose[]; mine: Pose[]; extractionsToday: number; dailyExtractions: number }
+export type PoseChoice = { mode: 'AUTO' } | { mode: 'PRESET' | 'CUSTOM'; id: string }
 export type Capability = { provider: string; model: string; purpose: string; maxReferences: number; verified: boolean; version: number; notes: string }
 
 export type RenderSubmission = { found: boolean; job: RenderJob | null }
