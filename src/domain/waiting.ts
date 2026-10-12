@@ -1,10 +1,13 @@
 import type { ClosetTask } from '../services/api'
 import type { IntakeBatch } from '../services/batches'
+import type { RenderJob } from '../services/platform'
 
 export type WaitingEntry = {
-  key: string; kind: 'task' | 'batch'; id: string; title: string; startedAt: number
+  key: string; kind: 'task' | 'batch' | 'render'; id: string; title: string; startedAt: number
   state: 'processing' | 'ready' | 'attention' | 'cancelled'; stage: string; note: string
   href: string; read: boolean; childIds: string[]
+  /** Finished image shown beside the result (generated pictures only). */
+  thumb?: string
 }
 const running = (status: string) => ['QUEUED', 'RUNNING', 'CANCEL_REQUESTED'].includes(status)
 export const batchIsProcessing = (batch: IntakeBatch) =>
@@ -41,4 +44,21 @@ export function batchEntry(batch: IntakeBatch): WaitingEntry {
 export function elapsedLabel(start: number, now: number) {
   const seconds = Math.max(0, Math.floor((now - start) / 1000))
   return seconds < 60 ? `${seconds} 秒` : `${Math.floor(seconds / 60)} 分 ${seconds % 60} 秒`
+}
+
+const renderRunning = ['QUEUED', 'WAITING_RESOURCE', 'RUNNING', 'CANCEL_REQUESTED']
+const renderStages: Record<string, string> = { QUEUED: '排队中，马上开始', WAITING_RESOURCE: '等待生成资源', RUNNING: '正在上身绘制', CANCEL_REQUESTED: '正在停止' }
+/** Generated pictures (model, OOTD, body adjustment) share the processing centre with garment tasks. */
+export function renderEntry(job: RenderJob): WaitingEntry {
+  const state = renderRunning.includes(job.status) ? 'processing' : job.status === 'SUCCEEDED' ? 'ready'
+    : ['CANCELLED', 'DELETED', 'DELETE_PENDING'].includes(job.status) ? 'cancelled' : 'attention'
+  const title = job.purpose === 'BASELINE' ? '模特形象' : job.summary?.kind === 'ADJUST' ? '身材调整图'
+    : ['OOTD 穿搭图', job.summary?.pose].filter(Boolean).join(' · ')
+  const stage = state === 'processing' ? renderStages[job.status] || '正在生成'
+    : state === 'ready' ? (job.purpose === 'BASELINE' ? '模特画好了，去确认' : '穿搭图好了，去看看')
+    : state === 'cancelled' ? '已停止生成' : job.status === 'UNKNOWN' ? '结果待核实，不会自动重发' : '生成未完成'
+  return { key: `render:${job.id}`, kind: 'render', id: job.id, title, startedAt: job.createdAt, state, stage,
+    note: state === 'processing' ? '通常 1 分钟左右，好了会提醒你' : job.error || '', read: false, childIds: [],
+    href: job.purpose === 'BASELINE' ? '/settings?section=personal' : `/ootd?job=${job.id}`,
+    thumb: state === 'ready' && job.mediaUrl ? job.mediaUrl : undefined }
 }

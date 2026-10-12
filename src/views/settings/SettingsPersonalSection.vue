@@ -5,7 +5,9 @@ import { platformRequest, PlatformRequestError, type RenderJob, type RenderSubmi
 import { mediaUrl } from '../../services/urls'
 import { createUuid } from '../../domain/id'
 import { modelLabel } from '../../ootd/labels'
-const { message, modal } = App.useApp()
+import { useProcessingStore } from '../../stores/processing'
+import { useSendOffStore } from '../../stores/sendOff'
+const { message, modal } = App.useApp(), processing = useProcessingStore(), sendOff = useSendOffStore()
 const profile = ref<Profile>({ revision: 0, sex: null, heightCm: null, weightKg: null, bodyShape: null, measurements: {}, preferences: {}, defaultBaselineId: null })
 const savedProfile=ref('');const dirty=computed(()=>JSON.stringify(profile.value)!==savedProfile.value)
 const baselines = ref<Baseline[]>([]); const photos = ref<{id:string;url:string}[]>([]); const capabilities = ref<Capability[]>([])
@@ -26,10 +28,17 @@ async function save(){saving.value=true;try{const input={...profile.value,measur
 async function prepare(){if(pending.value){generateOpen.value=true;return}submissionNotice.value=null;attempt.value=null;if(dirty.value){message.info('请先保存当前个人资料，再核对生成输入。');return}try{preview.value=await platformRequest('/api/me/wearer-profile/render-preview');generateOpen.value=true;key.value=createUuid()}catch(e){message.error(String(e))}}
 function clearPhoto(){if(photoPreview.value)URL.revokeObjectURL(photoPreview.value);photo.value=null;photoPreview.value=''}
 function choosePhoto(file:File){if(!['image/png','image/jpeg'].includes(file.type)||file.size>20*1024*1024){message.error('请选择20MB以内的JPG或PNG照片。');return false}if(photoPreview.value)URL.revokeObjectURL(photoPreview.value);photo.value=file;selectedPhoto.value=undefined;photoPreview.value=URL.createObjectURL(file);return false}
+// The reference photo is handed off to the processing centre; an uploaded file gets its own short-lived preview URL.
+function handOff(job:RenderJob){
+  const stored=photos.value.find(p=>p.id===attempt.value?.request.photoId)?.url,local=attempt.value?.file?URL.createObjectURL(attempt.value.file):undefined
+  if(local)setTimeout(()=>URL.revokeObjectURL(local),8000)
+  sendOff.launch({title:'正在画你的专属模特',cards:stored||local?[{image:stored||local,label:'参考照片'}]:[{label:attempt.value?.request.name||'按个人资料生成'}]})
+  processing.trackRender(job,true)
+}
 async function accepted(job:RenderJob){
+  handOff(job)
   pending.value=false;lookupUncertain.value=false;attempt.value=null;submissionNotice.value=null;error.value='';generateOpen.value=false;clearPhoto();newName.value=''
   renderJobs.value=[job,...renderJobs.value.filter(j=>j.id!==job.id)]
-  message.success('模特开始生成，完成后在下方确认。')
   await load()
 }
 async function reconcile(){

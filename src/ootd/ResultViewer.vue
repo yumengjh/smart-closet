@@ -36,7 +36,7 @@ async function submit() {
     } else notice.value = e instanceof Error ? e.message : String(e)
   } finally { busy.value = false }
 }
-function done(created: RenderJob) { message.success('已开始生成调整后的图片，原图保留。'); adjusting.value = false; reset(); emit('submitted', created) }
+function done(created: RenderJob) { adjusting.value = false; reset(); emit('submitted', created) }
 function openFeedback() { feedback.value = props.job?.feedback || ''; feedbackOpen.value = true }
 async function saveFeedback() {
   if (!props.job) return

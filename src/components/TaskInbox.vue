@@ -9,8 +9,13 @@ import { useNotificationStore } from '../stores/notifications'
 import type { WaitingEntry } from '../domain/waiting'
 import type { ClosetNotification } from '../notifications/api'
 import TaskInboxPanel from './TaskInboxPanel.vue'
+import { useSendOffStore } from '../stores/sendOff'
 const processing = useProcessingStore(), closet = useClosetStore(), notices = useNotificationStore(), router = useRouter(), { notification } = App.useApp()
 const open = ref(false)
+// A generation bundle just flew in: bounce once so the eye follows it here.
+const sendOff = useSendOffStore(), landing = ref(false)
+let landingTimer: ReturnType<typeof setTimeout> | undefined
+watch(() => sendOff.landed, () => { landing.value = false; clearTimeout(landingTimer); requestAnimationFrame(() => { landing.value = true; landingTimer = setTimeout(() => { landing.value = false }, 900) }) })
 // Anchored popover on desktop; phones get a bottom drawer within thumb reach.
 const phoneQuery = window.matchMedia('(max-width: 767px)'), phone = ref(phoneQuery.matches)
 // The server count also covers tasks started in another tab or before a reload.
@@ -33,12 +38,12 @@ function visit(entry: WaitingEntry) { processing.viewed(entry); open.value = fal
 function go(path: string) { open.value = false; void router.push(path) }
 function media() { phone.value = phoneQuery.matches; open.value = false }
 onMounted(() => { phoneQuery.addEventListener('change', media); notices.start() })
-onUnmounted(() => { phoneQuery.removeEventListener('change', media); notices.stop() })
+onUnmounted(() => { clearTimeout(landingTimer); phoneQuery.removeEventListener('change', media); notices.stop() })
 </script>
 <template>
   <a-popover :open="open && !phone" trigger="click" placement="bottomRight" :arrow="false" overlay-class-name="task-inbox-popover" @update:open="(value: boolean) => !phone && show(value)">
     <a-tooltip :title="label || open ? '' : '处理中心与提醒'">
-      <a-button type="text" class="task-inbox-trigger" :class="{ busy: running, unread: !running && unread }" :aria-label="label ? `衣物处理任务：${label}` : '衣物处理任务'" :aria-expanded="open" @click="phone && show(!open)">
+      <a-button type="text" class="task-inbox-trigger" :class="{ busy: running, unread: !running && unread, landing }" :aria-label="label ? `衣物处理任务：${label}` : '衣物处理任务'" :aria-expanded="open" @click="phone && show(!open)">
         <span class="inbox-glyph"><span v-if="running" class="inbox-trigger-ring" aria-hidden="true" /><BellOutlined v-else /><i v-if="unread" class="inbox-trigger-dot" /></span>
         <span v-if="label" class="inbox-trigger-label">{{ label }}</span>
       </a-button>
@@ -56,8 +61,12 @@ onUnmounted(() => { phoneQuery.removeEventListener('change', media); notices.sto
 .inbox-trigger-dot { position: absolute; top: -2px; right: -3px; width: 7px; height: 7px; border-radius: 50%; background: var(--info); box-shadow: 0 0 0 2px var(--canvas); }
 .inbox-trigger-label { font-size: 13px; font-variant-numeric: tabular-nums; }
 @keyframes inbox-trigger-spin { to { transform: rotate(360deg); } }
+.task-inbox-trigger.landing { animation: inbox-landing .8s cubic-bezier(.2, .9, .3, 1.4); }
+.task-inbox-trigger.landing::after { content: ""; position: absolute; inset: -2px; border-radius: inherit; box-shadow: 0 0 0 0 var(--accent); animation: inbox-ripple .8s ease-out; pointer-events: none; }
+@keyframes inbox-landing { 0% { transform: scale(1); } 30% { transform: scale(1.18); } 55% { transform: scale(.94); } 100% { transform: scale(1); } }
+@keyframes inbox-ripple { from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); } to { box-shadow: 0 0 0 14px transparent; } }
 @media (max-width: 640px) { .inbox-trigger-label { display: none; } .task-inbox-trigger.ant-btn, .task-inbox-trigger.busy, .task-inbox-trigger.unread { width: 36px; padding: 0; justify-content: center; } }
-@media (prefers-reduced-motion: reduce) { .inbox-trigger-ring { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .inbox-trigger-ring, .task-inbox-trigger.landing, .task-inbox-trigger.landing::after { animation: none; } }
 </style>
 <style>
 .task-inbox-popover .ant-popover-inner { padding: 0; border-radius: var(--radius-lg); overflow: hidden; }

@@ -37,7 +37,7 @@ const active = computed(() => processing.ordered.filter(entry => entry.state ===
 const finished = computed(() => processing.ordered.filter(entry => entry.state !== 'processing'))
 const summary = computed(() => [processing.activeCount && `${processing.activeCount} 个处理中`, processing.unreadCount && `${processing.unreadCount} 个新结果`, notices.unread && `${notices.unread} 条提醒`].filter(Boolean).join(' · ') || '离开页面也会继续处理')
 const stateIcon = { ready: CheckOutlined, attention: ExclamationOutlined, cancelled: MinusOutlined } as const
-const actionLabel = (entry: WaitingEntry) => entry.state === 'processing' ? '进度' : entry.state === 'ready' ? '去核对' : '查看'
+const actionLabel = (entry: WaitingEntry) => entry.state === 'processing' ? '进度' : entry.kind === 'render' && entry.state === 'ready' ? '去看看' : entry.state === 'ready' ? '去核对' : '查看'
 function waited(start: number) {
   const seconds = Math.max(0, Math.floor((now.value - start) / 1000)), minutes = Math.floor(seconds / 60)
   if (minutes < 1) return `${seconds} 秒`
@@ -69,13 +69,14 @@ onUnmounted(() => clearInterval(clock))
       <section v-if="active.length"><h3>进行中</h3>
         <a-button v-for="entry in active" :key="entry.key" type="text" block class="inbox-row processing" @click="emit('visit', entry)">
           <span class="inbox-state"><span class="inbox-ring" /></span>
-          <span class="inbox-copy"><strong>{{ entry.title }}</strong><span>{{ entry.stage }}</span><span class="inbox-bar"><i /></span><small>已等待 {{ waited(entry.startedAt) }}</small></span>
+          <span class="inbox-copy"><strong>{{ entry.title }}</strong><span>{{ entry.stage }}</span><span class="inbox-bar"><i /></span><small>已等待 {{ waited(entry.startedAt) }}<template v-if="entry.kind === 'render'"> · {{ entry.note }}</template></small></span>
           <span class="inbox-action">{{ actionLabel(entry) }}<RightOutlined /></span>
         </a-button>
       </section>
       <section v-if="finished.length"><h3>最近结果</h3>
         <a-button v-for="entry in finished" :key="entry.key" type="text" block class="inbox-row" :class="[entry.state, { unread: !entry.read }]" @click="emit('visit', entry)">
-          <span class="inbox-state"><component :is="stateIcon[entry.state as keyof typeof stateIcon]" /></span>
+          <span v-if="entry.thumb" class="inbox-thumb result"><img :src="mediaUrl(entry.thumb)" alt="" loading="lazy" /></span>
+          <span v-else class="inbox-state"><component :is="stateIcon[entry.state as keyof typeof stateIcon]" /></span>
           <span class="inbox-copy"><strong>{{ entry.title }}<i v-if="!entry.read" class="inbox-unread" aria-label="未读" /></strong><span>{{ entry.stage }}</span><small>{{ entry.note || started(entry.startedAt) }}</small></span>
           <span class="inbox-action">{{ actionLabel(entry) }}<RightOutlined /></span>
         </a-button>
@@ -138,6 +139,7 @@ onUnmounted(() => clearInterval(clock))
 .inbox-stat.zero strong { color: var(--muted-subtle); }
 .inbox-thumb { display: grid; place-items: center; flex: none; width: 34px; height: 34px; border-radius: var(--radius-sm); overflow: hidden; background: var(--paper); color: var(--muted-subtle); }
 .inbox-thumb img { width: 100%; height: 100%; object-fit: contain; }
+.inbox-thumb.result { height: 44px; }.inbox-thumb.result img { object-fit: cover; }
 .inbox-tag { flex: none; padding: 1px 7px; border-radius: 999px; font-size: 11px; line-height: 18px; background: var(--surface-alt); color: var(--muted-strong); }
 .inbox-tag.running { background: var(--info-bg); color: var(--info); }.inbox-tag.review { background: var(--warning-bg); color: var(--warning); }.inbox-tag.done { background: var(--success-bg); color: var(--success); }.inbox-tag.failed { background: var(--danger-bg); color: var(--danger); }
 .inbox-history-error { margin: 8px; font-size: 12px; color: var(--muted); }

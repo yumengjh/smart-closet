@@ -21,6 +21,7 @@ import TaskInbox from './TaskInbox.vue'
 import TaskToast from './TaskToast.vue'
 import WaitingGame from './WaitingGame.vue'
 import WaitingStarted from './WaitingStarted.vue'
+import RenderSendOff from './RenderSendOff.vue'
 import { useProcessingStore } from '../stores/processing'
 import { installInteractionSounds, unlockSound } from '../services/sound'
 import { pendingPath, prefetchRoute, prefetchWhenIdle } from '../composables/useRouteProgress'
@@ -130,7 +131,7 @@ async function signOut() {
           <header class="topbar"><div class="topbar-actions"><a-button v-if="!closet.user?.mustChangePassword" class="topbar-assistant" :aria-label="`问鱼搭助手（${assistantShortcut}）`" @click="openAssistant"><BloubAvatar :size="28" expression="happy" /><span>问鱼搭</span><kbd>{{ assistantShortcut }}</kbd></a-button><MinimalToggle v-if="!closet.user?.mustChangePassword" /><ThemeToggle /><SoundToggle /><TaskInbox v-if="!closet.user?.mustChangePassword" /></div></header>
           <section class="route-content" :aria-busy="!!pendingPath"><TaskToast /><RouterView v-slot="{ Component }"><Transition name="route-fade" mode="out-in"><div :key="viewKey(Component)" class="route-view"><component :is="Component" /></div></Transition></RouterView></section>
           <WaitingGame v-if="!closet.user?.mustChangePassword" />
-          <WaitingStarted v-if="!closet.user?.mustChangePassword" />
+          <WaitingStarted v-if="!closet.user?.mustChangePassword" /><RenderSendOff v-if="!closet.user?.mustChangePassword" />
           <AssistantPanel v-if="!closet.user?.mustChangePassword" :key="closet.user?.username" />
         </main>
         <nav v-if="!closet.user?.mustChangePassword" class="mobile-nav" aria-label="移动端主导航">

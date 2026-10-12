@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { App, Empty } from 'ant-design-vue'
 import { ReloadOutlined, UserOutlined } from '@ant-design/icons-vue'
 import { closetApi } from '../services/api'
@@ -15,8 +15,10 @@ import ResultViewer from '../ootd/ResultViewer.vue'
 import { modelLabel } from '../ootd/labels'
 import { describeAdjustments } from '../ootd/body-adjust'
 import { usePreferencesStore } from '../stores/preferences'
+import { useProcessingStore } from '../stores/processing'
+import { useSendOffStore } from '../stores/sendOff'
 
-const route = useRoute(); const { message, modal } = App.useApp(); const preferences = usePreferencesStore()
+const route = useRoute(), router = useRouter(); const { message, modal } = App.useApp(); const preferences = usePreferencesStore(), processing = useProcessingStore(), sendOff = useSendOffStore()
 const outfits = ref<Outfit[]>([]); const baselines = ref<Baseline[]>([]); const capabilities = ref<Capability[]>([]); const jobs = ref<RenderJob[]>([]); const poseCatalog = ref<PoseCatalog | null>(null)
 const outfitId = ref(String(route.query.outfit || '')); const baselineId = ref(''); const model = ref(''); const selected = ref<string[]>([]); const pose = ref<PoseChoice>({ mode: 'AUTO' })
 const multiLayer = ref(false); const wearRoles = ref<Record<string, string>>({}); const showItems = ref(false)
@@ -69,16 +71,33 @@ async function prepare(useOlderBaseline = false) {
     } else error.value = e instanceof Error ? e.message : String(e)
   } finally { busy.value = false }
 }
-async function accepted() { confirmOpen.value = false; preparation.value = null; error.value = ''; message.success('已开始生成，离开页面也会继续。'); await refresh() }
+// Instead of a spinner on this page, the outfit is handed off with a short ritual and tracked in the processing centre.
+function handOff(job: RenderJob) {
+  const prepared = preparation.value, chosen = garments.value.filter(g => selected.value.includes(g.garmentId))
+  const poseId = pose.value.mode === 'AUTO' ? '' : pose.value.id
+  const poseCard = [...(poseCatalog.value?.presets || []), ...(poseCatalog.value?.mine || [])].find(p => p.id === poseId) || null
+  sendOff.launch({ title: [`${chosen.length} 件衣物`, prepared?.pose?.name || '自动动作'].join(' · '), cards: chosen.map(g => ({ image: g.assetUrl, label: g.garmentLabel })), person: person.value?.mediaUrl || undefined, pose: poseCard })
+  processing.trackRender(job, true)
+}
+// Plays the whole hand-off (cards, dressing, fly-in, finished notice) without calling any model.
+function rehearse() {
+  const chosen = garments.value.filter(g => selected.value.includes(g.garmentId))
+  const poseId = pose.value.mode === 'AUTO' ? '' : pose.value.id
+  const poseCard = [...(poseCatalog.value?.presets || []), ...(poseCatalog.value?.mine || [])].find(p => p.id === poseId) || poseCatalog.value?.presets[0] || null
+  const cards = chosen.length ? chosen.map(g => ({ image: g.assetUrl, label: g.garmentLabel })) : ['上衣', '下装', '鞋子'].map(label => ({ label }))
+  sendOff.launch({ title: `模拟演示 · ${cards.length} 件衣物 · ${poseCard?.name || '自动动作'}`, cards, person: person.value?.mediaUrl || undefined, pose: poseCard })
+  processing.simulateRender(jobs.value.find(j => j.mediaUrl)?.mediaUrl || person.value?.mediaUrl || undefined)
+}
+async function accepted(job: RenderJob) { handOff(job); confirmOpen.value = false; preparation.value = null; error.value = ''; await refresh() }
 async function generate() {
   if (!preparation.value || busy.value) return
   busy.value = true; error.value = ''
-  try { await platformRequest('/api/ootd/jobs', 'POST', { preparationId: preparation.value.id }, key.value); await accepted() }
+  try { await accepted(await platformRequest<RenderJob>('/api/ootd/jobs', 'POST', { preparationId: preparation.value.id }, key.value)) }
   catch (e) {
     if (e instanceof PlatformRequestError && e.uncertain) {
       try {
         const original = await platformRequest<RenderSubmission>(`/api/me/image-render-submissions/${encodeURIComponent(key.value)}`, 'GET', undefined, undefined, { timeoutMs: 10000 })
-        if (original.found && original.job) { await accepted(); return }
+        if (original.found && original.job) { await accepted(original.job); return }
         error.value = '暂未查到这次任务。再点一次会复用原提交编号，不会重复生成。'
       } catch { error.value = '连接仍未恢复，暂时无法确认是否已提交。请先看看下方生成记录，不要关闭这个窗口重新准备。' }
     } else error.value = e instanceof Error ? e.message : String(e)
@@ -88,9 +107,22 @@ async function cancel(job: RenderJob) { try { await platformRequest(`/api/ootd/j
 function remove(job: RenderJob) {
   modal.confirm({ title: '永久删除这张图？', content: '删除后无法恢复；搭配、模特和其他图片不受影响。', okText: '删除', okType: 'danger', cancelText: '取消', async onOk() { await platformRequest(`/api/ootd/jobs/${job.id}`, 'DELETE'); viewing.value = null; await refresh() } })
 }
-async function adjusted(job: RenderJob) { viewing.value = null; jobs.value = [job, ...jobs.value.filter(j => j.id !== job.id)]; await refresh() }
+async function adjusted(job: RenderJob) {
+  const source = viewingJob.value
+  sendOff.launch({ title: `身材调整 · ${describeAdjustments(job.summary?.adjustments)}（原图保留）`, cards: source?.mediaUrl ? [{ image: source.mediaUrl, label: '原图' }] : [] })
+  processing.trackRender(job, true); viewing.value = null; jobs.value = [job, ...jobs.value.filter(j => j.id !== job.id)]; await refresh() }
 const running = ['QUEUED', 'RUNNING', 'WAITING_RESOURCE', 'UNKNOWN', 'CANCEL_REQUESTED']
 const states: Record<string, string> = { QUEUED: '排队中', WAITING_RESOURCE: '等待资源', RUNNING: '生成中', SUCCEEDED: '已完成', FAILED: '未完成', UNKNOWN: '结果未知', CANCEL_REQUESTED: '正在停止', CANCELLED: '已取消', DELETED: '已删除', DELETE_PENDING: '正在清理' }
+// Arriving from the processing centre opens that picture directly.
+// Opened once, then the query is dropped so the 5-second list refresh never reopens a closed viewer.
+function openFromRoute() {
+  const id = String(route.query.job || ''), job = id && jobs.value.find(j => j.id === id)
+  if (!job || !job.mediaUrl) return
+  viewing.value = job
+  const { job: _job, ...query } = route.query
+  void router.replace({ query })
+}
+watch([() => route.query.job, jobs], openFromRoute)
 onMounted(() => { void load(); timer = setInterval(refresh, 5000) })
 onUnmounted(() => clearInterval(timer))
 </script>
@@ -133,6 +165,7 @@ onUnmounted(() => clearInterval(timer))
         <p v-else class="ootd-note">{{ hint || (capability ? '每张用 1 个图像额度' : '') }}</p>
         <a-space wrap>
           <a-button v-if="!preferences.minimal" :loading="busy" :disabled="!current" @click="check()">只检查搭配</a-button>
+          <a-tooltip title="只播放生成过程的动画和完成提醒，不调用模型、不消耗额度"><a-button @click="rehearse()">模拟生成</a-button></a-tooltip>
           <a-button type="primary" :loading="busy" :disabled="!current || !person || !capability" @click="prepare()">生成 OOTD</a-button>
         </a-space>
       </div>

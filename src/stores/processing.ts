@@ -2,7 +2,8 @@ import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { closetApi, usingMocks, type ClosetTask } from '../services/api'
 import { batchApi, type IntakeBatch } from '../services/batches'
-import { batchEntry, taskEntry, type WaitingEntry } from '../domain/waiting'
+import { batchEntry, renderEntry, taskEntry, type WaitingEntry } from '../domain/waiting'
+import { platformRequest, type RenderJob } from '../services/platform'
 import { playSound } from '../services/sound'
 
 export const useProcessingStore = defineStore('processing', () => {
@@ -73,6 +74,16 @@ export const useProcessingStore = defineStore('processing', () => {
     const entry = batchEntry(batch)
     if (receive(entry, submitted) && (submitted || offer)) offerActivities(entry)
   }
+  /** Image generation runs about a minute; the send-off animation hands it to this centre instead of a page spinner. */
+  function trackRender(job: RenderJob, submitted = false) { receive(renderEntry(job), submitted) }
+  /** Rehearsal of the whole hand-off for the OOTD page's preview button: nothing is sent and no quota is used. */
+  function simulateRender(thumb?: string, seconds = 8) {
+    const id = `demo-${Date.now()}`, startedAt = Date.now()
+    const base: WaitingEntry = { key: `render:${id}`, kind: 'render', id, title: 'OOTD 穿搭图 · 模拟演示', startedAt, state: 'processing', stage: '正在上身绘制', note: '模拟演示，不消耗额度', href: '/ootd', read: false, childIds: [] }
+    receive(base, true)
+    setTimeout(() => receive({ ...base, state: 'ready', stage: '穿搭图好了，去看看', note: '模拟演示，未真正生成', thumb }), seconds * 1000)
+  }
+  const renderJobs = () => usingMocks ? Promise.resolve([] as RenderJob[]) : platformRequest<RenderJob[]>('/api/me/image-render-jobs')
   function dismissStartPrompt() { startPrompt.value = null }
   function dismissNotice() { latestNotice.value = null }
   function viewed(entry: WaitingEntry) {
@@ -88,9 +99,10 @@ export const useProcessingStore = defineStore('processing', () => {
     try {
       let failed = false
       if (discover || Date.now() - discoveredAt > 30_000) {
-        const results = await Promise.allSettled([closetApi.tasks(), usingMocks ? Promise.resolve([] as IntakeBatch[]) : batchApi.history()])
+        const results = await Promise.allSettled([closetApi.tasks(), usingMocks ? Promise.resolve([] as IntakeBatch[]) : batchApi.history(), renderJobs()])
         if (generation !== epoch) return
-        const [tasks, batches] = results
+        const [tasks, batches, renders] = results
+        if (renders.status === 'fulfilled') renders.value.forEach(job => trackRender(job))
         const children = new Set(batches.status === 'fulfilled' ? batches.value.flatMap(batch => batch.targets.flatMap(target => target.jobId ? [target.jobId] : [])) : [])
         if (batches.status === 'fulfilled') batches.value.forEach(batch => trackBatch(batch))
         else failed = true
@@ -101,9 +113,18 @@ export const useProcessingStore = defineStore('processing', () => {
         else failed = true
         discoveredAt = failed ? 0 : Date.now()
       }
-      const active = entries.value.filter(entry => entry.state === 'processing')
-      const results = await Promise.allSettled(active.map(async entry => ({ entry, value: entry.kind === 'task' ? taskEntry(await closetApi.task(entry.id)) : batchEntry(await batchApi.get(entry.id)) })))
+      const active = entries.value.filter(entry => entry.state === 'processing' && entry.kind !== 'render')
+      const rendering = entries.value.filter(entry => entry.state === 'processing' && entry.kind === 'render' && !entry.id.startsWith('demo-'))
+      const [results, renders] = await Promise.all([
+        Promise.allSettled(active.map(async entry => ({ entry, value: entry.kind === 'task' ? taskEntry(await closetApi.task(entry.id)) : batchEntry(await batchApi.get(entry.id)) }))),
+        rendering.length ? renderJobs().then(list => list, () => null) : Promise.resolve([] as RenderJob[]),
+      ])
       if (generation !== epoch) return
+      if (renders) {
+        // One list call covers every running picture; a job deleted elsewhere simply leaves the centre.
+        const byId = new Map(renders.map(job => [job.id, job]))
+        rendering.forEach(entry => { const job = byId.get(entry.id); if (job) trackRender(job); else { entries.value = entries.value.filter(item => item.key !== entry.key); save() } })
+      } else failed = true
       for (const result of results) {
         if (result.status === 'fulfilled') receive(result.value.value)
         else failed = true
@@ -128,12 +149,12 @@ export const useProcessingStore = defineStore('processing', () => {
     stop(); username = user
     try {
       const saved: WaitingEntry[] = JSON.parse(sessionStorage.getItem(storageKey()) || '[]')
-      if (Array.isArray(saved)) entries.value = saved.filter(entry => entry && ['task', 'batch'].includes(entry.kind) && typeof entry.id === 'string' && entry.key === `${entry.kind}:${entry.id}` && Array.isArray(entry.childIds))
+      if (Array.isArray(saved)) entries.value = saved.filter(entry => entry && ['task', 'batch', 'render'].includes(entry.kind) && typeof entry.id === 'string' && entry.key === `${entry.kind}:${entry.id}` && Array.isArray(entry.childIds) && !(entry.id.startsWith('demo-') && entry.state === 'processing'))
       const hints: unknown = JSON.parse(sessionStorage.getItem(`${storageKey()}:invited`) || '[]')
       if (Array.isArray(hints)) for (const key of hints) if (typeof key === 'string') invited.add(key)
     } catch { /* A fresh tab discovers active jobs from the server. */ }
     document.addEventListener('visibilitychange', visibility)
     void refresh(true)
   }
-  return { entries, ordered, latestNotice, startPrompt, activeCount, unreadCount, connectionError, start, stop, refresh, trackTask, trackBatch, dismissStartPrompt, dismissNotice, viewed }
+  return { entries, ordered, latestNotice, startPrompt, activeCount, unreadCount, connectionError, start, stop, refresh, trackTask, trackBatch, trackRender, simulateRender, dismissStartPrompt, dismissNotice, viewed }
 })
