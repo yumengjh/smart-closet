@@ -171,7 +171,7 @@ onUnmounted(() => clearInterval(timer))
       </div>
     </div>
 
-    <aside class="ootd-card ootd-preview">
+    <aside class="ootd-card ootd-preview" :class="{ empty: !current }">
       <header class="ootd-card-head"><h2>{{ current ? current.name : '预览' }}</h2></header>
       <OutfitThumbnail v-if="current" :scene="current.scene" :title="current.name" :resolution="720" />
       <a-empty v-else :image="Empty.PRESENTED_IMAGE_SIMPLE" description="选择搭配后在这里预览" />
@@ -285,8 +285,12 @@ onUnmounted(() => clearInterval(timer))
   .ootd-actions { padding: 10px 12px; }
   .ootd-actions .ootd-note { display: none; }
   .ootd-actions > .ant-space { width: 100%; }
-  .ootd-actions > .ant-space :deep(.ant-space-item) { flex: 1; }
-  .ootd-actions .ant-btn { width: 100%; }
+  .ootd-actions > .ant-space { gap: 8px !important; flex-wrap: nowrap !important; }
+  .ootd-actions > .ant-space :deep(.ant-space-item) { flex: 1; min-width: 0; }
+  .ootd-actions > .ant-space :deep(.ant-space-item:last-child) { flex: 1.5; }
+  .ootd-actions .ant-btn { width: 100%; padding-inline: 8px; font-size: 13px; }
+  /* Nothing to preview yet: keep the steps first instead of an empty box. */
+  .ootd-preview.empty { display: none; }
   .ootd-preview :deep(.outfit-thumbnail) { max-width: 220px; }
   .ootd-results { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
   .ootd-wear-roles :deep(.ant-select), .ootd-accessory :deep(.ant-select) { width: 100%; min-width: 0; }

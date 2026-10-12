@@ -25,7 +25,7 @@ onMounted(load); watch(() => props.garmentId, load)
 </script>
 <template>
   <section v-if="!loading && (view?.items.length || error)" class="garment-surface similar-panel" aria-label="相似的衣物">
-    <div class="section-heading"><h2>相似的衣物</h2><span class="muted">按颜色、轮廓、外观与描述比对，本地计算</span></div>
+    <header class="similar-head"><h2>相似的衣物</h2><p class="muted">按颜色、轮廓、外观与描述比对，本地计算</p></header>
     <a-alert v-if="error" type="warning" show-icon :message="error" />
     <a-alert v-if="duplicate" type="warning" show-icon :message="draft ? '衣柜里已有一件几乎一样的，确认不是重复再入柜' : '衣柜里有一件几乎一样的，可能重复录入了'">
       <template #description>
@@ -35,12 +35,13 @@ onMounted(load); watch(() => props.garmentId, load)
     </a-alert>
     <ul class="similar-list">
       <li v-for="item in view?.items" :key="item.id">
-        <RouterLink :to="`/garment/${item.id}`" class="similar-thumb"><img v-if="item.displayUrl" :src="mediaUrl(item.displayUrl)" :alt="item.name" /></RouterLink>
-        <div>
-          <RouterLink :to="`/garment/${item.id}`"><strong>{{ item.name }}</strong></RouterLink>
-          <a-tag v-if="item.level" :color="LEVEL_LABELS[item.level].color">{{ LEVEL_LABELS[item.level].label }}</a-tag>
-          <p class="muted">{{ item.reasons.join('，') || '整体相近' }}</p>
-        </div>
+        <RouterLink :to="`/garment/${item.id}`" class="similar-item">
+          <span class="similar-thumb"><img v-if="item.displayUrl" :src="mediaUrl(item.displayUrl)" :alt="item.name" /></span>
+          <span class="similar-copy">
+            <span class="similar-title"><strong>{{ item.name }}</strong><a-tag v-if="item.level" :color="LEVEL_LABELS[item.level].color">{{ LEVEL_LABELS[item.level].label }}</a-tag></span>
+            <span class="similar-reasons"><em v-for="reason in (item.reasons.length ? item.reasons : ['整体相近']).slice(0, 3)" :key="reason">{{ reason }}</em></span>
+          </span>
+        </RouterLink>
       </li>
     </ul>
     <p v-if="view && !view.ready.image" class="muted">这件的图片指纹还在后台计算，稍后刷新会更准。</p>
@@ -48,10 +49,20 @@ onMounted(load); watch(() => props.garmentId, load)
   </section>
 </template>
 <style scoped>
-.similar-panel { display: grid; gap: 10px; }
-.similar-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
-.similar-list li { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 10px; align-items: center; }
-.similar-thumb { width: 56px; height: 56px; border-radius: 8px; overflow: hidden; display: grid; place-items: center; background: var(--surface-muted, rgba(0,0,0,.04)); }
-.similar-thumb img { max-width: 100%; max-height: 100%; object-fit: contain; }
-.similar-list p { margin: 2px 0 0; font-size: 12px; }
+.similar-panel { display: grid; gap: 14px; }
+.similar-head h2 { margin: 0; }
+.similar-head p { margin: 4px 0 0; font-size: 12px; }
+.similar-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+.similar-item { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 12px; align-items: center; padding: 10px; border: 1px solid var(--line); border-radius: var(--radius-md); color: inherit; transition: border-color .15s, background .15s; }
+.similar-item:hover { border-color: var(--muted-subtle); background: var(--surface-alt); }
+.similar-thumb { width: 64px; height: 64px; border-radius: 8px; overflow: hidden; display: grid; place-items: center; background: var(--surface-alt); }
+.similar-thumb img { width: 100%; height: 100%; object-fit: contain; padding: 4px; }
+.similar-copy { display: grid; gap: 6px; min-width: 0; }
+.similar-title { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.similar-title strong { overflow: hidden; font-size: 14px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.similar-title :deep(.ant-tag) { flex: none; margin: 0; font-size: 11px; line-height: 18px; }
+.similar-reasons { display: flex; flex-wrap: wrap; gap: 4px; }
+.similar-reasons em { padding: 0 6px; border-radius: 4px; background: var(--surface-alt); color: var(--muted-strong); font-size: 11px; font-style: normal; line-height: 18px; }
+.similar-item:hover .similar-reasons em { background: var(--surface); }
+@media (max-width: 767px) { .similar-list { grid-template-columns: 1fr; } .similar-item { grid-template-columns: 56px minmax(0, 1fr); } .similar-thumb { width: 56px; height: 56px; } }
 </style>

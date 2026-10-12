@@ -270,7 +270,7 @@ onUnmounted(() => { endGlowPreview(); window.removeEventListener('resize', resiz
 .outfit-workspace { position: relative; display: flex; flex-direction: column; height: 100%; min-width: 0; padding: 0; overflow: hidden; }
 .workspace-heading { display: flex; flex: none; height: 56px; gap: 8px; align-items: center; padding: 6px 12px; border-bottom: 1px solid var(--line); background: var(--surface); }
 .workspace-heading > a, .workspace-actions { flex: none; }
-.workspace-heading > a > .ant-btn, .workspace-actions > .ant-btn, .workspace-actions > .ant-dropdown-trigger { height: 44px; min-width: 44px; padding-inline: 10px; }
+.workspace-heading > a > .ant-btn, .workspace-actions > .ant-btn, .workspace-actions > .ant-dropdown-trigger { height: 36px; min-width: 36px; padding-inline: 10px; }
 .workspace-title { display: flex; flex: 1; min-width: 0; align-items: center; gap: 10px; }
 .workspace-title h1 { margin: 0; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .workspace-title .ant-input { width: min(280px, 100%); min-width: 0; font-size: 16px; font-weight: 500; border-color: transparent; background: transparent; }
@@ -290,7 +290,7 @@ onUnmounted(() => { endGlowPreview(); window.removeEventListener('resize', resiz
 .workspace-board-choice.ant-btn > span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .workspace-board-choice small { display: block; color: var(--muted); font-size: 12px; margin-top: 3px; }
 .workspace-board-nav .ant-checkbox-wrapper { padding: 12px 0; }
-.workspace-board-nav .ant-btn:last-child { width: 44px; height: 44px; padding: 0; flex: none; }
+.workspace-board-nav .ant-btn:last-child { width: 36px; height: 36px; padding: 0; flex: none; }
 .workspace-drawer-note { margin-bottom: 16px; color: var(--muted); font-size: 13px; }
 .workspace-drawer-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .workspace-drawer-actions .ant-btn { flex: 1 1 auto; min-width: 0; }
@@ -299,7 +299,7 @@ onUnmounted(() => { endGlowPreview(); window.removeEventListener('resize', resiz
 .workspace-notice { position: absolute; z-index: 40; top: 64px; left: 12px; right: 12px; }
 .workspace-runbar { position: absolute; z-index: 40; top: 64px; left: 248px; right: 288px; display: flex; align-items: center; gap: 8px; padding: 4px 8px 4px 14px; border: 1px solid var(--info-line); border-radius: var(--radius-md); color: var(--info); background: var(--info-bg); box-shadow: 0 4px 16px #202a4010; font-size: 12px; }
 .workspace-runbar strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.workspace-runbar .ant-btn { flex: none; height: 44px; }
+.workspace-runbar .ant-btn { flex: none; height: 36px; }
 .workspace-ai-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: #827bd0; box-shadow: 0 0 12px #aab3ee; }
 .workspace-focus { position: relative; isolation: isolate; display: flex; flex: 1; flex-direction: column; min-height: 0; overflow: hidden; }
 .workspace-focus .outfit-editor-page { flex: 1; min-height: 0; height: auto; padding: 0; }
@@ -351,7 +351,7 @@ onUnmounted(() => { endGlowPreview(); window.removeEventListener('resize', resiz
 @media(max-width: 1279px) and (min-width: 1024px) { .workspace-runbar { left: 224px; right: 256px; } }
 @media(max-width: 1023px) {
   .workspace-heading { gap: 4px; padding: 6px 8px; }
-  .workspace-heading > a > .ant-btn, .workspace-actions > .ant-btn, .workspace-actions > .ant-dropdown-trigger { padding: 0; width: 44px; }
+  .workspace-heading > a > .ant-btn, .workspace-actions > .ant-btn, .workspace-actions > .ant-dropdown-trigger { padding: 0; width: 36px; }
   .workspace-title { gap: 4px; }
   .workspace-title h1 { font-size: 14px; }
   .workspace-title .ant-input { padding-inline: 4px; font-size: 16px; }

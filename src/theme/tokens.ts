@@ -35,7 +35,9 @@ export function antTokens(mode: ThemeMode) {
     colorTextDisabled: t.mutedSubtle,
     colorBgContainerDisabled: t.surfaceAlt,
     borderRadius: 10,
-    controlHeight: 44,
+    controlHeight: 36,
+    controlHeightLG: 40,
+    controlHeightSM: 28,
     fontSize: 14,
     fontFamily: '"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif',
   }

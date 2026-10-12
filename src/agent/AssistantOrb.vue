@@ -11,8 +11,8 @@ const closet=useClosetStore(), hovered=ref(false), pressed=ref(false), nearby=re
 const control=ref<{ $el:HTMLButtonElement } | null>(null)
 const key=computed(()=>`yixu.assistant-orb.v1:${closet.user?.username||'local'}`)
 // Smaller on desktop so it reads as a quiet companion; the touch size stays comfortable on phones.
-const compact=ref(window.innerWidth<1024), orbSize=computed(()=>compact.value?56:52)
-const position=useFloatingPosition(key,computed(()=>({width:orbSize.value,height:orbSize.value})),()=>compact.value?96:24,{snap:true})
+const compact=ref(window.innerWidth<1024), orbSize=computed(()=>compact.value?46:52)
+const position=useFloatingPosition(key,computed(()=>({width:orbSize.value,height:orbSize.value})),()=>compact.value?156:24,{snap:true})
 // On phones the companion tucks into its edge while reading downward and returns on the way back up.
 const scrollTucked=ref(false)
 const tucked=computed(()=>compact.value&&scrollTucked.value&&!props.open&&!props.busy&&props.mood!=='concern'&&!pressed.value&&!position.dragging.value)

@@ -171,7 +171,7 @@ async function submit() {
 </style>
 
 <style scoped>
-.mode-help{max-width:320px;line-height:1.8;font-size:13px}.mode-help p+p{margin-top:16px}.single-mode-card{min-height:88px;align-items:center}.single-mode-card :deep(.ant-radio){top:0;align-self:center}.redesigned-intake .process-panel>.panel-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}.redesigned-intake .process-panel>.panel-heading :deep(.ant-btn){min-height:44px}.single-mode-card .mode-copy{gap:4px}
+.mode-help{max-width:320px;line-height:1.8;font-size:13px}.mode-help p+p{margin-top:16px}.single-mode-card{min-height:88px;align-items:center}.single-mode-card :deep(.ant-radio){top:0;align-self:center}.redesigned-intake .process-panel>.panel-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}.redesigned-intake .process-panel>.panel-heading :deep(.ant-btn){min-height:36px}.single-mode-card .mode-copy{gap:4px}
 </style>
 
 <style scoped>

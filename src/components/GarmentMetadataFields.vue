@@ -21,6 +21,6 @@ function serverValue(garment: Garment, key: string) {
   </div>
 </template>
 <style scoped>
-.metadata-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}.metadata-field{display:flex;flex-direction:column;gap:8px;min-width:0}.metadata-label{min-height:44px;align-items:center;display:flex;justify-content:space-between;gap:4px;font-size:13px;color:var(--muted-copy)}.metadata-label :deep(.ant-btn){width:44px;height:44px;min-height:44px;padding:0;flex:none}.metadata-label label{overflow-wrap:anywhere}.metadata-field :deep(.ant-select-selector),.metadata-field :deep(.ant-input){min-height:44px}.metadata-field small{font-size:12px;color:var(--muted-copy);line-height:1.7}.field-evidence{max-width:320px;font-size:14px;line-height:1.8;margin-bottom:12px}
+.metadata-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}.metadata-field{display:flex;flex-direction:column;gap:8px;min-width:0}.metadata-label{min-height:44px;align-items:center;display:flex;justify-content:space-between;gap:4px;font-size:13px;color:var(--muted-copy)}.metadata-label :deep(.ant-btn){width:36px;height:36px;min-height:36px;padding:0;flex:none}.metadata-label label{overflow-wrap:anywhere}.metadata-field :deep(.ant-select-selector),.metadata-field :deep(.ant-input){min-height:44px}.metadata-field small{font-size:12px;color:var(--muted-copy);line-height:1.7}.field-evidence{max-width:320px;font-size:14px;line-height:1.8;margin-bottom:12px}
 @media(max-width:480px){.metadata-fields{grid-template-columns:1fr;gap:16px}}
 </style>

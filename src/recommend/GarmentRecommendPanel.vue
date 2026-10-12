@@ -7,7 +7,7 @@ import { lastRun, recommendApi } from './api'
 import type { WearSummary } from './types'
 
 /** Garment page: wear history, "用它搭一套" and "为什么没推荐它" (design 8.7, D33). All zero model calls. */
-const props = defineProps<{ garmentId: string }>()
+const props = defineProps<{ garmentId: string; hideAction?: boolean }>()
 const router = useRouter()
 const wear = ref<WearSummary | null>(null)
 const runId = ref<string | null>(lastRun())
@@ -22,7 +22,7 @@ async function prepare() {
 </script>
 <template>
   <section class="garment-surface garment-recommend" aria-label="穿着记录与推荐">
-    <div class="section-heading"><h2>穿着记录</h2><a-button type="primary" @click="router.push({ path: '/outfits', query: { with: garmentId } })"><SkinOutlined /> 用它搭一套</a-button></div>
+    <div class="section-heading"><h2>穿着记录</h2><a-button v-if="!hideAction" type="primary" @click="router.push({ path: '/outfits', query: { with: garmentId } })"><SkinOutlined /> 用它搭一套</a-button></div>
     <p v-if="wear && wear.count" class="quiet-copy">上次穿着：{{ wear.lastWornOn }}（{{ wear.daysSince === 0 ? '今天' : `${wear.daysSince} 天前` }}）· 共穿过 {{ wear.count }} 次</p>
     <p v-else class="quiet-copy">还没有“今天穿了”的记录。在推荐详情或已保存搭配里点“今天穿了这套”即可记录。</p>
     <div class="garment-recommend-why">

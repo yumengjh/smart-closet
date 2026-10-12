@@ -153,7 +153,7 @@ watch(() => [query.category, query.color, query.season, imageStyle.value], debou
 <template>
   <div class="page-heading wardrobe-heading">
     <div><p class="eyebrow">衣橱空间</p><h1>我的衣柜</h1><p class="page-subtitle">已经核对并确认入柜的衣物，{{ searching ? '搜索结果按相关度排序。' : `按“${sortLabel(query.sort || DEFAULT_SORT)}”排序。` }}</p></div>
-    <div class="wardrobe-heading-side"><a-button v-if="!selecting" @click="picker?.click()"><CameraOutlined /> 用图片搜</a-button><a-button v-if="!selecting && items.length" @click="selecting = true; batchResult = null"><CheckSquareOutlined /> 批量处理</a-button><div class="wardrobe-stats"><strong>{{ total }}</strong><span>{{ searching ? '件符合' : '件已入柜' }}</span></div></div>
+    <div class="wardrobe-heading-side"><a-button v-if="!selecting" class="heading-image-search" @click="picker?.click()"><CameraOutlined /> 用图片搜</a-button><a-button v-if="!selecting && items.length" @click="selecting = true; batchResult = null"><CheckSquareOutlined /> 批量处理</a-button><div class="wardrobe-stats"><strong>{{ total }}</strong><span>{{ searching ? '件符合' : '件已入柜' }}</span></div></div>
   </div>
   <section class="wardrobe-tools" aria-label="搜索和筛选衣物" @dragover.prevent @drop.prevent="dropped">
     <input ref="picker" type="file" accept="image/jpeg,image/png,image/webp" hidden @change="picked" />
@@ -241,5 +241,5 @@ watch(() => [query.category, query.color, query.season, imageStyle.value], debou
 .search-image-note{margin:-8px 2px 16px;font-size:12px;color:var(--muted-copy)}
 .filter-toggle{display:none}
 .filter-dot{display:inline-block;width:6px;height:6px;margin-left:4px;border-radius:50%;background:var(--accent);vertical-align:middle}
-@media(max-width:767px){.wardrobe-tools{flex-direction:row;flex-wrap:wrap}.wardrobe-tools .search-input{flex:1;min-width:0}.filter-toggle{display:inline-flex;align-items:center;gap:4px;height:auto}.filter-toggle.active{border-color:var(--ink)}.filter-row{display:none!important}.filter-row.open{display:flex!important;flex-wrap:wrap}.filter-row.open .filter-select{flex:1 1 calc(50% - 8px);width:auto}.search-image-note{margin-top:-4px}.wardrobe-heading-side{flex-direction:column-reverse;align-items:flex-end;gap:8px}.batch-actions{margin-left:0;width:100%}}
+@media(max-width:767px){.heading-image-search{display:none!important}.wardrobe-heading .wardrobe-heading-side{flex-direction:row!important;justify-content:space-between;align-items:center!important}.wardrobe-heading .wardrobe-stats{order:-1}.wardrobe-heading .wardrobe-stats strong{font-size:20px}.wardrobe-tools{flex-direction:row;flex-wrap:wrap}.wardrobe-tools .search-input{flex:1;min-width:0}.filter-toggle{display:inline-flex;align-items:center;gap:4px;height:auto}.filter-toggle.active{border-color:var(--ink)}.filter-row{display:none!important}.filter-row.open{display:flex!important;flex-wrap:wrap}.filter-row.open .filter-select{flex:1 1 calc(50% - 8px);width:auto}.search-image-note{margin-top:-4px}.wardrobe-heading-side{flex-direction:column-reverse;align-items:flex-end;gap:8px}.batch-actions{margin-left:0;width:100%}}
 </style>

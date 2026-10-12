@@ -32,7 +32,7 @@ onUnmounted(() => clearInterval(clock))
 .thought-label { grid-area: 1 / 1; min-width: 0; overflow-wrap: anywhere; }
 .working .thought-label { background-image: linear-gradient(100deg, var(--ink) 30%, var(--accent) 50%, var(--ink) 70%); background-size: 250% 100%; background-position: 125% 0; background-clip: text; -webkit-text-fill-color: transparent; animation: thought-shimmer 1.8s linear infinite; }
 .thought-timer { flex: none; color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12px; }
-.thought-expand.ant-btn { width: 44px; height: 44px; padding: 0; flex: none; margin-left: auto; }
+.thought-expand.ant-btn { width: 36px; height: 36px; padding: 0; flex: none; margin-left: auto; }
 .thought-expand .anticon { transition: transform .2s ease; }
 .thought-trace :deep(.ant-collapse-header) { display: none !important; }
 .thought-trace :deep(.ant-collapse-content-box) { padding: 6px 0 0 24px; }

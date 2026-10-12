@@ -15,7 +15,7 @@
 .outfit-card-details > div { display: grid; min-width: 0; gap: 6px; }
 .outfit-card-name { overflow: hidden; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .outfit-card-details span { color: var(--muted); font-size: 13px; }
-.outfit-card-details .ant-btn { flex: none; width: 44px; }
+.outfit-card-details .ant-btn { flex: none; width: 36px; }
 .outfit-empty { display: grid; min-height: 460px; place-items: center; padding: 32px; border: 1px solid var(--line); border-radius: var(--radius-xl); background: var(--surface); }
 .outfit-empty .ant-empty-image { height: 64px; font-size: 48px; color: var(--muted); }
 .outfit-empty .ant-empty-description { color: var(--ink); font-size: 18px; font-weight: 500; }
@@ -29,7 +29,7 @@
 .outfit-editor-page { display: flex; height: 100%; min-width: 0; min-height: 0; flex-direction: column; }
 .outfit-editor-header { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 16px; height: 56px; padding: 0 12px; border-bottom: 1px solid var(--line); background: var(--surface); }
 .outfit-editor-title { display: flex; min-width: 0; align-items: center; gap: 8px; }
-.outfit-editor-title > .ant-btn { flex: none; width: 44px; }
+.outfit-editor-title > .ant-btn { flex: none; width: 36px; }
 .outfit-title-field { min-width: 0; width: 260px; }
 .outfit-title-field .ant-input { font-size: 16px; font-weight: 500; border-color: transparent; background: transparent; }
 .outfit-title-field .ant-input:hover, .outfit-title-field .ant-input:focus { border-color: var(--line); }
@@ -40,7 +40,7 @@
 .outfit-desktop-view-tools { display: flex; flex: none; align-items: center; gap: 4px; margin-left: 8px; padding-left: 12px; border-left: 1px solid var(--line); }
 .outfit-editor-toolbar .ant-btn.is-active { color: var(--accent-strong); background: var(--selection-bg); }
 .outfit-history-actions, .outfit-zoom-controls { display: flex; flex: none; align-items: center; gap: 4px; }
-.outfit-history-actions .ant-btn, .outfit-zoom-controls .ant-btn { flex: none; width: 44px; min-height: 44px; padding: 0; }
+.outfit-history-actions .ant-btn, .outfit-zoom-controls .ant-btn { flex: none; width: 36px; min-height: 36px; padding: 0; }
 .outfit-stage-hint { margin-left: 8px; color: var(--muted); font-size: 13px; }
 .outfit-zoom-controls > span { min-width: 44px; color: var(--muted); font-size: 13px; text-align: center; font-variant-numeric: tabular-nums; }
 .outfit-editor-layout { display: flex; flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
@@ -168,7 +168,7 @@
   .outfit-editor-layout { min-height: 0; }
   .outfit-canvas-area { min-height: 0; }
   .outfit-mobile-controls { position: fixed; z-index: 30; inset: auto 0 0; display: flex; align-items: center; justify-content: space-around; padding: 4px 88px calc(4px + env(safe-area-inset-bottom)) 8px; border-top: 1px solid var(--line); background: var(--surface); }
-  .outfit-mobile-controls > .ant-btn { display: flex; width: 25%; height: 60px; min-height: 44px; flex-direction: column; gap: 6px; align-items: center; justify-content: center; padding: 6px; border-radius: var(--radius-md); font-size: 13px; }
+  .outfit-mobile-controls > .ant-btn { display: flex; width: 25%; height: 60px; min-height: 36px; flex-direction: column; gap: 6px; align-items: center; justify-content: center; padding: 6px; border-radius: var(--radius-md); font-size: 13px; }
   .outfit-mobile-controls .anticon { font-size: 20px; }
   .outfit-mobile-controls .ant-btn > .anticon + span { margin-inline-start: 0; }
   .outfit-mobile-controls > .ant-btn:first-child { color: var(--accent-strong); }
@@ -200,7 +200,7 @@
   .outfit-card-details { align-items: flex-start; }
   .outfit-card-details span { font-size: 12px; }
   .outfit-card-name { font-size: 14px; }
-  .outfit-card-details .ant-btn { width: 44px; margin-top: -8px; }
+  .outfit-card-details .ant-btn { width: 36px; margin-top: -8px; }
   .outfit-editing .route-content { padding-inline: 0; }
   .outfit-editor-title { flex: 1; gap: 8px; }
   .outfit-title-field { flex: 1; width: auto; }
@@ -210,7 +210,7 @@
   .outfit-editor-toolbar { min-height: 52px; gap: 4px 8px; padding: 4px; }
   .outfit-history-actions, .outfit-zoom-controls { gap: 0; }
   .outfit-stage-hint { display: none; }
-  .outfit-zoom-controls .ant-btn, .outfit-history-actions .ant-btn { width: 44px; min-height: 44px; }
+  .outfit-zoom-controls .ant-btn, .outfit-history-actions .ant-btn { width: 36px; min-height: 36px; }
   .outfit-zoom-controls > span { min-width: 42px; }
   .outfit-canvas-caption { padding-inline: 12px; }
   .outfit-canvas-status { padding-inline: 12px; }
@@ -234,7 +234,7 @@
 .outfit-person-part span { display: block; padding-top: 8px; font-size: 12px; line-height: 1.5; }
 .outfit-material-drawer .ant-drawer-body { display: flex; flex-direction: column; }
 
-.outfit-inspector-content .ant-btn { min-height: 44px; }
+.outfit-inspector-content .ant-btn { min-height: 36px; }
 
 /* Layer selection owns the row highlight; nested button hover stays neutral. */
 .outfit-layer-row { position: relative; gap: 0; transition: background-color .15s ease; }
@@ -261,7 +261,7 @@
 @media (pointer: coarse) { .outfit-layer-check { min-width: 22px; min-height: 44px; margin-inline: 8px; align-items: center; } }
 .outfit-layer-select small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.outfit-header-actions .sound-toggle.ant-btn { min-width: 44px; width: 44px; padding: 0; }
+.outfit-header-actions .sound-toggle.ant-btn { min-width: 36px; width: 36px; padding: 0; }
 
 @media (max-width: 380px) {
   .outfit-editor-toolbar { gap: 8px; padding-inline: 8px; }
