@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { CheckOutlined, ExclamationOutlined, MinusOutlined, RightOutlined, InboxOutlined, PictureOutlined, CopyOutlined, BellOutlined } from '@ant-design/icons-vue'
+import { CheckOutlined, ExclamationOutlined, MinusOutlined, RightOutlined, InboxOutlined, PictureOutlined, CopyOutlined, BellOutlined, CloseOutlined, DeleteOutlined } from '@ant-design/icons-vue'
 import { closetApi, type ClosetTask } from '../services/api'
 import { mediaUrl } from '../services/urls'
 import { taskLabels, isProcessing } from '../domain/workflow'
@@ -24,7 +24,7 @@ const stats = computed(() => history.value && [
   { key: 'done', label: '已完成', value: history.value.filter(task => task.status === 'SUCCEEDED').length },
 ])
 // Tasks already listed above from this session are not repeated in the history.
-const recent = computed(() => (history.value || []).filter(task => !processing.entries.some(entry => entry.key === `task:${task.id}` || entry.childIds.includes(task.id))).slice(0, 4))
+const recent = computed(() => (history.value || []).filter(task => !processing.isHidden(task) && !processing.entries.some(entry => entry.key === `task:${task.id}` || entry.childIds.includes(task.id))).slice(0, 4))
 const statusTone = (task: ClosetTask) => isProcessing(task.status) ? 'running' : task.status === 'FAILED' ? 'failed' : needsCheck(task) ? 'review' : task.status === 'CANCELLED' ? 'muted' : 'done'
 async function loadHistory() {
   try { history.value = await closetApi.tasks(); historyError.value = false } catch { historyError.value = true }
@@ -49,44 +49,68 @@ function started(start: number) {
   const date = new Date(start), time = date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })
   return date.toDateString() === new Date(now.value).toDateString() ? `今天 ${time}` : `${date.getMonth() + 1}月${date.getDate()}日 ${time}`
 }
+// Clearing hides finished things only: running work keeps showing, and the tasks page keeps every record.
+const confirming = ref(false)
+const clearable = computed(() => shownNotices.value.length + finished.value.length + recent.value.length)
+watch(() => props.open, visible => { if (!visible) confirming.value = false })
+function clearAll() { void notices.removeAll(); processing.dismissFinished(); processing.hideAllTasks(); confirming.value = false }
 onMounted(() => { clock = setInterval(() => { now.value = Date.now() }, 1000) })
 onUnmounted(() => clearInterval(clock))
 </script>
 <template>
   <div class="inbox-panel">
-    <header class="inbox-head"><div><strong>处理中心</strong><small>{{ summary }}</small></div><a-button v-if="notices.unread" type="link" size="small" @click="notices.readAll()">提醒全部已读</a-button></header>
+    <header class="inbox-head">
+      <div><strong>处理中心</strong><small>{{ summary }}</small></div>
+      <span class="inbox-head-actions"><a-button v-if="notices.unread" type="link" size="small" @click="notices.readAll()">全部已读</a-button><a-button v-if="clearable" type="text" size="small" class="inbox-clear" @click="confirming = !confirming"><DeleteOutlined />清空</a-button></span>
+    </header>
+    <div v-if="confirming" class="inbox-confirm" role="alertdialog" aria-label="清空处理中心">
+      <span>清空提醒、已结束的结果和任务记录？<small>进行中的处理不受影响，完整记录仍在任务页。</small></span>
+      <span class="inbox-confirm-actions"><a-button size="small" @click="confirming = false">先不清</a-button><a-button size="small" type="primary" danger @click="clearAll">确认清空</a-button></span>
+    </div>
     <div v-if="stats" class="inbox-stats" aria-label="最近 50 项任务统计"><a-button v-for="item in stats" :key="item.key" type="text" class="inbox-stat" :class="[item.key, { zero: !item.value }]" @click="emit('go', '/tasks')"><strong>{{ item.value }}</strong><small>{{ item.label }}</small></a-button></div>
     <a-alert v-if="processing.connectionError" type="warning" message="暂时无法更新进度，稍后继续查询" show-icon banner class="inbox-error" />
     <div class="inbox-scroll">
       <section v-if="shownNotices.length"><h3>提醒</h3>
-        <a-button v-for="item in shownNotices" :key="item.id" type="text" block class="inbox-row notice" :class="{ unread: !item.read }" @click="emit('notice', item)">
-          <span class="inbox-state"><component :is="noticeIcon(item)" /></span>
-          <span class="inbox-copy"><strong>{{ item.title }}<i v-if="!item.read" class="inbox-unread" aria-label="未读" /></strong><span class="notice-body">{{ item.body }}</span><small>{{ started(item.createdAt) }}</small></span>
-          <span class="inbox-action">查看<RightOutlined /></span>
-        </a-button>
+        <div v-for="item in shownNotices" :key="item.id" class="inbox-item">
+          <a-button type="text" block class="inbox-row notice" :class="{ unread: !item.read }" @click="emit('notice', item)">
+            <span class="inbox-state"><component :is="noticeIcon(item)" /></span>
+            <span class="inbox-copy"><strong>{{ item.title }}<i v-if="!item.read" class="inbox-unread" aria-label="未读" /></strong><span class="notice-body">{{ item.body }}</span><small>{{ started(item.createdAt) }}</small></span>
+            <span class="inbox-action">查看<RightOutlined /></span>
+          </a-button>
+          <a-button type="text" size="small" class="inbox-remove" aria-label="删除这条提醒" @click="notices.remove(item)"><CloseOutlined /></a-button>
+        </div>
       </section>
       <div v-if="!processing.entries.length && history && !recent.length && !shownNotices.length" class="inbox-empty"><span class="inbox-empty-icon"><InboxOutlined /></span><strong>一切都处理好了</strong><small>上传衣物后，整理进度会出现在这里</small></div>
       <section v-if="active.length"><h3>进行中</h3>
-        <a-button v-for="entry in active" :key="entry.key" type="text" block class="inbox-row processing" @click="emit('visit', entry)">
-          <span class="inbox-state"><span class="inbox-ring" /></span>
-          <span class="inbox-copy"><strong>{{ entry.title }}</strong><span>{{ entry.stage }}</span><span class="inbox-bar"><i /></span><small>已等待 {{ waited(entry.startedAt) }}<template v-if="entry.kind === 'render'"> · {{ entry.note }}</template></small></span>
-          <span class="inbox-action">{{ actionLabel(entry) }}<RightOutlined /></span>
-        </a-button>
+        <div v-for="entry in active" :key="entry.key" class="inbox-item">
+          <a-button type="text" block class="inbox-row processing" @click="emit('visit', entry)">
+            <span class="inbox-state"><span class="inbox-ring" /></span>
+            <span class="inbox-copy"><strong>{{ entry.title }}</strong><span>{{ entry.stage }}</span><span class="inbox-bar"><i /></span><small>已等待 {{ waited(entry.startedAt) }}<template v-if="entry.kind === 'render'"> · {{ entry.note }}</template></small></span>
+            <span class="inbox-action">{{ actionLabel(entry) }}<RightOutlined /></span>
+          </a-button>
+          <span class="inbox-remove-space" aria-hidden="true" />
+        </div>
       </section>
       <section v-if="finished.length"><h3>最近结果</h3>
-        <a-button v-for="entry in finished" :key="entry.key" type="text" block class="inbox-row" :class="[entry.state, { unread: !entry.read }]" @click="emit('visit', entry)">
-          <span v-if="entry.thumb" class="inbox-thumb result"><img :src="mediaUrl(entry.thumb)" alt="" loading="lazy" /></span>
-          <span v-else class="inbox-state"><component :is="stateIcon[entry.state as keyof typeof stateIcon]" /></span>
-          <span class="inbox-copy"><strong>{{ entry.title }}<i v-if="!entry.read" class="inbox-unread" aria-label="未读" /></strong><span>{{ entry.stage }}</span><small>{{ entry.note || started(entry.startedAt) }}</small></span>
-          <span class="inbox-action">{{ actionLabel(entry) }}<RightOutlined /></span>
-        </a-button>
+        <div v-for="entry in finished" :key="entry.key" class="inbox-item">
+          <a-button type="text" block class="inbox-row" :class="[entry.state, { unread: !entry.read }]" @click="emit('visit', entry)">
+            <span v-if="entry.thumb" class="inbox-thumb result"><img :src="mediaUrl(entry.thumb)" alt="" loading="lazy" /></span>
+            <span v-else class="inbox-state"><component :is="stateIcon[entry.state as keyof typeof stateIcon]" /></span>
+            <span class="inbox-copy"><strong>{{ entry.title }}<i v-if="!entry.read" class="inbox-unread" aria-label="未读" /></strong><span>{{ entry.stage }}</span><small>{{ entry.note || started(entry.startedAt) }}</small></span>
+            <span class="inbox-action">{{ actionLabel(entry) }}<RightOutlined /></span>
+          </a-button>
+          <a-button type="text" size="small" class="inbox-remove" aria-label="从处理中心移除" @click="processing.dismiss(entry)"><CloseOutlined /></a-button>
+        </div>
       </section>
       <section v-if="recent.length"><h3>任务记录</h3>
-        <a-button v-for="task in recent" :key="task.id" type="text" block class="inbox-row history" @click="openTask(task)">
-          <span class="inbox-thumb"><img v-if="task.outputUrl || task.inputUrl" :src="mediaUrl(task.outputUrl || task.inputUrl)" alt="" loading="lazy" /><PictureOutlined v-else /></span>
-          <span class="inbox-copy"><strong>{{ task.title || '新上传衣物' }}</strong><span>{{ task.mode }} · {{ started(Date.parse(task.createdAt)) }}</span></span>
-          <span class="inbox-tag" :class="statusTone(task)">{{ taskLabels[task.status] }}</span>
-        </a-button>
+        <div v-for="task in recent" :key="task.id" class="inbox-item">
+          <a-button type="text" block class="inbox-row history" @click="openTask(task)">
+            <span class="inbox-thumb"><img v-if="task.outputUrl || task.inputUrl" :src="mediaUrl(task.outputUrl || task.inputUrl)" alt="" loading="lazy" /><PictureOutlined v-else /></span>
+            <span class="inbox-copy"><strong>{{ task.title || '新上传衣物' }}</strong><span>{{ task.mode }} · {{ started(Date.parse(task.createdAt)) }}</span></span>
+            <span class="inbox-tag" :class="statusTone(task)">{{ taskLabels[task.status] }}</span>
+          </a-button>
+          <a-button v-if="!isProcessing(task.status)" type="text" size="small" class="inbox-remove" aria-label="从处理中心隐藏这条任务记录" @click="processing.hideTask(task)"><CloseOutlined /></a-button><span v-else class="inbox-remove-space" aria-hidden="true" />
+        </div>
       </section>
       <p v-if="historyError" class="inbox-history-error">任务记录暂时无法读取</p>
     </div>
@@ -99,6 +123,20 @@ onUnmounted(() => clearInterval(clock))
 .inbox-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px 10px; }
 .inbox-head strong { display: block; font-size: 15px; font-weight: 600; color: var(--ink); }
 .inbox-head small { display: block; margin-top: 2px; font-size: 12px; color: var(--muted); }
+.inbox-head-actions { display: inline-flex; align-items: center; gap: 2px; flex: none; }
+.inbox-head-actions .ant-btn { padding-inline: 6px; font-size: 12px; }
+.inbox-clear.ant-btn { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); }
+.inbox-clear.ant-btn:hover { color: var(--danger); }
+.inbox-confirm { display: flex; flex-direction: column; align-items: stretch; gap: 8px; margin: 0 12px 8px; padding: 10px 12px; border-radius: var(--radius-md); background: var(--danger-bg); font-size: 12px; color: var(--ink); }
+.inbox-confirm small { display: block; margin-top: 2px; font-size: 11px; color: var(--muted); }
+.inbox-confirm-actions { display: flex; justify-content: flex-end; gap: 6px; }
+.inbox-item { position: relative; display: flex; align-items: center; gap: 2px; }
+.inbox-item > .inbox-row.ant-btn { flex: 1; min-width: 0; }
+.inbox-remove.ant-btn { flex: none; width: 26px; height: 26px; padding: 0; border-radius: 50%; color: var(--muted-subtle); font-size: 11px; opacity: 0; transition: opacity .15s, color .15s, background .15s; }
+.inbox-item:hover .inbox-remove, .inbox-remove:focus-visible { opacity: 1; }
+.inbox-remove.ant-btn:hover { color: var(--danger); background: var(--danger-bg); }
+@media (hover: none) { .inbox-remove.ant-btn { opacity: 1; } }
+.inbox-remove-space { flex: none; width: 26px; }
 .inbox-error { margin: 0 12px 8px; border-radius: var(--radius-sm); font-size: 12px; }
 .inbox-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 8px 8px; }
 .inbox-scroll section + section { margin-top: 6px; }
