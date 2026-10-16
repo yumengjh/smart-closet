@@ -2,8 +2,8 @@
 import { createUuid } from '../domain/id'
 import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { message } from 'ant-design-vue'
-import { CameraOutlined, PictureOutlined, SettingOutlined, CheckCircleFilled, LoadingOutlined, ClockCircleOutlined, ArrowRightOutlined, InboxOutlined, CloseOutlined } from '@ant-design/icons-vue'
+import { App, message } from 'ant-design-vue'
+import { CameraOutlined, PictureOutlined, SettingOutlined, CheckCircleFilled, LoadingOutlined, ClockCircleOutlined, ArrowRightOutlined, InboxOutlined, CloseOutlined, DownOutlined } from '@ant-design/icons-vue'
 import { useClosetStore } from '../stores/closet'
 import { useNotificationStore } from '../stores/notifications'
 import { mediaUrl } from '../services/urls'
@@ -11,10 +11,10 @@ import { prefersNativeCamera } from '../services/camera'
 import { playSound } from '../services/sound'
 import CameraCapture from './CameraCapture.vue'
 import TargetMarker from './TargetMarker.vue'
-import { savePhoto, checkLocalStorage, updateSavedResult, refreshUploads, pumpUploads, uploadRows, uploadError, markPhoto, retryPhoto, removePhoto, quickApi, type LocalPhoto, type Hint } from '../services/quickIntake'
+import { savePhoto, checkLocalStorage, updateSavedResult, refreshUploads, pumpUploads, uploadRows, uploadError, markPhoto, retryPhoto, removePhoto, removePhotos, quickApi, type LocalPhoto, type Hint } from '../services/quickIntake'
 
 const notifications = useNotificationStore()
-const closet = useClosetStore(), router = useRouter()
+const closet = useClosetStore(), router = useRouter(), { modal } = App.useApp()
 const compact = ref(window.matchMedia('(max-width: 1023px)').matches)
 const mode = ref('BASE_READY'), camera = ref(false), settings = ref(false), markerMode = ref(false)
 const marker = ref<LocalPhoto>(), input = ref<HTMLInputElement>(), nativeInput = ref<HTMLInputElement>()
@@ -134,6 +134,29 @@ async function marked(hint?: Hint) {
   try { const id = marker.value.id; await markPhoto(id, owner()!, hint); marker.value = rows.value.find(row => row.state === 'MARKING' && row.id !== id); error.value = ''; void pumpUploads(owner) }
   catch (cause) { error.value = cause instanceof Error ? cause.message : '目标保存失败，请重试' }
 }
+// Records live only in this browser: deleting one never touches the garment already in the closet.
+function recordedAt(row: LocalPhoto) {
+  const date = new Date(row.created), now = new Date(), time = date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })
+  if (date.toDateString() === now.toDateString()) return `今天 ${time}`
+  if (date.toDateString() === new Date(now.getTime() - 86_400_000).toDateString()) return `昨天 ${time}`
+  return `${date.getFullYear() === now.getFullYear() ? '' : `${date.getFullYear()}年`}${date.getMonth() + 1}月${date.getDate()}日 ${time}`
+}
+const unsent = (row: LocalPhoto) => row.state !== 'SAVED'
+const removeHint = (row: LocalPhoto) => unsent(row) ? '这张照片还没上传，删除后无法找回。' : '只删除这条本机记录，衣物仍在衣柜里。'
+const finishedRows = computed(() => rows.value.filter(row => row.state === 'SAVED' && !active(row)))
+async function removeRecord(row: LocalPhoto) { await removePhoto(row.id, owner()!); if (marker.value?.id === row.id) marker.value = undefined }
+function manage({ key }: { key: string | number }) {
+  const account = owner(); if (!account) return
+  const targets = key === 'finished' ? finishedRows.value : rows.value.filter(row => row.state !== 'UPLOADING')
+  if (!targets.length) return
+  const lost = targets.filter(unsent).length
+  modal.confirm({
+    title: key === 'finished' ? `清除 ${targets.length} 条已完成记录？` : `清空 ${targets.length} 条最近录入？`,
+    content: `只删除本机的录入记录，已入柜的衣物不受影响。${lost ? `其中 ${lost} 张照片还没上传，会一起删除且无法找回。` : ''}`,
+    okText: key === 'finished' ? '清除' : '清空', okButtonProps: { danger: true }, cancelText: '取消',
+    onOk: async () => { await removePhotos(targets.map(row => row.id), account); if (marker.value && targets.some(row => row.id === marker.value?.id)) marker.value = undefined; expanded.value = false },
+  })
+}
 async function retry(row: LocalPhoto) { await retryPhoto(row.id, owner()!); await refreshUploads(owner()!); void pumpUploads(owner) }
 const POLL_BATCH = 4
 // Roughly 8 requests/second at most however many photos are in flight; quiet pages relax to 4 s.
@@ -209,7 +232,14 @@ onBeforeUnmount(() => { alive = false; clearTimeout(timer); for (const url of th
     <a-alert v-if="error || uploadError" class="capture-error" type="warning" :message="uploadError || error" show-icon />
     <a-button v-if="uploadError" @click="checkLocalStorage(owner()!)">释放空间后重新检查</a-button>
     <section class="recent-section" aria-label="本机最近录入">
-      <div class="recent-heading"><h2>最近录入 <span v-if="rows.length">{{ admitted }} 件已入柜</span></h2><a-button type="text" @click="router.push('/tasks')">全部任务<ArrowRightOutlined /></a-button></div>
+      <div class="recent-heading"><h2>最近录入 <span v-if="rows.length"><b class="recent-total">共 {{ rows.length }} 条 · </b>{{ admitted }} 件已入柜</span></h2>
+        <div class="recent-tools">
+          <a-dropdown v-if="rows.length" :trigger="['click']"><a-button type="text">管理记录<DownOutlined /></a-button>
+            <template #overlay><a-menu @click="manage"><a-menu-item key="finished" :disabled="!finishedRows.length">清除已完成记录（{{ finishedRows.length }}）</a-menu-item><a-menu-item key="all" danger>清空全部记录</a-menu-item></a-menu></template>
+          </a-dropdown>
+          <a-button type="text" @click="router.push('/tasks')">全部任务<ArrowRightOutlined /></a-button>
+        </div>
+      </div>
       <div v-if="!rows.length" class="capture-empty">
         <div class="empty-main"><span class="empty-hanger" aria-hidden="true"><svg viewBox="0 0 64 40"><path d="M32 12a4.5 4.5 0 1 0-4.5-4.5M32 12v3.5L5 33.5c-1.6 1.1-.8 3.5 1.1 3.5h51.8c1.9 0 2.7-2.4 1.1-3.5L32 15.5" /></svg></span><div><strong>衣柜在等第一位新成员</strong><p>照片与贴纸会在这里更新，处理进度一眼可见。</p></div></div>
         <ul class="shoot-tips" aria-label="拍摄小建议"><li><b>1</b>平铺或挂起来拍，贴纸边缘更干净</li><li><b>2</b>一张照片放一件，整件入镜</li><li><b>3</b>光线充足，背景越简单越好</li></ul>
@@ -217,8 +247,8 @@ onBeforeUnmount(() => { alive = false; clearTimeout(timer); for (const url of th
       <TransitionGroup v-else tag="div" name="row" class="quick-list">
         <article v-for="row in visibleRows" :key="row.id" class="quick-row" :data-state="row.state" :data-tone="status(row).tone" :class="{ 'just-ready': justReady.has(row.id) }">
           <div class="quick-image"><span v-if="justReady.has(row.id)" class="sparkles" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span><img :src="thumbnail(row)" :alt="row.result?.garment.imageProcessing?.stickerReady ? '已制作的衣物贴纸' : '本次录入的衣物照片'" /><span v-if="aiImage(row)" class="ai-label">AI 生成</span></div>
-          <div class="quick-row-copy"><p class="row-status" :class="status(row).tone"><LoadingOutlined v-if="status(row).tone === 'processing'" spin /><CheckCircleFilled v-else-if="status(row).tone === 'success'" />{{ status(row).title }}</p><p class="row-detail">{{ status(row).detail }}</p><p v-if="aiImage(row)" class="row-detail">可能包含推测细节</p>
-            <div class="row-actions"><a-button v-if="row.result" size="small" @click="router.push(`/garment/${row.result.garmentId}`)">查看衣物<ArrowRightOutlined /></a-button><a-button v-if="row.state === 'ERROR'" size="small" @click="retry(row)">重试上传</a-button><a-button v-if="row.state === 'MARKING'" size="small" @click="marker = row">指定目标</a-button><a-button v-if="row.state === 'ERROR' || row.state === 'MARKING'" type="text" size="small" @click="removePhoto(row.id, owner()!)">移除</a-button></div>
+          <div class="quick-row-copy"><div class="row-head"><p class="row-status" :class="status(row).tone"><LoadingOutlined v-if="status(row).tone === 'processing'" spin /><CheckCircleFilled v-else-if="status(row).tone === 'success'" />{{ status(row).title }}</p><time class="row-time" :datetime="new Date(row.created).toISOString()">{{ recordedAt(row) }}</time></div><p class="row-detail">{{ status(row).detail }}</p><p v-if="aiImage(row)" class="row-detail">可能包含推测细节</p>
+            <div class="row-actions"><a-button v-if="row.result" size="small" @click="router.push(`/garment/${row.result.garmentId}`)">查看衣物<ArrowRightOutlined /></a-button><a-button v-if="row.state === 'ERROR'" size="small" @click="retry(row)">重试上传</a-button><a-button v-if="row.state === 'MARKING'" size="small" @click="marker = row">指定目标</a-button><a-popconfirm v-if="row.state !== 'UPLOADING'" :title="removeHint(row)" ok-text="删除" cancel-text="取消" :ok-button-props="{ danger: true }" @confirm="removeRecord(row)"><a-button type="text" size="small" class="row-remove">删除记录</a-button></a-popconfirm></div>
           </div>
         </article>
       </TransitionGroup>
@@ -281,4 +311,10 @@ onBeforeUnmount(() => { alive = false; clearTimeout(timer); for (const url of th
 @keyframes sparkle{0%{opacity:0;transform:scale(.2) rotate(0)}40%{opacity:1;transform:scale(1.2) rotate(45deg)}100%{opacity:0;transform:scale(.6) rotate(90deg)}}
 @media(max-width:767px){.celebration{grid-template-columns:auto minmax(0,1fr);padding:16px;gap:12px}.celebration-copy{padding-right:24px}.celebration-actions{grid-column:1/-1}.celebration-actions .ant-btn{flex:1}.shoot-tips{grid-template-columns:1fr;gap:8px}.session-count{width:36px;height:36px;font-size:15px}}
 @media(prefers-reduced-motion:reduce){.drop-veil,.drop-veil .anticon,.celebration-badge,.confetti i,.empty-hanger svg,.quick-row .quick-image::after,.quick-row.just-ready .quick-image,.quick-row.just-ready .row-status,.sparkles i{animation:none}.confetti,.sparkles{display:none}.row-enter-from,.celebrate-enter-from{transform:none}}
+</style>
+<style scoped>
+.recent-tools{display:flex;align-items:center;gap:4px}.recent-tools .ant-btn{display:inline-flex;align-items:center;gap:4px}.recent-tools .anticon-down{font-size:10px}
+.recent-heading h2{white-space:nowrap}.recent-total{font-weight:inherit}.row-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px}.row-head .row-status{min-width:0}.row-time{flex:none;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.row-actions .row-remove.ant-btn{color:var(--muted);background:transparent}.row-actions .row-remove.ant-btn:hover{color:var(--danger);background:var(--danger-bg)}
+@media(max-width:767px){.recent-total{display:none}.recent-tools{gap:0}.recent-tools .ant-btn{padding:0 6px}.row-head{flex-direction:column;gap:2px}}
 </style>

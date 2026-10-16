@@ -1,5 +1,5 @@
 import { request } from './api'
-export type ExecutionTask = { id: string; businessId: string; kind: string; stage: number; owner: string; pool: string; account?: string; status: string; waitReason?: string; error?: string }
+export type ExecutionTask = { id: string; businessId: string; kind: string; stage: number; owner: string; pool: string; account?: string; status: string; createdAt: number; waitReason?: string; error?: string; garmentId?: string | null; reconcilable?: boolean; superseded?: boolean }
 export type Limits = { cpu: number; recognition: number; generation: number; accountConcurrency: number; assistantReserved: number; rpm: number | null; paused: string[] }
 export type AdminProcessing = { items: ExecutionTask[]; resources: { config: { limits: Limits; revision: number }; running: Record<string, number>; counts: Record<string, string | number>[]; accounts: Record<string, string | number>[] } }
 export const processingApi = {

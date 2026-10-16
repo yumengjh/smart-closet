@@ -9,4 +9,6 @@ export const notificationApi = {
   list: (limit = 20) => usingMocks ? Promise.resolve<NotificationList>({ items: [], unread: 0 }) : request<NotificationList>(`/api/notifications?limit=${limit}`),
   read: (id: string) => request<{ unread: number }>(`/api/notifications/${encodeURIComponent(id)}/read`, { method: 'POST' }),
   readAll: () => request<{ unread: number }>('/api/notifications/read-all', { method: 'POST' }),
+  remove: (id: string) => request<{ unread: number }>(`/api/notifications/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  removeAll: () => request<{ unread: number }>('/api/notifications', { method: 'DELETE' }),
 }

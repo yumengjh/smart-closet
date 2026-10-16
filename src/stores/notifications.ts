@@ -37,6 +37,17 @@ export const useNotificationStore = defineStore('notifications', () => {
     items.value.forEach(item => { item.read = true }); unread.value = 0
     try { unread.value = (await notificationApi.readAll()).unread } catch { /* The next refresh corrects the count. */ }
   }
+  /** Deleting hides the notice on the server; the same event never notifies again. */
+  async function remove(item: ClosetNotification) {
+    items.value = items.value.filter(other => other.id !== item.id)
+    if (!item.read) unread.value = Math.max(0, unread.value - 1)
+    if (latest.value?.id === item.id) latest.value = null
+    try { unread.value = (await notificationApi.remove(item.id)).unread } catch { void refresh() }
+  }
+  async function removeAll() {
+    items.value = []; unread.value = 0; latest.value = null
+    try { unread.value = (await notificationApi.removeAll()).unread } catch { void refresh() }
+  }
   function start() {
     if (timer) return
     void refresh()
@@ -54,5 +65,5 @@ export const useNotificationStore = defineStore('notifications', () => {
   }
   function stop() { clearInterval(fast); fast = undefined; fastUntil = 0; clearInterval(timer); timer = undefined; started = false; items.value = []; unread.value = 0; seen = new Set(); latest.value = null }
   function dismissLatest() { latest.value = null }
-  return { items, unread, error, latest, unreadItems, refresh, read, readAll, start, stop, dismissLatest, expectSoon }
+  return { items, unread, error, latest, unreadItems, refresh, read, readAll, remove, removeAll, start, stop, dismissLatest, expectSoon }
 })

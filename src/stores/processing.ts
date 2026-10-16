@@ -84,6 +84,31 @@ export const useProcessingStore = defineStore('processing', () => {
     setTimeout(() => receive({ ...base, state: 'ready', stage: '穿搭图好了，去看看', note: '模拟演示，未真正生成', thumb }), seconds * 1000)
   }
   const renderJobs = () => usingMocks ? Promise.resolve([] as RenderJob[]) : platformRequest<RenderJob[]>('/api/me/image-render-jobs')
+  /** Removes a finished entry from the centre; running work stays until it ends. */
+  function dismiss(entry: WaitingEntry) {
+    if (entry.state === 'processing') return
+    entries.value = entries.value.filter(item => item.key !== entry.key)
+    if (latestNotice.value?.key === entry.key) latestNotice.value = null
+    save()
+  }
+  function dismissFinished() {
+    entries.value = entries.value.filter(item => item.state === 'processing')
+    if (latestNotice.value && latestNotice.value.state !== 'processing') latestNotice.value = null
+    save()
+  }
+  // Server task history shown in the centre can be hidden per browser; the records stay on the tasks page.
+  const hiddenKey = () => `yuda.inbox.hidden.v1:${username}`
+  const hidden = ref<{ ids: string[]; before: number }>({ ids: [], before: 0 })
+  function loadHidden() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(hiddenKey()) || 'null')
+      hidden.value = saved && Array.isArray(saved.ids) && typeof saved.before === 'number' ? { ids: saved.ids.filter((id: unknown) => typeof id === 'string').slice(-200), before: saved.before } : { ids: [], before: 0 }
+    } catch { hidden.value = { ids: [], before: 0 } }
+  }
+  function saveHidden() { if (username) try { localStorage.setItem(hiddenKey(), JSON.stringify(hidden.value)) } catch { /* Optional convenience. */ } }
+  const isHidden = (task: ClosetTask) => hidden.value.ids.includes(task.id) || !['QUEUED', 'RUNNING', 'CANCEL_REQUESTED'].includes(task.status) && Date.parse(task.createdAt) <= hidden.value.before
+  function hideTask(task: ClosetTask) { hidden.value = { ...hidden.value, ids: [...hidden.value.ids, task.id].slice(-200) }; saveHidden() }
+  function hideAllTasks() { hidden.value = { ids: [], before: Date.now() }; saveHidden() }
   function dismissStartPrompt() { startPrompt.value = null }
   function dismissNotice() { latestNotice.value = null }
   function viewed(entry: WaitingEntry) {
@@ -153,8 +178,9 @@ export const useProcessingStore = defineStore('processing', () => {
       const hints: unknown = JSON.parse(sessionStorage.getItem(`${storageKey()}:invited`) || '[]')
       if (Array.isArray(hints)) for (const key of hints) if (typeof key === 'string') invited.add(key)
     } catch { /* A fresh tab discovers active jobs from the server. */ }
+    loadHidden()
     document.addEventListener('visibilitychange', visibility)
     void refresh(true)
   }
-  return { entries, ordered, latestNotice, startPrompt, activeCount, unreadCount, connectionError, start, stop, refresh, trackTask, trackBatch, trackRender, simulateRender, dismissStartPrompt, dismissNotice, viewed }
+  return { entries, ordered, latestNotice, startPrompt, activeCount, unreadCount, connectionError, start, stop, refresh, trackTask, trackBatch, trackRender, simulateRender, dismissStartPrompt, dismissNotice, viewed, dismiss, dismissFinished, isHidden, hideTask, hideAllTasks }
 })
