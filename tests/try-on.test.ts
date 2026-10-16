@@ -2,6 +2,10 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { analyzeAlpha, buildMesh, cleanTextureCandidates, createMesh, DEFAULT_FIT, deformMesh, deformPoint, sleeveWeight, usablePose, type Landmark } from '../src/try-on/geometry.ts'
 import { PoseFollower, preparePose, PoseStabilizer } from '../src/try-on/tracking.ts'
+import { applyAnchors, sleeveKind } from '../src/try-on/geometry.ts'
+import { GestureDetector } from '../src/try-on/gestures.ts'
+import { chinLine, handCircles } from '../src/try-on/body.ts'
+import { loadSaved } from '../src/try-on/preferences.ts'
 
 function silhouette() {
   const pixels = new Uint8ClampedArray(128 * 128 * 4)
@@ -223,4 +227,129 @@ test('an arm pointing at the camera lets its sleeve hang rather than swing acros
   const cuff = deformPoint(g.sleeves[0].tip, g, pose, DEFAULT_FIT, .75)
   // Trusting the on-screen angle would lay the sleeve flat towards the chest at shoulder height.
   assert.ok(cuff.y > pose[12]!.y + .06, `cuff ${cuff.y} hangs below the shoulder`)
+})
+
+function armsAt(degrees: number) {
+  const p = person(), t = degrees * Math.PI / 180
+  p[14] = { x: .35 - Math.sin(t) * .2, y: .25 + Math.cos(t) * .2, z: 0, visibility: 1 }
+  p[13] = { x: .65 + Math.sin(t) * .2, y: .25 + Math.cos(t) * .2, z: 0, visibility: 1 }
+  // Straight arms, so a lengthened sleeve does not bend at the elbow.
+  p[16] = { x: .35 - Math.sin(t) * .4, y: .25 + Math.cos(t) * .4, z: 0, visibility: 1 }
+  p[15] = { x: .65 + Math.sin(t) * .4, y: .25 + Math.cos(t) * .4, z: 0, visibility: 1 }
+  return p
+}
+/** A flat-lay T-shirt: body column with sleeves angled down and out, like the real wardrobe images. */
+function tee() {
+  const pixels = new Uint8ClampedArray(128 * 128 * 4)
+  for (let y = 0; y < 128; y++) for (let x = 0; x < 128; x++) {
+    const body = x >= 32 && x <= 96 && y >= 12 && y <= 120
+    const out = x < 32 ? 32 - x : x > 96 ? x - 96 : -1
+    // Sleeve top runs from the shoulder down to the cuff at 30°; the sleeve is 26px deep and ends 26px out.
+    const sleeve = out > 0 && out <= 26 && y >= 12 + out * .58 && y <= 38 + out * .58
+    if (body || sleeve) pixels[(y * 128 + x) * 4 + 3] = 255
+  }
+  return pixels
+}
+test('raising an arm gathers the underarm towards the arm instead of spreading a wing, and it is adjustable', () => {
+  const g = analyzeAlpha(tee(), 128, 128), raised = armsAt(100)
+  const underarm = { x: (g.left + g.sleeves[0].tip.x) / 2, y: g.sleeves[0].limitY - .03 }
+  // Distance of the sleeve's underside from the image-left arm line, in video units.
+  const fromArm = (gather: number) => {
+    const p = deformPoint(underarm, g, raised, { ...DEFAULT_FIT, underarm: gather }, 1)
+    const s = raised[12]!, e = raised[14]!, dx = e.x - s.x, dy = e.y - s.y
+    return Math.abs((p.x - s.x) * dy - (p.y - s.y) * dx) / Math.hypot(dx, dy)
+  }
+  assert.ok(fromArm(DEFAULT_FIT.underarm) < fromArm(0) * .8, `${fromArm(DEFAULT_FIT.underarm)} vs ${fromArm(0)}`)
+  // A hanging arm is not affected by the setting.
+  const down = armsAt(10)
+  assert.deepEqual(deformPoint(underarm, g, down, DEFAULT_FIT, 1), deformPoint(underarm, g, down, { ...DEFAULT_FIT, underarm: 0 }, 1))
+})
+test('fine-tuning moves the hem, shoulder line and sleeve independently', () => {
+  const g = analyzeAlpha(silhouette(), 128, 128), p = armsAt(60)
+  const at = (point: { x: number; y: number }, change: Partial<typeof DEFAULT_FIT>) => deformPoint(point, g, p, { ...DEFAULT_FIT, ...change }, 1)
+  const hem = (change: Partial<typeof DEFAULT_FIT>) => at({ x: g.right, y: g.hemY }, change).x - at({ x: g.left, y: g.hemY }, change).x
+  assert.ok(Math.abs(hem({ hemWidth: 1.2 }) / hem({}) - 1.2) < 1e-6)
+  // Inside the body column, clear of the sleeve seam band.
+  assert.deepEqual(at({ x: g.left + .06, y: g.shoulderY }, { hemWidth: 1.2 }), at({ x: g.left + .06, y: g.shoulderY }, {}))
+  assert.ok(at({ x: .5, y: g.shoulderY }, { lift: .3 }).y < at({ x: .5, y: g.shoulderY }, {}).y)
+  const cuff = (change: Partial<typeof DEFAULT_FIT>) => { const a = at(g.sleeves[0].pivot, change), b = at(g.sleeves[0].tip, change); return Math.hypot(a.x - b.x, a.y - b.y) }
+  assert.ok(cuff({ sleeveLength: 1.3 }) > cuff({}) * 1.1)
+  assert.deepEqual(at({ x: .5, y: .7 }, { sleeveLength: 1.3, sleeveWidth: .6 }), at({ x: .5, y: .7 }, {}))
+})
+test('hand-placed anchors replace the automatic ones and re-derive the sleeve reach', () => {
+  const g = analyzeAlpha(silhouette(), 128, 128)
+  assert.equal(applyAnchors(g, undefined), g)
+  const moved = applyAnchors(g, { shoulderY: .2, sleeves: [{ tip: { x: .05, y: .5 } }, undefined] })
+  assert.equal(moved.shoulderY, .2); assert.equal(moved.left, g.left)
+  assert.deepEqual(moved.sleeves[0].tip, { x: .05, y: .5 }); assert.equal(moved.sleeves[1], g.sleeves[1])
+  assert.ok(Math.abs(moved.sleeves[0].reach - Math.hypot((.05 - g.sleeves[0].pivot.x) * g.aspect, .5 - g.sleeves[0].pivot.y)) < 1e-9)
+  assert.ok(moved.sleeves[0].limitY >= .56)
+})
+test('sleeve kind separates short, long and sleeveless tops', () => {
+  assert.equal(sleeveKind(analyzeAlpha(silhouette(), 128, 128)), 'short')
+  const vest = new Uint8ClampedArray(128 * 128 * 4)
+  for (let y = 10; y <= 120; y++) for (let x = 30; x <= 98; x++) vest[(y * 128 + x) * 4 + 3] = 255
+  assert.equal(sleeveKind(analyzeAlpha(vest, 128, 128)), 'sleeveless')
+  const g = analyzeAlpha(silhouette(), 128, 128)
+  assert.equal(sleeveKind(applyAnchors(g, { sleeves: [{ tip: { x: -.4, y: .9 } }, undefined] })), 'long')
+})
+function poseWithHands(right: boolean, left: boolean) {
+  const p = person()
+  p[0] = { x: .5, y: .15, z: 0, visibility: 1 }
+  p[16] = right ? { x: .3, y: .02, z: 0, visibility: 1 } : { x: .3, y: .6, z: 0, visibility: 1 }
+  p[14] = right ? { x: .3, y: .12, z: 0, visibility: 1 } : { x: .3, y: .45, z: 0, visibility: 1 }
+  p[15] = left ? { x: .7, y: .02, z: 0, visibility: 1 } : { x: .7, y: .6, z: 0, visibility: 1 }
+  p[13] = left ? { x: .7, y: .12, z: 0, visibility: 1 } : { x: .7, y: .45, z: 0, visibility: 1 }
+  return p
+}
+test('a held raised hand fires once, needs a release, and respects the cooldown', () => {
+  const d = new GestureDetector(600, 1200), up = poseWithHands(true, false), rest = poseWithHands(false, false)
+  assert.equal(d.update(rest, [], 0).pending, null)
+  assert.ok(d.update(up, [], 100).pending!.progress < .01)
+  assert.equal(d.update(up, [], 400).fired, null)
+  assert.equal(d.update(up, [], 700).fired?.action, 'next')
+  assert.equal(d.update(up, [], 2500).fired, null, 'holding does not repeat')
+  d.update(rest, [], 2600)
+  d.update(up, [], 2700)
+  assert.equal(d.update(up, [], 3300).fired?.action, 'next')
+  const left = new GestureDetector(600, 1200), l = poseWithHands(false, true)
+  left.update(l, [], 0)
+  assert.equal(left.update(l, [], 650).fired?.action, 'previous')
+  const both = new GestureDetector(600, 1200), b = poseWithHands(true, true)
+  both.update(b, [], 0)
+  assert.equal(both.update(b, [], 900).fired, null, 'both hands up is ambiguous')
+})
+test('a confident hand gesture switches garments and weak ones are ignored', () => {
+  const d = new GestureDetector(400, 1000), rest = poseWithHands(false, false)
+  d.update(rest, [{ side: 'Right', gesture: 'Thumb_Up', score: .4 }], 0)
+  assert.equal(d.update(rest, [{ side: 'Right', gesture: 'Thumb_Up', score: .4 }], 500).fired, null)
+  d.update(rest, [{ side: 'Right', gesture: 'Victory', score: .9 }], 600)
+  assert.equal(d.update(rest, [{ side: 'Right', gesture: 'Victory', score: .9 }], 1001).fired?.action, 'previous')
+})
+test('the chin line comes from the face mesh when present, otherwise from nose and mouth', () => {
+  const p = person()
+  p[0] = { x: .5, y: .1, z: 0, visibility: 1 }; p[9] = { x: .48, y: .14, z: 0, visibility: 1 }; p[10] = { x: .52, y: .14, z: 0, visibility: 1 }
+  const fromPose = chinLine(p)!
+  assert.ok(Math.abs(fromPose.y - (.14 + .04 * 1.6)) < 1e-9 && fromPose.dy > 0)
+  const face = Array.from({ length: 478 }, () => ({ x: .5, y: .1, z: 0, visibility: 1 }))
+  face[10] = { x: .5, y: .02, z: 0, visibility: 1 }; face[152] = { x: .5, y: .2, z: 0, visibility: 1 }
+  assert.equal(chinLine(p, face)!.y, .2)
+  p[9]!.visibility = .1
+  assert.equal(chinLine(p), null)
+})
+test('hand circles cover all 21 points of each detected hand', () => {
+  const landmarks = Array.from({ length: 21 }, (_, i) => ({ x: .4 + (i % 5) * .01, y: .5 + Math.floor(i / 5) * .01, z: 0, visibility: 1 }))
+  const [circle] = handCircles([{ landmarks }], 1.5)
+  assert.ok(circle && landmarks.every(p => Math.hypot((p.x - circle.x) * 1.5, p.y - circle.y) <= circle.r))
+  assert.equal(handCircles([{ landmarks: landmarks.slice(0, 5) }], 1).length, 0)
+})
+test('saved fine-tuning falls back to defaults when storage is unavailable or older', () => {
+  assert.deepEqual(loadSaved('missing').fit, DEFAULT_FIT)
+})
+test('a mirrored garment swaps its sleeves and flips anchors so prints read correctly', async () => {
+  const { mirrorGeometry } = await import('../src/try-on/geometry.ts')
+  const g = analyzeAlpha(tee(), 128, 128), m = mirrorGeometry(g)
+  assert.ok(Math.abs(m.left - (1 - g.right)) < 1e-12 && Math.abs(m.right - (1 - g.left)) < 1e-12)
+  assert.deepEqual(m.sleeves[0].tip, { x: 1 - g.sleeves[1].tip.x, y: g.sleeves[1].tip.y })
+  assert.deepEqual(mirrorGeometry(m), g)
 })

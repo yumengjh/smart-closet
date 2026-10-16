@@ -24,3 +24,12 @@ export async function loadTexture(url: string): Promise<Texture> {
   output.drawImage(scan, left, top, canvas.width, canvas.height, 0, 0, canvas.width, canvas.height)
   return { canvas, geometry: analyzeAlpha(output.getImageData(0, 0, canvas.width, canvas.height).data, canvas.width, canvas.height) }
 }
+
+/** A left-right flipped copy, so printed text reads correctly in a mirrored preview. */
+export function flippedCanvas(source: HTMLCanvasElement) {
+  const canvas = document.createElement('canvas')
+  canvas.width = source.width; canvas.height = source.height
+  const ctx = canvas.getContext('2d')!
+  ctx.translate(canvas.width, 0); ctx.scale(-1, 1); ctx.drawImage(source, 0, 0)
+  return canvas
+}

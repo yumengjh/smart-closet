@@ -6,22 +6,36 @@ varying vec2 v_uv; varying vec2 v_screen;
 void main(){ vec2 p=a_position+u_shift; gl_Position=vec4(p,0.,1.); v_uv=a_uv; v_screen=vec2((p.x+1.)*.5,(1.-p.y)*.5); }`
 // Modes: 0 video, 1 garment, 2 mesh wire, 3 soft contact shadow under the garment.
 const fragmentShader = `precision mediump float;
-uniform sampler2D u_texture; uniform float u_mode; uniform float u_aspect; uniform float u_radius;
-uniform vec4 u_arm0; uniform vec4 u_arm1; varying vec2 v_uv; varying vec2 v_screen;
+uniform sampler2D u_texture; uniform float u_mode; uniform float u_aspect; uniform float u_radius; uniform float u_trim;
+uniform vec4 u_arm0; uniform vec4 u_arm1; uniform vec3 u_hand0; uniform vec3 u_hand1; uniform vec4 u_chin;
+varying vec2 v_uv; varying vec2 v_screen;
 float segmentDistance(vec2 p,vec4 arm){
   vec2 a=arm.xy*vec2(u_aspect,1.),b=arm.zw*vec2(u_aspect,1.); p*=vec2(u_aspect,1.);
   vec2 d=b-a; float t=clamp(dot(p-a,d)/max(dot(d,d),.000001),0.,1.); return length(p-a-t*d);
 }
+float garmentAlpha(float a){ return u_trim>0. ? smoothstep(u_trim,min(1.,u_trim+.3),a) : a; }
+// Keeps the collar off the chin and face: u_chin.xy is the chin, u_chin.zw points down the body.
+float faceMask(){
+  if(u_chin.z==0. && u_chin.w==0.) return 1.;
+  vec2 d=(v_screen-u_chin.xy)*vec2(u_aspect,1.);
+  return smoothstep(-.004,.004,dot(d,normalize(u_chin.zw*vec2(u_aspect,1.))));
+}
+float handMask(vec3 hand){ if(hand.z<=0.) return 1.; return smoothstep(hand.z*.8,hand.z,length((v_screen-hand.xy)*vec2(u_aspect,1.))); }
 void main(){
-  if(u_mode>2.5){gl_FragColor=vec4(0.,0.,0.,texture2D(u_texture,v_uv).a*.22);return;}
+  if(u_mode>2.5){gl_FragColor=vec4(0.,0.,0.,garmentAlpha(texture2D(u_texture,v_uv).a)*.22*faceMask());return;}
   if(u_mode>1.5){gl_FragColor=vec4(.18,.85,.64,.5);return;}
   vec4 color=texture2D(u_texture,v_uv);
-  if(u_mode>.5 && u_radius>0.){
-    float distance=min(segmentDistance(v_screen,u_arm0),segmentDistance(v_screen,u_arm1));
-    color.a*=smoothstep(u_radius*.7,u_radius,distance);
+  if(u_mode>.5){
+    color.a=garmentAlpha(color.a)*faceMask()*handMask(u_hand0)*handMask(u_hand1);
+    if(u_radius>0.){
+      float distance=min(segmentDistance(v_screen,u_arm0),segmentDistance(v_screen,u_arm1));
+      color.a*=smoothstep(u_radius*.7,u_radius,distance);
+    }
   }
   gl_FragColor=color;
 }`
+/** chin keeps the collar off the face; hands are circles in front of the body that the garment must not cover. */
+export type DrawOptions = { rigid: boolean; occlusion: boolean; wire: boolean; chin?: { x: number; y: number; dx: number; dy: number } | null; hands?: { x: number; y: number; r: number }[] }
 // Full-frame video quad as a triangle strip: top-left, bottom-left, top-right, bottom-right.
 const QUAD = new Float32Array([-1, 1, -1, -1, 1, 1, 1, -1])
 const QUAD_UV = new Float32Array([0, 0, 0, 1, 1, 0, 1, 1])
@@ -61,7 +75,7 @@ export class TryOnRenderer {
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE); return t }
     this.videoTexture = texture(); this.garmentTexture = texture()
-    for (const name of ['u_texture', 'u_mode', 'u_aspect', 'u_radius', 'u_arm0', 'u_arm1', 'u_shift']) this.uniforms.set(name, gl.getUniformLocation(this.program, name))
+    for (const name of ['u_texture', 'u_mode', 'u_aspect', 'u_radius', 'u_arm0', 'u_arm1', 'u_shift', 'u_trim', 'u_hand0', 'u_hand1', 'u_chin']) this.uniforms.set(name, gl.getUniformLocation(this.program, name))
     this.attributes = { position: gl.getAttribLocation(this.program, 'a_position'), uv: gl.getAttribLocation(this.program, 'a_uv') }
   }
   setTexture(texture: Texture | null) {
@@ -86,9 +100,11 @@ export class TryOnRenderer {
     if (data) gl.bufferData(gl.ARRAY_BUFFER, data, gl.DYNAMIC_DRAW)
     gl.enableVertexAttribArray(location); gl.vertexAttribPointer(location, 2, gl.FLOAT, false, 0, 0)
   }
-  draw(video: HTMLVideoElement, pose: Landmark[], fit: Fit, options: { rigid: boolean; occlusion: boolean; wire: boolean }) {
+  draw(video: HTMLVideoElement | HTMLCanvasElement, pose: Landmark[], fit: Fit, options: DrawOptions) {
     const gl = this.gl
-    const width = Math.min(960, video.videoWidth), height = Math.round(width * video.videoHeight / video.videoWidth)
+    const sourceWidth = video instanceof HTMLVideoElement ? video.videoWidth : video.width
+    const sourceHeight = video instanceof HTMLVideoElement ? video.videoHeight : video.height
+    const width = Math.min(960, sourceWidth), height = Math.round(width * sourceHeight / sourceWidth)
     if (!width || !height || gl.isContextLost()) return
     if (this.canvas.width !== width || this.canvas.height !== height) { this.canvas.width = width; this.canvas.height = height }
     gl.viewport(0, 0, width, height); gl.useProgram(this.program); gl.activeTexture(gl.TEXTURE0)
@@ -104,6 +120,13 @@ export class TryOnRenderer {
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indices)
     const shoulderWidth = Math.hypot((pose[11]!.x - pose[12]!.x) * width / height, pose[11]!.y - pose[12]!.y)
     gl.bindTexture(gl.TEXTURE_2D, this.garmentTexture); gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
+    gl.uniform1f(this.uniforms.get('u_trim')!, fit.trim)
+    const chin = options.chin
+    gl.uniform4f(this.uniforms.get('u_chin')!, chin?.x ?? 0, chin?.y ?? 0, chin?.dx ?? 0, chin?.dy ?? 0)
+    for (const index of [0, 1]) {
+      const hand = options.occlusion ? options.hands?.[index] : undefined
+      gl.uniform3f(this.uniforms.get(`u_hand${index}`)!, hand?.x ?? 0, hand?.y ?? 0, hand?.r ?? 0)
+    }
     // A faint offset shadow seats the garment on the body instead of floating above the video.
     gl.uniform1f(this.uniforms.get('u_mode')!, 3); gl.uniform2f(this.uniforms.get('u_shift')!, 0, -shoulderWidth * .05)
     gl.drawElements(gl.TRIANGLES, this.mesh.indices.length, gl.UNSIGNED_SHORT, 0)
