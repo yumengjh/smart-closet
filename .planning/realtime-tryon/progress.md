@@ -39,3 +39,5 @@
 2026-10-15 画布优化：按用户反馈删除 640×960 竖屏采集请求，只建议宽 1280 / 30 FPS，支持时要求 resizeMode none；不指定高度或 aspectRatio。stage 随实际视频比例更新、桌面最大页宽 1680 / 控制栏 300，完整 contain 显示，新增 Ant Design Vue 全屏/退出/全屏停止。metadata/resize 事件更新尺寸；离页清理 fullscreenchange 监听。类型检查、build:server 与 diff 检查通过。
 
 原账号真实 Chrome 摄像头实测：video 1280×720，canvas 960×540，GPU Pose 状态正常；全屏画布占可用视口（读数 1470×725，contain 保持原内容比例）。全屏停止、空闲进入/退出全屏验证；停止后视频 paused=true、src=null、videoWidth/Height=0。仅检查 DOM 尺寸/文字，没有保存实时人物图。最终截图在停止相机后拍摄。未改原 8080 进程与衣柜数据，实验预览仍是 PID 82923 / localhost:18084。
+
+2026-10-16（Claude 接手）：两个分支已变基到最新 main（前端 c4e657f、后端 52f3b0c），原未提交成果先单独提交。第二轮贴合优化：轮廓自动锚点（肩线/腋下/袖口中心与上角）、肩线抬高与默认宽度 1.28、袖子按旋转角插值并以肩关节为轴、朝镜头缩短与下垂、长袖肘弯、侧身限幅加宽、One Euro + 画面跟随、索引网格与袖子后画、淡阴影、遮挡半径 0.09。104 项测试、vue-tsc、build:server 通过；三件真实 step-2 素材在 QA 页用真实 Pose Lite GPU 跑平举静态图与深蹲视频，无错误，截图目视。18084 预览已换新包。未测真实摄像头与手机。

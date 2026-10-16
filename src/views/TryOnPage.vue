@@ -7,7 +7,7 @@ import { cameraError } from '../services/camera'
 import { DEFAULT_FIT, cleanTextureCandidates, textureWorkflowId, type Landmark } from '../try-on/geometry'
 import { loadTexture, type Texture } from '../try-on/texture'
 import { PoseTracker } from '../try-on/tracker'
-import type { TrackingStatus } from '../try-on/tracking'
+import { PoseFollower, type TrackingStatus } from '../try-on/tracking'
 import { TryOnRenderer } from '../try-on/renderer'
 
 const { message } = App.useApp()
@@ -25,7 +25,7 @@ const textureWorkflows = new Map<string, Promise<ClosetTask>>()
 const metrics = reactive({ displayFps: 0, poseFps: 0, p95: 0, delay: 0, seconds: 0 })
 let renderer: TryOnRenderer | null = null, tracker: PoseTracker | null = null, stream: MediaStream | null = null
 let animation = 0, epoch = 0, textureEpoch = 0, fileUrl = '', destroyed = false
-let pose: Landmark[] = [], poseTimestamp = 0, samples: number[] = [], displayFrames = 0, poseFrames = 0
+let pose: Landmark[] = [], follower = new PoseFollower(), samples: number[] = [], displayFrames = 0, poseFrames = 0
 let metricStart = 0, startedAt = 0, lastDraw = 0, lastVideoTime = -1
 const clothOptions = computed(() => clothes.value.map(g => ({ value: g.id, label: g.name || [g.primaryColor[0], g.category[0]].filter(Boolean).join(' · ') })))
 const filterCloth = (input: string, option: { label?: string }) => (option.label || '').includes(input)
@@ -105,7 +105,7 @@ function stop() {
   stream?.getTracks().forEach(track => track.stop()); stream = null
   if (video.value) { video.value.pause(); video.value.srcObject = null; video.value.removeAttribute('src'); video.value.load() }
   if (fileUrl) { URL.revokeObjectURL(fileUrl); fileUrl = '' }
-  running.value = false; starting.value = false; tracked.value = false; trackingStatus.value = 'searching'; pose = []; poseTimestamp = 0
+  running.value = false; starting.value = false; tracked.value = false; trackingStatus.value = 'searching'; pose = []; follower = new PoseFollower()
   captureSize.width = 0; captureSize.height = 0
 }
 function updateVideoSize() {
@@ -131,9 +131,9 @@ function draw(now: number) {
   if (video.value.readyState < 2 || now - lastDraw < 30) return
   lastDraw = now
   const current = tracker?.current(now)
-  pose = current?.landmarks || []; poseTimestamp = current?.timestamp || 0
+  pose = follower.follow(current?.landmarks || [], now)
   tracked.value = pose.length > 0; trackingStatus.value = current?.status || 'searching'
-  try { renderer.draw(video.value, pose, poseTimestamp, fit, { rigid: mode.value === 'RIGID', occlusion: occlusion.value, wire: showMesh.value }) }
+  try { renderer.draw(video.value, pose, fit, { rigid: mode.value === 'RIGID', occlusion: occlusion.value, wire: showMesh.value }) }
   catch { error.value = '视频绘制中断，请停止后重新开启。'; stop(); return }
   displayFrames++
   if (video.value.currentTime !== lastVideoTime) { lastVideoTime = video.value.currentTime; void tracker?.submit(video.value, now) }
