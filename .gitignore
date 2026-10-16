@@ -11,6 +11,10 @@ dist/
 .idea/
 *.log
 
+# Rebuilt by npm run setup:try-on; keep source instructions and manifest.
+/public/try-on/wasm/
+/public/try-on/*.task
+
 # Local tool artifacts; progress Markdown under .planning stays versioned.
 /.archify/
 /output/

@@ -12,6 +12,7 @@ for (const name of ['index.html', 'favicon.svg', 'yuda-logo.png', 'manifest.webm
 cpSync(resolve(output, 'icons'), resolve(serverStatic, 'icons'), { recursive: true })
 cpSync(resolve(output, 'illustrations'), resolve(serverStatic, 'illustrations'), { recursive: true })
 cpSync(resolve(output, 'licenses'), resolve(serverStatic, 'licenses'), { recursive: true })
+cpSync(resolve(output, 'try-on'), resolve(serverStatic, 'try-on'), { recursive: true })
 const stickerResources = resolve(serverStatic, '../person-stickers')
 mkdirSync(stickerResources, { recursive: true })
 cpSync(resolve(root, 'public/person-stickers'), stickerResources, { recursive: true })

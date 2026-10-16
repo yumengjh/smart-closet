@@ -129,7 +129,7 @@ onUnmounted(() => clearInterval(timer))
 
 <template>
   <div class="page-heading simple-heading ootd-heading">
-    <div><h1>OOTD 试穿</h1><p class="page-subtitle">选搭配、模特和动作，生成一张上身效果图。</p></div>
+    <div><h1>OOTD 试穿</h1><p class="page-subtitle">选搭配、模特和动作，生成一张上身效果图。</p><a-button type="link" @click="$router.push('/try-on')">打开实时试穿测试版</a-button></div>
     <RouterLink v-slot="{ href, navigate }" to="/settings?section=personal" custom><a-button class="ootd-manage" :href="href" @click="navigate"><UserOutlined /> 管理模特</a-button></RouterLink>
   </div>
   <a-alert v-if="error && !confirmOpen" type="error" :message="error" show-icon closable style="margin-bottom:16px" @close="error=''" />

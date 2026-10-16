@@ -37,6 +37,7 @@ export default defineConfig(({ mode }) => {
       output: {
         manualChunks(id) {
           if (!id.includes('node_modules')) return
+          if (id.includes('@mediapipe/tasks-vision')) return 'pose-vision'
           if (id.includes('ant-design-vue') || id.includes('@ant-design/icons-vue')) return 'ui-kit'
           if (id.includes('/vue/') || id.includes('/vue-router/') || id.includes('/pinia/') || id.includes('/@vue/')) return 'vue-vendor'
           return 'vendor'
@@ -45,6 +46,7 @@ export default defineConfig(({ mode }) => {
     },
   },
   server: {
+    watch: { ignored: ['**/.local/**', '**/.planning/**', '**/output/**'] },
     proxy: {
       '/api': {
         target: proxyTarget, changeOrigin: true,

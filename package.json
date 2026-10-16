@@ -4,6 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "setup:try-on": "node scripts/setup-try-on.mjs",
+    "preview:try-on": "node scripts/preview-try-on.mjs",
     "dev": "vite --host 0.0.0.0",
     "build": "vue-tsc -b && vite build",
     "build:server": "vue-tsc -b && VITE_API_BASE_URL='' VITE_USE_MOCKS=false vite build && node scripts/publish-to-server.mjs",
@@ -16,6 +18,7 @@
   "dependencies": {
     "@ant-design/icons-vue": "^7.0.1",
     "@foleyjs/core": "^2.9.0",
+    "@mediapipe/tasks-vision": "1.1.0",
     "ant-design-vue": "^4.2.6",
     "konva": "^10.7.0",
     "pinia": "^3.0.3",

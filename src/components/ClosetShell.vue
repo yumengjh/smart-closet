@@ -48,6 +48,7 @@ const navItems = [
   { path: '/outfits', label: '组合台', icon: PictureOutlined },
   // OOTD was only reachable from settings and the editor; the bottom bar keeps its five slots, so it is desktop-only there.
   { path: '/ootd', label: 'OOTD 试穿', icon: SkinOutlined, desktopOnly: true },
+  { path: '/try-on', label: '实时试穿 · 测试', icon: SkinOutlined, desktopOnly: true },
   { path: '/settings', label: '我的', icon: SettingOutlined },
 ]
 // Highlight the clicked destination immediately; on slow networks the route itself resolves later.
