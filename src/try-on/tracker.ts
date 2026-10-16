@@ -5,6 +5,9 @@ export type Hand = { side: string; landmarks: Landmark[]; gesture: string; score
 type Connection = { start: number; end: number }
 export type Connections = { pose: Connection[]; hand: Connection[]; face: Connection[] }
 export type PerceptionOptions = { hands: boolean; face: boolean }
+export type LoadStage = 'runtime' | 'pose' | 'hands' | 'face'
+/** Model loading progress; stage null means loading finished. */
+export type LoadProgress = { stage: LoadStage | null; loaded: number; total: number }
 export type PoseResult = TrackedPose & { inferenceMs: number; timings: Record<string, number> }
 /** Extra perception results feed the overlay and gestures; they expire quickly instead of freezing on screen. */
 const EXTRA_MAX_AGE_MS = 400
@@ -24,6 +27,7 @@ export class PoseTracker {
   private face: Landmark[] = []
   private faceAt = 0
   connections: Connections | null = null
+  onProgress: (progress: LoadProgress) => void = () => {}
   enabled: PerceptionOptions = { hands: false, face: false }
   constructor(private onPose: (pose: PoseResult) => void, private onError: (message: string) => void, private onNotice: (message: string) => void = () => {}) {}
   initialize(options: PerceptionOptions = { hands: false, face: false }): Promise<'GPU' | 'CPU'> {
@@ -33,11 +37,13 @@ export class PoseTracker {
       this.worker.onerror = () => { clearTimeout(this.timer); const error = '姿态检测未能启动，请重新开启试穿。'; reject(new Error(error)); this.onError(error) }
       this.worker.onmessage = ({ data }) => {
         if (this.closed) return
+        if (data.type === 'PROGRESS') { this.onProgress({ stage: data.stage, loaded: data.loaded, total: data.total }); return }
         if (data.type === 'READY') {
+          this.onProgress({ stage: null, loaded: 0, total: 0 })
           clearTimeout(this.timer); this.connections = data.connections; this.enabled = { hands: data.hands, face: data.face }
           if (data.warning) this.onNotice(data.warning)
           resolve(data.delegate)
-        } else if (data.type === 'CONFIGURED') { this.enabled = { hands: data.hands, face: data.face }; this.busy = false; if (data.warning) this.onNotice(data.warning) }
+        } else if (data.type === 'CONFIGURED') { this.onProgress({ stage: null, loaded: 0, total: 0 }); this.enabled = { hands: data.hands, face: data.face }; if (data.warning) this.onNotice(data.warning) }
         else if (data.type === 'ERROR') { this.busy = false; clearTimeout(this.timer); reject(new Error(data.message)); this.onError(data.message) }
         else if (data.type === 'POSE') {
           this.busy = false
@@ -52,10 +58,12 @@ export class PoseTracker {
       this.worker.postMessage({ type: 'INIT', options })
     })
   }
-  /** Loads or releases optional models without restarting the camera. Frames pause while the worker reconfigures. */
+  /**
+   * Loads or releases optional models without restarting the camera. Pose frames keep flowing meanwhile: the worker
+   * answers them between the awaited download steps, so the garment does not vanish on a slow connection.
+   */
   configure(options: PerceptionOptions) {
     if (this.closed) return
-    this.busy = true
     this.worker.postMessage({ type: 'CONFIG', options })
     if (!options.hands) this.hands = []
     if (!options.face) this.face = []

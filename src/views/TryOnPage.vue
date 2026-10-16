@@ -5,9 +5,10 @@ import { CameraOutlined, StopOutlined, UploadOutlined, SwapOutlined, DownloadOut
 import { closetApi, type ClosetTask, type Garment } from '../services/api'
 import { cameraError } from '../services/camera'
 import TryOnAnchorEditor from '../components/TryOnAnchorEditor.vue'
+import TryOnLoader, { type LoaderStep } from '../components/TryOnLoader.vue'
 import { DEFAULT_FIT, applyAnchors, mirrorGeometry, cleanTextureCandidates, sleeveKind, textureWorkflowId, type Anchors, type Geometry, type Landmark, type SleeveKind } from '../try-on/geometry'
 import { flippedCanvas, loadTexture, type Texture } from '../try-on/texture'
-import { PoseTracker } from '../try-on/tracker'
+import { PoseTracker, type LoadProgress, type LoadStage } from '../try-on/tracker'
 import { PoseFollower, type TrackingStatus } from '../try-on/tracking'
 import { TryOnRenderer } from '../try-on/renderer'
 import { GestureDetector, type GestureState } from '../try-on/gestures'
@@ -50,6 +51,22 @@ const trackingLabels: Record<TrackingStatus, string> = {
 const status = computed(() => starting.value ? '正在准备摄像头和姿态检测' : !running.value ? '准备好后开启试穿' : trackingLabels[trackingStatus.value])
 const statusColor = computed(() => tracked.value && trackingStatus.value !== 'holding' ? 'green' : starting.value || running.value ? 'gold' : 'default')
 const tuned = computed(() => !!anchors.value || !isDefaultFit(fit))
+// Loading steps for the waiting animation. Start-up lists every step; switching a model on while running shows
+// only that model in a small chip.
+const load = reactive<{ stage: 'camera' | LoadStage | null; loaded: number; total: number; models: LoadStage[] }>({ stage: null, loaded: 0, total: 0, models: [] })
+const stageLabels: Record<'camera' | LoadStage, string> = { camera: '打开摄像头', runtime: '启动识别引擎', pose: '下载姿态模型', hands: '下载手部模型', face: '下载面部模型' }
+const megabytes = (bytes: number) => (bytes / 1048576).toFixed(1)
+const loaderSteps = computed<LoaderStep[]>(() => {
+  const order: ('camera' | LoadStage)[] = running.value ? load.models : ['camera', 'runtime', 'pose', ...load.models]
+  const current = load.stage ? order.indexOf(load.stage) : -1
+  return order.map((key, index) => {
+    const active = index === current, bytes = active && load.total > 0 && ['pose', 'hands', 'face'].includes(key)
+    return { key, label: stageLabels[key], state: index < current ? 'done' : active ? 'active' : 'waiting',
+      detail: bytes ? `${megabytes(load.loaded)} / ${megabytes(load.total)} MB` : undefined,
+      percent: bytes ? Math.min(100, Math.round(load.loaded / load.total * 100)) : undefined }
+  })
+})
+function onLoadProgress(progress: Omit<LoadProgress, 'stage'> & { stage: 'camera' | LoadStage | null }) { load.stage = progress.stage; load.loaded = progress.loaded; load.total = progress.total }
 
 async function workflowsFor(garment: Garment) {
   // Reuse the original wardrobe's processing history, including clean AI results before the sticker step.
@@ -186,7 +203,7 @@ function stop() {
   if (fileUrl) { URL.revokeObjectURL(fileUrl); fileUrl = '' }
   overlay.value?.getContext('2d')?.clearRect(0, 0, overlay.value.width, overlay.value.height)
   running.value = false; starting.value = false; tracked.value = false; trackingStatus.value = 'searching'; pose = []; follower = new PoseFollower()
-  gestures = new GestureDetector(); gesture.value = null
+  gestures = new GestureDetector(); gesture.value = null; load.stage = null
   captureSize.width = 0; captureSize.height = 0
 }
 function updateVideoSize() {
@@ -209,7 +226,11 @@ function updatePose(result: { timestamp: number; inferenceMs: number; timings: R
   if (result.timings.face !== undefined) metrics.face = Math.round(result.timings.face)
 }
 // Optional models switch on and off without restarting the camera.
-watch([handsOn, faceOn], ([hands, face]) => tracker?.configure({ hands, face }))
+watch([handsOn, faceOn], ([hands, face], [wasHands, wasFace]) => {
+  if (!tracker) return
+  load.models = [...(hands && !wasHands ? ['hands' as const] : []), ...(face && !wasFace ? ['face' as const] : [])]
+  tracker.configure({ hands, face })
+})
 function draw(now: number) {
   if (!running.value || !video.value || !renderer) return
   animation = requestAnimationFrame(draw)
@@ -250,6 +271,8 @@ async function start(file?: File) {
   stop(); error.value = ''
   if (!texture.value) { message.info('先选一件上衣，或导入透明 PNG。'); return }
   if (!file && !navigator.mediaDevices?.getUserMedia) { error.value = '摄像头需要 HTTPS 或 localhost。也可以导入短视频测试动作。'; return }
+  load.models = [...(handsOn.value ? ['hands' as const] : []), ...(faceOn.value ? ['face' as const] : [])]
+  onLoadProgress({ stage: 'camera', loaded: 0, total: 0 })
   const attempt = epoch; starting.value = true; samples = []; displayFrames = 0; poseFrames = 0; lastVideoTime = -1
   try {
     await nextTick()
@@ -272,6 +295,7 @@ async function start(file?: File) {
     renderer = new TryOnRenderer(canvas.value!); applyGeometry()
     tracker = new PoseTracker(updatePose, text => { if (attempt === epoch && !destroyed) { error.value = text; stop() } },
       text => { if (attempt === epoch && !destroyed) message.warning(text) })
+    tracker.onProgress = progress => { if (attempt === epoch && !destroyed) onLoadProgress(progress) }
     delegate.value = await tracker.initialize({ hands: handsOn.value, face: faceOn.value })
     if (attempt !== epoch || destroyed) return
     running.value = true; starting.value = false; startedAt = metricStart = performance.now(); lastDraw = 0
@@ -319,10 +343,11 @@ onBeforeUnmount(() => {
         <canvas ref="canvas" class="try-on-canvas" :class="{ mirrored: mirror, active: running }" aria-label="衣物随动作变形的试穿预览" />
         <canvas ref="overlay" class="try-on-canvas try-on-overlay" :class="{ active: running && debugOn }" aria-hidden="true" />
         <div v-if="!running" class="try-on-empty">
-          <a-spin v-if="starting" size="large" />
+          <TryOnLoader v-if="starting" :steps="loaderSteps" />
           <template v-else><CameraOutlined /><h2>站到镜头前</h2><p>双肩清楚入镜即可开始。腰部入镜时衣长更稳定，先从正面小幅动作开始。</p><a-button type="primary" size="large" :disabled="!texture || loadingTexture" @click="start()">开启摄像头试穿</a-button></template>
         </div>
         <div class="try-on-stage-status"><a-tag :color="statusColor">{{ status }}</a-tag><span v-if="running">{{ metrics.seconds }} 秒 · {{ delegate }}</span></div>
+        <TryOnLoader v-if="running && load.stage" compact :steps="loaderSteps" />
         <div v-if="running && gesture" class="try-on-gesture" role="status">
           <a-progress type="circle" :percent="Math.round(gesture.progress * 100)" :size="34" :show-info="false" stroke-color="#36e2c8" />
           <span>{{ gesture.label }}</span>
@@ -414,7 +439,7 @@ onBeforeUnmount(() => {
 .try-on-canvas.active { display: block; }
 .try-on-canvas.mirrored { transform: scaleX(-1); }
 .try-on-overlay { pointer-events: none; }
-.try-on-gesture { position: absolute; left: 50%; top: 64px; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 6px 14px 6px 8px; border-radius: 999px; background: #151b18d9; color: #e9f5ef; font-size: 14px; pointer-events: none; }
+.try-on-gesture { position: absolute; left: 50%; top: 108px; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 6px 14px 6px 8px; border-radius: 999px; background: #151b18d9; color: #e9f5ef; font-size: 14px; pointer-events: none; }
 .try-on-select-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 6px; }
 .try-on-hint.saved { margin: -4px 0 4px; color: var(--accent); }
 .try-on-toggle.compact { margin-top: 4px; font-size: 12px; color: var(--muted-copy); }

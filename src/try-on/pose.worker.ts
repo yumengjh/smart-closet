@@ -16,7 +16,29 @@ let loaderInstance = 0
 async function create<T>(make: (d: Delegate) => Promise<T>): Promise<T> {
   try { return await make(delegate) } catch { delegate = 'CPU'; return make(delegate) }
 }
-const base = (file: string, d: Delegate) => ({ modelAssetPath: `/try-on/${file}`, delegate: d })
+type LoadStage = 'runtime' | 'pose' | 'hands' | 'face'
+const progress = (stage: LoadStage, loaded = 0, total = 0) => self.postMessage({ type: 'PROGRESS', stage, loaded, total })
+/**
+ * Downloads a model as a stream so the page can show real progress. After the first visit the browser cache
+ * answers, and the bar simply jumps to full.
+ */
+async function model(stage: LoadStage, file: string) {
+  const response = await fetch(`/try-on/${file}`)
+  if (!response.ok || !response.body) throw new Error(`${file} 无法读取（${response.status}）`)
+  const total = Number(response.headers.get('content-length')) || 0, reader = response.body.getReader(), chunks: Uint8Array[] = []
+  let loaded = 0, reported = 0
+  progress(stage, 0, total)
+  for (let part = await reader.read(); !part.done; part = await reader.read()) {
+    chunks.push(part.value); loaded += part.value.length
+    if (performance.now() - reported > 80) { reported = performance.now(); progress(stage, loaded, total) }
+  }
+  progress(stage, loaded, total || loaded)
+  const buffer = new Uint8Array(loaded)
+  let offset = 0
+  for (const chunk of chunks) { buffer.set(chunk, offset); offset += chunk.length }
+  return buffer
+}
+const base = (buffer: Uint8Array, d: Delegate) => ({ modelAssetBuffer: buffer, delegate: d })
 /**
  * Optional models load on demand, so plain try-on keeps the cost of the single pose model. A missing or failing
  * optional model is reported but never stops pose tracking.
@@ -24,11 +46,17 @@ const base = (file: string, d: Delegate) => ({ modelAssetPath: `/try-on/${file}`
 async function configure(options: Options) {
   const problems: string[] = []
   try {
-    if (options.hands && !hands) hands = await create(d => GestureRecognizer.createFromOptions(fileset!, { baseOptions: base('gesture_recognizer.task', d), runningMode: 'VIDEO', numHands: 2 }))
+    if (options.hands && !hands) {
+      const buffer = await model('hands', 'gesture_recognizer.task')
+      hands = await create(d => GestureRecognizer.createFromOptions(fileset!, { baseOptions: base(buffer, d), runningMode: 'VIDEO', numHands: 2 }))
+    }
   } catch (cause) { problems.push(`手部模型（${cause instanceof Error ? cause.message : cause}）`) }
   if (!options.hands && hands) { hands.close(); hands = undefined }
   try {
-    if (options.face && !face) face = await create(d => FaceLandmarker.createFromOptions(fileset!, { baseOptions: base('face_landmarker.task', d), runningMode: 'VIDEO', numFaces: 1 }))
+    if (options.face && !face) {
+      const buffer = await model('face', 'face_landmarker.task')
+      face = await create(d => FaceLandmarker.createFromOptions(fileset!, { baseOptions: base(buffer, d), runningMode: 'VIDEO', numFaces: 1 }))
+    }
   } catch (cause) { problems.push(`面部模型（${cause instanceof Error ? cause.message : cause}）`) }
   if (!options.face && face) { face.close(); face = undefined }
   return problems.length ? `${problems.join('、')}未能加载，请先运行 npm run setup:try-on。姿态追踪不受影响。` : ''
@@ -39,8 +67,10 @@ self.onmessage = async (event: MessageEvent) => {
   const message = event.data
   try {
     if (message.type === 'INIT') {
+      progress('runtime')
       fileset = await FilesetResolver.forVisionTasks(`${self.location.origin}/try-on/wasm`, true)
-      pose = await create(d => PoseLandmarker.createFromOptions(fileset!, { baseOptions: base('pose_landmarker_lite.task', d),
+      const buffer = await model('pose', 'pose_landmarker_lite.task')
+      pose = await create(d => PoseLandmarker.createFromOptions(fileset!, { baseOptions: base(buffer, d),
         runningMode: 'VIDEO', numPoses: 1, minPoseDetectionConfidence: .5, minPosePresenceConfidence: .5, minTrackingConfidence: .5 }))
       poseDelegate = delegate
       const warning = await configure(message.options || { hands: false, face: false })
