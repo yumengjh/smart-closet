@@ -171,7 +171,9 @@ async function signOut() {
   .sidebar-edge-toggle.ant-btn { display: inline-flex; }
   .sidebar:hover ~ .sidebar-edge-toggle.ant-btn, .sidebar-edge-toggle.ant-btn:hover, .sidebar-edge-toggle.ant-btn:focus-visible { opacity: 1; }
   .app-frame .sidebar { width: var(--sidebar-w, 224px); }
-  .app-frame .main-area { margin-left: var(--sidebar-w, 224px); }
+  /* The outfit editor hides the sidebar and fills the screen (styles/outfit.css), so it keeps no sidebar margin. */
+  .app-frame:not(.outfit-editing) .main-area { margin-left: var(--sidebar-w, 224px); }
+  .app-frame.outfit-editing .sidebar-edge-toggle.ant-btn { display: none; }
   .sidebar.collapsed { padding: 22px 10px 14px; align-items: stretch; overflow-x: hidden; }
   .sidebar.collapsed .side-text, .sidebar.collapsed .brand-text { display: none; }
   .sidebar.collapsed .brand-lockup { justify-content: center; padding: 0; }
