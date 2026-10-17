@@ -1,6 +1,7 @@
 import { createUuid } from './id'
 import { reactive, watch } from 'vue'
 import { recordBoardTrace } from '../agent/trace-client'
+import { registerAgentWorkspace } from './workspace-registry'
 import { normalizeScene, OUTFIT_VERSION, type Outfit, type OutfitElement, type OutfitScene } from './outfit'
 
 export const BOARD_LIMIT = 12
@@ -18,11 +19,12 @@ export function createBoard(name = '未命名搭配', scene: OutfitScene = { ver
   return { id, name, scene: normalizeScene(scene), contentVersion: 0, revision: null, savedSignature: '', selectedIds: [], undo: [], redo: [], zoom: 1, status: '草稿' }
 }
 export function addBoard(space: OutfitWorkspace, board: WorkspaceBoard) {
-  if (space.boards.length >= BOARD_LIMIT) throw new Error('工作区最多十二块画板，请先保存并关闭部分画板。')
+  if (space.boards.length >= BOARD_LIMIT) throw new Error('工作区最多十二个组合台，请先保存并关闭部分组合台。')
   space.boards.push(board); space.activeId = board.id
 }
 export function workspace(owner: string, id = 'main'): OutfitWorkspace {
   const key = `yixu.workspace.v1:${owner}:${id}`
+  registerAgentWorkspace(owner, id)
   const existing = spaces.get(key); if (existing) return existing
   let saved: OutfitWorkspace | undefined
   try { const value = JSON.parse(localStorage.getItem(key) || 'null'); if (value?.owner === owner && value.id === id && Array.isArray(value.boards)) saved = value } catch {}
@@ -47,4 +49,11 @@ export function mutateBoard(board: WorkspaceBoard, scene: OutfitScene, record = 
   board.scene = normalizeScene(scene); board.contentVersion++; board.error = ''
   if (!board.locked) board.status = '草稿'
   if (record && board.traceSessionId && board.traceOwner) recordBoardTrace(board.traceOwner, board.traceSessionId, board.id, source, before, board.scene, { beforeVersion, afterVersion: board.contentVersion })
+}
+/** Forget a workspace (画板) and everything saved on this device for it; saved outfits on the account are untouched. */
+export function discardWorkspace(owner: string, id: string) {
+  const key = `yixu.workspace.v1:${owner}:${id}`
+  const space = spaces.get(key); if (space) { space.boards = []; space.activeId = '' }
+  spaces.delete(key)
+  try { localStorage.removeItem(key) } catch { /* storage blocked */ }
 }

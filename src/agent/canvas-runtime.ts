@@ -47,12 +47,12 @@ async function execute(command: CanvasCommand) {
     let run = runs.get(command.runId)
     if (command.kind === 'open') {
       const space = workspace(owner, command.workspaceId)
-      if (space.boards.length + command.payload.requiredBoards > 12) throw new Error('画板容量不足，请先保存并关闭部分画板。')
+      if (space.boards.length + command.payload.requiredBoards > 12) throw new Error('组合台容量不足，请先保存并关闭部分组合台。')
       // A source snapshot must still match the source board when a run starts.
       const source = command.payload.source as AgentContext | undefined
       if (source?.workspaceId && source.boardId) {
         const sourceBoard = workspace(owner, source.workspaceId).boards.find(b => b.id === source.boardId)
-        if (!sourceBoard || sourceBoard.contentVersion !== source.contentVersion) throw new Error('源画板已经变化，请重新发起调整。')
+        if (!sourceBoard || sourceBoard.contentVersion !== source.contentVersion) throw new Error('源组合台已经变化，请重新发起调整。')
       }
       for (const [id, previous] of runs) if (!previous.cancelled && previous.space.id === space.id) await stopCanvasRun(id)
       const path = `/outfits/workspace?session=${command.sessionId}`
@@ -70,7 +70,7 @@ async function execute(command: CanvasCommand) {
     }
     let board = space.boards.find(b => b.id === command.boardId)
     if (command.kind === 'create') {
-      if (board) throw new Error('画板已存在。')
+      if (board) throw new Error('组合台已存在。')
       board = createBoard(command.payload.name, command.payload.scene as OutfitScene | undefined, command.boardId)
       board.traceSessionId = command.sessionId; board.traceOwner = owner
       board.reason = command.payload.reason
@@ -79,7 +79,7 @@ async function execute(command: CanvasCommand) {
       board.locked = command.runId; board.status = '正在搭配'; const previous = space.activeId; addBoard(space, board); if (!canvasExecution.following) space.activeId = previous
     } else {
       if (command.kind === 'begin' && board && !board.locked && board.contentVersion === command.expectedVersion) { board.locked = command.runId; board.undo = [...board.undo.slice(-79), board.scene.elements.map(e => ({ ...e }))]; board.redo = []; board.status = '正在调整' }
-      if (!board || board.locked !== command.runId || board.contentVersion !== command.expectedVersion) throw new Error('画板内容已改变，停止后请重新发起操作。')
+      if (!board || board.locked !== command.runId || board.contentVersion !== command.expectedVersion) throw new Error('组合台内容已改变，停止后请重新发起操作。')
       if (command.kind === 'begin') { /* Lock and snapshot are applied above. */ }
       else if (command.kind === 'add' || command.kind === 'replace') {
         const garment = await closetApi.detail(command.payload.garmentId)
@@ -107,9 +107,9 @@ async function execute(command: CanvasCommand) {
           height: Math.max(24, Math.min(2700, e.height * (intent === 'smaller' ? .9 : intent === 'larger' ? 1.1 : 1))), flipX: intent === 'flip' ? !e.flipX : e.flipX })
         mutateBoard(board, { ...board.scene, elements }, false)
       } else if (command.kind === 'finish') { board.locked = undefined; board.status = '待你确认 · 未保存' }
-      else throw new Error('未开放的画板操作。')
+      else throw new Error('未开放的组合台操作。')
     }
-    if (!board) throw new Error('画板未创建。')
+    if (!board) throw new Error('组合台未创建。')
     board.traceSessionId = command.sessionId; board.traceOwner = owner
     Object.assign(canvasExecution, { boardId: board.id, label: command.label })
     if (canvasExecution.following) space.activeId = board.id
@@ -119,7 +119,7 @@ async function execute(command: CanvasCommand) {
     const result = { version: board.contentVersion, scene: sceneWrite(board.scene) }
     applied.set(command.operationId, result); reported('EXECUTED_PENDING_ACK'); await ack({ success: true, ...result }); reported('ACK_ACCEPTED')
   } catch (e) {
-    const text = e instanceof Error ? e.message : '画板操作失败。'
+    const text = e instanceof Error ? e.message : '组合台操作失败。'
     reported('FAILED', text)
     canvasExecution.error = text
     const run = runs.get(command.runId)
