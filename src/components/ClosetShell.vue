@@ -5,7 +5,7 @@ import { theme as antTheme } from 'ant-design-vue'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import {
   AppstoreOutlined, CheckCircleOutlined, PictureOutlined, PlusOutlined,
-  SettingOutlined, LogoutOutlined, SkinOutlined, MenuFoldOutlined, MenuUnfoldOutlined,
+  SettingOutlined, LogoutOutlined, SkinOutlined, LeftOutlined, RightOutlined,
 } from '@ant-design/icons-vue'
 import { readCollapsed, saveCollapsed, sidebarWidth } from '../shell/sidebarPreference'
 import { useClosetStore } from '../stores/closet'
@@ -125,9 +125,6 @@ async function signOut() {
               </RouterLink>
             </a-tooltip>
           </nav>
-          <a-tooltip placement="right" :title="collapsed ? '展开侧栏' : '收起侧栏'">
-            <a-button type="text" class="sidebar-toggle" :aria-label="collapsed ? '展开侧栏' : '收起侧栏'" :aria-expanded="!collapsed" @click="toggleSidebar"><MenuUnfoldOutlined v-if="collapsed" /><MenuFoldOutlined v-else /><span class="side-text">收起侧栏</span></a-button>
-          </a-tooltip>
           <div class="profile-row">
             <a-tooltip placement="right" :title="collapsed ? (closet.user?.username || '') : ''"><span class="avatar">{{ closet.user?.username?.slice(0, 1).toUpperCase() }}</span></a-tooltip>
             <span class="profile-name side-text"><strong>{{ closet.user?.username }}</strong><small>我的衣橱</small></span>
@@ -136,6 +133,9 @@ async function signOut() {
             </a-tooltip>
           </div>
         </aside>
+        <a-tooltip placement="right" :title="collapsed ? '展开侧栏' : '收起侧栏'">
+          <a-button class="sidebar-edge-toggle" shape="circle" size="small" :aria-label="collapsed ? '展开侧栏' : '收起侧栏'" :aria-expanded="!collapsed" @click="toggleSidebar"><RightOutlined v-if="collapsed" /><LeftOutlined v-else /></a-button>
+        </a-tooltip>
         <main class="main-area">
           <div v-if="usingMocks" class="mock-banner"><span class="mock-pulse"></span><span>界面演示 · 示例数据不是 AI 结果，演示模式禁止提交模型任务</span><span class="mock-banner-end">{{ closet.user?.username }} 的衣橱</span></div>
           <header class="topbar"><div class="topbar-actions"><a-button v-if="!closet.user?.mustChangePassword" class="topbar-assistant" :aria-label="`问鱼搭助手（${assistantShortcut}）`" @click="openAssistant"><BloubAvatar :size="28" expression="happy" /><span>问鱼搭</span><kbd>{{ assistantShortcut }}</kbd></a-button><MinimalToggle v-if="!closet.user?.mustChangePassword" /><ThemeToggle /><SoundToggle /><TaskInbox v-if="!closet.user?.mustChangePassword" /></div></header>
@@ -162,13 +162,14 @@ async function signOut() {
 .brand-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.2; }
 .brand-text strong { font-size: 20px; font-weight: 650; letter-spacing: .02em; }
 .brand-text small { margin-top: 3px; font-size: 11px; color: var(--muted); letter-spacing: .08em; }
-.sidebar-toggle.ant-btn { display: flex; align-items: center; justify-content: flex-start; gap: 12px; width: 100%; height: 40px; margin: 8px 0 10px; padding: 0 12px; color: var(--muted); border-radius: var(--radius-md); }
-.sidebar-toggle.ant-btn:hover { background: var(--paper); color: var(--ink); }
-.sidebar-toggle .anticon { font-size: 16px; width: 20px; flex: 0 0 20px; }
-.sidebar-toggle.ant-btn > .anticon + span { margin-inline-start: 0; }
+/* Collapse handle: a small round button on the sidebar's right border, shown while the pointer is over the sidebar. */
+.sidebar-edge-toggle.ant-btn { position: fixed; z-index: 16; top: 34px; left: calc(var(--sidebar-w, 224px) - 13px); display: none; align-items: center; justify-content: center; width: 26px; height: 26px; min-width: 26px; padding: 0; border: 1px solid var(--line); background: var(--surface); color: var(--muted-strong); font-size: 11px; box-shadow: 0 2px 8px #00000018; opacity: 0; transition: opacity .15s ease, left .2s ease, background .15s; }
+.sidebar-edge-toggle.ant-btn:hover { color: var(--ink); background: var(--surface-alt); }
 .sidebar { transition: width .2s ease, padding .2s ease; }
 .main-area { transition: margin-left .2s ease; }
 @media (min-width: 1024px) {
+  .sidebar-edge-toggle.ant-btn { display: inline-flex; }
+  .sidebar:hover ~ .sidebar-edge-toggle.ant-btn, .sidebar-edge-toggle.ant-btn:hover, .sidebar-edge-toggle.ant-btn:focus-visible { opacity: 1; }
   .app-frame .sidebar { width: var(--sidebar-w, 224px); }
   .app-frame .main-area { margin-left: var(--sidebar-w, 224px); }
   .sidebar.collapsed { padding: 22px 10px 14px; align-items: stretch; overflow-x: hidden; }
@@ -177,10 +178,9 @@ async function signOut() {
   .sidebar.collapsed .sidebar-add { margin: 22px 0 18px; }
   .sidebar.collapsed .nav-link { position: relative; justify-content: center; padding: 0; gap: 0; }
   .sidebar.collapsed .nav-link .nav-count { position: absolute; top: 4px; right: 6px; min-width: 16px; height: 16px; padding: 0 4px; margin: 0; font-size: 10px; line-height: 16px; }
-  .sidebar.collapsed .sidebar-toggle.ant-btn { justify-content: center; padding: 0; gap: 0; }
   .sidebar.collapsed .profile-row { flex-direction: column; gap: 8px; padding: 14px 0 0; }
 }
-@media (prefers-reduced-motion: reduce) { .sidebar, .main-area { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .sidebar, .main-area, .sidebar-edge-toggle.ant-btn { transition: none; } }
 .route-progress { position: fixed; z-index: 2000; inset: 0 0 auto; height: 2px; overflow: hidden; opacity: 0; pointer-events: none; transition: opacity .2s; }
 .route-progress.active { opacity: 1; }
 .route-progress span { position: absolute; inset: 0 auto 0 0; width: 40%; background: var(--accent); border-radius: 0 2px 2px 0; transform: translateX(-100%); }
