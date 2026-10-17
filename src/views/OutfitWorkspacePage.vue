@@ -11,7 +11,7 @@ import { useClosetStore } from '../stores/closet'
 import { isMissingOutfit } from '../domain/outfitErrors'
 import { closetApi } from '../services/api'
 import { boardSignature, workspace, createBoard, addBoard, openSavedBoard, mutateBoard, storageWarning, discardWorkspace, BOARD_LIMIT, type WorkspaceBoard } from '../domain/outfit-workspace'
-import { activeWorkspace, createWorkspace, DEFAULT_WORKSPACE_ID, listWorkspaces, removeWorkspace, renameWorkspace, setActiveWorkspace, type WorkspaceInfo } from '../domain/workspace-registry'
+import { activeWorkspace, pruneAgentWorkspaces, createWorkspace, DEFAULT_WORKSPACE_ID, listWorkspaces, removeWorkspace, renameWorkspace, setActiveWorkspace, type WorkspaceInfo } from '../domain/workspace-registry'
 import { normalizeScene, type Outfit, type OutfitDraft } from '../domain/outfit'
 import { canvasBridge } from '../agent/bridge'
 import { canvasExecution, stopCanvasRun } from '../agent/canvas-runtime'
@@ -89,6 +89,7 @@ function createBoardIn(target: string, name = '') {
 function switchWorkspace(id: string) {
   editor.value?.flush(); checked.value = []; wsId.value = id; focus.value = false
   const next = space.value; if (!next.activeId && next.boards.length) next.activeId = next.boards[0].id
+  void nextTick().then(fitOverview)
 }
 // 画板 management: create / rename / delete (the default one stays; a temporary Agent 画板 can only be deleted).
 const workspaceModal = ref({ open: false, mode: 'create' as 'create' | 'rename', name: '' })
@@ -245,7 +246,9 @@ watch(() => canvasExecution.runId, async (id, previous) => { if (!id && previous
 watch(focus, async value => { editor.value?.flush(); await nextTick(); if (!value) fitOverview() })
 onMounted(() => {
   window.addEventListener('resize', resizeWorkspace)
-  void loadRoute()
+  // Stale temporary Agent 画板 with nothing unsaved are tidied away; the list is read fresh afterwards.
+  if (pruneAgentWorkspaces(owner()).length) workspaces.value = listWorkspaces(owner())
+  void loadRoute().then(async () => { await nextTick(); if (!focus.value) fitOverview() })
   canvasBridge.value = {
     context: () => { editor.value?.flush(); const board = active.value; const selected = board?.scene.elements.find(e => board.selectedIds.includes(e.elementId || e.garmentId) && e.kind !== 'PERSON_PART'); return { route: route.path, workspaceId: space.value.id, boardId: board?.id, boardCount: space.value.boards.length, contentVersion: board?.contentVersion, outfitId: board?.outfitId, revision: board?.revision, name: board?.name, selectedIds: board?.selectedIds || [], garmentId: selected?.garmentId, scene: board?.scene } },
     apply: (scene, title) => { const board = active.value; if (!board || board.locked) throw new Error('请先选中可编辑组合台。'); mutateBoard(board, scene); if (title) board.name = title },
@@ -334,17 +337,18 @@ onUnmounted(() => { endGlowPreview(); window.removeEventListener('resize', resiz
 </template>
 <style>
 .outfit-workspace { position: relative; display: flex; flex-direction: column; height: 100%; min-width: 0; padding: 0; overflow: hidden; }
-.workspace-heading { display: flex; flex: none; height: 56px; gap: 8px; align-items: center; padding: 6px 12px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.workspace-heading { display: flex; flex: none; height: 56px; gap: 12px; align-items: center; padding: 6px 12px; border-bottom: 1px solid var(--line); background: var(--surface); }
 .workspace-heading > a, .workspace-actions { flex: none; }
 .workspace-heading > a > .ant-btn, .workspace-actions > .ant-btn, .workspace-actions > .ant-dropdown-trigger { height: 36px; min-width: 36px; padding-inline: 10px; }
-.workspace-title { display: flex; flex: 1; min-width: 0; align-items: center; gap: 10px; }
+.workspace-title { display: flex; flex: 1; min-width: 0; align-items: center; gap: 14px; }
 .workspace-title h1 { margin: 0; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .workspace-title .ant-input { width: min(280px, 100%); min-width: 0; font-size: 16px; font-weight: 500; border-color: transparent; background: transparent; }
 .workspace-title .ant-input:hover, .workspace-title .ant-input:focus { border-color: var(--line); }
 .workspace-mode-label { color: var(--muted); font-size: 12px; white-space: nowrap; }
 .workspace-save-dot { flex: none; width: 7px; height: 7px; background: var(--warning); border-radius: 50%; }
 .workspace-save-dot.saved { background: var(--success); }
-.workspace-actions { display: flex; align-items: center; gap: 4px; }
+.workspace-actions { display: flex; align-items: center; gap: 10px; }
+.workspace-actions .workspace-personal-action + .workspace-personal-action { margin-left: 0; }
 .workspace-assistant.ant-btn { display: inline-flex; align-items: center; justify-content: center; }
 .workspace-board-count { font-size: 12px; }
 .workspace-save.ant-btn { min-width: 80px; }

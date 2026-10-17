@@ -6,7 +6,7 @@ export const DEFAULT_WORKSPACE_ID = 'main'
 export const DEFAULT_WORKSPACE_NAME = '默认画板'
 export const WORKSPACE_LIMIT = 12
 export const WORKSPACE_NAME_LIMIT = 20
-type Store = Pick<Storage, 'getItem' | 'setItem'>
+type Store = Pick<Storage, 'getItem' | 'setItem'> & Partial<Pick<Storage, 'removeItem'>>
 
 const listKey = (owner: string) => `yixu.workspaces.v1:${owner}`
 const activeKey = (owner: string) => `yixu.workspace-active.v1:${owner}`
@@ -68,4 +68,31 @@ export function activeWorkspace(owner: string, store: Store | undefined = local(
 }
 export function setActiveWorkspace(owner: string, id: string, store: Store | undefined = local()) {
   try { store?.setItem(activeKey(owner), id) } catch { /* storage blocked */ }
+}
+
+const spaceKey = (owner: string, id: string) => `yixu.workspace.v1:${owner}:${id}`
+export type WorkspaceSummary = { boards: number; unsaved: number }
+/** What a workspace holds, read from its saved copy on this device: how many 组合台 and how many are unsaved drafts. */
+export function workspaceSummary(owner: string, id: string, store: Store | undefined = local()): WorkspaceSummary {
+  try {
+    const boards = (JSON.parse(store?.getItem(spaceKey(owner, id)) || 'null')?.boards || []) as { scene?: { elements?: unknown[] }; savedSignature?: string; name?: string }[]
+    return { boards: boards.length, unsaved: boards.filter(b => (b.scene?.elements?.length || 0) > 0 && !b.savedSignature).length }
+  } catch { return { boards: 0, unsaved: 0 } }
+}
+/** Temporary Agent workspaces older than this are cleared once nothing unsaved is left in them. */
+export const AGENT_WORKSPACE_TTL_MS = 14 * 24 * 60 * 60 * 1000
+/**
+ * Drops stale temporary Agent workspaces. One that still holds an unsaved draft is kept, so tidying never loses work;
+ * saved outfits live on the account and are not affected either way. Returns the removed workspace ids.
+ */
+export function pruneAgentWorkspaces(owner: string, now = Date.now(), store: Store | undefined = local()): string[] {
+  const removed: string[] = []
+  const keep: WorkspaceInfo[] = []
+  for (const info of stored(owner, store)) {
+    const stale = info.kind === 'agent' && now - info.createdAt > AGENT_WORKSPACE_TTL_MS
+    if (stale && workspaceSummary(owner, info.id, store).unsaved === 0) { removed.push(info.id); try { store?.removeItem?.(spaceKey(owner, info.id)) } catch { /* storage blocked */ } }
+    else keep.push(info)
+  }
+  if (removed.length) save(owner, keep, store)
+  return removed
 }
