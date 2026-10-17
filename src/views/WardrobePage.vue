@@ -10,11 +10,13 @@ import GarmentCardSkeleton from '../components/GarmentCardSkeleton.vue'
 import { isProcessing } from '../domain/workflow'
 import { DEFAULT_SORT, SORT_OPTIONS, readSort, saveSort, sortLabel } from '../wardrobe/sort'
 import { readView, saveView } from '../wardrobe/viewMemory'
+import pageLocale from 'ant-design-vue/es/vc-pagination/locale/zh_CN'
+import { PAGE_SIZES, pageAfterSizeChange, readPageSize, savePageSize } from '../wardrobe/pageSize'
 import { buildTags, combineQuery, imageModelNotice, removeWords, IMAGE_STYLE_LABELS, SEARCH_EXAMPLES, type SearchTag } from '../wardrobe/search'
 
 const router = useRouter()
 const closet = useClosetStore()
-const query = reactive<ListQuery>({ status: 'ACTIVE', q: '', category: '', color: '', season: '', page: 1, size: 24, sort: readSort() })
+const query = reactive<ListQuery>({ status: 'ACTIVE', q: '', category: '', color: '', season: '', page: 1, size: readPageSize(), sort: readSort() })
 const items = ref<Garment[]>([])
 const total = ref(0)
 const loading = ref(false)
@@ -27,7 +29,7 @@ const imageStyle = ref('')
 // Applied before the filter watcher below exists, so restoring does not reset the page to 1.
 const remembered = readView()
 if (remembered) { Object.assign(query, { q: remembered.q, category: remembered.category, color: remembered.color, season: remembered.season, page: remembered.page }); imageStyle.value = remembered.imageStyle }
-function rememberView() { saveView({ q: query.q, category: query.category, color: query.color, season: query.season, imageStyle: imageStyle.value, page: query.page, scrollY: Math.round(window.scrollY) }) }
+function rememberView() { saveView({ q: query.q, category: query.category, color: query.color, season: query.season, imageStyle: imageStyle.value, page: query.page, scrollY: Math.round(window.scrollY), ids: items.value.map(item => item.id) }) }
 onBeforeRouteLeave(() => { rememberView() })
 const searchResult = ref<SearchResult | null>(null)
 // 超级搜索 (design 模型内存与图像向量 §9): a picture can join the words in the same box (camera button, paste or drop).
@@ -89,7 +91,10 @@ async function runBatch(mode: 'recognize' | 'reprocess', targets: Garment[], ski
   if (submitted) { exitSelecting(); await Promise.all([load(), closet.refreshCounts()]) }
 }
 
+// Quick clicks on page numbers start several requests; only the newest one may fill the list.
+let latestLoad = 0
 async function load() {
+  const mine = ++latestLoad
   loading.value = true
   error.value = ''
   try {
@@ -103,9 +108,37 @@ async function load() {
       const page = await closetApi.list(query)
       searchResult.value = null; items.value = page.items; total.value = page.total
     }
-  } catch (cause) { error.value = cause instanceof Error ? cause.message : '衣柜暂时无法加载。' }
-  finally { loading.value = false }
+  } catch (cause) { if (mine === latestLoad) error.value = cause instanceof Error ? cause.message : '衣柜暂时无法加载。' }
+  finally { if (mine === latestLoad) loading.value = false }
 }
+// Paging: the old garments stay (dimmed) until the new page arrives, then the view returns to the top of the list.
+const listTop = ref<HTMLElement | null>(null)
+const narrow = ref(false)
+const reduceMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches
+function scrollToList() {
+  const top = listTop.value; if (!top) return
+  const gap = top.getBoundingClientRect().top
+  // Sticky bars sit above the list; only scroll when the list start is not already comfortably in view.
+  if (gap < 0 || gap > window.innerHeight * .6) window.scrollTo({ top: Math.max(0, window.scrollY + gap - 72), behavior: reduceMotion() ? 'instant' : 'smooth' })
+}
+async function goPage(page: number, size: number) {
+  if (selecting.value && selected.value.size) selected.value = new Set()
+  if (!searching.value && size !== query.size) { query.page = pageAfterSizeChange(query.page, query.size, size); query.size = size; savePageSize(size) }
+  else query.page = page
+  await load(); await nextTick(); scrollToList()
+}
+function stepPage(delta: number) { const page = query.page + delta; if (page >= 1 && page <= pageCount.value) void goPage(page, pageSize.value) }
+// ← / → turn pages unless typing, a dialog is open or a modifier key is held.
+function pageKeys(event: KeyboardEvent) {
+  if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+  if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
+  const target = event.target as HTMLElement | null
+  if (target?.closest('input, textarea, select, [contenteditable="true"], .ant-select, .ant-slider, .ant-pagination-simple-pager')) return
+  if (document.querySelector('.ant-modal-wrap, .ant-drawer-open, .ant-popover:not(.ant-popover-hidden)')) return
+  stepPage(event.key === 'ArrowLeft' ? -1 : 1)
+}
+let narrowQuery: MediaQueryList | undefined
+const onNarrow = () => { narrow.value = Boolean(narrowQuery?.matches) }
 function debounceLoad() {
   window.clearTimeout(searchTimer)
   query.page = 1
@@ -138,13 +171,14 @@ function closeTag(tag: SearchTag) {
 }
 onMounted(async () => {
   window.scrollTo({ top: 0, behavior: 'instant' })
-  window.addEventListener('pagehide', rememberView)
+  window.addEventListener('pagehide', rememberView); window.addEventListener('keydown', pageKeys)
+  narrowQuery = window.matchMedia('(max-width: 767px)'); onNarrow(); narrowQuery.addEventListener('change', onNarrow)
   await Promise.all([load(), closet.refreshCounts(), closetApi.metadataOptions().then(values => { options.value = values }).catch(cause => { error.value = String(cause) })])
   // The remembered page may no longer exist (garments were removed meanwhile): fall back to the last page.
   if (remembered && !items.value.length && query.page > 1 && total.value > 0) { query.page = pageCount.value; await load() }
   if (remembered?.scrollY) { await nextTick(); window.scrollTo({ top: Math.min(remembered.scrollY, document.documentElement.scrollHeight), behavior: 'instant' }) }
 })
-onUnmounted(() => { window.removeEventListener('pagehide', rememberView); window.clearTimeout(searchTimer); if (queryPreview.value) URL.revokeObjectURL(queryPreview.value) })
+onUnmounted(() => { window.removeEventListener('pagehide', rememberView); window.removeEventListener('keydown', pageKeys); narrowQuery?.removeEventListener('change', onNarrow); window.clearTimeout(searchTimer); if (queryPreview.value) URL.revokeObjectURL(queryPreview.value) })
 // Choosing an order is remembered on this browser; searching ranks by relevance, so the order only applies when browsing.
 function chooseSort(value: string) { query.sort = value; saveSort(value); query.page = 1; void load() }
 watch(() => [query.category, query.color, query.season, imageStyle.value], debounceLoad)
@@ -208,6 +242,11 @@ watch(() => [query.category, query.color, query.season, imageStyle.value], debou
   </section>
   <a-alert v-if="batchResult" :type="batchResult.type" :message="batchResult.message" :description="batchResult.description || undefined" show-icon closable class="page-alert batch-result" @close="batchResult = null"><template #action><a-button size="small" @click="router.push('/tasks')">查看任务</a-button></template></a-alert>
   <a-alert v-if="error" type="error" :message="error" show-icon closable class="page-alert" />
+  <div ref="listTop" class="list-top"></div>
+  <nav v-if="items.length && total > pageSize" class="pager-top" aria-label="衣柜翻页">
+    <span class="pager-count">第 {{ query.page }} / {{ pageCount }} 页 · 共 {{ total }} 件</span>
+    <a-pagination :current="query.page" :page-size="pageSize" :total="total" simple :locale="pageLocale" :disabled="loading" @change="goPage($event, pageSize)" />
+  </nav>
   <GarmentCardSkeleton v-if="loading && !items.length" label="正在加载衣柜…" />
   <section v-else-if="items.length" class="garment-grid" aria-label="衣物列表" :aria-busy="loading">
     <div v-for="item in items" :key="item.id" class="search-hit">
@@ -220,10 +259,21 @@ watch(() => [query.category, query.color, query.season, imageStyle.value], debou
     <span class="empty-spark"><PlusOutlined /></span><p class="eyebrow">从一件衣服开始</p><h2>{{ hasFilters ? '没有找到这件衣物' : '你的衣柜还没有衣物' }}</h2><p>{{ hasFilters ? (searchResult?.emptyHint || '试试换一个关键词，或清除筛选条件。') : '上传单件衣物照片，处理后核对并确认，它就会出现在这里。' }}</p>
     <a-button v-if="hasFilters" class="outline-button" @click="clearFilters">清除筛选</a-button><button v-else class="outline-button" @click="router.push('/add')"><PlusOutlined /> 添加第一件衣物</button>
   </section>
-  <footer v-if="total > pageSize" class="pagination-row"><span>第 {{ query.page }} / {{ pageCount }} 页</span><div><a-button :disabled="query.page <= 1 || loading" @click="query.page--; load()">上一页</a-button><a-button :disabled="query.page >= pageCount || loading" @click="query.page++; load()">下一页</a-button></div></footer>
+  <footer v-if="items.length && (total > pageSize || (!searching && total > PAGE_SIZES[0]))" class="pager-bottom">
+    <a-pagination :current="query.page" :page-size="pageSize" :total="total" :disabled="loading" :simple="narrow" :show-size-changer="!searching && !narrow"
+      :locale="pageLocale" :page-size-options="PAGE_SIZES.map(String)" :show-quick-jumper="!narrow && pageCount > 7" :show-total="(count: number) => `共 ${count} 件`" @change="goPage" />
+    <small class="pager-hint">可用键盘 ← → 翻页</small>
+  </footer>
 </template>
 
 <style scoped>
+.list-top{height:0;scroll-margin-top:72px}
+.pager-top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 14px;color:var(--muted-copy);font-size:13px}
+.pager-bottom{display:flex;flex-direction:column;align-items:center;gap:8px;margin-top:28px}
+.pager-hint{color:var(--muted-copy);font-size:12px}
+.garment-grid[aria-busy="true"]{opacity:.5;pointer-events:none;transition:opacity .15s}
+@media(prefers-reduced-motion:reduce){.garment-grid[aria-busy="true"]{transition:none}}
+@media(max-width:767px){.pager-hint{display:none}.pager-top .pager-count{flex:1}}
 .wardrobe-heading-side{display:flex;align-items:center;gap:16px}
 .batch-bar{position:sticky;top:8px;z-index:5;display:flex;flex-wrap:wrap;align-items:center;gap:12px 16px;margin-bottom:18px;padding:12px 16px;border:1px solid var(--line);border-radius:var(--radius-lg);background:var(--surface);box-shadow:0 6px 18px #0000000f}
 .batch-count{color:var(--muted)}
