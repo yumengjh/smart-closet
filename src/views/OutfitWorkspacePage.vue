@@ -8,6 +8,7 @@ import OutfitThumbnail from '../components/OutfitThumbnail.vue'
 import OutfitReview from '../components/OutfitReview.vue'
 import BloubAvatar from '../agent/BloubAvatar.vue'
 import { useClosetStore } from '../stores/closet'
+import { isMissingOutfit } from '../domain/outfitErrors'
 import { closetApi } from '../services/api'
 import { boardSignature, workspace, createBoard, addBoard, openSavedBoard, mutateBoard, storageWarning, type WorkspaceBoard } from '../domain/outfit-workspace'
 import { normalizeScene, type Outfit, type OutfitDraft } from '../domain/outfit'
@@ -68,7 +69,15 @@ async function writeBoard(board: WorkspaceBoard, overwrite = false, copy = false
   if (!board.scene.elements.length) throw new Error(`${board.name}：请先加入贴纸。`)
   const id = copy ? undefined : overwrite ? board.sourceOutfitId : board.outfitId
   const revision = overwrite ? board.sourceRevision : board.revision
-  const result = await closetApi.saveOutfit(id || null, id ? revision ?? null : null, board.name.trim(), board.scene)
+  // A board remembers the outfit it was saved as. If that outfit is gone from the server (deleted elsewhere, or a different
+  // server), updating it fails with "not found": save the board as a new outfit instead of losing the work.
+  let result, recreated = false
+  try { result = await closetApi.saveOutfit(id || null, id ? revision ?? null : null, board.name.trim(), board.scene) }
+  catch (cause) {
+    if (!id || !isMissingOutfit(cause)) throw cause
+    result = await closetApi.saveOutfit(null, null, board.name.trim(), board.scene); recreated = true
+  }
+  if (recreated) message.warning(`「${board.name}」原来的搭配在服务器上已不存在，已另存为新搭配，内容没有丢。`)
   board.outfitId = result.id; board.revision = result.revision; board.scene = normalizeScene(result.scene); board.contentVersion++
   window.dispatchEvent(new Event('closet-outfit-saved')); board.savedSignature = boardSignature(board); board.status = '已保存'; board.error = ''; board.sourceOutfitId = undefined; board.sourceRevision = undefined
 }
