@@ -1,7 +1,7 @@
 import { shallowRef } from 'vue'
 import { arrangeOutfit, orderOutfitLayers } from '../domain/outfit-layout'
 import { closetApi } from '../services/api'
-import { createOutfitElement } from '../domain/outfit-images'
+import { artworkForGarment, createOutfitElement, loadOutfitImage } from '../domain/outfit-images'
 import { elementKey, normalizeScene, OUTFIT_VERSION, stickerLimit, type OutfitElement, type OutfitScene } from '../domain/outfit'
 import type { AgentContext, Candidate, Proposal } from './api'
 
@@ -16,10 +16,21 @@ export function pageContext(route: string): AgentContext {
   if (route.startsWith('/garment/')) return { route, garmentId: route.slice(9) }
   return { route }
 }
+// Several recommendation cards ask for the same garments at once; share one request each for a short while.
+const DETAIL_TTL_MS = 30_000
+const details = new Map<string, { at: number; promise: ReturnType<typeof closetApi.detail> }>()
+function garmentDetail(id: string) {
+  const hit = details.get(id)
+  if (hit && Date.now() - hit.at < DETAIL_TTL_MS) return hit.promise
+  const promise = closetApi.detail(id); details.set(id, { at: Date.now(), promise }); promise.catch(() => details.delete(id))
+  return promise
+}
 export async function candidateScene(candidate: Candidate, people: OutfitElement[] = []): Promise<OutfitScene> {
   const elements = people.map(item => ({ ...item }))
-  for (const id of candidate.garmentIds) {
-    const garment = await closetApi.detail(id)
+  // Fetch every garment and start loading its picture at once; only the layout below needs to go one by one.
+  const garments = await Promise.all(candidate.garmentIds.map(garmentDetail))
+  await Promise.all(garments.map(garment => loadOutfitImage(artworkForGarment(garment).url).catch(() => undefined)))
+  for (const garment of garments) {
     if (garment.status !== 'ACTIVE') throw new Error('候选衣物已不在衣柜中，请重新生成。')
     const limit = stickerLimit(elements, 'GARMENT'); if (limit) throw new Error(limit)
     elements.push(await createOutfitElement(garment, elements))

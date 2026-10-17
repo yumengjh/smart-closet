@@ -1,6 +1,7 @@
 /* The composer uses the same Ant Design theme and neutral surfaces as the wardrobe. */
 .outfit-library-page { max-width: 1440px; margin: auto; }
 .outfit-library-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px; }
+.outfit-library-tabs { margin: 0 0 20px; }
 .outfit-library-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
 .outfit-library-toolbar .ant-input-affix-wrapper { max-width: 320px; }
 .outfit-library-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 24px; }
@@ -194,6 +195,9 @@
   .outfit-library-heading h1 { font-size: 24px; }
   .outfit-library-heading > .ant-btn { padding-inline: 12px; }
   .outfit-library-actions { justify-content: flex-start; gap: 8px; }
+  .outfit-library-tabs { display: flex; }
+  .outfit-library-tabs .ant-segmented-group { width: 100%; }
+  .outfit-library-tabs .ant-segmented-item { flex: 1; }
   .outfit-library-toolbar { align-items: flex-start; flex-direction: column; gap: 10px; }
   .outfit-library-toolbar .ant-input-affix-wrapper { max-width: none; }
   .outfit-library-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px 12px; }

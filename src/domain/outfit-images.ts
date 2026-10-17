@@ -49,7 +49,14 @@ export function loadOutfitImage(url: string): Promise<HTMLImageElement> {
   return promise
 }
 
-export function transparentBounds(image: HTMLImageElement) {
+type Bounds = { x: number; y: number; width: number; height: number }
+const boundsCache = new WeakMap<HTMLImageElement, Bounds>()
+/** Scanning a full-size picture's pixels is slow, so each loaded image is measured only once. */
+export function transparentBounds(image: HTMLImageElement): Bounds {
+  const hit = boundsCache.get(image); if (hit) return hit
+  const bounds = measureBounds(image); boundsCache.set(image, bounds); return bounds
+}
+function measureBounds(image: HTMLImageElement): Bounds {
   try {
     const canvas = document.createElement('canvas')
     canvas.width = image.naturalWidth
