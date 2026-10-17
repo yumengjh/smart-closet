@@ -1,7 +1,7 @@
 import { createUuid } from './id'
 import { reactive, watch } from 'vue'
 import { recordBoardTrace } from '../agent/trace-client'
-import { registerAgentWorkspace } from './workspace-registry'
+import { listWorkspaces, registerAgentWorkspace } from './workspace-registry'
 import { normalizeScene, OUTFIT_VERSION, type Outfit, type OutfitElement, type OutfitScene } from './outfit'
 
 export const BOARD_LIMIT = 12
@@ -56,4 +56,40 @@ export function discardWorkspace(owner: string, id: string) {
   const space = spaces.get(key); if (space) { space.boards = []; space.activeId = '' }
   spaces.delete(key)
   try { localStorage.removeItem(key) } catch { /* storage blocked */ }
+}
+
+/** Where a saved outfit is already open as a 组合台, looking in `preferId` first, then in every other 画板 of the account. */
+export function findOpenOutfit(owner: string, outfitId: string, preferId = 'main'): { workspaceId: string; boardId: string } | null {
+  const ids = [preferId, ...listWorkspaces(owner).map(w => w.id).filter(id => id !== preferId)]
+  for (const id of ids) {
+    const board = workspace(owner, id).boards.find(b => b.outfitId === outfitId)
+    if (board) return { workspaceId: id, boardId: board.id }
+  }
+  return null
+}
+/**
+ * A saved outfit should be open in only one 画板. Older versions let the same outfit be opened in several, so merge them:
+ * the copy with unsaved edits wins, else the one in `keepIn`, else the first; other copies are dropped only when they carry
+ * no edits of their own (nothing is lost). Returns how many duplicates were removed.
+ */
+export function dedupeOpenOutfits(owner: string, keepIn = 'main'): number {
+  const ids = [keepIn, ...listWorkspaces(owner).map(w => w.id).filter(id => id !== keepIn)]
+  const groups = new Map<string, { space: OutfitWorkspace; board: WorkspaceBoard }[]>()
+  for (const id of ids) {
+    const space = workspace(owner, id)
+    for (const board of space.boards) if (board.outfitId) groups.set(board.outfitId, [...(groups.get(board.outfitId) || []), { space, board }])
+  }
+  let removed = 0
+  for (const copies of groups.values()) {
+    if (copies.length < 2) continue
+    const edited = (c: { board: WorkspaceBoard }) => boardSignature(c.board) !== c.board.savedSignature
+    const keeper = copies.find(edited) || copies[0]
+    for (const copy of copies) {
+      if (copy === keeper || copy.board.locked || edited(copy)) continue
+      copy.space.boards = copy.space.boards.filter(b => b.id !== copy.board.id)
+      if (copy.space.activeId === copy.board.id) copy.space.activeId = copy.space.boards[0]?.id || ''
+      removed++
+    }
+  }
+  return removed
 }
