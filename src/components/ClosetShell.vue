@@ -5,8 +5,9 @@ import { theme as antTheme } from 'ant-design-vue'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import {
   AppstoreOutlined, CheckCircleOutlined, PictureOutlined, PlusOutlined,
-  SettingOutlined, LogoutOutlined, SkinOutlined,
+  SettingOutlined, LogoutOutlined, SkinOutlined, MenuFoldOutlined, MenuUnfoldOutlined,
 } from '@ant-design/icons-vue'
+import { readCollapsed, saveCollapsed, sidebarWidth } from '../shell/sidebarPreference'
 import { useClosetStore } from '../stores/closet'
 import { useThemeStore } from '../stores/theme'
 import { antTokens, antComponentTokens } from '../theme/tokens'
@@ -40,6 +41,10 @@ const closetTheme = computed(() => ({
   token: antTokens(appearance.isDark ? 'dark' : 'light'),
   components: antComponentTokens(appearance.isDark ? 'dark' : 'light'),
 }))
+// Desktop sidebar: expanded (icons + names) or collapsed (icons only); remembered on this browser.
+const collapsed = ref(readCollapsed())
+function toggleSidebar() { collapsed.value = !collapsed.value; saveCollapsed(collapsed.value) }
+const frameStyle = computed(() => ({ '--sidebar-w': `${sidebarWidth(collapsed.value)}px` }))
 const isLogin = computed(() => route.path === '/login')
 const isOutfitEditor = computed(() => route.path.startsWith('/outfits/'))
 const navItems = [
@@ -104,23 +109,28 @@ async function signOut() {
     <a-app>
       <div class="route-progress" :class="{ active: showProgress }" role="progressbar" aria-label="页面加载中" :aria-hidden="!showProgress"><span></span></div>
       <div v-if="isLogin" class="login-frame"><RouterView /></div>
-      <div v-else-if="closet.isSignedIn && (!closet.user?.mustChangePassword || route.path === '/settings')" class="app-frame" :class="{ 'outfit-editing': isOutfitEditor }">
-        <aside class="sidebar">
+      <div v-else-if="closet.isSignedIn && (!closet.user?.mustChangePassword || route.path === '/settings')" class="app-frame" :class="{ 'outfit-editing': isOutfitEditor, 'sidebar-collapsed': collapsed }" :style="frameStyle">
+        <aside class="sidebar" :class="{ collapsed }">
           <RouterLink :to="closet.user?.mustChangePassword ? '/settings' : '/wardrobe'" class="brand-lockup" aria-label="鱼搭首页">
-            <img class="brand-logo" src="/yuda-logo.png" alt="" />
-            <span><strong>鱼搭</strong><small>数字衣橱</small></span>
+            <span class="brand-mark"><img src="/yuda-logo-192.png" alt="" /></span>
+            <span class="brand-text"><strong>鱼搭</strong><small>数字衣橱</small></span>
           </RouterLink>
-          <RouterLink v-if="!closet.user?.mustChangePassword" to="/add" class="sidebar-add" @pointerenter="prefetch('/add')"><PlusOutlined /> 添加衣物</RouterLink><p class="nav-label">我的空间</p>
+          <a-tooltip placement="right" :title="collapsed ? '添加衣物' : ''"><RouterLink v-if="!closet.user?.mustChangePassword" to="/add" class="sidebar-add" aria-label="添加衣物" @pointerenter="prefetch('/add')"><PlusOutlined /><span class="side-text">添加衣物</span></RouterLink></a-tooltip>
           <nav class="main-nav" aria-label="主导航">
-            <RouterLink v-for="item in visibleNavItems" :key="item.path" :to="item.path" class="nav-link" :class="{ active: isNavActive(item.path), pending: pendingPath === item.path }" @pointerenter="prefetch(item.path)" @focus="prefetch(item.path)">
-              <component :is="item.icon" /><span>{{ item.label }}</span>
-              <span v-if="item.path === '/pending' && closet.pendingCount" class="nav-count">{{ closet.pendingCount }}</span>
-              <span v-if="item.path === '/tasks' && closet.taskCount" class="nav-count quiet">{{ closet.taskCount }}</span>
-            </RouterLink>
+            <a-tooltip v-for="item in visibleNavItems" :key="item.path" placement="right" :title="collapsed ? item.label : ''">
+              <RouterLink :to="item.path" class="nav-link" :class="{ active: isNavActive(item.path), pending: pendingPath === item.path }" :aria-label="item.label" @pointerenter="prefetch(item.path)" @focus="prefetch(item.path)">
+                <component :is="item.icon" /><span class="side-text">{{ item.label }}</span>
+                <span v-if="item.path === '/pending' && closet.pendingCount" class="nav-count">{{ closet.pendingCount > 99 ? '99+' : closet.pendingCount }}</span>
+                <span v-if="item.path === '/tasks' && closet.taskCount" class="nav-count quiet">{{ closet.taskCount > 99 ? '99+' : closet.taskCount }}</span>
+              </RouterLink>
+            </a-tooltip>
           </nav>
+          <a-tooltip placement="right" :title="collapsed ? '展开侧栏' : '收起侧栏'">
+            <a-button type="text" class="sidebar-toggle" :aria-label="collapsed ? '展开侧栏' : '收起侧栏'" :aria-expanded="!collapsed" @click="toggleSidebar"><MenuUnfoldOutlined v-if="collapsed" /><MenuFoldOutlined v-else /><span class="side-text">收起侧栏</span></a-button>
+          </a-tooltip>
           <div class="profile-row">
-            <span class="avatar">{{ closet.user?.username?.slice(0, 1).toUpperCase() }}</span>
-            <span class="profile-name"><strong>{{ closet.user?.username }}</strong><small>我的衣橱</small></span>
+            <a-tooltip placement="right" :title="collapsed ? (closet.user?.username || '') : ''"><span class="avatar">{{ closet.user?.username?.slice(0, 1).toUpperCase() }}</span></a-tooltip>
+            <span class="profile-name side-text"><strong>{{ closet.user?.username }}</strong><small>我的衣橱</small></span>
             <a-tooltip title="退出登录">
               <a-button type="text" shape="circle" danger class="sign-out" aria-label="退出登录" @click="signOut"><template #icon><LogoutOutlined /></template></a-button>
             </a-tooltip>
@@ -145,6 +155,32 @@ async function signOut() {
 </template>
 
 <style scoped>
+/* Brand: the wide graffiti mark sits on a soft tile so it reads as a logo, not a stray sticker. */
+.brand-lockup { display: flex; align-items: center; gap: 12px; padding: 0 6px; width: 100%; min-width: 0; }
+.brand-mark { display: grid; place-items: center; flex: none; width: 44px; height: 44px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-alt); }
+.brand-mark img { display: block; width: 34px; height: 28px; object-fit: contain; }
+.brand-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.2; }
+.brand-text strong { font-size: 20px; font-weight: 650; letter-spacing: .02em; }
+.brand-text small { margin-top: 3px; font-size: 11px; color: var(--muted); letter-spacing: .08em; }
+.sidebar-toggle.ant-btn { display: flex; align-items: center; justify-content: flex-start; gap: 12px; width: 100%; height: 40px; margin: 8px 0 10px; padding: 0 12px; color: var(--muted); border-radius: var(--radius-md); }
+.sidebar-toggle.ant-btn:hover { background: var(--paper); color: var(--ink); }
+.sidebar-toggle .anticon { font-size: 16px; width: 20px; flex: 0 0 20px; }
+.sidebar-toggle.ant-btn > .anticon + span { margin-inline-start: 0; }
+.sidebar { transition: width .2s ease, padding .2s ease; }
+.main-area { transition: margin-left .2s ease; }
+@media (min-width: 1024px) {
+  .app-frame .sidebar { width: var(--sidebar-w, 224px); }
+  .app-frame .main-area { margin-left: var(--sidebar-w, 224px); }
+  .sidebar.collapsed { padding: 22px 10px 14px; align-items: stretch; overflow-x: hidden; }
+  .sidebar.collapsed .side-text, .sidebar.collapsed .brand-text { display: none; }
+  .sidebar.collapsed .brand-lockup { justify-content: center; padding: 0; }
+  .sidebar.collapsed .sidebar-add { margin: 22px 0 18px; }
+  .sidebar.collapsed .nav-link { position: relative; justify-content: center; padding: 0; gap: 0; }
+  .sidebar.collapsed .nav-link .nav-count { position: absolute; top: 4px; right: 6px; min-width: 16px; height: 16px; padding: 0 4px; margin: 0; font-size: 10px; line-height: 16px; }
+  .sidebar.collapsed .sidebar-toggle.ant-btn { justify-content: center; padding: 0; gap: 0; }
+  .sidebar.collapsed .profile-row { flex-direction: column; gap: 8px; padding: 14px 0 0; }
+}
+@media (prefers-reduced-motion: reduce) { .sidebar, .main-area { transition: none; } }
 .route-progress { position: fixed; z-index: 2000; inset: 0 0 auto; height: 2px; overflow: hidden; opacity: 0; pointer-events: none; transition: opacity .2s; }
 .route-progress.active { opacity: 1; }
 .route-progress span { position: absolute; inset: 0 auto 0 0; width: 40%; background: var(--accent); border-radius: 0 2px 2px 0; transform: translateX(-100%); }

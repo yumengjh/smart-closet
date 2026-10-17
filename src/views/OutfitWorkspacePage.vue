@@ -348,7 +348,7 @@ onUnmounted(() => { endGlowPreview(); window.removeEventListener('resize', resiz
 .workspace-focus.agent-operating { outline: 1px solid #a9b9e9; outline-offset: -1px; }
 @keyframes workspace-aurora-breathe { 0%, 100% { opacity: .38; transform: scale(1.015); } 50% { opacity: .9; transform: scale(1); } }
 @media(prefers-reduced-motion: reduce) { .workspace-aurora::after { animation: none; opacity: .6; transform: none; will-change: auto; } }
-@media(max-width: 1279px) and (min-width: 1024px) { .workspace-runbar { left: 224px; right: 256px; } }
+@media(max-width: 1279px) and (min-width: 1024px) { .workspace-runbar { left: var(--sidebar-w, 224px); right: 256px; } }
 @media(max-width: 1023px) {
   .workspace-heading { gap: 4px; padding: 6px 8px; }
   .workspace-heading > a > .ant-btn, .workspace-actions > .ant-btn, .workspace-actions > .ant-dropdown-trigger { padding: 0; width: 36px; }

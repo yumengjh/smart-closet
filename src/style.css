@@ -52,9 +52,8 @@ h3 { font-size: 15px; line-height: 1.5; font-weight: 600; }
 .brand-lockup strong { display: block; font-size: 24px; font-weight: 650; line-height: 1.2; }
 .brand-lockup small { display: block; margin-top: 3px; color: var(--muted); font-size: 12px; }
 .brand-logo { display: block; width: 44px; height: 36px; flex: none; object-fit: contain; }
-.sidebar-add { display: flex; justify-content: center; align-items: center; gap: 9px; min-height: 36px; margin: 32px 0 24px; border-radius: var(--radius-md); color: var(--action-fg); background: var(--action-bg); font-weight: 500; }
+.sidebar-add { display: flex; justify-content: center; align-items: center; gap: 9px; min-height: 40px; margin: 26px 0 20px; border-radius: var(--radius-md); color: var(--action-fg); background: var(--action-bg); font-weight: 500; }
 .sidebar-add:hover { background: var(--action-hover); color: var(--action-fg); }
-.nav-label { margin: 0 12px 10px; color: var(--muted); font-size: 12px; }
 .main-nav { display: grid; gap: 5px; }
 .nav-link { display: flex; min-height: 46px; align-items: center; gap: 12px; padding: 0 12px; border-radius: var(--radius-md); color: var(--muted-strong); font-size: 14px; transition: background .18s, color .18s; }
 .nav-link .anticon { font-size: 19px; }

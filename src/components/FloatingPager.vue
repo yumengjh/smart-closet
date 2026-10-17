@@ -18,7 +18,7 @@ const emit = defineEmits<{ previous: []; next: [] }>()
 </template>
 
 <style scoped>
-.floating-pager { position: fixed; z-index: 25; bottom: 20px; left: calc(50% + 112px); transform: translateX(-50%); display: flex; align-items: center; gap: 6px; padding: 6px; border: 1px solid var(--line); border-radius: 999px; background: var(--overlay, #fffffff0); box-shadow: 0 10px 30px #00000024; backdrop-filter: blur(14px); }
+.floating-pager { position: fixed; z-index: 25; bottom: 20px; left: calc(50% + var(--sidebar-w, 224px) / 2); transform: translateX(-50%); display: flex; align-items: center; gap: 6px; padding: 6px; border: 1px solid var(--line); border-radius: 999px; background: var(--overlay, #fffffff0); box-shadow: 0 10px 30px #00000024; backdrop-filter: blur(14px); }
 .fp-step.ant-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 40px; min-width: 40px; padding: 0 16px; border: 0; background: transparent; font-weight: 500; }
 .fp-step.ant-btn:not(:disabled):hover { background: var(--surface-alt); }
 .fp-step.ant-btn:focus:not(:focus-visible) { outline: none; box-shadow: none; }
