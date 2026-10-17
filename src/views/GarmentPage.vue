@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import FloatingPager from '../components/FloatingPager.vue'
 import GarmentProcessingStatus from '../components/GarmentProcessingStatus.vue'
 import { createUuid } from '../domain/id'
 import { quickApi } from '../services/quickIntake'
@@ -7,7 +8,7 @@ import { computed, onMounted, onUnmounted, reactive, ref, toRaw, watch } from 'v
 import GarmentRecommendPanel from '../recommend/GarmentRecommendPanel.vue'
 import SimilarGarmentsPanel from '../similar/SimilarGarmentsPanel.vue'
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
-import { LeftOutlined, RightOutlined, ArrowLeftOutlined, CheckOutlined, DeleteOutlined, ReloadOutlined, RollbackOutlined, PictureOutlined, StopOutlined, EyeOutlined, InfoCircleOutlined, EditOutlined, SettingOutlined, HistoryOutlined, SkinOutlined, ScanOutlined, ThunderboltOutlined, ScissorOutlined, MoreOutlined } from '@ant-design/icons-vue'
+import { ArrowLeftOutlined, CheckOutlined, DeleteOutlined, ReloadOutlined, RollbackOutlined, PictureOutlined, StopOutlined, EyeOutlined, InfoCircleOutlined, EditOutlined, SettingOutlined, HistoryOutlined, SkinOutlined, ScanOutlined, ThunderboltOutlined, ScissorOutlined, MoreOutlined } from '@ant-design/icons-vue'
 import { App as AntApp } from 'ant-design-vue'
 import { closetApi, fieldLabels, usingMocks, type Garment, type ClosetTask } from '../services/api'
 import { metadataPatch, rebaseMetadata, type MetadataField } from '../domain/metadata'
@@ -112,6 +113,19 @@ const neighbours = computed(() => {
 })
 const canStep = computed(() => !busy.value && !dirty.value && !processing.value)
 function step(id: string | undefined) { if (id && canStep.value) { playSound('tap'); void router.replace(`/garment/${id}`) } }
+// Phones: swipe sideways to move to the neighbouring garment (clearly horizontal, long enough, and not on a control).
+let touch: { x: number; y: number; at: number } | null = null
+function swipeStart(event: TouchEvent) {
+  const target = event.target as HTMLElement | null, point = event.touches[0]
+  touch = event.touches.length === 1 && point && !target?.closest('input, textarea, select, .ant-select, .ant-slider, .ant-modal-wrap, .image-stage-picker, .garment-canvas img, [role="slider"]') ? { x: point.clientX, y: point.clientY, at: Date.now() } : null
+}
+function swipeEnd(event: TouchEvent) {
+  const start = touch, end = event.changedTouches[0]; touch = null
+  if (!start || !end || !detailMode.value || dirty.value || Date.now() - start.at > 700) return
+  const dx = end.clientX - start.x, dy = end.clientY - start.y
+  if (Math.abs(dx) < 80 || Math.abs(dx) < Math.abs(dy) * 2.2) return
+  step(dx > 0 ? neighbours.value?.previous : neighbours.value?.next)
+}
 function stepKeys(event: KeyboardEvent) {
   if ((event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
   if ((event.target as HTMLElement | null)?.closest('input, textarea, select, [contenteditable="true"], .ant-select, .ant-radio-group, .ant-segmented, .ant-slider')) return
@@ -305,16 +319,13 @@ watch(() => route.query.task, async () => { await load(); schedulePoll() })
     <p class="quiet-copy">可以补充实物结构，帮助区分拼色、假两件和分开的衣物；看不清的标签信息仍会留空。</p>
   </a-modal>
   <a-modal v-model:open="enhanceOpen" title="独立增强图片" ok-text="开始增强" cancel-text="取消" :confirm-loading="busy === 'enhance'" @ok="enhanceQuick"><p>使用一次增强额度。原图、基础图和历史结果保留，成功后会采用新图；可在展示图片中回退。AI 生成可能包含推测细节。</p><a-textarea v-model:value="enhanceFeedback" :maxlength="1000" :rows="4" placeholder="可选：描述人物残留、边缘损坏、文字错误等问题" /></a-modal>
-  <div class="detail-page garment-workspace">
+  <div class="detail-page garment-workspace" @touchstart.passive="swipeStart" @touchend.passive="swipeEnd">
     <div class="workspace-toolbar">
       <a-button type="text" @click="panel === 'result' ? leaveWorkspace() : returnResult(true)"><ArrowLeftOutlined /> {{ panel !== 'result' ? '返回处理结果' : source.batchId ? '返回本批次' : garment?.status === 'ACTIVE' ? '返回衣柜' : '所有未入柜衣物' }}</a-button>
-      <span v-if="neighbours && detailMode" class="step-nav" role="group" aria-label="在本页衣物间切换">
-        <a-tooltip :title="canStep ? '上一件（←）' : '先保存或放弃当前修改'"><a-button type="text" :disabled="!neighbours.previous || !canStep" aria-label="上一件" @click="step(neighbours.previous)"><LeftOutlined /></a-button></a-tooltip>
-        <small>{{ neighbours.position }} / {{ neighbours.count }}</small>
-        <a-tooltip :title="canStep ? '下一件（→）' : '先保存或放弃当前修改'"><a-button type="text" :disabled="!neighbours.next || !canStep" aria-label="下一件" @click="step(neighbours.next)"><RightOutlined /></a-button></a-tooltip>
-      </span>
       <a-tooltip title="处理记录与后台处理状态"><a-button v-if="garment && panel !== 'history' && !completed && !detailMode" type="text" aria-label="查看处理记录与后台处理状态" @click="openPanel('history')"><HistoryOutlined /></a-button></a-tooltip>
     </div>
+    <FloatingPager v-if="neighbours && detailMode && !dirty" :label="`${neighbours.position} / ${neighbours.count}`" :has-previous="Boolean(neighbours.previous) && canStep" :has-next="Boolean(neighbours.next) && canStep"
+      previous-text="上一件" next-text="下一件" :busy="loading" @previous="step(neighbours.previous)" @next="step(neighbours.next)" />
     <a-skeleton v-if="loading" active :paragraph="{ rows: 8 }" />
     <a-alert v-else-if="!garment" type="error" :message="connectionError" show-icon><template #action><a-button @click="refresh">重试</a-button></template></a-alert>
     <template v-else>
@@ -447,7 +458,7 @@ watch(() => route.query.task, async () => { await load(); schedulePoll() })
 </template>
 
 <style scoped>
-.step-nav{display:inline-flex;align-items:center;gap:2px;margin-left:auto;margin-right:8px;color:var(--muted-copy)}.step-nav small{min-width:44px;text-align:center;font-variant-numeric:tabular-nums}.workspace-toolbar .step-nav .ant-btn-text{margin-left:0}
+
 .garment-workspace{display:grid;gap:20px;max-width:1320px}.workspace-toolbar{margin:0}.workspace-heading{margin:0;align-items:center}.workspace-heading h1{font-size:26px;margin:0 0 8px}.page-subtitle{line-height:1.8}.garment-layout{display:grid;gap:24px;align-items:stretch;min-width:0}.result-layout,.editor-layout{grid-template-columns:minmax(280px,.85fr) minmax(0,1.55fr)}.processing-layout,.image-layout{grid-template-columns:minmax(0,1.6fr) minmax(300px,1fr)}.garment-surface{padding:24px;border:1px solid var(--line);border-radius:var(--radius-lg);background:var(--surface);min-width:0;display:flex;flex-direction:column;gap:20px}.garment-surface h2{font-size:17px;margin:0}.garment-surface h3{font-size:15px;margin:0}.section-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px}.section-heading h2,.section-heading h3{margin:0}.section-divider{border-top:1px solid var(--line);padding-top:24px}.garment-canvas{background:var(--surface-alt);border-radius:var(--radius-md);display:flex;align-items:center;justify-content:center;min-width:0;height:360px;overflow:hidden}.garment-canvas img{width:100%;height:100%;object-fit:contain;padding:20px}.main-preview .garment-canvas{height:clamp(220px,calc(100dvh - 560px),360px)}.preview-caption h3,.editor-preview h3{font-size:20px;line-height:1.5}.preview-caption p,.editor-preview>p,.quiet-copy,.garment-surface p,.garment-surface small{font-size:13px;color:var(--muted-copy);line-height:1.8;margin:0}.main-preview>.ant-btn:last-child{margin-top:auto}.summary-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;margin:0}.summary-fields>div{display:flex;gap:12px;min-width:0;align-items:baseline}.summary-fields dt{font-size:13px;color:var(--muted-copy);flex:none}.summary-fields dd{font-size:14px;margin:0;overflow-wrap:anywhere}.summary-help{margin-top:auto;align-self:flex-start;white-space:normal;height:auto!important;text-align:left;line-height:1.8}.metadata-editor{gap:24px}.advanced-actions{display:flex;gap:12px;flex-wrap:wrap}.advanced-actions>.ant-btn{flex:1}.comparison-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px;min-width:0}.comparison-grid figure{margin:0;min-width:0;display:grid;gap:12px}.comparison-grid figcaption{font-size:13px;color:var(--muted-copy)}.image-stage-picker{max-width:100%;overflow-x:auto}.display-options{display:grid;gap:12px}.display-options :deep(.ant-radio-wrapper){margin:0;padding:16px;border:1px solid var(--line);border-radius:var(--radius-sm);align-items:center;min-height:88px}.display-options :deep(.ant-radio-wrapper-checked){border-color:var(--ink);background:var(--selection-bg)}.display-options :deep(.ant-radio-wrapper>span:last-child){display:flex;gap:12px;align-items:center;min-width:0;flex:1}.display-options img{width:56px;height:56px;object-fit:contain;background:var(--surface-alt);border-radius:var(--radius-sm);flex:none}.display-options small{display:block;margin-top:4px}.image-options .section-divider{display:grid;gap:12px}.recovery-options .section-divider{display:grid;gap:12px}.live-progress :deep(.progress-panel){padding:0;border:0;border-radius:0}.live-progress>.ant-btn:first-of-type{margin-top:auto}.task-history{display:grid;gap:24px}.workspace-actionbar{position:sticky;bottom:16px;z-index:5;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 20px;border:1px solid var(--line);border-radius:var(--radius-lg);background:var(--surface);box-shadow:0 4px 20px #00000008}.actionbar-status{display:flex;align-items:center;gap:4px;min-width:0;font-size:12px;color:var(--muted-copy)}.actionbar-buttons{display:flex;gap:12px;align-items:center;flex-wrap:wrap;justify-content:flex-end}.actionbar-buttons>.ant-btn-primary{min-width:180px}.garment-workspace :deep(.ant-btn){min-height:36px;display:inline-flex;align-items:center;justify-content:center;gap:6px}.garment-workspace :deep(.ant-tag){margin:0}.help-copy{max-width:320px;font-size:14px;line-height:1.8}.workspace-complete{display:flex;flex-direction:column;align-items:center;gap:20px;text-align:center;max-width:680px;width:100%;justify-self:center;padding:32px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-lg)}.workspace-complete>img{width:280px;max-width:100%;height:280px;object-fit:contain;background:var(--surface-alt);border-radius:var(--radius-md)}.complete-icon{color:var(--success);font-size:26px}.workspace-complete>div{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}.workspace-complete p{color:var(--muted-copy);font-size:13px}.modal-intro{margin-bottom:24px}.modal-actions{display:flex;justify-content:flex-end;margin-top:24px}
 @media(min-width:1024px){.workspace-actionbar{padding-right:72px}}
 @media(max-width:1000px){.processing-layout,.image-layout{grid-template-columns:minmax(0,1.2fr) minmax(280px,1fr)}.comparison-grid{gap:12px}.comparison-grid .garment-canvas{height:280px}.garment-surface{padding:20px}.actionbar-status>span{max-width:220px}.actionbar-buttons>.ant-btn-primary{min-width:140px}}

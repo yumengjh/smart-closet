@@ -6,6 +6,7 @@ import { onBeforeRouteLeave, useRouter } from 'vue-router'
 import { closetApi, type Garment, type ListQuery, type SearchResult } from '../services/api'
 import { useClosetStore } from '../stores/closet'
 import GarmentCard from '../components/GarmentCard.vue'
+import FloatingPager from '../components/FloatingPager.vue'
 import GarmentCardSkeleton from '../components/GarmentCardSkeleton.vue'
 import { isProcessing } from '../domain/workflow'
 import { DEFAULT_SORT, SORT_OPTIONS, readSort, saveSort, sortLabel } from '../wardrobe/sort'
@@ -39,6 +40,7 @@ const picker = ref<HTMLInputElement | null>(null)
 const searching = computed(() => Boolean(query.q.trim() || imageStyle.value || queryImage.value))
 const modelNotice = computed(() => imageModelNotice(searchResult.value?.imageModel, Boolean(queryImage.value)))
 const pageSize = computed(() => searching.value ? 20 : query.size)
+const showFloat = computed(() => !selecting.value && total.value > pageSize.value && items.value.length > 0)
 const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
 const tags = computed(() => searching.value && searchResult.value ? buildTags(searchResult.value.parsed, searchResult.value.imageStyle) : [])
 const hasFilters = computed(() => Boolean(query.q || query.category || query.color || query.season || imageStyle.value || queryImage.value))
@@ -243,12 +245,8 @@ watch(() => [query.category, query.color, query.season, imageStyle.value], debou
   <a-alert v-if="batchResult" :type="batchResult.type" :message="batchResult.message" :description="batchResult.description || undefined" show-icon closable class="page-alert batch-result" @close="batchResult = null"><template #action><a-button size="small" @click="router.push('/tasks')">查看任务</a-button></template></a-alert>
   <a-alert v-if="error" type="error" :message="error" show-icon closable class="page-alert" />
   <div ref="listTop" class="list-top"></div>
-  <nav v-if="items.length && total > pageSize" class="pager-top" aria-label="衣柜翻页">
-    <span class="pager-count">第 {{ query.page }} / {{ pageCount }} 页 · 共 {{ total }} 件</span>
-    <a-pagination :current="query.page" :page-size="pageSize" :total="total" simple :locale="pageLocale" :disabled="loading" @change="goPage($event, pageSize)" />
-  </nav>
   <GarmentCardSkeleton v-if="loading && !items.length" label="正在加载衣柜…" />
-  <section v-else-if="items.length" class="garment-grid" aria-label="衣物列表" :aria-busy="loading">
+  <section v-else-if="items.length" class="garment-grid" :class="{ 'has-float': showFloat }" aria-label="衣物列表" :aria-busy="loading">
     <div v-for="item in items" :key="item.id" class="search-hit">
       <GarmentCard :garment="item" :selectable="selecting" :selected="selected.has(item.id)" @toggle="toggle(item.id)" />
       <p v-if="searching && searchResult?.reasons[item.id]?.length" class="search-reasons" :title="searchResult.reasons[item.id].join(' · ')">{{ searchResult.reasons[item.id].join(' · ') }}</p>
@@ -259,6 +257,7 @@ watch(() => [query.category, query.color, query.season, imageStyle.value], debou
     <span class="empty-spark"><PlusOutlined /></span><p class="eyebrow">从一件衣服开始</p><h2>{{ hasFilters ? '没有找到这件衣物' : '你的衣柜还没有衣物' }}</h2><p>{{ hasFilters ? (searchResult?.emptyHint || '试试换一个关键词，或清除筛选条件。') : '上传单件衣物照片，处理后核对并确认，它就会出现在这里。' }}</p>
     <a-button v-if="hasFilters" class="outline-button" @click="clearFilters">清除筛选</a-button><button v-else class="outline-button" @click="router.push('/add')"><PlusOutlined /> 添加第一件衣物</button>
   </section>
+  <FloatingPager v-if="showFloat" :label="`${query.page} / ${pageCount}`" :hint="narrow ? '' : `共 ${total} 件`" :has-previous="query.page > 1" :has-next="query.page < pageCount" previous-text="上一页" next-text="下一页" :busy="loading" @previous="stepPage(-1)" @next="stepPage(1)" />
   <footer v-if="items.length && (total > pageSize || (!searching && total > PAGE_SIZES[0]))" class="pager-bottom">
     <a-pagination :current="query.page" :page-size="pageSize" :total="total" :disabled="loading" :simple="narrow" :show-size-changer="!searching && !narrow"
       :locale="pageLocale" :page-size-options="PAGE_SIZES.map(String)" :show-quick-jumper="!narrow && pageCount > 7" :show-total="(count: number) => `共 ${count} 件`" @change="goPage" />
@@ -268,12 +267,12 @@ watch(() => [query.category, query.color, query.season, imageStyle.value], debou
 
 <style scoped>
 .list-top{height:0;scroll-margin-top:72px}
-.pager-top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 14px;color:var(--muted-copy);font-size:13px}
-.pager-bottom{display:flex;flex-direction:column;align-items:center;gap:8px;margin-top:28px}
+.garment-grid.has-float{padding-bottom:8px}
+.pager-bottom{display:flex;flex-direction:column;align-items:center;gap:8px;margin:28px 0 84px}
 .pager-hint{color:var(--muted-copy);font-size:12px}
 .garment-grid[aria-busy="true"]{opacity:.5;pointer-events:none;transition:opacity .15s}
 @media(prefers-reduced-motion:reduce){.garment-grid[aria-busy="true"]{transition:none}}
-@media(max-width:767px){.pager-hint{display:none}.pager-top .pager-count{flex:1}}
+@media(max-width:767px){.pager-hint{display:none}.pager-bottom{margin-bottom:56px}}
 .wardrobe-heading-side{display:flex;align-items:center;gap:16px}
 .batch-bar{position:sticky;top:8px;z-index:5;display:flex;flex-wrap:wrap;align-items:center;gap:12px 16px;margin-bottom:18px;padding:12px 16px;border:1px solid var(--line);border-radius:var(--radius-lg);background:var(--surface);box-shadow:0 6px 18px #0000000f}
 .batch-count{color:var(--muted)}
