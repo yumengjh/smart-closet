@@ -52,6 +52,10 @@ function moreAction({ key }: { key: string | number }) {
 }
 const currentRun = computed(() => canvasExecution.workspaceId === space.value.id && !!canvasExecution.runId)
 const selection = computed(() => checked.value.length ? space.value.boards.filter(b => checked.value.includes(b.id)) : active.value ? [active.value] : [])
+// While editing one board ("聚焦"), Save means that board, whatever other boards were ticked in the overview. Ticked boards only
+// decide what a batch save does from the overview; otherwise a leftover tick (e.g. an Agent's board) would be saved instead of
+// the board being edited, and the new board would appear impossible to save.
+const saveTargets = computed(() => focus.value ? (active.value ? [active.value] : []) : selection.value)
 const surfaceStyle = computed(() => ({ transform: `translate(${space.value.camera.x}px, ${space.value.camera.y}px) scale(${space.value.camera.scale})` }))
 let drag: { id: number; x: number; y: number; left: number; top: number } | undefined
 function selectBoard(board: WorkspaceBoard, edit = false) { editor.value?.flush(); space.value.activeId = board.id; if (currentRun.value && canvasExecution.boardId !== board.id) canvasExecution.following = false; if (edit) focus.value = true; playSound('tap') }
@@ -81,7 +85,7 @@ async function writeBoard(board: WorkspaceBoard, overwrite = false, copy = false
   board.outfitId = result.id; board.revision = result.revision; board.scene = normalizeScene(result.scene); board.contentVersion++
   window.dispatchEvent(new Event('closet-outfit-saved')); board.savedSignature = boardSignature(board); board.status = '已保存'; board.error = ''; board.sourceOutfitId = undefined; board.sourceRevision = undefined
 }
-function confirmSave(boards = selection.value) {
+function confirmSave(boards = saveTargets.value) {
   editor.value?.flush()
   const pending = boards.filter(b => !b.locked && b.scene.elements.length && boardSignature(b) !== b.savedSignature)
   if (!pending.length) { message.info('所选画板已保存、正在操作或仍为空。'); return Promise.resolve() }
@@ -233,7 +237,7 @@ onUnmounted(() => { endGlowPreview(); window.removeEventListener('resize', resiz
           <a-menu-item v-if="active?.sourceOutfitId && !active.outfitId" key="overwrite" :disabled="!!active.locked">覆盖原搭配…</a-menu-item>
           <a-menu-item v-if="sessionId" key="discard-temporary" danger :disabled="!space.boards.length || !!currentRun"><CloseOutlined /> 丢弃整个临时搭台…</a-menu-item><a-menu-divider /><a-menu-item key="preview"><AimOutlined /> 预览 AI 光晕</a-menu-item><a-menu-item key="sound"><SoundOutlined v-if="soundEnabled" /><AudioMutedOutlined v-else />{{ soundEnabled ? '关闭音效' : '开启音效' }}</a-menu-item>
         </a-menu></template></a-dropdown>
-        <a-button type="primary" class="workspace-save" :loading="saving" :disabled="!selection.length || selection.every(b => !!b.locked || !b.scene.elements.length)" @click="confirmSave().catch(() => {})"><SaveOutlined /><span>{{ checked.length ? `保存 ${checked.length} 套` : '保存' }}</span></a-button>
+        <a-button type="primary" class="workspace-save" :loading="saving" :disabled="!saveTargets.length || saveTargets.every(b => !!b.locked || !b.scene.elements.length)" @click="confirmSave().catch(() => {})"><SaveOutlined /><span>{{ !focus && checked.length ? `保存 ${checked.length} 套` : '保存' }}</span></a-button>
       </div>
     </header>
     <div v-if="storageWarning.text || error" class="workspace-notice"><a-alert type="warning" show-icon closable :message="storageWarning.text || error" @close="error = ''" /></div>
