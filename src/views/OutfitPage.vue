@@ -30,6 +30,7 @@ import OutfitPersonPicker from '../components/OutfitPersonPicker.vue'
 import { createPersonElement, type PersonCatalog, type PersonPart } from '../domain/person-stickers'
 import OutfitLayers from '../components/OutfitLayers.vue'
 import RecommendationStrip from '../recommend/RecommendationStrip.vue'
+import TodayTeaser from '../recommend/TodayTeaser.vue'
 import ExplainButton from '../recommend/ExplainButton.vue'
 import { recommendApi } from '../recommend/api'
 import { wornLabel as formatWorn } from '../recommend/format'
@@ -1012,6 +1013,7 @@ defineExpose({ flush: persistDraft, exportPng })
     <a-segmented v-model:value="libraryTab" class="outfit-library-tabs" aria-label="搭配视图" :options="[{ value: 'mine', label: saved.length ? `我的搭配 · ${saved.length}` : '我的搭配' }, { value: 'today', label: '今天穿什么' }]" />
     <RecommendationStrip v-if="todayVisited" v-show="libraryTab === 'today'" />
     <div v-show="libraryTab === 'mine'">
+    <TodayTeaser v-if="saved.length" @open="libraryTab = 'today'" />
     <a-alert v-if="error" type="error" show-icon :message="error" class="outfit-alert"><template #action><a-button @click="loadLibrary">重新加载</a-button></template></a-alert>
     <a-skeleton v-if="pageLoading" active :paragraph="{ rows: 7 }" />
     <template v-else-if="saved.length">
