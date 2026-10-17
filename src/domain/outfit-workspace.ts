@@ -1,6 +1,7 @@
 import { createUuid } from './id'
 import { reactive, watch } from 'vue'
 import { recordBoardTrace } from '../agent/trace-client'
+import { listWorkspaces, registerAgentWorkspace } from './workspace-registry'
 import { normalizeScene, OUTFIT_VERSION, type Outfit, type OutfitElement, type OutfitScene } from './outfit'
 
 export const BOARD_LIMIT = 12
@@ -18,11 +19,12 @@ export function createBoard(name = '未命名搭配', scene: OutfitScene = { ver
   return { id, name, scene: normalizeScene(scene), contentVersion: 0, revision: null, savedSignature: '', selectedIds: [], undo: [], redo: [], zoom: 1, status: '草稿' }
 }
 export function addBoard(space: OutfitWorkspace, board: WorkspaceBoard) {
-  if (space.boards.length >= BOARD_LIMIT) throw new Error('工作区最多十二块画板，请先保存并关闭部分画板。')
+  if (space.boards.length >= BOARD_LIMIT) throw new Error('工作区最多十二个组合台，请先保存并关闭部分组合台。')
   space.boards.push(board); space.activeId = board.id
 }
 export function workspace(owner: string, id = 'main'): OutfitWorkspace {
   const key = `yixu.workspace.v1:${owner}:${id}`
+  registerAgentWorkspace(owner, id)
   const existing = spaces.get(key); if (existing) return existing
   let saved: OutfitWorkspace | undefined
   try { const value = JSON.parse(localStorage.getItem(key) || 'null'); if (value?.owner === owner && value.id === id && Array.isArray(value.boards)) saved = value } catch {}
@@ -47,4 +49,47 @@ export function mutateBoard(board: WorkspaceBoard, scene: OutfitScene, record = 
   board.scene = normalizeScene(scene); board.contentVersion++; board.error = ''
   if (!board.locked) board.status = '草稿'
   if (record && board.traceSessionId && board.traceOwner) recordBoardTrace(board.traceOwner, board.traceSessionId, board.id, source, before, board.scene, { beforeVersion, afterVersion: board.contentVersion })
+}
+/** Forget a workspace (画板) and everything saved on this device for it; saved outfits on the account are untouched. */
+export function discardWorkspace(owner: string, id: string) {
+  const key = `yixu.workspace.v1:${owner}:${id}`
+  const space = spaces.get(key); if (space) { space.boards = []; space.activeId = '' }
+  spaces.delete(key)
+  try { localStorage.removeItem(key) } catch { /* storage blocked */ }
+}
+
+/** Where a saved outfit is already open as a 组合台, looking in `preferId` first, then in every other 画板 of the account. */
+export function findOpenOutfit(owner: string, outfitId: string, preferId = 'main'): { workspaceId: string; boardId: string } | null {
+  const ids = [preferId, ...listWorkspaces(owner).map(w => w.id).filter(id => id !== preferId)]
+  for (const id of ids) {
+    const board = workspace(owner, id).boards.find(b => b.outfitId === outfitId)
+    if (board) return { workspaceId: id, boardId: board.id }
+  }
+  return null
+}
+/**
+ * A saved outfit should be open in only one 画板. Older versions let the same outfit be opened in several, so merge them:
+ * the copy with unsaved edits wins, else the one in `keepIn`, else the first; other copies are dropped only when they carry
+ * no edits of their own (nothing is lost). Returns how many duplicates were removed.
+ */
+export function dedupeOpenOutfits(owner: string, keepIn = 'main'): number {
+  const ids = [keepIn, ...listWorkspaces(owner).map(w => w.id).filter(id => id !== keepIn)]
+  const groups = new Map<string, { space: OutfitWorkspace; board: WorkspaceBoard }[]>()
+  for (const id of ids) {
+    const space = workspace(owner, id)
+    for (const board of space.boards) if (board.outfitId) groups.set(board.outfitId, [...(groups.get(board.outfitId) || []), { space, board }])
+  }
+  let removed = 0
+  for (const copies of groups.values()) {
+    if (copies.length < 2) continue
+    const edited = (c: { board: WorkspaceBoard }) => boardSignature(c.board) !== c.board.savedSignature
+    const keeper = copies.find(edited) || copies[0]
+    for (const copy of copies) {
+      if (copy === keeper || copy.board.locked || edited(copy)) continue
+      copy.space.boards = copy.space.boards.filter(b => b.id !== copy.board.id)
+      if (copy.space.activeId === copy.board.id) copy.space.activeId = copy.space.boards[0]?.id || ''
+      removed++
+    }
+  }
+  return removed
 }

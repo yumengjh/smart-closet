@@ -45,12 +45,16 @@ onUnmounted(()=>{alive=false;clearTimeout(timer);window.removeEventListener('clo
           <p v-else-if="job.error">{{ job.error }}</p>
           <small>开始于 {{ when(job.createdAt) }}</small>
         </div>
-        <a-button v-if="['QUEUED','WAITING_RESOURCE','RUNNING','UNKNOWN'].includes(job.status)" size="small" :loading="cancelling === job.id" @click="cancel(job)">取消生成</a-button>
+        <span class="render-actions">
+          <RouterLink v-if="job.purpose === 'OOTD' && ['UNKNOWN','FAILED'].includes(job.status)" :to="{ path: '/ootd', query: { job: job.id } }"><a-button size="small" type="primary">查看并重新生成</a-button></RouterLink>
+          <a-button v-if="['QUEUED','WAITING_RESOURCE','RUNNING','UNKNOWN'].includes(job.status)" size="small" :loading="cancelling === job.id" @click="cancel(job)">取消生成</a-button>
+        </span>
       </li>
     </ul>
   </section>
 </template>
 <style scoped>
+.render-actions{display:inline-flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
 .render-card { margin: 0 0 20px; padding: 18px 20px 8px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
 .render-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding-bottom: 12px; }
 .render-head h2 { margin: 0; font-size: 16px; font-weight: 600; }

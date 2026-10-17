@@ -14,8 +14,10 @@ import {
   VerticalAlignBottomOutlined, VerticalAlignTopOutlined, DragOutlined, FullscreenOutlined,
 } from '@ant-design/icons-vue'
 import { useClosetStore } from '../stores/closet'
+import WorkspaceStrip from '../outfit/WorkspaceStrip.vue'
 import { useThemeStore } from '../stores/theme'
 import { tokens } from '../theme/tokens'
+import { isMissingOutfit } from '../domain/outfitErrors'
 import { closetApi, type Garment } from '../services/api'
 import { dropOutfitLayer, elementKey, normalizeScene, stickerLimit, copySticker, OUTFIT_HEIGHT, OUTFIT_VERSION, OUTFIT_WIDTH, outfitDropPosition, outfitRoleOptions, reorderOutfitElements, restoreOutfitDraft, roleFromGarment, type Outfit, type OutfitDraft, type OutfitElement, type OutfitLayerMove, type OutfitRole, type OutfitScene } from '../domain/outfit'
 import { artworkForGarment, createOutfitElement, downloadOutfitPng, loadOutfitImage } from '../domain/outfit-images'
@@ -778,9 +780,15 @@ async function saveOutfit() {
   const request = loadRevision
   const submitted = JSON.stringify({ name: name.value, elements: elements.value })
   saving.value = true
+  // The saved outfit can be gone from the server (deleted elsewhere, or the server lost it): keep the person's work by saving it as a new outfit.
+  let recreated = false
   try {
-    const result = await closetApi.saveOutfit(isNew.value ? null : outfitId.value, isNew.value ? null : revision.value,
-      name.value.trim(), scene.value)
+    let result
+    try { result = await closetApi.saveOutfit(isNew.value ? null : outfitId.value, isNew.value ? null : revision.value, name.value.trim(), scene.value) }
+    catch (cause) {
+      if (isNew.value || !isMissingOutfit(cause)) throw cause
+      result = await closetApi.saveOutfit(null, null, name.value.trim(), scene.value); recreated = true
+    }
     if (request !== loadRevision) { window.dispatchEvent(new Event('closet-outfit-saved')); return }
     // Edits made while the request was in flight stay on the canvas and in the draft, against the new revision.
     const editedMeanwhile = JSON.stringify({ name: name.value, elements: elements.value }) !== submitted
@@ -800,11 +808,12 @@ async function saveOutfit() {
       localDraftNotice.value = false
     }
     remoteConflict.value = false
-    if (isNew.value) await router.replace(`/outfits/${result.id}`)
+    if (isNew.value || recreated) await router.replace(`/outfits/${result.id}`)
     else loaded = true
     playSound('success')
     window.dispatchEvent(new Event('closet-outfit-saved'))
-    message.success(editedMeanwhile ? '已保存提交时的版本，之后的修改仍保留在此设备，记得再次保存。' : '搭配已保存，可在手机和电脑继续编辑。')
+    if (recreated) message.warning('原来的搭配在服务器上已经不存在，已另存为一套新搭配，内容没有丢。')
+    else message.success(editedMeanwhile ? '已保存提交时的版本，之后的修改仍保留在此设备，记得再次保存。' : '搭配已保存，可在手机和电脑继续编辑。')
   } catch (cause) {
     const text = cause instanceof Error ? cause.message : '搭配暂时无法保存。'
     if (request !== loadRevision) { message.error(text); return }
@@ -990,7 +999,8 @@ defineExpose({ flush: persistDraft, exportPng })
 
 <template>
   <div v-if="!editing" class="outfit-library-page">
-    <div class="page-heading outfit-library-heading"><div><h1>穿搭组合台</h1><p class="page-subtitle">从自己的衣柜选单品，保存一套随时可以穿的搭配。</p></div><div><a-button @click="router.push('/ootd')">OOTD 试穿</a-button><a-button class="outfit-workspace-link" @click="router.push('/outfits/workspace')">多画板</a-button><a-button type="primary" @click="router.push('/outfits/new')"><PlusOutlined /> 新建搭配</a-button></div></div>
+    <div class="page-heading outfit-library-heading"><div><h1>穿搭组合台</h1><p class="page-subtitle">从自己的衣柜选单品，保存一套随时可以穿的搭配。</p></div><div class="outfit-library-actions"><a-button @click="router.push('/ootd')">OOTD 试穿</a-button><a-button class="outfit-workspace-link" @click="router.push('/outfits/workspace')">穿搭工作区</a-button><a-button type="primary" @click="router.push('/outfits/new')"><PlusOutlined /> 新建搭配</a-button></div></div>
+    <WorkspaceStrip />
     <RecommendationStrip />
     <a-alert v-if="error" type="error" show-icon :message="error" class="outfit-alert"><template #action><a-button @click="loadLibrary">重新加载</a-button></template></a-alert>
     <a-skeleton v-if="pageLoading" active :paragraph="{ rows: 7 }" />
