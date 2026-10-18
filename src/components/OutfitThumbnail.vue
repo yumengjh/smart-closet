@@ -13,6 +13,8 @@ const root = ref<HTMLElement | null>(null)
 const canvas = ref<HTMLCanvasElement | null>(null)
 const failed = ref(false)
 const shown = ref(0)
+// The picture is drawn only once its garment images have loaded; until then a soft placeholder holds the space instead of an empty frame.
+const ready = ref(false)
 const width = computed(() => Math.min(960, Math.max(props.resolution, Math.ceil(shown.value / 120) * 120)))
 const height = computed(() => Math.round(width.value * 1.25))
 let revision = 0
@@ -26,6 +28,7 @@ async function render() {
     if (current !== revision || !canvas.value) return
     const context = canvas.value.getContext('2d')
     if (context) { context.clearRect(0, 0, canvas.value.width, canvas.value.height); context.drawImage(output, 0, 0) }
+    ready.value = true
   } catch {
     if (current === revision) failed.value = true
   }
@@ -50,7 +53,17 @@ watch(width, () => { void render() })
 
 <template>
   <div ref="root" class="outfit-thumbnail" :aria-label="`${title}的搭配缩略图`" role="img">
-    <canvas v-show="!failed" ref="canvas" :width="width" :height="height" />
-    <span v-if="failed">图片暂不可用</span>
+    <span v-if="!ready && !failed" class="outfit-thumbnail-loading" aria-hidden="true" />
+    <canvas v-show="!failed" ref="canvas" :class="{ ready }" :width="width" :height="height" />
+    <span v-if="failed" class="outfit-thumbnail-failed">图片暂不可用</span>
   </div>
 </template>
+
+<style scoped>
+.outfit-thumbnail { position: relative; }
+.outfit-thumbnail canvas { opacity: 0; transition: opacity .25s ease; }
+.outfit-thumbnail canvas.ready { opacity: 1; }
+.outfit-thumbnail-loading { position: absolute; inset: 0; background: linear-gradient(100deg, var(--surface-alt) 30%, var(--surface) 50%, var(--surface-alt) 70%); background-size: 220% 100%; animation: outfit-shimmer 1.4s ease-in-out infinite; }
+@keyframes outfit-shimmer { from { background-position: 110% 0; } to { background-position: -110% 0; } }
+@media (prefers-reduced-motion: reduce) { .outfit-thumbnail-loading { animation: none; } .outfit-thumbnail canvas { transition: none; } }
+</style>

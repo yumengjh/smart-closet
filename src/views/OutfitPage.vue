@@ -30,6 +30,7 @@ import OutfitPersonPicker from '../components/OutfitPersonPicker.vue'
 import { createPersonElement, type PersonCatalog, type PersonPart } from '../domain/person-stickers'
 import OutfitLayers from '../components/OutfitLayers.vue'
 import RecommendationStrip from '../recommend/RecommendationStrip.vue'
+import TodayTeaser from '../recommend/TodayTeaser.vue'
 import ExplainButton from '../recommend/ExplainButton.vue'
 import { recommendApi } from '../recommend/api'
 import { wornLabel as formatWorn } from '../recommend/format'
@@ -45,6 +46,13 @@ const actualRoute = useRoute()
 const route = new Proxy(actualRoute, { get(target, key) { if (props.board && key === 'params') return { id: props.board.outfitId || 'new' }; return Reflect.get(target, key) } })
 const router = useRouter()
 const closet = useClosetStore()
+// Library tabs: saved outfits (default) and "今天穿什么". The recommendation panel is built on first visit and then kept.
+const TAB_KEY = 'yixu.outfits.tab.v1'
+function readTab(): 'mine' | 'today' { try { return localStorage.getItem(TAB_KEY) === 'today' ? 'today' : 'mine' } catch { return 'mine' } }
+const libraryTab = ref<'mine' | 'today'>(readTab())
+const todayVisited = ref(libraryTab.value === 'today')
+watch(() => actualRoute.query.with, value => { if (typeof value === 'string') libraryTab.value = 'today' }, { immediate: true })
+watch(libraryTab, tab => { if (tab === 'today') todayVisited.value = true; try { localStorage.setItem(TAB_KEY, tab) } catch { /* storage blocked */ } })
 const appearance = useThemeStore()
 const accentColor = computed(() => tokens[appearance.isDark ? 'dark' : 'light'].accent)
 const { message, modal } = App.useApp()
@@ -1001,7 +1009,11 @@ defineExpose({ flush: persistDraft, exportPng })
   <div v-if="!editing" class="outfit-library-page">
     <div class="page-heading outfit-library-heading"><div><h1>穿搭组合台</h1><p class="page-subtitle">从自己的衣柜选单品，保存一套随时可以穿的搭配。</p></div><div class="outfit-library-actions"><a-button @click="router.push('/ootd')">OOTD 试穿</a-button><a-button class="outfit-workspace-link" @click="router.push('/outfits/workspace')">穿搭工作区</a-button><a-button type="primary" @click="router.push('/outfits/new')"><PlusOutlined /> 新建搭配</a-button></div></div>
     <WorkspaceStrip />
-    <RecommendationStrip />
+    <!-- Saved outfits are the page's main job; "今天穿什么" is its own tab, opened on demand (and by ?with= from a garment page). -->
+    <a-segmented v-model:value="libraryTab" class="outfit-library-tabs" aria-label="搭配视图" :options="[{ value: 'mine', label: saved.length ? `我的搭配 · ${saved.length}` : '我的搭配' }, { value: 'today', label: '今天穿什么' }]" />
+    <RecommendationStrip v-if="todayVisited" v-show="libraryTab === 'today'" />
+    <div v-show="libraryTab === 'mine'">
+    <TodayTeaser v-if="saved.length" @open="libraryTab = 'today'" />
     <a-alert v-if="error" type="error" show-icon :message="error" class="outfit-alert"><template #action><a-button @click="loadLibrary">重新加载</a-button></template></a-alert>
     <a-skeleton v-if="pageLoading" active :paragraph="{ rows: 7 }" />
     <template v-else-if="saved.length">
@@ -1015,6 +1027,7 @@ defineExpose({ flush: persistDraft, exportPng })
       <a-empty v-else :image="Empty.PRESENTED_IMAGE_SIMPLE" description="没有找到这套搭配"><a-button @click="librarySearch = ''">清除搜索</a-button></a-empty>
     </template>
     <section v-else-if="!error" class="outfit-empty"><a-empty description="把第一套穿搭放上画板"><template #image><PictureOutlined /></template><p>选一件上衣、一条裤子，再加上喜欢的配饰。</p><a-button type="primary" @click="router.push('/outfits/new')"><PlusOutlined /> 开始搭配</a-button></a-empty></section>
+    </div>
   </div>
 
   <a-skeleton v-else-if="pageLoading" active :paragraph="{ rows: 10 }" />

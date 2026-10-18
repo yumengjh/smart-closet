@@ -2,7 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { App } from 'ant-design-vue'
-import { PlusOutlined, FolderOpenOutlined, ExpandOutlined, SaveOutlined, CloseOutlined, ArrowLeftOutlined, AimOutlined, MinusOutlined, AppstoreOutlined, MoreOutlined, DownloadOutlined, InfoCircleOutlined, SoundOutlined, AudioMutedOutlined } from '@ant-design/icons-vue'
+import { DownOutlined, FolderOutlined, CheckOutlined, EditOutlined, DeleteOutlined, PlusOutlined, FolderOpenOutlined, ExpandOutlined, SaveOutlined, CloseOutlined, ArrowLeftOutlined, AimOutlined, MinusOutlined, AppstoreOutlined, MoreOutlined, DownloadOutlined, InfoCircleOutlined, SoundOutlined, AudioMutedOutlined } from '@ant-design/icons-vue'
 import OutfitPage from './OutfitPage.vue'
 import OutfitThumbnail from '../components/OutfitThumbnail.vue'
 import OutfitReview from '../components/OutfitReview.vue'
@@ -74,6 +74,7 @@ const surfaceStyle = computed(() => ({ transform: `translate(${space.value.camer
 let drag: { id: number; x: number; y: number; left: number; top: number } | undefined
 function selectBoard(board: WorkspaceBoard, edit = false) { editor.value?.flush(); space.value.activeId = board.id; if (currentRun.value && canvasExecution.boardId !== board.id) canvasExecution.following = false; if (edit) focus.value = true; playSound('tap') }
 // New 组合台: with only one 画板 it is created right away; with several, the person picks which 画板 it goes into.
+const wsSheet = ref(false)
 const boardModal = ref({ open: false, name: '', target: '' })
 function newBoard() {
   editor.value?.flush(); boardsOpen.value = false
@@ -309,6 +310,11 @@ onUnmounted(() => { endGlowPreview(); window.removeEventListener('resize', resiz
         <a-button type="primary" class="workspace-save" :loading="saving" :disabled="!saveTargets.length || saveTargets.every(b => !!b.locked || !b.scene.elements.length)" @click="confirmSave().catch(() => {})"><SaveOutlined /><span>{{ !focus && checked.length ? `保存 ${checked.length} 套` : '保存' }}</span></a-button>
       </div>
     </header>
+    <!-- Phones: the 画板 switcher gets its own slim row (it no longer squeezes the title) and opens a bottom sheet. -->
+    <div class="workspace-subbar">
+      <a-button size="small" shape="round" class="workspace-subbar-chip" aria-haspopup="dialog" @click="refreshWorkspaces(); wsSheet = true"><FolderOutlined />{{ workspaceName }}<DownOutlined class="chip-caret" /></a-button>
+      <span class="workspace-subbar-note">{{ space.boards.length }} 个组合台{{ isTemporary ? ' · 临时' : '' }}</span>
+    </div>
     <div v-if="storageWarning.text || error" class="workspace-notice"><a-alert type="warning" show-icon closable :message="storageWarning.text || error" @close="error = ''" /></div>
     <div v-if="currentRun" class="workspace-runbar" role="status"><span class="workspace-ai-dot" /><strong>{{ canvasExecution.label || '正在准备搭配' }}</strong><a-button v-if="!canvasExecution.following" aria-label="恢复跟随 Agent" @click="followCurrent"><AimOutlined /></a-button><a-button danger @click="stopCanvasRun()">停止并接手</a-button></div>
     <div v-if="glowPreview && !currentRun" class="workspace-runbar workspace-glow-preview" role="status"><span class="workspace-ai-dot" /><strong>光晕效果预览 · 不执行操作</strong><a-button @click="endGlowPreview">结束预览</a-button></div>
@@ -340,6 +346,20 @@ onUnmounted(() => { endGlowPreview(); window.removeEventListener('resize', resiz
       </div></nav>
       <a-empty v-if="!space.boards.length" description="新建组合台，开始一套搭配" />
       <template #footer><div class="workspace-drawer-actions"><a-button :disabled="space.boards.length >= 12" @click="newBoard"><PlusOutlined /> 新组合台</a-button><a-button danger :disabled="!checked.length || !selection.some(board => checked.includes(board.id) && !board.locked)" @click="discardBoards()"><CloseOutlined /> 丢弃所选 {{ checked.length }} 块</a-button><a-button type="primary" :loading="saving" :disabled="!selection.length" @click="confirmSave().catch(() => {})"><SaveOutlined /> 保存所选 {{ checked.length || (active ? 1 : 0) }} 套</a-button><a-button v-if="wsId !== 'main'" danger block :disabled="!!currentRun" @click="deleteWorkspace">删除这个画板</a-button></div></template>
+    </a-drawer>
+    <a-drawer v-model:open="wsSheet" placement="bottom" title="选择画板" height="auto" :closable="true" root-class-name="workspace-ws-sheet">
+      <nav class="workspace-ws-list" aria-label="画板列表">
+        <a-button v-for="w in workspaces" :key="w.id" type="text" block class="workspace-ws-row" :class="{ current: w.id === wsId }" @click="switchWorkspace(w.id); wsSheet = false">
+          <span class="ws-row-name">{{ w.name }}<small v-if="w.kind === 'agent'">临时</small></span>
+          <span class="ws-row-count">{{ wsCounts[w.id] ?? 0 }} 个组合台</span>
+          <CheckOutlined v-if="w.id === wsId" class="ws-row-check" />
+        </a-button>
+      </nav>
+      <div class="workspace-ws-actions">
+        <a-button block @click="wsSheet = false; workspaceModal = { open: true, mode: 'create', name: '' }"><PlusOutlined /> 新建画板</a-button>
+        <a-button v-if="wsId !== 'main' && !isTemporary" block @click="wsSheet = false; workspaceModal = { open: true, mode: 'rename', name: workspaceName }"><EditOutlined /> 重命名当前画板</a-button>
+        <a-button v-if="wsId !== 'main'" block danger :disabled="!!currentRun" @click="wsSheet = false; deleteWorkspace()"><DeleteOutlined /> 删除当前画板</a-button>
+      </div>
     </a-drawer>
     <a-modal v-model:open="boardModal.open" title="新建组合台" ok-text="新建" cancel-text="取消" :width="400" @ok="createBoardIn(boardModal.target, boardModal.name)">
       <a-form layout="vertical">
@@ -465,5 +485,18 @@ onUnmounted(() => { endGlowPreview(); window.removeEventListener('resize', resiz
 
 <style scoped>
 .workspace-ws-select { width: 168px; flex: none; }
+.workspace-subbar { display: none; align-items: center; gap: 10px; padding: 6px 12px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.workspace-subbar-chip.ant-btn { display: inline-flex; align-items: center; gap: 6px; height: 32px; max-width: 70%; padding: 0 14px; font-size: 14px; }
+.workspace-subbar-chip .chip-caret { font-size: 10px; color: var(--muted); }
+.workspace-subbar-note { color: var(--muted-copy); font-size: 12px; }
+.workspace-ws-list { display: grid; gap: 6px; }
+.workspace-ws-row.ant-btn { display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 14px; border: 1px solid var(--line); border-radius: var(--radius-md, 10px); text-align: left; }
+.workspace-ws-row.current { border-color: var(--ink); background: var(--selection-bg, var(--surface-alt)); }
+.ws-row-name { flex: 1; min-width: 0; font-size: 15px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-row-name small { margin-left: 8px; font-size: 11px; font-weight: 400; color: var(--muted); }
+.ws-row-count { flex: none; font-size: 12px; color: var(--muted-copy); }
+.ws-row-check { flex: none; color: var(--success, var(--ink)); }
+.workspace-ws-actions { display: grid; gap: 8px; margin-top: 14px; }
+.workspace-ws-actions .ant-btn { height: 44px; }
 .workspace-modal-note { margin: 12px 0 0; font-size: 12px; line-height: 1.7; color: var(--muted-copy); }
-@media (max-width: 767px) { .workspace-ws-select { width: 118px; } }@media(max-width:760px){.workspace-personal-action{display:none}}</style>
+@media (max-width: 767px) { .workspace-ws-select { display: none; } .workspace-subbar { display: flex; } }@media(max-width:760px){.workspace-personal-action{display:none}}</style>

@@ -17,7 +17,7 @@ onMounted(load); watch(() => props.outfit.key, load)
 <template>
   <article class="recommend-card" :aria-label="`推荐搭配 ${outfit.name}`">
     <a-button type="text" class="recommend-card-preview" :aria-label="`查看${outfit.name}的详情`" @click="emit('open')">
-      <OutfitThumbnail v-if="scene" :scene="scene" :title="outfit.name" /><a-skeleton-image v-else-if="!failed" /><span v-else class="muted">预览无法加载</span>
+      <OutfitThumbnail v-if="scene" :scene="scene" :title="outfit.name" /><span v-else-if="!failed" class="recommend-preview-loading" role="status" aria-label="正在准备搭配预览" /><span v-else class="muted">预览无法加载</span>
     </a-button>
     <h3><span>{{ outfit.name }}</span><span class="recommend-score" :aria-label="`总分 ${outfit.score}`">{{ Math.round(outfit.score) }}<small>分</small></span></h3>
     <div v-if="outfit.tags.length" class="recommend-tags"><a-tag v-for="tag in outfit.tags" :key="tag" :color="tag === '新尝试' ? 'blue' : tag.endsWith('没穿了') ? 'gold' : 'green'">{{ tag }}</a-tag></div>
