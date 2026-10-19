@@ -9,6 +9,8 @@ export const router = createRouter({
   routes: [
     { path: '/', redirect: '/wardrobe' },
     { path: '/login', component: () => import('./views/LoginPage.vue') },
+    { path: '/register', component: () => import('./views/RegisterPage.vue') },
+    { path: '/admin/users', component: () => import('./views/AdminUsersPage.vue') },
     { path: '/wardrobe', component: () => import('./views/WardrobePage.vue') },
     { path: '/pending', component: () => import('./views/PendingPage.vue') },
     { path: '/tasks', component: () => import('./views/TasksPage.vue') },

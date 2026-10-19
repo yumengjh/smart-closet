@@ -1,3 +1,4 @@
+import type { SessionUser } from '../domain/session'
 import { createUuid } from '../domain/id'
 import { apiUrl } from './urls'
 import { normalizeScene, sceneWrite } from '../domain/outfit'
@@ -101,6 +102,35 @@ function searchResult(result: SearchResponse): SearchResult {
 export type GarmentPage = { items: Garment[]; total: number; page: number; size: number }
 export type ProcessingChoice = { value: string; label: string }
 
+export type UserRole = 'ADMIN' | 'USER'
+export type RegistrationMode = 'CLOSED' | 'INVITE' | 'OPEN'
+export type RegisteredVia = 'ADMIN' | 'INVITE' | 'OPEN'
+export type Registration = { mode: RegistrationMode }
+export type RegisterRequest = { username: string; password: string; displayName?: string; inviteCode?: string }
+export type AccountProfile = { username: string; displayName: string | null; role: UserRole; createdAtMs: number; lastLoginAtMs: number | null; registeredVia: RegisteredVia }
+export type ProfileUpdate = { displayName: string | null }
+export type PasswordChange = { currentPassword: string; newPassword: string; signOutOthers?: boolean }
+export type AccountDeactivation = { currentPassword: string }
+export type AccountSession = { sessionRef: string; device: string; createdAtMs: number; lastAccessAtMs: number; expiresAtMs: number; portable: boolean; current: boolean }
+export type RevokedSessions = { revokedSessions: number }
+export type AdminUser = AccountProfile & { enabled: boolean; mustChangePassword: boolean; deactivatedAtMs: number | null; garmentCount: number }
+export type AdminUsersQuery = { q?: string; status?: 'ENABLED' | 'DISABLED'; role?: UserRole; page: number; size: number }
+export type AdminUsersPage = { items: AdminUser[]; total: number; page: number; size: number }
+export type AdminUserCreate = { username: string; displayName?: string; role: UserRole }
+export type TemporaryPassword = { username: string; temporaryPassword: string; revokedSessions?: number }
+export type AdminStatusUpdate = { enabled: boolean }
+export type AdminStatusResult = RevokedSessions & { username: string; enabled: boolean }
+export type AdminRoleUpdate = { role: UserRole }
+export type AdminRoleResult = RevokedSessions & { username: string; role: UserRole }
+export type QuotaBucket = { limit: number; used: number; overridden: boolean }
+export type AccountQuota = { image: QuotaBucket; agent: QuotaBucket; resetAtMs: number }
+export type QuotaUpdate = { imageDailyLimit: number | null; agentDailyLimit: number | null }
+export type AccountEvent = { occurredAtMs: number; actor: string; action: string; detail: string | null }
+export type AdminRegistration = Registration & { activeInviteCount: number }
+export type RegistrationInvite = { id: string; note: string | null; maxUses: number; usedCount: number; createdBy: string; createdAtMs: number; expiresAtMs: number; revokedAtMs: number | null; status: 'ACTIVE' | 'USED_UP' | 'EXPIRED' | 'REVOKED' }
+export type InviteCreate = { note?: string; maxUses: number; expiresInDays: number }
+export type InviteCreated = RegistrationInvite & { code: string }
+
 const MOCK_KEY = 'yixu.mock-data.v2'
 export const usingMocks = import.meta.env.VITE_USE_MOCKS === 'true'
 let csrfToken = ''
@@ -167,6 +197,30 @@ function writeMockOutfits(outfits: Outfit[]) {
   localStorage.setItem(`${MOCK_KEY}:outfits:${localStorage.getItem('yixu.mock-user') || 'anonymous'}`, JSON.stringify(outfits))
 }
 const delay = (ms = 160) => new Promise((resolve) => setTimeout(resolve, ms))
+
+type MockAccounts = { users: AdminUser[]; invites: InviteCreated[]; events: Record<string, AccountEvent[]>; quotas: Record<string, AccountQuota> }
+const mockAccountsKey = 'yixu.mock-accounts.v1'
+function readMockAccounts(): MockAccounts {
+  const stored = localStorage.getItem(mockAccountsKey)
+  if (stored) { try { return JSON.parse(stored) as MockAccounts } catch { /* 重置无效的演示数据。 */ } }
+  const state: MockAccounts = { users: [{ username: 'admin', displayName: '演示管理员', role: 'ADMIN', enabled: true, mustChangePassword: false, registeredVia: 'ADMIN', createdAtMs: Date.now() - 86400000, lastLoginAtMs: Date.now(), deactivatedAtMs: null, garmentCount: 12 }], invites: [], events: {}, quotas: {} }
+  const username = localStorage.getItem('yixu.mock-user')
+  if (username && username !== 'admin') state.users.push({ username, displayName: null, role: 'USER', enabled: true, mustChangePassword: localStorage.getItem('yixu.mock-first-login') === '1', registeredVia: 'ADMIN', createdAtMs: Date.now(), lastLoginAtMs: Date.now(), deactivatedAtMs: null, garmentCount: 0 })
+  writeMockAccounts(state); return state
+}
+function writeMockAccounts(state: MockAccounts) { localStorage.setItem(mockAccountsKey, JSON.stringify(state)) }
+function mockAccount(state = readMockAccounts(), username = localStorage.getItem('yixu.mock-user') || 'admin'): AdminUser {
+  const user = state.users.find(u => u.username === username)
+  if (!user) throw new Error('找不到这个账号。')
+  return user
+}
+function mockEvent(state: MockAccounts, username: string, action: string, actor = localStorage.getItem('yixu.mock-user') || username) {
+  state.events[username] = [{ occurredAtMs: Date.now(), actor, action, detail: null }, ...(state.events[username] || [])].slice(0, 50)
+}
+function inviteStatus(invite: RegistrationInvite): RegistrationInvite['status'] {
+  return invite.revokedAtMs ? 'REVOKED' : invite.expiresAtMs <= Date.now() ? 'EXPIRED' : invite.usedCount >= invite.maxUses ? 'USED_UP' : 'ACTIVE'
+}
+function mockDefaultQuota(): AccountQuota { return { image: { limit: 20, used: 4, overridden: false }, agent: { limit: 100, used: 2, overridden: false }, resetAtMs: new Date().setHours(24, 0, 0, 0) } }
 
 export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers)
@@ -480,13 +534,119 @@ export const closetApi = {
     const state = readMock()
     return { limit: 20, used: state.quotaUsed, resetAt: new Date(new Date().setHours(24, 0, 0, 0)).toISOString() }
   },
+  async registration(): Promise<Registration> {
+    if (!usingMocks) return request('/api/auth/registration')
+    return { mode: 'INVITE' }
+  },
+  async register(payload: RegisterRequest): Promise<SessionUser> {
+    if (!usingMocks) { const user = await request<SessionUser>('/api/auth/register', { method: 'POST', body: JSON.stringify(payload) }); csrfToken = ''; return user }
+    await delay()
+    const state = readMockAccounts()
+    if (state.users.some(u => u.username === payload.username)) throw new Error('用户名已被使用，请换一个。')
+    const invite = state.invites.find(i => i.code === payload.inviteCode && inviteStatus(i) === 'ACTIVE')
+    if (!invite) throw new Error('请输入有效的邀请码。')
+    invite.usedCount++
+    const user: AdminUser = { username: payload.username, displayName: payload.displayName?.trim() || null, role: 'USER', createdAtMs: Date.now(), lastLoginAtMs: Date.now(), registeredVia: 'INVITE', enabled: true, mustChangePassword: false, deactivatedAtMs: null, garmentCount: 0 }
+    state.users.push(user); mockEvent(state, user.username, 'REGISTERED', user.username); writeMockAccounts(state)
+    localStorage.setItem('yixu.mock-user', user.username); localStorage.setItem('yixu.mock-first-login', '0')
+    return { username: user.username, displayName: user.displayName, role: user.role, mustChangePassword: false }
+  },
+  async profile(): Promise<AccountProfile> {
+    if (!usingMocks) return request('/api/auth/profile')
+    await delay(); return mockAccount()
+  },
+  async updateProfile(payload: ProfileUpdate): Promise<AccountProfile> {
+    if (!usingMocks) return request('/api/auth/profile', { method: 'PATCH', body: JSON.stringify(payload) })
+    await delay(); const state = readMockAccounts(); const user = mockAccount(state); user.displayName = payload.displayName?.trim() || null
+    mockEvent(state, user.username, 'PROFILE_UPDATED'); writeMockAccounts(state); return user
+  },
+  async sessions(): Promise<AccountSession[]> {
+    if (!usingMocks) return request('/api/auth/sessions')
+    await delay(); return [{ sessionRef: 'mock-current', device: '演示浏览器 · 当前设备', createdAtMs: mockAccount().lastLoginAtMs || Date.now(), lastAccessAtMs: Date.now(), expiresAtMs: Date.now() + 86400000, portable: false, current: true }]
+  },
+  async signOutOtherSessions(): Promise<RevokedSessions> {
+    if (!usingMocks) return request('/api/auth/sessions/others', { method: 'DELETE' })
+    await delay(); const state = readMockAccounts(); mockEvent(state, mockAccount(state).username, 'SESSIONS_REVOKED'); writeMockAccounts(state); return { revokedSessions: 0 }
+  },
+  async deactivate(currentPassword: string): Promise<void> {
+    if (!usingMocks) { await request<void>('/api/auth/deactivate', { method: 'POST', body: JSON.stringify({ currentPassword } satisfies AccountDeactivation) }); csrfToken = ''; return }
+    await delay(); if (!currentPassword) throw new Error('请输入当前密码。')
+    const state = readMockAccounts(); const user = mockAccount(state)
+    if (user.role === 'ADMIN' && state.users.filter(u => u.role === 'ADMIN' && u.enabled).length === 1) throw new Error('最后一个启用的管理员不能注销账号。')
+    user.enabled = false; user.deactivatedAtMs = Date.now(); mockEvent(state, user.username, 'DEACTIVATED'); writeMockAccounts(state); localStorage.removeItem('yixu.mock-user')
+  },
+  async adminUsers(query: AdminUsersQuery): Promise<AdminUsersPage> {
+    if (!usingMocks) { const params = new URLSearchParams(); for (const [key, value] of Object.entries(query)) if (value !== undefined && value !== '') params.set(key, String(value)); return request(`/api/admin/users?${params}`) }
+    await delay(); const items = readMockAccounts().users.filter(u => (!query.q || `${u.username} ${u.displayName || ''}`.toLowerCase().includes(query.q.toLowerCase())) && (!query.role || u.role === query.role) && (!query.status || u.enabled === (query.status === 'ENABLED')))
+    return { items: items.slice((query.page - 1) * query.size, query.page * query.size), total: items.length, page: query.page, size: query.size }
+  },
+  async adminCreateUser(payload: AdminUserCreate): Promise<TemporaryPassword> {
+    if (!usingMocks) return request('/api/admin/users', { method: 'POST', body: JSON.stringify(payload) })
+    await delay(); const state = readMockAccounts()
+    if (state.users.some(u => u.username === payload.username)) throw new Error('用户名已被使用。')
+    state.users.unshift({ ...payload, displayName: payload.displayName?.trim() || null, enabled: true, mustChangePassword: true, registeredVia: 'ADMIN', createdAtMs: Date.now(), lastLoginAtMs: null, deactivatedAtMs: null, garmentCount: 0 })
+    mockEvent(state, payload.username, 'ADMIN_USER_CREATED'); writeMockAccounts(state); return { username: payload.username, temporaryPassword: `Demo-${createUuid().slice(0, 12)}` }
+  },
+  async adminSetUserStatus(username: string, payload: AdminStatusUpdate): Promise<AdminStatusResult> {
+    if (!usingMocks) return request(`/api/admin/users/${encodeURIComponent(username)}/status`, { method: 'PATCH', body: JSON.stringify(payload) })
+    await delay(); const state = readMockAccounts(); if (username === localStorage.getItem('yixu.mock-user')) throw new Error('不能停用自己。'); const user = mockAccount(state, username); user.enabled = payload.enabled; if (payload.enabled) user.deactivatedAtMs = null
+    mockEvent(state, username, payload.enabled ? 'ADMIN_USER_ENABLED' : 'ADMIN_USER_DISABLED'); writeMockAccounts(state); return { username, enabled: payload.enabled, revokedSessions: 0 }
+  },
+  async adminSetUserRole(username: string, payload: AdminRoleUpdate): Promise<AdminRoleResult> {
+    if (!usingMocks) return request(`/api/admin/users/${encodeURIComponent(username)}/role`, { method: 'PATCH', body: JSON.stringify(payload) })
+    await delay(); const state = readMockAccounts(); if (username === localStorage.getItem('yixu.mock-user')) throw new Error('不能修改自己的角色。'); mockAccount(state, username).role = payload.role; mockEvent(state, username, 'ADMIN_ROLE_CHANGED'); writeMockAccounts(state); return { username, role: payload.role, revokedSessions: 0 }
+  },
+  async adminResetPassword(username: string): Promise<TemporaryPassword> {
+    if (!usingMocks) return request(`/api/admin/users/${encodeURIComponent(username)}/password-reset`, { method: 'POST', body: '{}' })
+    await delay(); const state = readMockAccounts(); mockAccount(state, username).mustChangePassword = true; mockEvent(state, username, 'ADMIN_PASSWORD_RESET'); writeMockAccounts(state); if (username === localStorage.getItem('yixu.mock-user')) localStorage.removeItem('yixu.mock-user'); return { username, temporaryPassword: `Demo-${createUuid().slice(0, 12)}`, revokedSessions: 0 }
+  },
+  async adminRevokeSessions(username: string): Promise<RevokedSessions> {
+    if (!usingMocks) return request(`/api/admin/users/${encodeURIComponent(username)}/sessions`, { method: 'DELETE' })
+    await delay(); const state = readMockAccounts(); mockEvent(state, username, 'ADMIN_SESSIONS_REVOKED'); writeMockAccounts(state); if (username === localStorage.getItem('yixu.mock-user')) localStorage.removeItem('yixu.mock-user'); return { revokedSessions: 0 }
+  },
+  async adminUserQuota(username: string): Promise<AccountQuota> {
+    if (!usingMocks) return request(`/api/admin/users/${encodeURIComponent(username)}/quota`)
+    await delay(); return readMockAccounts().quotas[username] || mockDefaultQuota()
+  },
+  async adminUpdateQuota(username: string, payload: QuotaUpdate): Promise<AccountQuota> {
+    if (!usingMocks) return request(`/api/admin/users/${encodeURIComponent(username)}/quota`, { method: 'PUT', body: JSON.stringify(payload) })
+    await delay(); const state = readMockAccounts(); const quota = state.quotas[username] || mockDefaultQuota()
+    quota.image = { ...quota.image, limit: payload.imageDailyLimit ?? 20, overridden: payload.imageDailyLimit !== null }; quota.agent = { ...quota.agent, limit: payload.agentDailyLimit ?? 100, overridden: payload.agentDailyLimit !== null }
+    state.quotas[username] = quota; mockEvent(state, username, 'ADMIN_QUOTA_CHANGED'); writeMockAccounts(state); return quota
+  },
+  async adminUserEvents(username: string): Promise<AccountEvent[]> {
+    if (!usingMocks) return request(`/api/admin/users/${encodeURIComponent(username)}/events`)
+    await delay(); return readMockAccounts().events[username] || []
+  },
+  async adminRegistration(): Promise<AdminRegistration> {
+    if (!usingMocks) return request('/api/admin/registration')
+    return { mode: 'INVITE', activeInviteCount: readMockAccounts().invites.filter(i => inviteStatus(i) === 'ACTIVE').length }
+  },
+  async adminInvites(): Promise<RegistrationInvite[]> {
+    if (!usingMocks) return request('/api/admin/invites')
+    await delay(); return readMockAccounts().invites.map(({ code: _code, ...invite }) => ({ ...invite, status: inviteStatus(invite) }))
+  },
+  async adminCreateInvite(payload: InviteCreate): Promise<InviteCreated> {
+    if (!usingMocks) return request('/api/admin/invites', { method: 'POST', body: JSON.stringify(payload) })
+    await delay(); const state = readMockAccounts(); const invite: InviteCreated = { id: createUuid(), note: payload.note || null, maxUses: payload.maxUses, usedCount: 0, createdBy: localStorage.getItem('yixu.mock-user') || '演示管理员', createdAtMs: Date.now(), expiresAtMs: Date.now() + payload.expiresInDays * 86400000, revokedAtMs: null, status: 'ACTIVE', code: createUuid().replaceAll('-', '').slice(0, 12).toUpperCase().match(/.{4}/g)!.join('-') }
+    state.invites.unshift(invite); writeMockAccounts(state); return invite
+  },
+  async adminRevokeInvite(id: string): Promise<void> {
+    if (!usingMocks) return request(`/api/admin/invites/${encodeURIComponent(id)}`, { method: 'DELETE' })
+    await delay(); const state = readMockAccounts(); const invite = state.invites.find(i => i.id === id); if (invite) invite.revokedAtMs = Date.now(); writeMockAccounts(state)
+  },
   async login(username: string, password: string) {
-    if (!usingMocks) { const result = await request<{ username: string; mustChangePassword: boolean; portableLogin?: boolean }>('/api/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }); csrfToken = ''; return result }
+    if (!usingMocks) { const result = await request<SessionUser>('/api/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }); csrfToken = ''; return result }
     await delay(250)
     if (!username.trim() || !password.trim()) throw new Error('请输入用户名和密码。')
+    const state = readMockAccounts()
+    let account = state.users.find(u => u.username === username.trim())
+    if (!account) { account = { username: username.trim(), displayName: null, role: 'USER', enabled: true, mustChangePassword: password === 'welcome123', registeredVia: 'ADMIN', createdAtMs: Date.now(), lastLoginAtMs: null, deactivatedAtMs: null, garmentCount: 0 }; state.users.push(account) }
+    if (!account.enabled) throw new Error('账号或密码不正确。')
+    account.lastLoginAtMs = Date.now(); mockEvent(state, account.username, 'LOGIN_SUCCEEDED', account.username); writeMockAccounts(state)
     localStorage.setItem('yixu.mock-user', username.trim())
-    localStorage.setItem('yixu.mock-first-login', password === 'welcome123' ? '1' : '0')
-    return { username: username.trim(), mustChangePassword: password === 'welcome123' }
+    localStorage.setItem('yixu.mock-first-login', account.mustChangePassword || password === 'welcome123' ? '1' : '0')
+    return { username: account.username, displayName: account.displayName, role: account.role, mustChangePassword: account.mustChangePassword || password === 'welcome123' }
   },
   async createPortableLoginLink(currentPassword: string) {
     if (usingMocks) throw new Error('演示模式不支持便携登录。')
@@ -502,21 +662,24 @@ export const closetApi = {
   async consumePortableLogin(token: string) {
     if (window.location.protocol !== 'https:' && !['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname)) throw new Error('便携登录需要 HTTPS。')
     if (usingMocks) throw new Error('演示模式不支持便携登录。')
-    const user = await request<{ username: string; mustChangePassword: boolean; portableLogin?: boolean }>('/api/auth/portable-login', { method: 'POST', body: JSON.stringify({ token }) })
+    const user = await request<SessionUser>('/api/auth/portable-login', { method: 'POST', body: JSON.stringify({ token }) })
     csrfToken = ''
     return user
   },
   async currentUser() {
-    if (!usingMocks) return request<{ username: string; mustChangePassword: boolean; portableLogin?: boolean }>('/api/auth/me')
+    if (!usingMocks) return request<SessionUser>('/api/auth/me')
     const username = localStorage.getItem('yixu.mock-user')
-    return username ? { username, mustChangePassword: localStorage.getItem('yixu.mock-first-login') === '1' } : null
+    if (!username) return null
+    const account = readMockAccounts().users.find(u => u.username === username)
+    if (account && !account.enabled) return null
+    return { username, displayName: account?.displayName, role: account?.role, mustChangePassword: localStorage.getItem('yixu.mock-first-login') === '1' }
   },
   async logout() {
     if (!usingMocks) { await request('/api/auth/logout', { method: 'POST' }); csrfToken = '' }
     else localStorage.removeItem('yixu.mock-user')
   },
-  async changePassword(currentPassword: string, newPassword: string) {
-    if (!usingMocks) { await request('/api/auth/password', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) }); csrfToken = '' }
-    else { await delay(); if (!newPassword) throw new Error('请输入新密码。'); localStorage.setItem('yixu.mock-first-login', '0') }
+  async changePassword(currentPassword: string, newPassword: string, signOutOthers = true) {
+    if (!usingMocks) { await request('/api/auth/password', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword, signOutOthers } satisfies PasswordChange) }); csrfToken = '' }
+    else { await delay(); if (!newPassword) throw new Error('请输入新密码。'); localStorage.setItem('yixu.mock-first-login', '0'); const state = readMockAccounts(); const user = mockAccount(state); user.mustChangePassword = false; mockEvent(state, user.username, 'PASSWORD_CHANGED'); writeMockAccounts(state) }
   },
 }

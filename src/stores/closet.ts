@@ -41,10 +41,13 @@ export const useClosetStore = defineStore('closet', () => {
   }
   async function signOut() {
     await closetApi.logout()
+    clearSession()
+  }
+  function clearSession() {
     user.value = null
     taskCount.value = 0
     pendingCount.value = 0
     for (const key of Object.keys(localStorage)) if (key === 'closetWorkflow' || key === 'yixu.mock-first-login') localStorage.removeItem(key)
   }
-  return { user, loadingUser, isSignedIn, taskCount, pendingCount, refreshUser, ensureUser, refreshCounts, signOut, usingMocks }
+  return { user, loadingUser, isSignedIn, taskCount, pendingCount, refreshUser, ensureUser, refreshCounts, signOut, clearSession, usingMocks }
 })
