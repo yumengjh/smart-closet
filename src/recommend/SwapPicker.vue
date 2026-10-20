@@ -41,7 +41,7 @@ async function adopt(outfit: RecommendedOutfit, replacementId: string) {
       <a-alert v-else-if="error" type="warning" show-icon :message="error" />
       <a-empty v-else-if="data && !data.alternatives.length" description="同一位置没有其他合适的衣物" />
       <ul v-else-if="data" class="recommend-swap-options">
-        <li v-for="alt in data.alternatives" :key="alt.garment.id"><GarmentThumb :garment-id="alt.garment.id" :alt="alt.garment.name" :size="44" /><div><strong>{{ alt.garment.name }}</strong><small>换后 {{ Math.round(alt.outfit.score) }} 分</small></div><a-tag :color="alt.delta >= 0 ? 'green' : 'orange'">{{ alt.delta > 0 ? '+' : '' }}{{ alt.delta }}</a-tag><a-button size="small" type="primary" :loading="adopting === alt.garment.id" @click="adopt(alt.outfit, alt.garment.id)">采用</a-button></li>
+        <li v-for="alt in data.alternatives" :key="alt.garment.id"><GarmentThumb :garment-id="alt.garment.id" :display-url="alt.garment.displayUrl" :alt="alt.garment.name" :size="44" /><div><strong>{{ alt.garment.name }}</strong><small>换后 {{ Math.round(alt.outfit.score) }} 分</small></div><a-tag :color="alt.delta >= 0 ? 'green' : 'orange'">{{ alt.delta > 0 ? '+' : '' }}{{ alt.delta }}</a-tag><a-button size="small" type="primary" :loading="adopting === alt.garment.id" @click="adopt(alt.outfit, alt.garment.id)">采用</a-button></li>
       </ul>
     </div></template>
     <a-button size="small" type="link" class="recommend-swap-button" :aria-label="`换一件${garment.name}`"><SwapOutlined />换一件</a-button>
@@ -53,7 +53,7 @@ async function adopt(outfit: RecommendedOutfit, replacementId: string) {
       <a-alert v-else-if="error" type="warning" show-icon :message="error" />
       <a-empty v-else-if="data && !data.alternatives.length" description="同一位置没有其他合适的衣物" />
       <ul v-else-if="data" class="recommend-swap-options">
-        <li v-for="alt in data.alternatives" :key="alt.garment.id"><GarmentThumb :garment-id="alt.garment.id" :alt="alt.garment.name" :size="52" /><div><strong>{{ alt.garment.name }}</strong><small>换后 {{ Math.round(alt.outfit.score) }} 分</small></div><a-tag :color="alt.delta >= 0 ? 'green' : 'orange'">{{ alt.delta > 0 ? '+' : '' }}{{ alt.delta }}</a-tag><a-button size="small" type="primary" :loading="adopting === alt.garment.id" @click="adopt(alt.outfit, alt.garment.id)">采用</a-button></li>
+        <li v-for="alt in data.alternatives" :key="alt.garment.id"><GarmentThumb :garment-id="alt.garment.id" :display-url="alt.garment.displayUrl" :alt="alt.garment.name" :size="52" /><div><strong>{{ alt.garment.name }}</strong><small>换后 {{ Math.round(alt.outfit.score) }} 分</small></div><a-tag :color="alt.delta >= 0 ? 'green' : 'orange'">{{ alt.delta > 0 ? '+' : '' }}{{ alt.delta }}</a-tag><a-button size="small" type="primary" :loading="adopting === alt.garment.id" @click="adopt(alt.outfit, alt.garment.id)">采用</a-button></li>
       </ul>
     </a-drawer>
   </template>
