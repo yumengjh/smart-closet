@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { CheckOutlined, ExclamationOutlined, MinusOutlined, RightOutlined, InboxOutlined, PictureOutlined, CopyOutlined, BellOutlined, CloseOutlined, DeleteOutlined } from '@ant-design/icons-vue'
 import { closetApi, type ClosetTask } from '../services/api'
-import { mediaUrl } from '../services/urls'
+import { thumbUrl } from '../services/urls'
 import { taskLabels, isProcessing } from '../domain/workflow'
 import { useProcessingStore } from '../stores/processing'
 import { useClosetStore } from '../stores/closet'
@@ -94,7 +94,7 @@ onUnmounted(() => clearInterval(clock))
       <section v-if="finished.length"><h3>最近结果</h3>
         <div v-for="entry in finished" :key="entry.key" class="inbox-item">
           <a-button type="text" block class="inbox-row" :class="[entry.state, { unread: !entry.read }]" @click="emit('visit', entry)">
-            <span v-if="entry.thumb" class="inbox-thumb result"><img :src="mediaUrl(entry.thumb)" alt="" loading="lazy" /></span>
+            <span v-if="entry.thumb" class="inbox-thumb result"><img :src="thumbUrl(entry.thumb, 160)" alt="" loading="lazy" /></span>
             <span v-else class="inbox-state"><component :is="stateIcon[entry.state as keyof typeof stateIcon]" /></span>
             <span class="inbox-copy"><strong>{{ entry.title }}<i v-if="!entry.read" class="inbox-unread" aria-label="未读" /></strong><span>{{ entry.stage }}</span><small>{{ entry.note || started(entry.startedAt) }}</small></span>
             <span class="inbox-action">{{ actionLabel(entry) }}<RightOutlined /></span>
@@ -105,7 +105,7 @@ onUnmounted(() => clearInterval(clock))
       <section v-if="recent.length"><h3>任务记录</h3>
         <div v-for="task in recent" :key="task.id" class="inbox-item">
           <a-button type="text" block class="inbox-row history" @click="openTask(task)">
-            <span class="inbox-thumb"><img v-if="task.outputUrl || task.inputUrl" :src="mediaUrl(task.outputUrl || task.inputUrl)" alt="" loading="lazy" /><PictureOutlined v-else /></span>
+            <span class="inbox-thumb"><img v-if="task.outputUrl || task.inputUrl" :src="thumbUrl(task.outputUrl || task.inputUrl, 320)" alt="" loading="lazy" /><PictureOutlined v-else /></span>
             <span class="inbox-copy"><strong>{{ task.title || '新上传衣物' }}</strong><span>{{ task.mode }} · {{ started(Date.parse(task.createdAt)) }}</span></span>
             <span class="inbox-tag" :class="statusTone(task)">{{ taskLabels[task.status] }}</span>
           </a-button>

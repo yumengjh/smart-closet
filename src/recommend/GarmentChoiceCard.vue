@@ -11,7 +11,7 @@ import type { RecommendationView } from './types'
  * 指代选择卡 (design 8.2): the assistant's search matched several garments; tapping one recommends around it
  * directly through the recommendation API — no further model round.
  */
-const props = defineProps<{ payload: { query?: string; total?: number; candidates?: { name: string; garmentIds: string[]; reasons?: string[] }[] } }>()
+const props = defineProps<{ payload: { query?: string; total?: number; candidates?: { name: string; garmentIds: string[]; reasons?: string[]; displayUrl?: string | null }[] } }>()
 const { message } = App.useApp()
 const picked = ref(''); const loading = ref(false); const view = ref<RecommendationView | null>(null)
 const picks = latestRequest()
@@ -28,7 +28,7 @@ async function pick(id: string) {
     <small class="muted">“{{ payload.query }}”找到 {{ payload.total }} 件，点一下用它搭一套（不再调用大模型）：</small>
     <div class="garment-choice-options">
       <a-button v-for="c in payload.candidates" :key="c.garmentIds[0]" :type="picked === c.garmentIds[0] ? 'primary' : 'default'" :loading="loading && picked === c.garmentIds[0]" :title="c.reasons?.join(' · ')" @click="pick(c.garmentIds[0])">
-        <GarmentThumb :garment-id="c.garmentIds[0]" :alt="c.name" :size="64" /><span>{{ c.name }}</span>
+        <GarmentThumb :garment-id="c.garmentIds[0]" :display-url="c.displayUrl" :alt="c.name" :size="64" /><span>{{ c.name }}</span>
       </a-button>
     </div>
     <RecommendationGroup v-if="view" :key="view.runId" :view="view" dense />

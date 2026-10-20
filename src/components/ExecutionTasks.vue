@@ -5,7 +5,7 @@ import { message } from 'ant-design-vue'
 import { QuestionCircleOutlined, PictureOutlined } from '@ant-design/icons-vue'
 import { processingApi, poolLabels, type ExecutionTask } from '../services/processing'
 import type { ClosetTask } from '../services/api'
-import { mediaUrl } from '../services/urls'
+import { thumbUrl } from '../services/urls'
 import { quickApi } from '../services/quickIntake'
 import { createUuid } from '../domain/id'
 import { useClosetStore } from '../stores/closet'
@@ -89,7 +89,7 @@ onMounted(poll); onBeforeUnmount(() => { alive = false; clearTimeout(timer) })
     <a-alert v-if="error" type="warning" :message="`排队状态暂时无法更新：${error}`" show-icon class="queue-alert" />
     <ul class="queue-list">
       <li v-for="task in shown" :key="task.id" class="queue-row">
-        <component :is="garmentLink(task) ? RouterLink : 'span'" :to="garmentLink(task) || undefined" class="queue-thumb" :aria-label="garmentLink(task) ? '打开这件衣物' : undefined"><img v-if="thumb(task)" :src="mediaUrl(thumb(task))" alt="" loading="lazy" /><PictureOutlined v-else /></component>
+        <component :is="garmentLink(task) ? RouterLink : 'span'" :to="garmentLink(task) || undefined" class="queue-thumb" :aria-label="garmentLink(task) ? '打开这件衣物' : undefined"><img v-if="thumb(task)" :src="thumbUrl(thumb(task), 320)" alt="" loading="lazy" decoding="async" /><PictureOutlined v-else /></component>
         <div class="queue-copy">
           <div class="queue-title"><RouterLink v-if="garmentLink(task)" :to="garmentLink(task)!" class="queue-name">{{ owner(task)?.title || '这件衣物' }}</RouterLink><strong v-else>{{ owner(task)?.title || kindLabel(task) }}</strong><span class="queue-step">{{ poolLabels[task.pool] || '处理' }}</span><span class="queue-state" :class="stateView[task.status]?.tone">{{ stateView[task.status]?.label || task.status }}</span></div>
           <p>{{ explain(task) }}</p>

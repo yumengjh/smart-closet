@@ -70,7 +70,7 @@ function adopted(next: RecommendedOutfit) { emit('replace', index.value, next); 
         <h4>单品</h4>
         <ul class="recommend-detail-garments">
           <li v-for="g in outfit.garments" :key="g.id">
-            <GarmentThumb :garment-id="g.id" :alt="g.name" />
+            <GarmentThumb :garment-id="g.id" :display-url="g.displayUrl" :alt="g.name" />
             <div><strong>{{ g.name }}</strong><a-tag>{{ ROLE_LABELS[g.role] || g.role }}</a-tag><small>{{ g.color }}</small><p v-if="g.reasons.length">{{ g.reasons.join(' · ') }}</p></div>
             <div class="recommend-detail-garment-actions"><SwapPicker :key="outfit.key + g.id" :run-id="runId" :outfit="outfit" :garment="g" @adopted="adopted" /><ExplainButton :key="'e' + outfit.key + g.id" :run-id="runId" :garment-id="g.id" /></div>
           </li>
