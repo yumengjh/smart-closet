@@ -45,7 +45,7 @@ const closetTheme = computed(() => ({
 const collapsed = ref(readCollapsed())
 function toggleSidebar() { collapsed.value = !collapsed.value; saveCollapsed(collapsed.value) }
 const frameStyle = computed(() => ({ '--sidebar-w': `${sidebarWidth(collapsed.value)}px` }))
-const isLogin = computed(() => route.path === '/login')
+const isLogin = computed(() => ['/login', '/register'].includes(route.path))
 const isOutfitEditor = computed(() => route.path.startsWith('/outfits/'))
 const navItems = [
   { path: '/wardrobe', label: '我的衣柜', icon: AppstoreOutlined },
@@ -126,8 +126,8 @@ async function signOut() {
             </a-tooltip>
           </nav>
           <div class="profile-row">
-            <a-tooltip placement="right" :title="collapsed ? (closet.user?.username || '') : ''"><span class="avatar">{{ closet.user?.username?.slice(0, 1).toUpperCase() }}</span></a-tooltip>
-            <span class="profile-name side-text"><strong>{{ closet.user?.username }}</strong><small>我的衣橱</small></span>
+            <a-tooltip placement="right" :title="collapsed ? (closet.user?.displayName || closet.user?.username || '') : ''"><span class="avatar">{{ (closet.user?.displayName || closet.user?.username)?.slice(0, 1).toUpperCase() }}</span></a-tooltip>
+            <span class="profile-name side-text"><strong>{{ closet.user?.displayName || closet.user?.username }}</strong><small>我的衣橱</small></span>
             <a-tooltip title="退出登录">
               <a-button type="text" shape="circle" danger class="sign-out" aria-label="退出登录" @click="signOut"><template #icon><LogoutOutlined /></template></a-button>
             </a-tooltip>
@@ -137,7 +137,7 @@ async function signOut() {
           <a-button class="sidebar-edge-toggle" shape="circle" size="small" :aria-label="collapsed ? '展开侧栏' : '收起侧栏'" :aria-expanded="!collapsed" @click="toggleSidebar"><RightOutlined v-if="collapsed" /><LeftOutlined v-else /></a-button>
         </a-tooltip>
         <main class="main-area">
-          <div v-if="usingMocks" class="mock-banner"><span class="mock-pulse"></span><span>界面演示 · 示例数据不是 AI 结果，演示模式禁止提交模型任务</span><span class="mock-banner-end">{{ closet.user?.username }} 的衣橱</span></div>
+          <div v-if="usingMocks" class="mock-banner"><span class="mock-pulse"></span><span>界面演示 · 示例数据不是 AI 结果，演示模式禁止提交模型任务</span><span class="mock-banner-end">{{ closet.user?.displayName || closet.user?.username }} 的衣橱</span></div>
           <header class="topbar"><div class="topbar-actions"><a-button v-if="!closet.user?.mustChangePassword" class="topbar-assistant" :aria-label="`问鱼搭助手（${assistantShortcut}）`" @click="openAssistant"><BloubAvatar :size="28" expression="happy" /><span>问鱼搭</span><kbd>{{ assistantShortcut }}</kbd></a-button><MinimalToggle v-if="!closet.user?.mustChangePassword" /><ThemeToggle /><SoundToggle /><TaskInbox v-if="!closet.user?.mustChangePassword" /></div></header>
           <section class="route-content" :aria-busy="!!pendingPath"><TaskToast /><RouterView v-slot="{ Component }"><Transition name="route-fade" mode="out-in"><div :key="viewKey(Component)" class="route-view"><component :is="Component" /></div></Transition></RouterView></section>
           <WaitingGame v-if="!closet.user?.mustChangePassword" />

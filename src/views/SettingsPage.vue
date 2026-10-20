@@ -38,11 +38,12 @@ const categories: SettingsCategory[] = [
   { key: 'templates', label: '搭配模板审核', eyebrow: '管理员', description: '审核经典搭法模板，通过后参与推荐加分。', icon: AuditOutlined, hidden: () => firstLogin.value || closet.user?.role !== 'ADMIN', component: defineAsyncComponent(() => import('./AdminTemplatesPage.vue')) },
   { key: 'ootd-samples', label: '整套穿搭样本', eyebrow: '管理员', description: '收集整套穿搭图，提取物品与姿势，审核后生成搭配模板。', icon: CameraOutlined, hidden: () => firstLogin.value || closet.user?.role !== 'ADMIN', component: defineAsyncComponent(() => import('./AdminOotdSamplesPage.vue')) },
   { key: 'processing', label: '任务与资源', eyebrow: '管理员', description: '查看积压、共享账户与调度容量。', icon: DashboardOutlined, hidden: () => firstLogin.value || closet.user?.role !== 'ADMIN', component: defineAsyncComponent(() => import('./AdminProcessingPage.vue')) },
+  { key: 'users', label: '用户管理', eyebrow: '管理员', description: '管理用户、登录会话、每日额度和邀请码。', icon: UserOutlined, hidden: () => firstLogin.value || isPortableLogin.value || closet.user?.role !== 'ADMIN', component: defineAsyncComponent(() => import('./AdminUsersPage.vue')) },
   {
     key: 'account',
     label: '账户安全',
-    eyebrow: '密码与登录',
-    description: '修改密码，保持账号安全。',
+    eyebrow: '资料、密码与登录',
+    description: '编辑个人资料、修改密码、管理登录设备与注销账号。',
     icon: LockOutlined,
     hidden: () => isPortableLogin.value,
     component: defineAsyncComponent(() => import('./settings/SettingsAccountSection.vue')),
@@ -136,7 +137,7 @@ function goBack() {
       <h1>{{ firstLogin ? '欢迎使用鱼搭' : '我的' }}</h1>
       <p v-if="!firstLogin" class="page-subtitle">账户、助手和衣橱偏好。</p>
     </div>
-    <div class="settings-avatar">{{ closet.user?.username?.slice(0, 1).toUpperCase() }}</div>
+    <div class="settings-avatar">{{ (closet.user?.displayName || closet.user?.username)?.slice(0, 1).toUpperCase() }}</div>
   </div>
 
   <!-- 首次登录提示 -->
@@ -208,7 +209,7 @@ function goBack() {
       </header>
 
       <Suspense>
-        <component :is="activeCategory.component" v-bind="['processing', 'templates', 'ootd-samples'].includes(activeCategory.key) ? { embedded: true } : {}" />
+        <component :is="activeCategory.component" v-bind="['processing', 'templates', 'ootd-samples', 'users'].includes(activeCategory.key) ? { embedded: true } : {}" />
         <template #fallback>
           <div class="settings-group"><a-skeleton active :paragraph="{ rows: 5 }" /></div>
         </template>
