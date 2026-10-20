@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import RenderTasksOverview from '../components/RenderTasksOverview.vue'
 import ExecutionTasks from '../components/ExecutionTasks.vue'
-import { mediaUrl } from '../services/urls'
+import { thumbUrl } from '../services/urls'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { App as AntApp } from 'ant-design-vue'
@@ -35,7 +35,7 @@ onMounted(async () => { alive = true; await load(); poll() }); onUnmounted(() =>
   <a-skeleton v-if="loading" active :paragraph="{ rows: 6 }" />
   <section v-else-if="filtered.length" class="task-list" aria-label="任务列表">
     <article v-for="task in filtered" :key="task.id" class="task-card" :title="`任务编号 ${task.id}`">
-      <div class="task-thumbnail"><img v-if="task.outputUrl || task.inputUrl" :src="mediaUrl(task.outputUrl || task.inputUrl)" alt="任务图片" loading="lazy" /><PictureOutlined v-else /><span>{{ task.outputUrl && task.outputUrl !== task.inputUrl ? '结果' : '原图' }}</span></div>
+      <div class="task-thumbnail"><img v-if="task.outputUrl || task.inputUrl" :src="thumbUrl(task.outputUrl || task.inputUrl, 320)" alt="任务图片" loading="lazy" /><PictureOutlined v-else /><span>{{ task.outputUrl && task.outputUrl !== task.inputUrl ? '结果' : '原图' }}</span></div>
       <div class="task-main">
         <div class="task-title-row"><h2>{{ task.title }}</h2><span class="state-badge" :class="task.status.toLowerCase()">{{ taskLabels[task.status] }}</span></div>
         <p class="task-meta">{{ task.mode }}<i aria-hidden="true">·</i><time :datetime="task.createdAt">{{ when(task.createdAt) }}</time></p>

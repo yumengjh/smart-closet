@@ -3,7 +3,7 @@ import FloatingPager from '../components/FloatingPager.vue'
 import GarmentProcessingStatus from '../components/GarmentProcessingStatus.vue'
 import { createUuid } from '../domain/id'
 import { quickApi } from '../services/quickIntake'
-import { mediaUrl } from '../services/urls'
+import { mediaUrl, thumbUrl } from '../services/urls'
 import { computed, onMounted, onUnmounted, reactive, ref, toRaw, watch } from 'vue'
 import GarmentRecommendPanel from '../recommend/GarmentRecommendPanel.vue'
 import SimilarGarmentsPanel from '../similar/SimilarGarmentsPanel.vue'
@@ -334,12 +334,12 @@ watch(() => route.query.task, async () => { await load(); schedulePoll() })
       <a-alert v-if="error" type="error" :message="error" description="你的图片选择和表单输入仍保留。" show-icon><template #action><a-button @click="reconcile">核对最新版本</a-button></template></a-alert>
       <a-alert v-if="success && !completed" type="success" :message="success" show-icon />
       <section v-if="completed" class="workspace-complete">
-        <CheckOutlined class="complete-icon" /><img :src="mediaUrl(garment.displayUrl || previewUrl)" alt="已入柜的衣物展示图" /><h2>{{ title }}</h2><a-alert v-if="garment.images.find(image => image.id === garment?.displayAssetId)?.aiGenerated" type="info" message="AI 生成，可能包含推测细节" show-icon /><p>{{ fieldValue('patterns') }} · {{ fieldValue('seasons') }}</p>
+        <CheckOutlined class="complete-icon" /><img :src="thumbUrl(garment.displayUrl || previewUrl, 960)" alt="已入柜的衣物展示图" decoding="async" /><h2>{{ title }}</h2><a-alert v-if="garment.images.find(image => image.id === garment?.displayAssetId)?.aiGenerated" type="info" message="AI 生成，可能包含推测细节" show-icon /><p>{{ fieldValue('patterns') }} · {{ fieldValue('seasons') }}</p>
         <div><a-button type="primary" @click="router.push('/wardrobe')">查看衣柜</a-button><a-button @click="router.push('/add')">继续添加衣物</a-button><a-button type="text" @click="completed=false">查看衣物详情</a-button></div>
       </section>
       <template v-else>
         <div v-if="panel === 'metadata'" class="garment-layout editor-layout">
-          <section class="garment-surface editor-preview"><h2>这次录入的衣物</h2><div class="garment-canvas"><img :src="mediaUrl(previewUrl)" alt="当前衣物展示图" /></div><h3>{{ title }}</h3><p>{{ selectedImage?.aiGenerated ? 'AI 生成，可能包含推测细节' : '当前展示图' }}</p><a-button @click="originalOpen=true"><PictureOutlined /> 查看上传原图</a-button></section>
+          <section class="garment-surface editor-preview"><h2>这次录入的衣物</h2><div class="garment-canvas"><img :src="thumbUrl(previewUrl, 960)" alt="当前衣物展示图" decoding="async" /></div><h3>{{ title }}</h3><p>{{ selectedImage?.aiGenerated ? 'AI 生成，可能包含推测细节' : '当前展示图' }}</p><a-button @click="originalOpen=true"><PictureOutlined /> 查看上传原图</a-button></section>
           <section class="garment-surface metadata-editor">
             <div class="section-heading"><h2>衣物基本信息</h2><a-tag>按需修改</a-tag></div>
             <GarmentMetadataFields :schema="basicSchema" :values="values" :garment="garment" :reset-fields="resetFields" :disabled="processing && !quickIntakeId || Boolean(busy) || garment.status === 'TRASHED'" @edit="editField" @restore="restoreAutomatic" />
@@ -353,10 +353,10 @@ watch(() => route.query.task, async () => { await load(); schedulePoll() })
         <div v-else-if="panel === 'images'" class="garment-layout image-layout">
           <section class="garment-surface"><div class="section-heading"><h2>图片对照</h2><a-tag :color="stickerPending ? 'warning' : 'success'">{{ stickerPending ? '尚未贴纸化' : '当前可用图片' }}</a-tag></div>
             <a-segmented v-if="results.length > 1" :value="latestResult?.id" :options="results.map(image => ({label:imageLabels[image.kind] || '处理图片',value:image.id}))" @update:value="viewedResultId=String($event)" class="image-stage-picker" />
-            <div class="comparison-grid"><figure><figcaption>{{ imageLabels[latestResult?.kind || ''] || '处理结果' }}</figcaption><div class="garment-canvas"><img v-if="latestResult" :src="mediaUrl(latestResult.url)" alt="衣物处理结果" /><a-empty v-else description="本次没有生成图片" /></div></figure><figure><figcaption>上传原图</figcaption><div class="garment-canvas"><img :src="mediaUrl(garment.sourceUrl)" alt="上传原图" /></div></figure></div>
+            <div class="comparison-grid"><figure><figcaption>{{ imageLabels[latestResult?.kind || ''] || '处理结果' }}</figcaption><div class="garment-canvas"><img v-if="latestResult" :src="thumbUrl(latestResult.url, 960)" alt="衣物处理结果" decoding="async" /><a-empty v-else description="本次没有生成图片" /></div></figure><figure><figcaption>上传原图</figcaption><div class="garment-canvas"><img :src="thumbUrl(garment.sourceUrl, 960)" alt="上传原图" decoding="async" /></div></figure></div>
             <a-alert v-if="latestResult?.aiGenerated" type="info" message="AI 生成，可能包含推测细节" show-icon /><a-button @click="originalOpen=true"><EyeOutlined /> 放大对照</a-button>
           </section>
-          <section class="garment-surface image-options"><h2>衣柜展示图</h2><a-radio-group v-model:value="selectedAssetId" :disabled="processing && !quickIntakeId || Boolean(busy) || garment.status === 'TRASHED'" class="display-options"><a-radio v-for="image in imageOptions" :key="image.id" :value="image.id"><img :src="mediaUrl(image.url)" :alt="imageLabels[image.kind] || '处理图片'" /><span>{{ imageLabels[image.kind] || '处理图片' }}<small v-if="image.aiGenerated">AI 生成，可能包含推测细节</small><small>{{ selectedAssetId === image.id ? '已选' : '选择这张图片' }}</small></span></a-radio></a-radio-group>
+          <section class="garment-surface image-options"><h2>衣柜展示图</h2><a-radio-group v-model:value="selectedAssetId" :disabled="processing && !quickIntakeId || Boolean(busy) || garment.status === 'TRASHED'" class="display-options"><a-radio v-for="image in imageOptions" :key="image.id" :value="image.id"><img :src="thumbUrl(image.url, 160)" :alt="imageLabels[image.kind] || '处理图片'" loading="lazy" decoding="async" /><span>{{ imageLabels[image.kind] || '处理图片' }}<small v-if="image.aiGenerated">AI 生成，可能包含推测细节</small><small>{{ selectedAssetId === image.id ? '已选' : '选择这张图片' }}</small></span></a-radio></a-radio-group>
             <div class="section-divider"><h3>检查这些细节</h3><p>衣物轮廓完整；颜色、花纹与原图一致；背景没有明显杂物。</p><GarmentEdgeHelp /></div>
             <a-button v-if="forceAsset && !stickerPending" :disabled="processing || Boolean(busy) || usingMocks || blocked || Boolean(connectionError) || garment.status === 'TRASHED'" :loading="busy === 'continue'" @click="continueSticker('FORCE')"><ReloadOutlined /> 边缘不满意，重新去背景</a-button><small v-if="forceAsset && !stickerPending">本地处理，不使用 AI 额度</small>
             <a-collapse :bordered="false"><a-collapse-panel key="rework" header="重新处理"><div class="advanced-actions"><a-button :disabled="processing || dirty || usingMocks || garment.status === 'TRASHED'" @click="startRun('reprocess')">重新整理图片 · 1 次</a-button><a-button :disabled="processing || dirty || usingMocks || garment.status === 'TRASHED'" @click="startRun('recognize')">重新识别信息 · 1 次</a-button></div></a-collapse-panel></a-collapse>
@@ -367,7 +367,7 @@ watch(() => route.query.task, async () => { await load(); schedulePoll() })
           <template v-if="detailMode">
             <div class="detail-hero">
             <section class="detail-stage" aria-label="衣物展示图">
-              <div class="stage-canvas"><img :src="mediaUrl(previewUrl)" :alt="title" /></div>
+              <div class="stage-canvas"><img :src="thumbUrl(previewUrl, 960)" :alt="title" decoding="async" /></div>
               <p v-if="displayIsAi" class="stage-note"><InfoCircleOutlined /> AI 生成，可能包含推测细节</p>
               <div class="stage-actions"><a-button @click="originalOpen=true"><EyeOutlined /> 对照原图</a-button><a-button :disabled="garment.status === 'TRASHED'" @click="openPanel('images')"><PictureOutlined /> 更换展示图</a-button></div>
             </section>
@@ -416,7 +416,7 @@ watch(() => route.query.task, async () => { await load(); schedulePoll() })
           </template>
           <template v-else>
           <section class="garment-surface main-preview"><div class="section-heading"><h2>{{ processing || blocked ? '上传原图' : stickerPending ? '当前中间结果' : ['INPUT','ORIGINAL'].includes(selectedImage?.kind || '') ? '当前展示图' : '整理后的衣物' }}</h2><a-tooltip title="查看原图与当前展示图"><a-button type="text" aria-label="放大对照原图" @click="originalOpen=true"><PictureOutlined /></a-button></a-tooltip></div>
-            <div class="garment-canvas"><img :src="mediaUrl(stickerPending && latestResult ? latestResult.url : previewUrl)" :alt="processing || blocked ? '上传原图' : '当前衣物展示图'" /></div>
+            <div class="garment-canvas"><img :src="thumbUrl(stickerPending && latestResult ? latestResult.url : previewUrl, 960)" decoding="async" :alt="processing || blocked ? '上传原图' : '当前衣物展示图'" /></div>
             <a-alert v-if="garment.images.find(image => image.url === previewUrl)?.aiGenerated" type="info" message="AI 生成，可能包含推测细节" show-icon />
             <a-space v-if="quickIntakeId && garment.status !== 'TRASHED'" wrap><a-button :disabled="Boolean(busy)" @click="enhanceOpen = true">增强图片 / 描述问题重做</a-button><a-button @click="openPanel('metadata')">编辑资料</a-button></a-space>
             <div class="preview-caption"><h3>{{ title }}</h3><p>{{ fieldValue('patterns') }} · {{ fieldValue('seasons') }}</p></div>
@@ -452,7 +452,7 @@ watch(() => route.query.task, async () => { await load(); schedulePoll() })
       <a-modal :open="Boolean(advanced)" :title="advanced === 'appearance' ? '更多外观资料' : '品牌、尺码与其他标签'" :footer="null" :width="720" @cancel="advanced=''">
         <p class="quiet-copy modal-intro">按需填写，未知可留空。修改随衣物资料一起保存。</p><GarmentMetadataFields :schema="advancedSchema" :values="values" :garment="garment" :reset-fields="resetFields" :disabled="processing && !quickIntakeId || Boolean(busy) || garment.status === 'TRASHED'" @edit="editField" @restore="restoreAutomatic" /><div class="modal-actions"><a-button type="primary" @click="advanced=''">返回资料编辑</a-button></div>
       </a-modal>
-      <a-modal v-model:open="originalOpen" title="原图与当前展示图" :footer="null" :width="1000"><p v-if="mainTarget" class="quiet-copy modal-intro">识别目标：{{ mainTarget.description }}</p><div class="comparison-grid"><figure><figcaption>上传原图</figcaption><div class="garment-canvas"><img :src="mediaUrl(source.previewUrl || garment.sourceUrl)" alt="完整来源原图" /></div><a-button type="link" :href="mediaUrl(source.originalUrl || garment.sourceUrl)" target="_blank">查看原始大图</a-button></figure><figure><figcaption>当前选择的展示图</figcaption><div class="garment-canvas"><img :src="mediaUrl(selectedImage?.url || previewUrl)" alt="当前展示图" /></div><a-button type="link" :href="mediaUrl(selectedImage?.url || previewUrl)" target="_blank">查看展示大图</a-button></figure></div></a-modal>
+      <a-modal v-model:open="originalOpen" title="原图与当前展示图" :footer="null" :width="1000"><p v-if="mainTarget" class="quiet-copy modal-intro">识别目标：{{ mainTarget.description }}</p><div class="comparison-grid"><figure><figcaption>上传原图</figcaption><div class="garment-canvas"><img :src="mediaUrl(source.previewUrl || garment.sourceUrl)" alt="完整来源原图" /></div><a-button type="link" :href="mediaUrl(source.originalUrl || garment.sourceUrl)" target="_blank">查看原始大图</a-button></figure><figure><figcaption>当前选择的展示图</figcaption><div class="garment-canvas"><img :src="thumbUrl(selectedImage?.url || previewUrl, 960)" alt="当前展示图" decoding="async" /></div><a-button type="link" :href="mediaUrl(selectedImage?.url || previewUrl)" target="_blank">查看展示大图</a-button></figure></div></a-modal>
     </template>
   </div>
 </template>

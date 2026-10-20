@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { mediaUrl } from '../services/urls'
+import { thumbSrcset, thumbUrl } from '../services/urls'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { PictureOutlined, ReloadOutlined } from '@ant-design/icons-vue'
 import { usingMocks, type Garment } from '../services/api'
@@ -12,7 +12,10 @@ const attempt = ref(0)
 let autoRetried = false
 let slowTimer = 0
 let retryTimer = 0
-const src = computed(() => props.garment.displayUrl ? mediaUrl(props.garment.displayUrl) : '')
+// Cards show a scaled WebP copy; the browser picks the width that fits the grid column and screen density.
+const src = computed(() => thumbUrl(props.garment.displayUrl, props.compact ? 320 : 480) || '')
+const srcset = computed(() => thumbSrcset(props.garment.displayUrl, props.compact ? [160, 320] : [320, 480, 720]))
+const sizes = computed(() => props.compact ? '120px' : '(max-width: 767px) 50vw, (max-width: 1279px) 33vw, 25vw')
 
 function clearTimers() { clearTimeout(slowTimer); clearTimeout(retryTimer) }
 function startLoading() {
@@ -45,7 +48,7 @@ onBeforeUnmount(clearTimers)
         <svg class="art-hanger" viewBox="0 0 64 40"><path d="M32 12a4.5 4.5 0 1 0-4.5-4.5M32 12v3.5L5 33.5c-1.6 1.1-.8 3.5 1.1 3.5h51.8c1.9 0 2.7-2.4 1.1-3.5L32 15.5" /></svg>
         <span v-if="slow && !compact" class="art-slow">网络较慢，仍在加载…</span>
       </div>
-      <img v-if="state !== 'failed'" :key="attempt" :ref="trackImage" :src="src" alt="" loading="lazy" decoding="async" @load="onLoad" @error="onError" />
+      <img v-if="state !== 'failed'" :key="attempt" :ref="trackImage" :src="src" :srcset="srcset" :sizes="srcset ? sizes : undefined" alt="" loading="lazy" decoding="async" @load="onLoad" @error="onError" />
       <div v-else class="photo-unavailable art-failed">
         <PictureOutlined />
         <span v-if="!compact">图片加载失败</span>

@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { App } from 'ant-design-vue'
 import { ScanOutlined } from '@ant-design/icons-vue'
-import { mediaUrl } from '../../services/urls'
+import { thumbUrl } from '../../services/urls'
 import type { ImageModelStatus } from '../../services/api'
 import { similarApi, type DuplicatePair, type DuplicateScan } from '../../similar/api'
 import { useNotificationStore } from '../../stores/notifications'
@@ -67,7 +67,7 @@ onUnmounted(() => clearTimeout(poll))
     <ul v-else class="tidy-pairs">
       <li v-for="p in pairs" :key="p.a.id + p.b.id">
         <div class="tidy-pair">
-          <RouterLink v-for="g in [p.a, p.b]" :key="g.id" :to="`/garment/${g.id}`" class="tidy-item"><img v-if="g.displayUrl" :src="mediaUrl(g.displayUrl)" :alt="g.name" /><span>{{ g.name }}</span></RouterLink>
+          <RouterLink v-for="g in [p.a, p.b]" :key="g.id" :to="`/garment/${g.id}`" class="tidy-item"><img v-if="g.displayUrl" :src="thumbUrl(g.displayUrl, 320)" :alt="g.name" loading="lazy" decoding="async" /><span>{{ g.name }}</span></RouterLink>
         </div>
         <p class="muted">{{ p.reasons.join('，') }}</p>
         <a-button size="small" :loading="busy === p.a.id + p.b.id" @click="dismiss(p)">不是重复</a-button>

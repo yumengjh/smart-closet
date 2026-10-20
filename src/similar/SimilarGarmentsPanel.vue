@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { App } from 'ant-design-vue'
-import { mediaUrl } from '../services/urls'
+import { thumbUrl } from '../services/urls'
 import { similarApi, LEVEL_LABELS, type SimilarView } from './api'
 
 /** 相似的衣物 on the garment page: hints only, never merges or blocks (design S2). */
@@ -36,7 +36,7 @@ onMounted(load); watch(() => props.garmentId, load)
     <ul class="similar-list">
       <li v-for="item in view?.items" :key="item.id">
         <RouterLink :to="`/garment/${item.id}`" class="similar-item">
-          <span class="similar-thumb"><img v-if="item.displayUrl" :src="mediaUrl(item.displayUrl)" :alt="item.name" /></span>
+          <span class="similar-thumb"><img v-if="item.displayUrl" :src="thumbUrl(item.displayUrl, 320)" :alt="item.name" loading="lazy" decoding="async" /></span>
           <span class="similar-copy">
             <span class="similar-title"><strong>{{ item.name }}</strong><a-tag v-if="item.level" :color="LEVEL_LABELS[item.level].color">{{ LEVEL_LABELS[item.level].label }}</a-tag></span>
             <span class="similar-reasons"><em v-for="reason in (item.reasons.length ? item.reasons : ['整体相近']).slice(0, 3)" :key="reason">{{ reason }}</em></span>
