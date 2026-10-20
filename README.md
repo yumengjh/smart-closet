@@ -88,4 +88,4 @@ npm run build
 
 后端回归检查：在 `smart-closet-server` 执行 `mvn test`。界面关键操作使用受控 API 服务 `src/services/api.ts` 与 `src/services/platform.ts`；模拟模式没有真实登录、云端处理或服务端隔离能力。
 
-GitHub Actions 的 `Frontend checks` 使用 Node.js 24，在干净检出中运行 `npm ci`、测试、类型检查和关闭模拟的构建；不会调用真实 AI 或发布页面。[当前平台功能进度](.planning/platform-agent-ootd/progress.md)。
+CircleCI（`.circleci/config.yml`）在每次推送与 PR 时使用 Node.js 24，在干净检出中运行 `npm ci`、测试、类型检查和关闭模拟的构建；不会调用真实 AI 或发布页面。GitHub Actions 的 `Frontend checks` 只保留手动运行。[当前平台功能进度](.planning/platform-agent-ootd/progress.md)。
