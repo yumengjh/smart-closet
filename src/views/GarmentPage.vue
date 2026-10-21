@@ -97,7 +97,7 @@ const latestTaskId = computed(() => String(route.query.task || garment.value?.ta
 const panel = ref<'result' | 'metadata' | 'images' | 'history'>('result')
 const advanced = ref<'appearance' | 'labels' | ''>('')
 const originalOpen = ref(false), completed = ref(false)
-const basicKeys = ['category', 'primaryColor', 'patterns', 'seasons']
+const basicKeys = ['category', 'primaryColor', 'patterns', 'seasons', 'genderFit']
 const appearanceKeys = ['secondaryColors', 'neckline', 'sleeveLength', 'garmentLength', 'closure', 'texture', 'styles']
 const basicSchema = computed(() => schema.value.filter(field => basicKeys.includes(field.key)))
 const layeringSchema = computed(() => schema.value.filter(field => layeringFields.includes(field.key)))

@@ -18,7 +18,7 @@ const pretty = (value: unknown) => JSON.stringify(value, null, 2)
 const garmentColumns = [{ title: '衣物 / 版本', key: 'id' }, { title: '品类 → 角色', key: 'role' }, { title: '资料缺失', key: 'unknown' }]
 const sceneColumns = ['elementId','garmentId','role','x','y','width','height','zIndex','assetId'].map(key => ({ title: key, dataIndex: key, key }))
 const garments = computed(() => detail.value?.garments || detail.value?.result?.garments || detail.value?.result?.items || (detail.value?.result?.wearing ? [detail.value.result] : []))
-const fieldNames: Record<string,string> = { fit:'版型建议', thickness:'厚薄线索', wearingModes:'穿着用途', category:'品类', primaryColor:'主色', secondaryColors:'辅色', styles:'风格', seasons:'季节', patterns:'图案', neckline:'领型', sleeveLength:'袖长', garmentLength:'衣长', texture:'质感', closure:'门襟' }
+const fieldNames: Record<string,string> = { fit:'版型建议', thickness:'厚薄线索', wearingModes:'穿着用途', genderFit:'适穿性别', category:'品类', primaryColor:'主色', secondaryColors:'辅色', styles:'风格', seasons:'季节', patterns:'图案', neckline:'领型', sleeveLength:'袖长', garmentLength:'衣长', texture:'质感', closure:'门襟' }
 const unknownFields = (garment: any) => Object.entries(garment.fields || {}).filter(([key, values]) => !(values as any)?.length || ['UNKNOWN','CONFLICT'].includes(garment.quality?.[key]?.status)).map(([key]) => fieldNames[key] || key).join('、')
 const fields = (garment: any) => Object.entries(garment.fields || {}) as [string, unknown][]
 async function load(reset = false) {
