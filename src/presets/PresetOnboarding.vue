@@ -14,9 +14,8 @@ const emit = defineEmits<{ done: [imported: number] }>()
 const { message } = App.useApp()
 const AGE_FEELS = [{ value: 'YOUTH', label: '青春' }, { value: 'PRIME', label: '轻熟' }, { value: 'MATURE', label: '成熟' }, { value: '', label: '不限' }]
 const STYLE_OPTIONS = ['都市通勤', '高智极简', '美式休闲', '户外机能', '老钱风', '潮流运动', '工装风', '日系清新', '巴恩风', '法式', '新中式', '甜美'].map(value => ({ value, label: value }))
-const SEX_OPTIONS = [{ value: 'ALL', label: '不限' }, { value: 'FEMALE', label: '女' }, { value: 'MALE', label: '男' }]
 
-const step = ref(0); const ageFeel = ref(''); const styles = ref<string[]>([]); const sex = ref<'ALL' | 'FEMALE' | 'MALE'>('ALL')
+const step = ref(0); const ageFeel = ref(''); const styles = ref<string[]>([])
 const saving = ref(false); const imported = ref(0)
 const picker = ref<InstanceType<typeof PresetPicker> | null>(null)
 
@@ -44,8 +43,7 @@ function finish() { open.value = false; emit('done', imported.value) }
     </section>
     <section v-else-if="step === 1" class="onboarding-step">
       <p class="muted">衣柜还是空的？勾选你有类似的单品，先用示意图搭起来，之后可以换成自己的照片。</p>
-      <div class="settings-row"><div><strong>看哪类单品</strong></div><a-segmented v-model:value="sex" :options="SEX_OPTIONS" /></div>
-      <PresetPicker ref="picker" compact :sex="sex" :styles="styles" @imported="onImported" />
+      <PresetPicker ref="picker" compact :styles="styles" @imported="onImported" />
       <footer class="onboarding-actions"><a-button @click="step = 2">跳过</a-button><a-button type="primary" @click="addChosen">{{ picker?.chosenCount ? `加入 ${picker.chosenCount} 件并继续` : '下一步' }}</a-button></footer>
     </section>
     <section v-else class="onboarding-step">
