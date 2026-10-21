@@ -1,7 +1,7 @@
 /** Mirrors RecommendationService.OutfitView on the server; all text is computed server-side. */
 export type EvidenceLine = { text: string; positive: boolean }
 export type Dimension = { key: string; label: string; score: number; weight: number; evidence: EvidenceLine[] }
-export type RecommendedGarment = { id: string; name: string; role: string; color: string; categories: string[]; reasons: string[]; imageStyle?: string | null; displayUrl?: string | null }
+export type RecommendedGarment = { id: string; name: string; role: string; color: string; categories: string[]; reasons: string[]; imageStyle?: string | null; displayUrl?: string | null; preset?: boolean }
 export type OuterSuggestion = { id: string; name: string; reasons: string[] }
 /** D45: optional accessories shown next to the outfit (never part of it, never scored). */
 export type AccessorySuggestion = { id: string; name: string; role: string; reasons: string[] }
