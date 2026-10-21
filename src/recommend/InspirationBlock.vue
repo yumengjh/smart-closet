@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
+import { BulbOutlined } from '@ant-design/icons-vue'
 import RecommendationGroup from './RecommendationGroup.vue'
 import { recommendApi } from './api'
 import type { InspirationView } from './types'
@@ -22,21 +23,22 @@ onMounted(load)
     <a-alert v-if="error" type="warning" show-icon :message="error"><template #action><a-button size="small" @click="load">重试</a-button></template></a-alert>
     <div v-else-if="loading && !data" class="recommend-cards"><a-skeleton v-for="i in 3" :key="i" active /></div>
     <template v-else-if="data">
-      <p class="muted recommend-inspiration-meta">
-        从 {{ data.approvedTemplates }} 个已审核搭法里挑出今天适用的 {{ data.applicableTemplates }} 个，用你衣柜里的衣服套进去{{ data.view.intent.description ? '；' + data.view.intent.description : '' }}
-      </p>
-      <p v-if="data.audienceSet === false" class="muted recommend-inspiration-meta">想要更合适的灵感？<RouterLink to="/settings?section=style">告诉我你喜欢的感觉</RouterLink>（风格年龄感、着装取向，都可不填）</p>
+      <div class="recommend-inspiration-summary">
+        <span class="recommend-inspiration-count"><strong>{{ data.applicableTemplates }}</strong> 个搭法今天适用<small class="muted"> / 共 {{ data.approvedTemplates }} 个</small></span>
+        <span v-if="data.view.intent.description" class="recommend-inspiration-intent">{{ data.view.intent.description }}</span>
+      </div>
       <RecommendationGroup v-if="data.view.outfits.length" :key="data.view.runId" :view="data.view" @expired="load" />
       <a-empty v-else :description="data.view.emptyReason || '今天没有能套用的搭法。'" />
-      <div v-if="data.gaps.length" class="recommend-gaps">
-        <span class="recommend-intent-label">差一件就能穿</span>
+      <section v-if="data.gaps.length" class="recommend-gaps" aria-label="差一件就能穿">
+        <h4><BulbOutlined /> 差一件就能穿</h4>
         <ul>
           <li v-for="g in data.gaps" :key="g.templateId">
-            <a-tag v-if="g.kind === 'TREND'" color="magenta">流行</a-tag>{{ g.hint }}
-            <small v-if="g.have.length" class="muted">（已有：{{ g.have.join('、') }}）</small>
+            <span class="recommend-gap-hint"><a-tag v-if="g.kind === 'TREND'" color="magenta">流行</a-tag>{{ g.hint }}</span>
+            <small v-if="g.have.length" class="muted">已有：{{ g.have.join('、') }}</small>
           </li>
         </ul>
-      </div>
+      </section>
+      <p v-if="data.audienceSet === false" class="muted recommend-inspiration-meta">想要更合适的灵感？<RouterLink to="/settings?section=style">设置风格年龄感与着装取向</RouterLink>（都可不填）</p>
     </template>
   </div>
 </template>

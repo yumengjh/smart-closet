@@ -1,20 +1,25 @@
 /* Smart outfit P3: recommendation strip, cards, detail modal, swap, explain (design 8.1–8.3). */
 .recommend-strip { margin: 0 0 22px; }
-.recommend-strip-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
-.recommend-strip-body { margin-top: 14px; display: grid; gap: 14px; }
+.recommend-strip-body { margin-top: 14px; display: grid; gap: 14px; min-width: 0; }
 .recommend-card-placeholder { position: relative; gap: 10px; }
 .recommend-card-placeholder .recommend-preview-loading { position: relative; display: block; aspect-ratio: 4 / 5; border-radius: 10px; }
 .recommend-placeholder-line { display: block; height: 12px; border-radius: 6px; background: var(--surface-alt); }
 .recommend-placeholder-line.short { width: 55%; }
-.recommend-intent-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+/* Conditions: one panel, occasions as a single row of chips, temperature / avoid / button below. */
+.recommend-conditions { display: grid; gap: 10px; min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.recommend-intent-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; min-width: 0; }
 .recommend-intent-label { font-size: 12px; color: var(--muted); margin-right: 8px; white-space: nowrap; }
-.recommend-intent-occasion { display: flex; align-items: center; flex-wrap: wrap; }
-.recommend-occasion-tags { display: flex; flex-wrap: wrap; gap: 6px; }
-.recommend-occasion-tags .ant-tag { margin: 0; min-height: 32px; display: inline-flex; align-items: center; padding: 0 12px; border-radius: 16px; border: 1px solid var(--line); }
-.recommend-intent-field { display: flex; align-items: center; }
-.recommend-intent-field .ant-input-number-group-wrapper { width: 130px; }
-.recommend-intent-avoid .ant-select { min-width: 180px; }
+.recommend-occasion-tags { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.recommend-occasion-tags .ant-tag { margin: 0; min-height: 32px; display: inline-flex; align-items: center; padding: 0 14px; border-radius: 16px; border: 1px solid var(--line); background: var(--surface); font-size: 13px; }
+.recommend-occasion-tags .ant-tag-checkable-checked { border-color: var(--action); background: var(--action); color: var(--action-fg); }
+.recommend-intent-extra { display: flex; align-items: center; gap: 8px; margin-left: auto; min-width: 0; }
+.recommend-intent-temp.ant-input-number-group-wrapper { width: 128px; }
+.recommend-intent-avoid.ant-select { width: 168px; }
 .recommend-intent-bar.is-compact { gap: 8px; }
+.recommend-intent-bar.is-compact .recommend-intent-extra { margin-left: 0; }
+.recommend-required { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 8px; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+.recommend-required .ant-btn { padding-inline: 4px; }
+.recommend-group.is-refreshing .recommend-cards { opacity: .55; transition: opacity .2s ease; }
 .recommend-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
 .recommend-card { display: flex; flex-direction: column; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); min-width: 0; }
 .recommend-card-preview.ant-btn { height: auto; padding: 0; display: block; position: relative; width: 100%; aspect-ratio: 4 / 5; border-radius: 10px; background: var(--surface-alt); overflow: hidden; }
@@ -26,10 +31,10 @@
 .recommend-card h3 { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 10px 0 6px; font-size: 14px; font-weight: 600; color: var(--ink); }
 .recommend-card-actions { margin-top: auto; display: flex; align-items: center; justify-content: flex-end; gap: 6px; flex-wrap: wrap; }
 .recommend-card-actions .recommend-feedback { margin: 0 auto 0 0; }
-.recommend-group-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; }
+.recommend-group { display: grid; gap: 8px; min-width: 0; }
+.recommend-group-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 2px; }
 .recommend-group.is-dense .recommend-cards { grid-template-columns: 1fr; }
 .recommend-group.is-dense .recommend-card-preview.ant-btn { aspect-ratio: 4 / 3; }
-.recommend-required { margin: 0; }
 .recommend-thumb { flex: none; display: inline-flex; align-items: center; justify-content: center; overflow: hidden; border-radius: 8px; background: var(--surface-alt); }
 .recommend-thumb img { width: 100%; height: 100%; object-fit: contain; }
 .recommend-detail { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; }
@@ -69,17 +74,45 @@
 .style-profile-slider-marks { display: grid; gap: 4px; font-size: 12px; color: var(--muted); margin: 4px 0 0; padding-left: 18px; }
 .template-review-table .ant-table-cell { vertical-align: top; }
 .template-review-slots { margin: 0; padding-left: 16px; font-size: 12px; color: var(--muted); }
-@media (max-width: 1023px) { .recommend-cards { grid-template-columns: repeat(3, minmax(220px, 1fr)); overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 4px; } .recommend-card { scroll-snap-align: start; } }
+@media (max-width: 1023px) { .recommend-cards { grid-template-columns: repeat(3, minmax(220px, 1fr)); overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 4px; } .recommend-card { scroll-snap-align: start; } .recommend-intent-extra { margin-left: 0; } }
 @media (max-width: 767px) {
-  .recommend-cards { grid-template-columns: repeat(3, 82%); }
+  .recommend-strip-mode.ant-segmented { display: flex; }
+  .recommend-strip-mode .ant-segmented-group { width: 100%; }
+  .recommend-strip-mode .ant-segmented-item { flex: 1; }
+  .recommend-strip-body { margin-top: 12px; gap: 12px; }
+  .recommend-conditions { padding: 10px; margin-inline: -2px; }
+  .recommend-intent-bar { flex-direction: column; align-items: stretch; gap: 10px; }
+  /* Occasions scroll sideways instead of wrapping into several rows. */
+  .recommend-strip .recommend-occasion-tags { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-inline: -10px; padding-inline: 10px; scroll-padding-inline: 10px; }
+  .recommend-strip .recommend-occasion-tags::-webkit-scrollbar { display: none; }
+  .recommend-strip .recommend-occasion-tags .ant-tag { flex: none; }
+  .recommend-intent-extra { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) auto; }
+  .recommend-intent-bar.is-compact .recommend-intent-extra { grid-template-columns: minmax(0, 1fr) auto; }
+  .recommend-intent-temp.ant-input-number-group-wrapper, .recommend-intent-avoid.ant-select { width: 100%; }
+  .recommend-cards { grid-template-columns: repeat(3, 78%); gap: 10px; scrollbar-width: none; }
+  .recommend-strip .recommend-cards { margin-inline: -18px; padding-inline: 18px; scroll-padding-inline: 18px; }
+  .recommend-cards::-webkit-scrollbar { display: none; }
+  .recommend-card { padding: 8px 10px 10px; }
+  .recommend-highlights li:nth-child(n+3) { display: none; }
+  .recommend-card-actions .ant-btn-primary { flex: 1 1 auto; }
+  .recommend-group-footer { flex-wrap: wrap; }
+  .recommend-group-footer small { flex: 1 1 60%; min-width: 0; }
   .recommend-detail { grid-template-columns: 1fr; }
-  .recommend-intent-field .ant-input-number-group-wrapper { width: 120px; }
 }
 /* 今日灵感 (P4) */
 
-.recommend-inspiration { display: grid; gap: 12px; }
+.recommend-inspiration { display: grid; gap: 12px; min-width: 0; }
 .recommend-inspiration-meta { margin: 0; font-size: 13px; }
-.recommend-gaps { padding: 10px 12px; border: 1px dashed var(--line); border-radius: 10px; }
-.recommend-gaps ul { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 4px; font-size: 13px; }
+.recommend-inspiration-summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; font-size: 13px; }
+.recommend-inspiration-count strong { font-size: 18px; margin-right: 2px; }
+.recommend-inspiration-intent { color: var(--muted); }
+.recommend-inspiration-intent::before { content: '· '; }
+.recommend-gaps { padding: 12px 14px; border-radius: 12px; background: var(--surface-alt); }
+.recommend-gaps h4 { display: flex; align-items: center; gap: 6px; margin: 0 0 6px; font-size: 13px; font-weight: 600; }
+.recommend-gaps ul { list-style: none; margin: 0; padding: 0; display: grid; font-size: 13px; }
+.recommend-gaps li { display: grid; gap: 2px; padding: 8px 0; border-top: 1px solid var(--line); line-height: 1.6; }
+.recommend-gaps li:first-child { border-top: 0; padding-top: 2px; }
+.recommend-gaps li small { font-size: 12px; }
+.recommend-gap-hint .ant-tag { margin-right: 6px; }
 
 .recommend-accessories { margin: 4px 0 0; font-size: 12px; line-height: 1.5; }

@@ -3,7 +3,7 @@ import { computed, defineAsyncComponent, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   LockOutlined, ThunderboltOutlined, LinkOutlined, RobotOutlined, UserOutlined, DashboardOutlined,
-  DeleteOutlined, ArrowRightOutlined, ArrowLeftOutlined, DownloadOutlined, SkinOutlined, AuditOutlined, CameraOutlined, CopyOutlined, AppstoreAddOutlined,
+  DeleteOutlined, BgColorsOutlined, ArrowRightOutlined, ArrowLeftOutlined, DownloadOutlined, SkinOutlined, AuditOutlined, CameraOutlined, CopyOutlined, AppstoreAddOutlined,
 } from '@ant-design/icons-vue'
 import { useClosetStore } from '../stores/closet'
 import { formatBuildTime, formatVersion, type ServerInfo } from '../domain/app-version'
@@ -57,6 +57,15 @@ const categories: SettingsCategory[] = [
     icon: RobotOutlined,
     hidden: () => firstLogin.value,
     component: defineAsyncComponent(() => import('./settings/SettingsAssistantSection.vue')),
+  },
+  {
+    key: 'appearance',
+    label: '界面偏好',
+    eyebrow: '导航栏、颜色与极简',
+    description: '底部导航栏的样式、浅色或深色，以及极简模式。',
+    icon: BgColorsOutlined,
+    hidden: () => firstLogin.value,
+    component: defineAsyncComponent(() => import('./settings/SettingsAppearanceSection.vue')),
   },
   {
     key: 'tidy',

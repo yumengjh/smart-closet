@@ -1,18 +1,22 @@
 /* The composer uses the same Ant Design theme and neutral surfaces as the wardrobe. */
 .outfit-library-page { max-width: 1440px; margin: auto; }
+.outfit-library-heading { margin-bottom: 20px; }
 .outfit-library-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px; }
-.outfit-library-tabs { margin: 0 0 20px; }
-.outfit-library-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
-.outfit-library-toolbar .ant-input-affix-wrapper { max-width: 320px; }
+.outfit-library-actions > .ant-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+/* Tabs and search share one bar so the library starts right below the heading. */
+.outfit-library-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0 0 18px; }
+.outfit-library-search.ant-input-affix-wrapper { width: 280px; max-width: 100%; }
+.outfit-library-result { margin: -6px 0 14px; font-size: 13px; }
 .outfit-library-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 24px; }
 .outfit-card { min-width: 0; }
 .outfit-card-preview { position: relative; display: grid; overflow: hidden; aspect-ratio: 4 / 5; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); transition: border-color .18s ease-out; }
 .outfit-card-preview:hover { border-color: var(--muted-strong); }
 .outfit-thumbnail { display: grid; place-items: center; width: 100%; height: 100%; color: var(--muted); background: var(--surface); }
 .outfit-thumbnail canvas { display: block; width: 100%; height: 100%; object-fit: contain; }
-.outfit-card-count, .outfit-card-status { position: absolute; top: 12px; margin: 0; }
-.outfit-card-count { left: 12px; background: var(--surface); }
-.outfit-card-status { right: 12px; }
+.outfit-card-count { position: absolute; top: 12px; left: 12px; margin: 0; background: var(--surface); }
+/* 衣物有更新: a quiet line under the date, not a badge over the picture. */
+.outfit-card-details span.outfit-card-status { display: inline-flex; align-items: center; gap: 5px; margin-top: 2px; color: var(--warning); }
+.outfit-card-status::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .outfit-card-details { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 12px; }
 .outfit-card-details > div { display: grid; min-width: 0; gap: 6px; }
 .outfit-card-name { overflow: hidden; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
@@ -87,7 +91,7 @@
 .outfit-canvas-space { display: grid; place-items: center; }
 .outfit-canvas-scroll.pan-ready, .outfit-canvas-scroll.pan-ready canvas { cursor: grab; }
 .outfit-canvas-scroll.is-panning, .outfit-canvas-scroll.is-panning canvas { cursor: grabbing; }
-.outfit-stage-frame { position: relative; overflow: hidden; background: var(--canvas); box-shadow: 0 2px 12px #25262b12; touch-action: none; }
+.outfit-stage-frame { position: relative; overflow: hidden; background: var(--board); box-shadow: 0 2px 12px #25262b12; touch-action: none; }
 .outfit-stage-frame.is-drop-target { outline: 2px solid var(--accent); outline-offset: 3px; }
 .outfit-stage-frame canvas { display: block; }
 .outfit-board-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 20px; color: var(--muted); text-align: center; pointer-events: none; }
@@ -190,19 +194,19 @@
   .mobile-picker-grid .outfit-garment-image { height: 144px; }
 }
 @media (max-width: 767px) {
-  .outfit-library-heading { align-items: flex-start; gap: 12px; }
-  .outfit-library-heading .page-subtitle { font-size: 13px; }
-  .outfit-library-heading h1 { font-size: 24px; }
-  .outfit-library-heading > .ant-btn { padding-inline: 12px; }
-  .outfit-library-actions { justify-content: flex-start; gap: 8px; }
+  /* Mobile: title, one row of three equal actions, full-width tabs, search. No subtitle. */
+  .outfit-library-heading { gap: 12px; margin-bottom: 14px; }
+  .outfit-library-heading .page-subtitle { display: none; }
+  .page-heading.outfit-library-heading > .outfit-library-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .outfit-library-actions > .ant-btn { width: 100%; min-width: 0; height: 40px; padding-inline: 8px; }
+  .outfit-library-actions > .ant-btn > span:not(.anticon):not(.ant-badge) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .outfit-library-bar { flex-direction: column; align-items: stretch; gap: 10px; margin-bottom: 14px; }
   .outfit-library-tabs { display: flex; }
   .outfit-library-tabs .ant-segmented-group { width: 100%; }
   .outfit-library-tabs .ant-segmented-item { flex: 1; }
-  .outfit-library-toolbar { align-items: flex-start; flex-direction: column; gap: 10px; }
-  .outfit-library-toolbar .ant-input-affix-wrapper { max-width: none; }
+  .outfit-library-search.ant-input-affix-wrapper { width: 100%; }
   .outfit-library-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px 12px; }
-  .outfit-card-count, .outfit-card-status { top: 8px; font-size: 12px; }
-  .outfit-card-count { left: 8px; }.outfit-card-status { right: 8px; top: 38px; }
+  .outfit-card-count { display: none; }
   .outfit-card-details { align-items: flex-start; }
   .outfit-card-details span { font-size: 12px; }
   .outfit-card-name { font-size: 14px; }

@@ -2,6 +2,8 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { OutfitScene } from '../domain/outfit'
 import { drawOutfit } from '../domain/outfit-images'
+import { useThemeStore } from '../stores/theme'
+import { tokens } from '../theme/tokens'
 
 /**
  * {@code resolution} is the minimum drawing width. The canvas follows the size it is shown at times the screen's pixel
@@ -9,6 +11,8 @@ import { drawOutfit } from '../domain/outfit-images'
  * resize does not redraw on every pixel, and at most 960 px wide.
  */
 const props = withDefaults(defineProps<{ scene: OutfitScene; title: string; resolution?: number }>(), { resolution: 216 })
+const appearance = useThemeStore()
+const board = computed(() => tokens[appearance.isDark ? 'dark' : 'light'].board)
 const root = ref<HTMLElement | null>(null)
 const canvas = ref<HTMLCanvasElement | null>(null)
 const failed = ref(false)
@@ -24,7 +28,7 @@ async function render() {
   const current = ++revision
   failed.value = false
   try {
-    const output = await drawOutfit(props.scene, width.value, height.value)
+    const output = await drawOutfit(props.scene, width.value, height.value, board.value)
     if (current !== revision || !canvas.value) return
     const context = canvas.value.getContext('2d')
     if (context) { context.clearRect(0, 0, canvas.value.width, canvas.value.height); context.drawImage(output, 0, 0) }
@@ -48,7 +52,7 @@ onMounted(() => {
 })
 onBeforeUnmount(() => { observer?.disconnect(); revision++ })
 watch(() => JSON.stringify(props.scene), () => { void render() })
-watch(width, () => { void render() })
+watch([width, board], () => { void render() })
 </script>
 
 <template>

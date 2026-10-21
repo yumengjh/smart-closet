@@ -46,17 +46,16 @@ watch(mode, m => { if (m === 'recommend' && !view.value && !loading.value) run()
 </script>
 <template>
   <section class="recommend-strip" aria-label="今天穿什么">
-    <div class="recommend-strip-top">
-      <a-segmented v-model:value="mode" class="recommend-strip-mode" size="small" :options="[{ value: 'recommend', label: '为我搭配' }, { value: 'inspiration', label: '今日灵感' }]" aria-label="推荐方式" />
-      <small class="muted">从你的衣柜按规则计算，不调用大模型；温度不填时按常住城市的天气</small>
-    </div>
+    <a-segmented v-model:value="mode" class="recommend-strip-mode" :options="[{ value: 'recommend', label: '为我搭配' }, { value: 'inspiration', label: '今日灵感' }]" aria-label="推荐方式" />
     <div v-if="mode === 'inspiration'" class="recommend-strip-body"><InspirationBlock /></div>
     <div v-show="mode === 'recommend'" class="recommend-strip-body">
-      <RecommendIntentBar v-model="intent" :loading="loading" submit-label="重新推荐" @submit="run" />
-      <a-alert v-if="required" type="info" show-icon class="recommend-required" message="围绕你选的那件衣物搭配"><template #action><a-button size="small" @click="clearRequired">不指定</a-button></template></a-alert>
+      <div class="recommend-conditions">
+        <RecommendIntentBar v-model="intent" :loading="loading" submit-label="重新推荐" auto-run @submit="run" />
+        <div v-if="required" class="recommend-required"><span>围绕你选的那件衣物搭配</span><a-button type="link" size="small" @click="clearRequired">不指定</a-button></div>
+      </div>
       <a-alert v-if="error" type="warning" show-icon :message="error"><template #action><a-button size="small" @click="run">重试</a-button></template></a-alert>
       <div v-if="loading && !view" class="recommend-cards" aria-busy="true"><article v-for="i in 3" :key="i" class="recommend-card recommend-card-placeholder"><span class="recommend-preview-loading" /><span class="recommend-placeholder-line" /><span class="recommend-placeholder-line short" /></article></div>
-      <RecommendationGroup v-else-if="view" :key="view.runId" :view="view" @expired="run" />
+      <RecommendationGroup v-else-if="view" :key="view.runId" :view="view" :class="{ 'is-refreshing': loading }" @expired="run" />
     </div>
   </section>
 </template>

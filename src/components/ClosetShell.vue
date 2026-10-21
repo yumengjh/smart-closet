@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import zhCN from 'ant-design-vue/es/locale/zh_CN'
 import { theme as antTheme } from 'ant-design-vue'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
@@ -19,6 +19,9 @@ import { usePreferencesStore } from '../stores/preferences'
 import BloubAvatar from '../agent/BloubAvatar.vue'
 import AssistantPanel from '../agent/AssistantPanel.vue'
 import TaskInbox from './TaskInbox.vue'
+import NavGlyph from '../shell/NavGlyph.vue'
+import AddLauncher from '../shell/AddLauncher.vue'
+import { revealing } from '../shell/revealNavigate'
 import TaskToast from './TaskToast.vue'
 import WaitingGame from './WaitingGame.vue'
 import WaitingStarted from './WaitingStarted.vue'
@@ -48,12 +51,12 @@ const frameStyle = computed(() => ({ '--sidebar-w': `${sidebarWidth(collapsed.va
 const isLogin = computed(() => ['/login', '/register'].includes(route.path))
 const isOutfitEditor = computed(() => route.path.startsWith('/outfits/'))
 const navItems = [
-  { path: '/wardrobe', label: '我的衣柜', icon: AppstoreOutlined },
-  { path: '/pending', label: '未入柜', icon: CheckCircleOutlined },
-  { path: '/outfits', label: '组合台', icon: PictureOutlined },
+  { path: '/wardrobe', label: '我的衣柜', icon: AppstoreOutlined, glyph: 'wardrobe' as const },
+  { path: '/pending', label: '未入柜', icon: CheckCircleOutlined, glyph: 'pending' as const },
+  { path: '/outfits', label: '组合台', icon: PictureOutlined, glyph: 'outfits' as const },
   // OOTD was only reachable from settings and the editor; the bottom bar keeps its five slots, so it is desktop-only there.
   { path: '/ootd', label: 'OOTD 试穿', icon: SkinOutlined, desktopOnly: true },
-  { path: '/settings', label: '我的', icon: SettingOutlined },
+  { path: '/settings', label: '我的', icon: SettingOutlined, glyph: 'me' as const },
 ]
 // Highlight the clicked destination immediately; on slow networks the route itself resolves later.
 const navPath = computed(() => pendingPath.value ?? route.path)
@@ -65,8 +68,40 @@ const assistantShortcut = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘K' : 
 function openAssistant() { window.dispatchEvent(new CustomEvent('closet-assistant-open')) }
 const visibleNavItems = computed(() => closet.user?.mustChangePassword ? navItems.filter(item => item.path === '/settings') : navItems)
 const mobileNavItems = computed(() => visibleNavItems.value.filter(item => !item.desktopOnly))
-usePreferencesStore()
+const preferences = usePreferencesStore()
 const prefetch = (path: string) => prefetchRoute(router, path)
+// Mobile bar: a pill behind the active tab's icon (or its label in text-only style) that springs from tab to tab.
+// Measured from the DOM so it follows every 导航栏样式 and screen width; the first placement does not animate.
+const mobileNav = ref<HTMLElement | null>(null)
+const indicator = ref<{ x: number; y: number; w: number; h: number; instant: boolean } | null>(null)
+function placeIndicator() {
+  const nav = mobileNav.value, link = nav?.querySelector<HTMLElement>(':scope > a.active')
+  if (!nav || !link) { indicator.value = null; return }
+  const glyph = link.querySelector<HTMLElement>('.nav-glyph-box'), label = link.querySelector<HTMLElement>(':scope > span')
+  const target = glyph && glyph.getBoundingClientRect().width ? glyph : label
+  if (!target) return
+  const box = target.getBoundingClientRect(), base = nav.getBoundingClientRect()
+  const w = box.width + (target === glyph ? 26 : 22), h = box.height + (target === glyph ? 8 : 12)
+  indicator.value = { x: box.left - base.left + box.width / 2 - w / 2, y: box.top - base.top + box.height / 2 - h / 2, w, h, instant: !indicator.value }
+}
+watch([navPath, () => preferences.navLabels, mobileNav], () => { void nextTick(placeIndicator) }, { immediate: true })
+onMounted(() => window.addEventListener('resize', placeIndicator))
+onUnmounted(() => window.removeEventListener('resize', placeIndicator))
+// Route fade, in script rather than CSS classes: a reveal navigation (revealNavigate) swaps pages instantly inside a
+// View Transition, where no frame is rendered, so the fade must be skippable without touching the <Transition> itself.
+const calm = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches
+// done() must not run synchronously inside the hook: with mode="out-in" Vue would mount the next page before the old
+// node is detached (TypeError on parentNode). A microtask is enough and needs no rendered frame.
+const soon = (done: () => void) => { void Promise.resolve().then(done) }
+function routeLeave(el: Element, done: () => void) {
+  if (revealing.value || calm()) { soon(done); return }
+  el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 100, easing: 'ease-in', fill: 'forwards' }).finished.then(done, done)
+}
+function routeEnter(el: Element, done: () => void) {
+  if (revealing.value) { soon(done); return }
+  const lift = !calm() && !isOutfitEditor.value
+  el.animate([{ opacity: 0, transform: lift ? 'translateY(6px)' : 'none' }, { opacity: 1, transform: 'none' }], { duration: 200, easing: 'ease-out' }).finished.then(done, done)
+}
 watch(() => closet.isSignedIn && !closet.user?.mustChangePassword, ready => { if (ready) prefetchWhenIdle(router, [...navItems.map(item => item.path), '/add', '/tasks']) }, { immediate: true })
 // Show the progress bar only when navigation is noticeably slow, so fast switches stay calm.
 const showProgress = ref(false)
@@ -139,14 +174,15 @@ async function signOut() {
         <main class="main-area">
           <div v-if="usingMocks" class="mock-banner"><span class="mock-pulse"></span><span>界面演示 · 示例数据不是 AI 结果，演示模式禁止提交模型任务</span><span class="mock-banner-end">{{ closet.user?.displayName || closet.user?.username }} 的衣橱</span></div>
           <header class="topbar"><div class="topbar-actions"><a-button v-if="!closet.user?.mustChangePassword" class="topbar-assistant" :aria-label="`问鱼搭助手（${assistantShortcut}）`" @click="openAssistant"><BloubAvatar :size="28" expression="happy" /><span>问鱼搭</span><kbd>{{ assistantShortcut }}</kbd></a-button><MinimalToggle v-if="!closet.user?.mustChangePassword" /><ThemeToggle /><SoundToggle /><TaskInbox v-if="!closet.user?.mustChangePassword" /></div></header>
-          <section class="route-content" :aria-busy="!!pendingPath"><TaskToast /><RouterView v-slot="{ Component }"><Transition name="route-fade" mode="out-in"><div :key="viewKey(Component)" class="route-view"><component :is="Component" /></div></Transition></RouterView></section>
+          <section class="route-content" :aria-busy="!!pendingPath"><TaskToast /><RouterView v-slot="{ Component }"><Transition mode="out-in" :css="false" @enter="routeEnter" @leave="routeLeave"><div :key="viewKey(Component)" class="route-view"><component :is="Component" /></div></Transition></RouterView></section>
           <WaitingGame v-if="!closet.user?.mustChangePassword" />
           <WaitingStarted v-if="!closet.user?.mustChangePassword" /><RenderSendOff v-if="!closet.user?.mustChangePassword" />
           <AssistantPanel v-if="!closet.user?.mustChangePassword" :key="closet.user?.username" />
         </main>
-        <nav v-if="!closet.user?.mustChangePassword" class="mobile-nav" aria-label="移动端主导航">
-          <RouterLink v-for="item in mobileNavItems" :key="item.path" :to="item.path" :class="{ active: isNavActive(item.path), pending: pendingPath === item.path }" @touchstart.passive="prefetch(item.path)"><component :is="item.icon" /><span>{{ item.label }}</span><i v-if="item.path === '/pending' && closet.pendingCount"></i></RouterLink>
-          <RouterLink to="/add" class="mobile-add"><PlusOutlined /><span>添加</span></RouterLink>
+        <nav v-if="!closet.user?.mustChangePassword" ref="mobileNav" class="mobile-nav" aria-label="移动端主导航">
+          <RouterLink v-for="item in mobileNavItems" :key="item.path" :to="item.path" :class="{ active: isNavActive(item.path), pending: pendingPath === item.path }" :aria-current="isNavActive(item.path) ? 'page' : undefined" @touchstart.passive="prefetch(item.path)"><NavGlyph v-if="item.glyph" :name="item.glyph" :active="isNavActive(item.path)" /><span>{{ item.label }}</span><i v-if="item.path === '/pending' && closet.pendingCount"></i></RouterLink>
+          <AddLauncher />
+          <span v-if="indicator" class="mobile-nav-indicator" :class="{ instant: indicator.instant }" :style="{ width: `${indicator.w}px`, height: `${indicator.h}px`, transform: `translate(${indicator.x}px, ${indicator.y}px)` }" aria-hidden="true"></span>
         </nav>
       </div>
       <div v-else class="boot-screen"><img class="brand-logo boot-logo" src="/yuda-logo.png" alt="鱼搭" /><p>正在打开衣橱…</p></div>
@@ -190,15 +226,9 @@ async function signOut() {
 @keyframes route-progress-slide { from { transform: translateX(-100%); } to { transform: translateX(260%); } }
 .nav-link.pending .anticon, .mobile-nav .pending .anticon { animation: nav-pending-pulse .9s ease-in-out infinite; }
 @keyframes nav-pending-pulse { 50% { opacity: .45; } }
-.route-fade-enter-active { transition: opacity .2s ease-out, transform .2s ease-out; }
-.route-fade-leave-active { transition: opacity .1s ease-in; }
-.route-fade-enter-from { opacity: 0; transform: translateY(6px); }
-.route-fade-leave-to { opacity: 0; }
 /* The editor fills the viewport through a height chain and owns fixed controls, so keep the wrapper transparent there. */
 .outfit-editing .route-view { height: 100%; min-height: 0; }
-.outfit-editing .route-fade-enter-from { transform: none; }
 @media (prefers-reduced-motion: reduce) {
-  .route-fade-enter-from { transform: none; }
   .route-progress.active span { animation: none; width: 100%; transform: none; opacity: .6; }
   .nav-link.pending .anticon, .mobile-nav .pending .anticon { animation: none; }
 }

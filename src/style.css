@@ -4,7 +4,7 @@
   color-scheme: light; color: var(--ink); background: var(--paper); font-synthesis: none; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased;
   --ink: #25262b; --muted: #666b76; --muted-copy: var(--muted); --muted-strong: #626774; --muted-subtle: #858a97;
   --line: #e8e9ee; --accent: #1f5c45; --accent-strong: #16432f; --surface: #fff; --surface-alt: #f5f6f8; --paper: #f7f8fa;
-  --overlay: #ffffffed; --canvas: #fff; --action-bg: #25262b; --action-hover: #414247; --action-fg: #fff;
+  --overlay: #ffffffed; --canvas: #fff; --board: #fff; --action-bg: #25262b; --action-hover: #414247; --action-fg: #fff;
   --selection-bg: #eceef1; --accent-soft: #eef6f1; --info-bg: #f0f5ff; --info: #385eac;
   --success-bg: #e9f6f1; --success: #1f8a6e; --warning-bg: #fff9ee; --warning: #956516; --danger-bg: #fff4f3; --danger: #bd4b4b;
   --assistant-bg: #eef3eb; --assistant-hover: #e3eddf;
@@ -16,7 +16,7 @@
   color-scheme: dark; color: var(--ink); background: var(--paper);
   --ink: #edf0f6; --muted: #aab2c0; --muted-copy: var(--muted); --muted-strong: #c2c9d4; --muted-subtle: #929bab;
   --line: #3b404b; --accent: #5fcb9d; --accent-strong: #79d6ac; --surface: #242832; --surface-alt: #2d323d; --paper: #191c23;
-  --overlay: #242832ed; --canvas: #fff; --action-bg: #edf0f6; --action-hover: #cfd3db; --action-fg: #191c23;
+  --overlay: #242832ed; --canvas: #fff; --board: #2d323d; --action-bg: #edf0f6; --action-hover: #cfd3db; --action-fg: #191c23;
   --selection-bg: #333841; --accent-soft: #1d2e26; --info-bg: #25344d; --info: #a9c1ff;
   --success-bg: #1d352c; --success: #5fd0a8; --warning-bg: #3e3320; --warning: #e7bf72; --danger-bg: #3c292d; --danger: #f19a9b;
   --assistant-bg: #202b24; --assistant-hover: #29372d;
@@ -362,3 +362,43 @@ html[data-density='minimal'] .settings-group { padding-top: 20px; padding-bottom
   .page-heading > .state-badge, .page-heading > .heading-count { position: absolute; right: 16px; margin-top: 6px; }
   .page-heading { position: relative; }
 }
+
+/* Mobile bottom bar: line glyphs (src/shell/NavGlyph.vue), a pill that slides to the active tab, a small per-icon
+   gesture when a tab becomes active. 界面偏好 → 导航栏样式 sets html[data-nav-labels]; minimal mode does not touch it. */
+@media (max-width: 1023px) {
+  .mobile-nav > a { z-index: 1; gap: 4px; transition: color .2s ease; -webkit-tap-highlight-color: transparent; }
+  .mobile-nav > a > span { line-height: 1.2; transition: font-weight .2s ease; }
+  .mobile-nav > a.active > span { font-weight: 600; }
+  .mobile-nav .nav-glyph { transition: transform .22s cubic-bezier(.34, 1.56, .64, 1); }
+  .mobile-nav > a:active .nav-glyph, .mobile-nav > a:active > span { transform: scale(.86); }
+  .mobile-nav > a > span { transition: transform .22s cubic-bezier(.34, 1.56, .64, 1); }
+  .mobile-nav-indicator { position: absolute; left: 0; top: 0; z-index: 0; border-radius: 999px; background: var(--selection-bg); pointer-events: none; transition: transform .5s cubic-bezier(.34, 1.36, .64, 1), width .35s ease, height .35s ease, opacity .2s ease; }
+  .mobile-nav-indicator.instant { transition: none; }
+  .mobile-nav > a.active .nav-glyph { animation: glyph-pop .55s cubic-bezier(.34, 1.56, .64, 1); }
+  .mobile-nav > a.active .nav-glyph-wardrobe { animation-name: glyph-swing; transform-origin: 50% 20%; }
+  .mobile-nav > a.active .nav-glyph-pending { animation-name: glyph-drop; }
+  .mobile-nav > a.active .nav-glyph-outfits { animation-name: glyph-wiggle; }
+  .mobile-nav > a.active .nav-glyph-me { animation-name: glyph-nod; }
+  html[data-nav-labels='text'] .mobile-nav { height: calc(58px + env(safe-area-inset-bottom)); }
+  html[data-nav-labels='text'] .mobile-nav .nav-glyph-box { display: none; }
+  html[data-nav-labels='text'] .mobile-nav > a { min-height: 44px; font-size: 14px; }
+  html[data-nav-labels='text'] .mobile-nav i { top: 8px; right: 14%; }
+  html[data-nav-labels='icon'] .mobile-nav > a > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  html[data-nav-labels='icon'] .mobile-nav .nav-glyph { width: 26px; height: 26px; }
+}
+@keyframes glyph-pop { 0% { transform: scale(.8); } 55% { transform: scale(1.14); } 100% { transform: scale(1); } }
+@keyframes glyph-swing { 0% { transform: rotate(0); } 25% { transform: rotate(-14deg); } 55% { transform: rotate(9deg); } 80% { transform: rotate(-4deg); } 100% { transform: rotate(0); } }
+@keyframes glyph-drop { 0% { transform: translateY(-5px); } 50% { transform: translateY(2px) scaleY(.92); } 75% { transform: translateY(-1px); } 100% { transform: none; } }
+@keyframes glyph-wiggle { 0%, 100% { transform: none; } 20% { transform: rotate(-10deg) scale(1.08); } 45% { transform: rotate(8deg) scale(1.08); } 70% { transform: rotate(-4deg); } }
+@keyframes glyph-nod { 0% { transform: none; } 35% { transform: translateY(2px) scale(1.06, .94); } 65% { transform: translateY(-2px); } 100% { transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .mobile-nav .nav-glyph, .mobile-nav > a, .mobile-nav > a > span, .mobile-nav-indicator { transition: none; }
+  .mobile-nav > a.active .nav-glyph { animation: none; }
+}
+
+/* Reveal navigation (src/shell/revealNavigate.ts): the circle animation is driven from script; here the default
+   cross-fade is turned off and the new page sits on top of the old one. */
+::view-transition-old(root), ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+::view-transition-new(root) { z-index: 2; }
+::view-transition-old(root) { z-index: 1; transform-origin: 50% 40%; }
+::view-transition-group(root) { background: #0b0c0f; }

@@ -5,12 +5,15 @@ export const tokens = {
     action: '#25262b', actionHover: '#414247', actionFg: '#fff',
     accent: '#1f5c45', accentStrong: '#16432f', accentSoft: '#eef6f1', selectionBg: '#eceef1',
     success: '#1f8a6e', warning: '#956516', danger: '#bd4b4b', info: '#385eac', focusRing: '#9fd8bd',
+    board: '#ffffff',
   },
   dark: {
     ink: '#edf0f6', muted: '#aab2c0', mutedSubtle: '#929bab', line: '#3b404b', surface: '#242832', surfaceAlt: '#2d323d', paper: '#191c23',
     action: '#edf0f6', actionHover: '#cfd3db', actionFg: '#191c23',
     accent: '#5fcb9d', accentStrong: '#79d6ac', accentSoft: '#1d2e26', selectionBg: '#333841',
     success: '#5fd0a8', warning: '#e7bf72', danger: '#f19a9b', info: '#a9c1ff', focusRing: '#5fcb9d',
+    /** Outfit board shown on screen; exports stay white. */
+    board: '#2d323d',
   },
 } as const
 
