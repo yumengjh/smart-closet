@@ -59,5 +59,7 @@ function finish() { open.value = false; emit('done', imported.value) }
 <style scoped>
 .onboarding-steps { margin-bottom: 16px; }
 .onboarding-step { display: grid; gap: 12px; }
+.settings-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; }
+.settings-row > div:first-child { display: grid; gap: 2px; }
 .onboarding-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
 </style>
