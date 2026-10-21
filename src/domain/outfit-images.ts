@@ -109,12 +109,13 @@ export async function createOutfitElement(garment: Garment, current: OutfitEleme
   }
 }
 
-export async function drawOutfit(scene: { elements: OutfitElement[] }, width: number, height: number): Promise<HTMLCanvasElement> {
+/** {@code background} is white for exports; on-screen previews pass the theme's board colour (the exported image never follows the theme). */
+export async function drawOutfit(scene: { elements: OutfitElement[] }, width: number, height: number, background = '#fff'): Promise<HTMLCanvasElement> {
   const canvas = document.createElement('canvas')
   canvas.width = width; canvas.height = height
   const context = canvas.getContext('2d')
   if (!context) throw new Error('无法导出画板，请重试。')
-  context.fillStyle = '#fff'; context.fillRect(0, 0, width, height)
+  context.fillStyle = background; context.fillRect(0, 0, width, height)
   // Large garment pictures are scaled down a lot for thumbnails; high-quality smoothing keeps edges crisp (issue #4).
   context.imageSmoothingEnabled = true; context.imageSmoothingQuality = 'high'
   const scaleX = width / 1080, scaleY = height / 1350

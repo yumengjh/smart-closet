@@ -7,6 +7,7 @@ import { useClosetStore } from '../stores/closet'
 import { playSound } from '../services/sound'
 import RecommendationCard from './RecommendationCard.vue'
 import RecommendationDetailModal from './RecommendationDetailModal.vue'
+import RecommendNotices from './RecommendNotices.vue'
 import { recommendApi } from './api'
 import { openInWorkspace } from './workspace'
 import type { RecommendationView } from './types'
@@ -38,12 +39,12 @@ function replace(i: number, outfit: typeof outfits.value[number]) { outfits.valu
 </script>
 <template>
   <div class="recommend-group" :class="{ 'is-dense': dense }">
-    <a-alert v-if="view.limits.length || view.notes.length" class="recommend-notices" type="info" show-icon message="本次推荐的限制与说明"><template #description><ul><li v-for="n in [...view.limits, ...view.notes]" :key="n">{{ n }}</li></ul></template></a-alert>
     <a-empty v-if="!outfits.length" :description="view.emptyReason || '当前条件下没有可靠组合。'"><a-button @click="router.push('/add')">去添加衣物</a-button></a-empty>
     <div v-else class="recommend-cards" role="list">
       <RecommendationCard v-for="(o, i) in outfits" :key="o.key" role="listitem" :outfit="o" @open="openDetail(i)" @workspace="workspace(i)" />
     </div>
-    <div v-if="outfits.length" class="recommend-group-footer"><small class="muted">按“{{ view.intent.description }}”计算 · 分数与依据由规则得出</small><a-button size="small" :loading="loadingMore" :disabled="!hasMore" @click="more"><ReloadOutlined />换一批</a-button></div>
+    <div v-if="outfits.length" class="recommend-group-footer"><small class="muted">按“{{ view.intent.description }}”计算 · 规则打分，不调用大模型</small><a-button size="small" :loading="loadingMore" :disabled="!hasMore" @click="more"><ReloadOutlined />换一批</a-button></div>
+    <RecommendNotices :items="[...view.limits, ...view.notes]" />
     <RecommendationDetailModal v-model:open="detailOpen" v-model:index="detailIndex" :run-id="view.runId" :outfits="outfits" :intent="view.intent.description" @replace="replace" />
   </div>
 </template>

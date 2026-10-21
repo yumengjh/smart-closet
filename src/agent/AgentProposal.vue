@@ -16,6 +16,7 @@ import GarmentListCard from '../recommend/GarmentListCard.vue'
 import RecommendationDetailModal from '../recommend/RecommendationDetailModal.vue'
 import RecommendationGroup from '../recommend/RecommendationGroup.vue'
 import RecommendIntentBar from '../recommend/RecommendIntentBar.vue'
+import RecommendNotices from '../recommend/RecommendNotices.vue'
 import type { IntentInput, RecommendationView, RecommendedOutfit } from '../recommend/types'
 import type { OutfitScene } from '../domain/outfit'
 const props = defineProps<{ proposal: Proposal }>()
@@ -104,7 +105,7 @@ function confirmApply(index: number, intoCurrent: boolean) {
       <a-modal v-model:open="expanded" :title="isOutfits ? '从你的衣柜，为你组合' : '确认画布修改'" :width="1100" :footer="null" wrap-class-name="agent-preview-modal">
         <p v-if="isRecommendation && proposal.payload.intent" class="recommend-intent">按“{{ proposal.payload.intent }}”推荐 · 分数与理由由系统按规则计算，可展开查看<a-button v-if="proposal.payload.intentInput" type="link" size="small" @click="editing = !editing">{{ editing ? '收起' : '理解错了？修改条件' }}</a-button></p>
         <div v-if="isRecommendation && editing" class="recommend-rerun"><RecommendIntentBar v-model="editIntent" :loading="rerunning" submit-label="按新条件重算" @submit="recompute" /><small class="muted">直接重新计算，不调用大模型。</small><RecommendationGroup v-if="rerun" :key="rerun.runId" :view="rerun" /></div>
-        <a-alert v-if="notices.length" class="recommend-notices" type="info" show-icon message="本次推荐的限制与说明"><template #description><ul><li v-for="n in notices" :key="n">{{ n }}</li></ul></template></a-alert>
+        <RecommendNotices :items="notices" />
         <p class="agent-preview-intro">{{ used ? '这份建议已经处理，仍可查看预览。' : '先看看整体效果。应用后仍是草稿，保存时会再次请你确认。' }}</p>
         <a-alert v-if="error" type="warning" :message="error" show-icon /><a-button v-if="error" @click="preview">重新加载预览</a-button>
         <p v-if="isOutfits" class="agent-preview-mobile-hint">左右滑动，查看{{ count }}套搭配</p>

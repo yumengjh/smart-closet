@@ -10,11 +10,11 @@ import { Group as VGroup, Image as VImage, Layer as VLayer, Rect as VRect, Stage
 import {
   ArrowLeftOutlined, CheckOutlined, ControlOutlined, CopyOutlined, DeleteOutlined, DownloadOutlined,
   ArrowDownOutlined, ArrowUpOutlined, ExpandOutlined, InfoCircleOutlined, MenuOutlined, MinusOutlined, MoreOutlined, PictureOutlined, PlusOutlined,
-  QuestionCircleOutlined, RedoOutlined, ReloadOutlined, SaveOutlined, SearchOutlined, SwapOutlined, UndoOutlined,
+  CameraOutlined, QuestionCircleOutlined, RedoOutlined, ReloadOutlined, SaveOutlined, SearchOutlined, SwapOutlined, UndoOutlined,
   VerticalAlignBottomOutlined, VerticalAlignTopOutlined, DragOutlined, FullscreenOutlined,
 } from '@ant-design/icons-vue'
 import { useClosetStore } from '../stores/closet'
-import WorkspaceStrip from '../outfit/WorkspaceStrip.vue'
+import WorkspaceMenu from '../outfit/WorkspaceMenu.vue'
 import { useThemeStore } from '../stores/theme'
 import { tokens } from '../theme/tokens'
 import { isMissingOutfit } from '../domain/outfitErrors'
@@ -55,6 +55,7 @@ watch(() => actualRoute.query.with, value => { if (typeof value === 'string') li
 watch(libraryTab, tab => { if (tab === 'today') todayVisited.value = true; try { localStorage.setItem(TAB_KEY, tab) } catch { /* storage blocked */ } })
 const appearance = useThemeStore()
 const accentColor = computed(() => tokens[appearance.isDark ? 'dark' : 'light'].accent)
+const boardColor = computed(() => tokens[appearance.isDark ? 'dark' : 'light'].board)
 const { message, modal } = App.useApp()
 const editing = computed(() => Boolean(route.params.id))
 const isNew = computed(() => route.params.id === 'new')
@@ -1007,21 +1008,23 @@ defineExpose({ flush: persistDraft, exportPng })
 
 <template>
   <div v-if="!editing" class="outfit-library-page">
-    <div class="page-heading outfit-library-heading"><div><h1>穿搭组合台</h1><p class="page-subtitle">从自己的衣柜选单品，保存一套随时可以穿的搭配。</p></div><div class="outfit-library-actions"><a-button @click="router.push('/ootd')">OOTD 试穿</a-button><a-button class="outfit-workspace-link" @click="router.push('/outfits/workspace')">穿搭工作区</a-button><a-button type="primary" @click="router.push('/outfits/new')"><PlusOutlined /> 新建搭配</a-button></div></div>
-    <WorkspaceStrip />
+    <div class="page-heading outfit-library-heading"><div class="outfit-library-title"><h1>穿搭组合台</h1><p class="page-subtitle">从自己的衣柜选单品，保存一套随时可以穿的搭配。</p></div><div class="outfit-library-actions"><WorkspaceMenu /><a-button @click="router.push('/ootd')"><CameraOutlined /><span>OOTD 试穿</span></a-button><a-button type="primary" class="outfit-library-new" @click="router.push('/outfits/new')"><PlusOutlined /><span>新建搭配</span></a-button></div></div>
     <!-- Saved outfits are the page's main job; "今天穿什么" is its own tab, opened on demand (and by ?with= from a garment page). -->
-    <a-segmented v-model:value="libraryTab" class="outfit-library-tabs" aria-label="搭配视图" :options="[{ value: 'mine', label: saved.length ? `我的搭配 · ${saved.length}` : '我的搭配' }, { value: 'today', label: '今天穿什么' }]" />
+    <div class="outfit-library-bar">
+      <a-segmented v-model:value="libraryTab" class="outfit-library-tabs" aria-label="搭配视图" :options="[{ value: 'mine', label: saved.length ? `我的搭配 · ${saved.length}` : '我的搭配' }, { value: 'today', label: '今天穿什么' }]" />
+      <a-input v-if="saved.length" v-show="libraryTab === 'mine'" v-model:value="librarySearch" class="outfit-library-search" allow-clear placeholder="搜索搭配名称" aria-label="搜索搭配"><template #prefix><SearchOutlined /></template></a-input>
+    </div>
     <RecommendationStrip v-if="todayVisited" v-show="libraryTab === 'today'" />
     <div v-show="libraryTab === 'mine'">
     <TodayTeaser v-if="saved.length" @open="libraryTab = 'today'" />
     <a-alert v-if="error" type="error" show-icon :message="error" class="outfit-alert"><template #action><a-button @click="loadLibrary">重新加载</a-button></template></a-alert>
     <a-skeleton v-if="pageLoading" active :paragraph="{ rows: 7 }" />
     <template v-else-if="saved.length">
-      <div class="outfit-library-toolbar"><a-input v-model:value="librarySearch" allow-clear placeholder="搜索搭配名称" aria-label="搜索搭配"><template #prefix><SearchOutlined /></template></a-input><span class="muted">{{ displayedOutfits.length }} 套搭配 · 最近更新</span></div>
+      <p v-if="librarySearch.trim()" class="muted outfit-library-result">找到 {{ displayedOutfits.length }} 套</p>
       <section v-if="displayedOutfits.length" class="outfit-library-grid" aria-label="已保存的穿搭">
         <article v-for="outfit in displayedOutfits" :key="outfit.id" class="outfit-card">
-          <RouterLink :to="`/outfits/${outfit.id}`" class="outfit-card-preview" @click="playSound('tap')"><OutfitThumbnail :scene="outfit.scene" :title="outfit.name" /><a-tag class="outfit-card-count">{{ outfit.scene.elements.length }} 张贴纸</a-tag><a-tag v-if="outfit.scene.elements.some(item => item.garmentChanged || item.garmentStatus === 'TRASHED')" color="warning" class="outfit-card-status">衣物有更新</a-tag></RouterLink>
-          <div class="outfit-card-details"><div><RouterLink :to="`/outfits/${outfit.id}`" class="outfit-card-name">{{ outfit.name }}</RouterLink><span>{{ new Date(outfit.updatedAtMs).toLocaleDateString() }} 更新<template v-if="wornLabel(outfit.id)"> · {{ wornLabel(outfit.id) }}</template></span></div><a-dropdown :trigger="['click']"><a-button type="text" aria-label="搭配更多操作"><MoreOutlined /></a-button><template #overlay><a-menu><a-menu-item @click="router.push(`/outfits/${outfit.id}`)">编辑搭配</a-menu-item><a-menu-item @click="startCopy(outfit)"><CopyOutlined /> 复制搭配</a-menu-item><a-menu-item :disabled="wearing" @click="wearOutfit(outfit.id)"><CheckOutlined /> 今天穿了这套</a-menu-item><a-menu-divider /><a-menu-item danger @click="confirmDelete(outfit)"><DeleteOutlined /> 删除搭配</a-menu-item></a-menu></template></a-dropdown></div>
+          <RouterLink :to="`/outfits/${outfit.id}`" class="outfit-card-preview" @click="playSound('tap')"><OutfitThumbnail :scene="outfit.scene" :title="outfit.name" /><a-tag class="outfit-card-count">{{ outfit.scene.elements.length }} 张贴纸</a-tag></RouterLink>
+          <div class="outfit-card-details"><div><RouterLink :to="`/outfits/${outfit.id}`" class="outfit-card-name">{{ outfit.name }}</RouterLink><span>{{ new Date(outfit.updatedAtMs).toLocaleDateString() }} 更新<template v-if="wornLabel(outfit.id)"> · {{ wornLabel(outfit.id) }}</template></span><span v-if="outfit.scene.elements.some(item => item.garmentChanged || item.garmentStatus === 'TRASHED')" class="outfit-card-status" title="衣柜里的衣物改过或移入回收站，打开搭配可替换">衣物有更新</span></div><a-dropdown :trigger="['click']"><a-button type="text" aria-label="搭配更多操作"><MoreOutlined /></a-button><template #overlay><a-menu><a-menu-item @click="router.push(`/outfits/${outfit.id}`)">编辑搭配</a-menu-item><a-menu-item @click="startCopy(outfit)"><CopyOutlined /> 复制搭配</a-menu-item><a-menu-item :disabled="wearing" @click="wearOutfit(outfit.id)"><CheckOutlined /> 今天穿了这套</a-menu-item><a-menu-divider /><a-menu-item danger @click="confirmDelete(outfit)"><DeleteOutlined /> 删除搭配</a-menu-item></a-menu></template></a-dropdown></div>
         </article>
       </section>
       <a-empty v-else :image="Empty.PRESENTED_IMAGE_SIMPLE" description="没有找到这套搭配"><a-button @click="librarySearch = ''">清除搜索</a-button></a-empty>
@@ -1066,7 +1069,7 @@ defineExpose({ flush: persistDraft, exportPng })
         <div ref="canvasArea" class="outfit-canvas-scroll" :class="{ 'pan-ready': panTool || spacePressed, 'is-panning': draggingView }" tabindex="0" aria-label="画板视图，可滚动或使用 Ctrl/⌘ 加滚轮缩放" @pointerenter="hoveringView = true" @pointerleave="hoveringView = false" @wheel="canvasWheel" @touchstart.capture="touchStart" @touchmove.capture="touchMove" @touchend.capture="touchEnd" @touchcancel.capture="touchEnd" @pointerdown.capture="beginViewDrag" @pointermove.capture="moveViewDrag" @pointerup.capture="endViewDrag" @pointercancel.capture="endViewDrag" @lostpointercapture="panOrigin = null; draggingView = false"><div class="outfit-canvas-space" :style="{ width: `${viewGeometry.spaceWidth}px`, height: `${viewGeometry.spaceHeight}px` }"><div ref="stageFrame" class="outfit-stage-frame" :class="{ 'is-drop-target': dragOver }" :style="{ width: `${stageWidth}px`, height: `${stageHeight}px` }" @dragover="dragOverCanvas" @dragleave="dragOver = false" @drop="dropGarment">
           <v-stage :config="{ width: stageWidth, height: stageHeight }" @click="stageClick" @tap="stageClick">
             <v-layer>
-              <v-rect :config="{ x: 0, y: 0, width: stageWidth, height: stageHeight, fill: '#ffffff', listening: false }" />
+              <v-rect :config="{ x: 0, y: 0, width: stageWidth, height: stageHeight, fill: boardColor, listening: false }" />
               <v-group v-for="item in elements" :key="elementKey(item)" :ref="(node: unknown) => bindNode(elementKey(item), node)" :config="{ x: item.x * canvasScale, y: item.y * canvasScale, rotation: item.rotation, draggable: !pinching, name: `outfit-${elementKey(item)}`, dragBoundFunc: clampPosition }"
                 @click="playSound('tick'); selectElement(elementKey(item), $event.evt.shiftKey || $event.evt.ctrlKey || $event.evt.metaKey, $event.evt.shiftKey)" @tap="playSound('tick'); selectElement(elementKey(item))" @dbltap="selectElement(elementKey(item)); inspectorOpen = true" @contextmenu="canvasContextMenu($event, item)" @touchstart="beginTouch($event, item)" @touchmove="cancelLongPress" @touchend="cancelLongPress" @dragstart="startSelectionDrag($event, item)" @dragmove="moveSelectionDrag($event, item)" @dragend="dragEnd($event, item)" @transformend="transformEnd($event, item)">
                 <v-image :config="{ image: imageMap[item.assetUrl], scaleX: item.flipX ? -1 : 1, x: (item.flipX ? 1 : -1) * item.width * canvasScale / 2, y: -item.height * canvasScale / 2, width: item.width * canvasScale, height: item.height * canvasScale, crop: { x: item.cropX * item.imageWidth, y: item.cropY * item.imageHeight, width: item.cropWidth * item.imageWidth, height: item.cropHeight * item.imageHeight }, visible: Boolean(imageMap[item.assetUrl]) }" />

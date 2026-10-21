@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { App as AntApp } from 'ant-design-vue'
-import { SearchOutlined, SlidersOutlined, PlusOutlined, QuestionCircleOutlined, CheckSquareOutlined, ThunderboltOutlined, CameraOutlined, CloseOutlined, AppstoreAddOutlined } from '@ant-design/icons-vue'
+import { SearchOutlined, SlidersOutlined, PlusOutlined, QuestionCircleOutlined, CheckSquareOutlined, ThunderboltOutlined, CameraOutlined, CloseOutlined, AppstoreAddOutlined, MoreOutlined } from '@ant-design/icons-vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { closetApi, type Garment, type ListQuery, type SearchResult } from '../services/api'
 import { useClosetStore } from '../stores/closet'
@@ -199,12 +199,25 @@ const demoGuide = computed(() => route.query.guide === '1')
 watch(demoGuide, on => { if (on) onboardingOpen.value = true }, { immediate: true })
 watch([total, loading], ([count, busy]) => { if (!busy && count === 0 && !error.value && !hasFilters.value && !onboardingSeen()) onboardingOpen.value = true })
 function onboardingDone(imported: number) { if (demoGuide.value) void router.replace({ query: { ...route.query, guide: undefined } }); else try { localStorage.setItem(ONBOARDING_KEY, 'done') } catch { /* private mode */ } if (imported) void load() }
+// 底部添加菜单的“从常见单品挑”带 ?presets=1 进来：打开抽屉后去掉参数，返回时不重复打开。
+watch(() => route.query.presets, value => { if (value !== '1') return; presetsOpen.value = true; void router.replace({ query: { ...route.query, presets: undefined } }) }, { immediate: true })
 </script>
 
 <template>
   <div class="page-heading wardrobe-heading">
-    <div><p class="eyebrow">衣橱空间</p><h1>我的衣柜</h1><p class="page-subtitle">已经核对并确认入柜的衣物，{{ searching ? '搜索结果按相关度排序。' : `按“${sortLabel(query.sort || DEFAULT_SORT)}”排序。` }}</p></div>
-    <div class="wardrobe-heading-side"><a-button v-if="!selecting" @click="presetsOpen = true"><AppstoreAddOutlined /> 从常见单品添加</a-button><a-button v-if="!selecting" class="heading-image-search" @click="picker?.click()"><CameraOutlined /> 用图片搜</a-button><a-button v-if="!selecting && items.length" @click="selecting = true; batchResult = null"><CheckSquareOutlined /> 批量处理</a-button><div class="wardrobe-stats"><strong>{{ total }}</strong><span>{{ searching ? '件符合' : '件已入柜' }}</span></div></div>
+    <div class="wardrobe-title"><h1>我的衣柜</h1><span class="wardrobe-count" :title="searching ? '搜索结果按相关度排序' : `按“${sortLabel(query.sort || DEFAULT_SORT)}”排序`"><strong>{{ total }}</strong>{{ searching ? ' 件符合' : ' 件' }}</span></div>
+    <div v-if="!selecting" class="wardrobe-heading-side">
+      <a-button class="wardrobe-wide-action" @click="presetsOpen = true"><AppstoreAddOutlined /> 从常见单品添加</a-button>
+      <a-button v-if="items.length" class="wardrobe-wide-action" @click="selecting = true; batchResult = null"><CheckSquareOutlined /> 批量处理</a-button>
+      <a-dropdown :trigger="['click']" placement="bottomRight">
+        <a-button class="wardrobe-more" type="text" aria-label="更多衣柜操作"><MoreOutlined /></a-button>
+        <template #overlay><a-menu>
+          <a-menu-item @click="presetsOpen = true"><AppstoreAddOutlined /> 从常见单品添加</a-menu-item>
+          <a-menu-item @click="picker?.click()"><CameraOutlined /> 用图片搜</a-menu-item>
+          <a-menu-item :disabled="!items.length" @click="selecting = true; batchResult = null"><CheckSquareOutlined /> 批量处理</a-menu-item>
+        </a-menu></template>
+      </a-dropdown>
+    </div>
   </div>
   <section class="wardrobe-tools" aria-label="搜索和筛选衣物" @dragover.prevent @drop.prevent="dropped">
     <input ref="picker" type="file" accept="image/jpeg,image/png,image/webp" hidden @change="picked" />
@@ -293,7 +306,13 @@ function onboardingDone(imported: number) { if (demoGuide.value) void router.rep
 .garment-grid[aria-busy="true"]{opacity:.5;pointer-events:none;transition:opacity .15s}
 @media(prefers-reduced-motion:reduce){.garment-grid[aria-busy="true"]{transition:none}}
 @media(max-width:767px){.pager-hint{display:none}.pager-bottom{margin-bottom:56px}}
-.wardrobe-heading-side{display:flex;align-items:center;gap:16px}
+.wardrobe-heading{align-items:flex-end;margin-bottom:18px}
+.wardrobe-title{display:flex;align-items:baseline;gap:12px;min-width:0}
+.wardrobe-title h1{margin:0}
+.wardrobe-count{flex:none;color:var(--muted-copy);font-size:13px;white-space:nowrap}
+.wardrobe-count strong{color:var(--ink);font-size:18px;font-weight:600;font-variant-numeric:tabular-nums}
+.wardrobe-heading-side{display:flex;align-items:center;gap:10px}
+.wardrobe-more{display:none}
 .batch-bar{position:sticky;top:8px;z-index:5;display:flex;flex-wrap:wrap;align-items:center;gap:12px 16px;margin-bottom:18px;padding:12px 16px;border:1px solid var(--line);border-radius:var(--radius-lg);background:var(--surface);box-shadow:0 6px 18px #0000000f}
 .batch-count{color:var(--muted)}
 .batch-cost{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;background:var(--accent-soft);color:var(--accent-strong);font-size:12px;cursor:default}
@@ -310,5 +329,5 @@ function onboardingDone(imported: number) { if (demoGuide.value) void router.rep
 .search-image-note{margin:-8px 2px 16px;font-size:12px;color:var(--muted-copy)}
 .filter-toggle{display:none}
 .filter-dot{display:inline-block;width:6px;height:6px;margin-left:4px;border-radius:50%;background:var(--accent);vertical-align:middle}
-@media(max-width:767px){.heading-image-search{display:none!important}.wardrobe-heading .wardrobe-heading-side{flex-direction:row!important;justify-content:space-between;align-items:center!important}.wardrobe-heading .wardrobe-stats{order:-1}.wardrobe-heading .wardrobe-stats strong{font-size:20px}.wardrobe-tools{flex-direction:row;flex-wrap:wrap}.wardrobe-tools .search-input{flex:1;min-width:0}.filter-toggle{display:inline-flex;align-items:center;gap:4px;height:auto}.filter-toggle.active{border-color:var(--ink)}.filter-row{display:none!important}.filter-row.open{display:flex!important;flex-wrap:wrap}.filter-row.open .filter-select{flex:1 1 calc(50% - 8px);width:auto}.search-image-note{margin-top:-4px}.wardrobe-heading-side{flex-direction:column-reverse;align-items:flex-end;gap:8px}.batch-actions{margin-left:0;width:100%}}
+@media(max-width:767px){.wardrobe-heading.page-heading{flex-direction:row;align-items:center;justify-content:space-between;margin:2px 0 12px}.wardrobe-title h1{font-size:22px}.wardrobe-count strong{font-size:16px}.wardrobe-wide-action{display:none!important}.wardrobe-more{display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;font-size:18px}.wardrobe-heading .wardrobe-heading-side{display:flex!important}.wardrobe-tools{flex-direction:row;flex-wrap:wrap;gap:8px;margin-bottom:14px}.wardrobe-tools .search-input{flex:1;min-width:0}.filter-toggle{display:inline-flex;align-items:center;gap:4px;height:auto}.filter-toggle.active{border-color:var(--ink)}.filter-row{display:none!important}.filter-row.open{display:flex!important;flex-wrap:wrap;width:100%;padding:10px;border-radius:var(--radius-md);background:var(--surface-alt)}.filter-row.open .filter-select{flex:1 1 calc(50% - 8px);width:auto}.search-image-note{margin-top:-4px}.batch-actions{margin-left:0;width:100%}}
 </style>

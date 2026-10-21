@@ -419,7 +419,7 @@ onUnmounted(() => { endGlowPreview(); window.removeEventListener('resize', resiz
 .workspace-board-error { position: absolute; z-index: 6; bottom: 36px; left: 12px; right: 12px; }
 .workspace-viewport { position: relative; flex: 1; min-height: 0; overflow: hidden; background-color: var(--paper); background-image: radial-gradient(var(--line) .8px, transparent .8px); background-size: 18px 18px; touch-action: none; cursor: grab; }
 .workspace-surface { position: absolute; transform-origin: 0 0; }
-.workspace-artboard { position: absolute; width: 280px; box-shadow: 0 6px 25px #3d463210; border: 1px solid var(--line); border-radius: var(--radius-lg); color: var(--ink); background: var(--canvas); overflow: hidden; }
+.workspace-artboard { position: absolute; width: 280px; box-shadow: 0 6px 25px #3d463210; border: 1px solid var(--line); border-radius: var(--radius-lg); color: var(--ink); background: var(--board); overflow: hidden; }
 .workspace-artboard.selected { outline: 2px solid var(--ink); outline-offset: 3px; }
 .workspace-artboard header, .workspace-artboard footer { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 10px 12px; font-size: 12px; }
 .workspace-artboard-preview.ant-btn { display: block; width: 100%; height: auto; padding: 0; border: 0; border-radius: 0; }
