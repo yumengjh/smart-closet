@@ -24,7 +24,7 @@ const groups = computed(() => {
 const strictness = ref(50)
 async function load() {
   loading.value = true; error.value = ''
-  try { profile.value = await recommendApi.profile(); city.value = profile.value.settings.city || ''; strictness.value = profile.value.strictness.level }
+  try { profile.value = await recommendApi.profile(); city.value = profile.value.settings.city || ''; strictness.value = profile.value.strictness.level; preferred.value = profile.value.settings.preferredStyles || [] }
   catch (e) { error.value = e instanceof Error ? e.message : '穿搭画像暂时无法加载。' }
   finally { loading.value = false }
 }
@@ -42,6 +42,14 @@ const AGE_FEELS = [{ value: 'YOUTH', label: '青春' }, { value: 'PRIME', label:
 const EXPRESSIONS = [{ value: 'FEMININE', label: '偏女性化' }, { value: 'NEUTRAL', label: '中性' }, { value: 'MASCULINE', label: '偏男性化' }, { value: '', label: '跟随性别' }]
 const AGE_BANDS = [{ value: 'UNDER_18', label: '18 岁以下' }, { value: '18_24', label: '18~24 岁' }, { value: '25_34', label: '25~34 岁' }, { value: '35_44', label: '35~44 岁' }, { value: '45_54', label: '45~54 岁' }, { value: '55_PLUS', label: '55 岁以上' }]
 const choose = (key: string, value: unknown, saving: string) => patch({ [key]: value || null }, saving)
+// 常穿风格 (design 2026-10-21): style directions, up to three; combined with the age feel above.
+const STYLE_DIRECTIONS = ['都市通勤', '高智极简', '美式休闲', '户外机能', '老钱风', '潮流运动', '工装风', '日系清新', '巴恩风', '法式', '新中式', '甜美'].map(value => ({ value, label: value }))
+const preferred = ref<string[]>([])
+function choosePreferred(value: unknown) {
+  const next = (Array.isArray(value) ? value : []).map(String).slice(0, 3)
+  preferred.value = next
+  void patch({ preferredStyles: next }, 'preferredStyles')
+}
 </script>
 <template>
   <div class="settings-style">
@@ -76,9 +84,10 @@ const choose = (key: string, value: unknown, saving: string) => patch({ [key]: v
       </section>
       <section class="settings-card">
         <h3>推荐给谁</h3>
-        <p class="muted">只影响经典搭法和今日灵感的排序，不会因此不推荐某套；你明确说想要的风格照常推荐。这些设置只用于本地计算，不发给模型。</p>
+        <p class="muted">只影响推荐的排序，不会因此不推荐某套；你这次明确说的风格优先。年龄段、风格年龄感和着装取向只用于本地计算，不发给模型。</p>
         <div class="settings-row"><div><strong>风格年龄感</strong><small class="muted">想要的穿着感觉，优先于年龄段</small></div><a-segmented :value="profile.settings.ageFeel || ''" :options="AGE_FEELS" @change="(v: string | number) => choose('ageFeel', v, 'ageFeel')" /></div>
         <div class="settings-row"><div><strong>年龄段</strong><small class="muted">可不填；没选风格年龄感时按年龄段估计</small></div><a-select :value="profile.settings.ageBand ?? undefined" :options="AGE_BANDS" allow-clear placeholder="不填" style="width: 140px" :loading="saving === 'ageBand'" @change="(v: unknown) => choose('ageBand', v, 'ageBand')" /></div>
+        <div class="settings-row"><div><strong>常穿风格</strong><small class="muted">最多选 3 个；和风格年龄感叠加，比你这次说的弱</small></div><a-select :value="preferred" mode="multiple" :options="STYLE_DIRECTIONS" :max-tag-count="3" allow-clear placeholder="不选" style="min-width: 220px; max-width: 320px" :loading="saving === 'preferredStyles'" @change="choosePreferred" /></div>
         <div class="settings-row"><div><strong>着装取向</strong><small class="muted">和个人资料里的性别分开；选中性或偏男性化时也会推荐男士经典搭法</small></div><a-segmented :value="profile.settings.dressExpression || ''" :options="EXPRESSIONS" @change="(v: string | number) => choose('dressExpression', v, 'dressExpression')" /></div>
       </section>
       <section class="settings-card">

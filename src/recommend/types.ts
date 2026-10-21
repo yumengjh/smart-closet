@@ -62,6 +62,8 @@ export type ProfileSettings = {
   blocked: string[]; resetAtMs: number; styleMixing: 'AUTO' | 'ALLOW' | 'FORBID'; semanticStrictness: number | null
   /** 推荐给谁（2026-10-20）：都可不设；风格年龄感优先于年龄段，着装取向不设时跟随性别。 */
   ageBand: AgeBand | null; ageFeel: AgeFeel | null; dressExpression: DressExpression | null
+  /** 常穿风格（2026-10-21）：最多 3 个风格词，没说风格时轻度影响排序。 */
+  preferredStyles?: string[]
 }
 export type AgeBand = 'UNDER_18' | '18_24' | '25_34' | '35_44' | '45_54' | '55_PLUS'
 export type AgeFeel = 'YOUTH' | 'PRIME' | 'MATURE'
