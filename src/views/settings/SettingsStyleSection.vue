@@ -37,6 +37,11 @@ async function patch(body: Record<string, unknown>, key: string, done = '已保�
 }
 function block(s: Statement) { return s.kind === 'COOLDOWN' ? patch({ unblock: s.key }, s.key, '已恢复推荐。') : patch({ block: s.key }, s.key, '已屏蔽这一条，不再影响推荐。') }
 const marks = { 0: '宽松', 25: ' ', 50: '推荐', 75: ' ', 100: '严格' }
+// 推荐给谁 (design 2026-10-20): '' in the controls means unset and is saved as null.
+const AGE_FEELS = [{ value: 'YOUTH', label: '青春' }, { value: 'PRIME', label: '轻熟' }, { value: 'MATURE', label: '成熟' }, { value: '', label: '不限' }]
+const EXPRESSIONS = [{ value: 'FEMININE', label: '偏女性化' }, { value: 'NEUTRAL', label: '中性' }, { value: 'MASCULINE', label: '偏男性化' }, { value: '', label: '跟随性别' }]
+const AGE_BANDS = [{ value: 'UNDER_18', label: '18 岁以下' }, { value: '18_24', label: '18~24 岁' }, { value: '25_34', label: '25~34 岁' }, { value: '35_44', label: '35~44 岁' }, { value: '45_54', label: '45~54 岁' }, { value: '55_PLUS', label: '55 岁以上' }]
+const choose = (key: string, value: unknown, saving: string) => patch({ [key]: value || null }, saving)
 </script>
 <template>
   <div class="settings-style">
@@ -68,6 +73,13 @@ const marks = { 0: '宽松', 25: ' ', 50: '推荐', 75: ' ', 100: '严格' }
         <a-popconfirm title="清空后从现在起重新统计，之前的反馈不再影响冷暖与正式程度。" ok-text="清空" cancel-text="取消" @confirm="patch({ clearOffsets: true }, 'offsets', '已清空个人偏移。')">
           <a-button :loading="saving === 'offsets'" :disabled="Math.abs(profile.offsets.warmth) < 0.1 && Math.abs(profile.offsets.formality) < 0.05">清空偏移</a-button>
         </a-popconfirm>
+      </section>
+      <section class="settings-card">
+        <h3>推荐给谁</h3>
+        <p class="muted">只影响经典搭法和今日灵感的排序，不会因此不推荐某套；你明确说想要的风格照常推荐。这些设置只用于本地计算，不发给模型。</p>
+        <div class="settings-row"><div><strong>风格年龄感</strong><small class="muted">想要的穿着感觉，优先于年龄段</small></div><a-segmented :value="profile.settings.ageFeel || ''" :options="AGE_FEELS" @change="(v: string | number) => choose('ageFeel', v, 'ageFeel')" /></div>
+        <div class="settings-row"><div><strong>年龄段</strong><small class="muted">可不填；没选风格年龄感时按年龄段估计</small></div><a-select :value="profile.settings.ageBand ?? undefined" :options="AGE_BANDS" allow-clear placeholder="不填" style="width: 140px" :loading="saving === 'ageBand'" @change="(v: unknown) => choose('ageBand', v, 'ageBand')" /></div>
+        <div class="settings-row"><div><strong>着装取向</strong><small class="muted">和个人资料里的性别分开；选中性或偏男性化时也会推荐男士经典搭法</small></div><a-segmented :value="profile.settings.dressExpression || ''" :options="EXPRESSIONS" @change="(v: string | number) => choose('dressExpression', v, 'dressExpression')" /></div>
       </section>
       <section class="settings-card">
         <h3>推荐偏好</h3>

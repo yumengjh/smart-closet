@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import { RouterLink } from 'vue-router'
 import RecommendationGroup from './RecommendationGroup.vue'
 import { recommendApi } from './api'
 import type { InspirationView } from './types'
@@ -24,6 +25,7 @@ onMounted(load)
       <p class="muted recommend-inspiration-meta">
         从 {{ data.approvedTemplates }} 个已审核搭法里挑出今天适用的 {{ data.applicableTemplates }} 个，用你衣柜里的衣服套进去{{ data.view.intent.description ? '；' + data.view.intent.description : '' }}
       </p>
+      <p v-if="data.audienceSet === false" class="muted recommend-inspiration-meta">想要更合适的灵感？<RouterLink to="/settings?section=style">告诉我你喜欢的感觉</RouterLink>（风格年龄感、着装取向，都可不填）</p>
       <RecommendationGroup v-if="data.view.outfits.length" :key="data.view.runId" :view="data.view" @expired="load" />
       <a-empty v-else :description="data.view.emptyReason || '今天没有能套用的搭法。'" />
       <div v-if="data.gaps.length" class="recommend-gaps">
