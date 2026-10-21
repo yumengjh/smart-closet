@@ -67,7 +67,7 @@ defineExpose({ submit, chosenCount: computed(() => chosen.value.size) })
           <label v-for="item in g.items" :key="item.id" class="preset-card" :class="{ chosen: chosen.has(item.id), done: item.alreadyImported }">
             <img :src="thumbUrl(item.displayUrl, 320)" :alt="presetName(item)" loading="lazy" decoding="async" />
             <span class="preset-name">{{ presetName(item) }}</span>
-            <a-tag v-if="item.alreadyImported">已在衣柜</a-tag>
+            <a-tag v-if="item.alreadyImported" :title="item.ownSource ? '这件就是用你衣柜里的衣物做成的' : undefined">{{ item.ownSource ? '你的衣物' : '已在衣柜' }}</a-tag>
             <a-checkbox v-else :checked="chosen.has(item.id)" @update:checked="toggle(item, Boolean($event))">我有类似的</a-checkbox>
           </label>
         </div>

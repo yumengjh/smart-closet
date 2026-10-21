@@ -1,9 +1,9 @@
 import { request } from './api'
 
 /** 预设衣物库（docs/design/2026-10-21-预设衣物库设计.md）：用户浏览并复制进衣柜，管理员导入、上架与看覆盖。 */
-export type PresetItem = { id: string; displayAssetId: string; displayUrl: string; name: string | null; fields: Record<string, string[]>; gender: string | null; styles: string[]; seasons: string[]; alreadyImported: boolean }
+export type PresetItem = { id: string; displayAssetId: string; displayUrl: string; name: string | null; fields: Record<string, string[]>; gender: string | null; styles: string[]; seasons: string[]; alreadyImported: boolean; /** 由你自己衣柜里的这件衣物做成，不能再加一遍。 */ ownSource?: boolean }
 export type PresetStatus = 'DRAFT' | 'LISTED' | 'UNLISTED'
-export type AdminPreset = Omit<PresetItem, 'alreadyImported'> & { sourceGarmentId: string; sourceOwner: string; status: PresetStatus; sort: number; createdAtMs: number; updatedAtMs: number }
+export type AdminPreset = Omit<PresetItem, 'alreadyImported' | 'ownSource'> & { sourceGarmentId: string; sourceOwner: string; status: PresetStatus; sort: number; createdAtMs: number; updatedAtMs: number }
 export type PresetCoverage = { gender: string; role: string; style: string; count: number; missing: boolean }
 
 import { presetQuery, type PresetFilter } from './presetGroups'

@@ -2,7 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { App as AntApp } from 'ant-design-vue'
 import { SearchOutlined, SlidersOutlined, PlusOutlined, QuestionCircleOutlined, CheckSquareOutlined, ThunderboltOutlined, CameraOutlined, CloseOutlined, AppstoreAddOutlined } from '@ant-design/icons-vue'
-import { onBeforeRouteLeave, useRouter } from 'vue-router'
+import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { closetApi, type Garment, type ListQuery, type SearchResult } from '../services/api'
 import { useClosetStore } from '../stores/closet'
 import GarmentCard from '../components/GarmentCard.vue'
@@ -193,8 +193,12 @@ function presetsImported() { presetsOpen.value = false; void load() }
 const ONBOARDING_KEY = 'yuda.preset-onboarding.v1'
 const onboardingOpen = ref(false)
 const onboardingSeen = () => { try { return localStorage.getItem(ONBOARDING_KEY) === 'done' } catch { return true } }
+// 演示：地址带 ?guide=1 时手动打开引导，不要求衣柜为空，也不记录为已看过。
+const route = useRoute()
+const demoGuide = computed(() => route.query.guide === '1')
+watch(demoGuide, on => { if (on) onboardingOpen.value = true }, { immediate: true })
 watch([total, loading], ([count, busy]) => { if (!busy && count === 0 && !error.value && !hasFilters.value && !onboardingSeen()) onboardingOpen.value = true })
-function onboardingDone(imported: number) { try { localStorage.setItem(ONBOARDING_KEY, 'done') } catch { /* private mode */ } if (imported) void load() }
+function onboardingDone(imported: number) { if (demoGuide.value) void router.replace({ query: { ...route.query, guide: undefined } }); else try { localStorage.setItem(ONBOARDING_KEY, 'done') } catch { /* private mode */ } if (imported) void load() }
 </script>
 
 <template>
