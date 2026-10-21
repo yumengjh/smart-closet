@@ -35,6 +35,7 @@ function openGarment() { if (props.selectable) { emit('toggle'); return }
         <div class="card-title-row">
           <h3>{{ title }}</h3>
           <span class="card-badges">
+            <a-tag v-if="garment.sourceOrigin === 'PRESET'" class="card-preset" title="预设衣物的示意图，可在详情里换成自己的照片">预设</a-tag>
             <a-tooltip v-if="pending" :title="pendingLabel" :trigger="['hover', 'focus']">
               <span class="card-badge pending" tabindex="0" role="img" :aria-label="pendingLabel"><ClockCircleOutlined /></span>
             </a-tooltip>

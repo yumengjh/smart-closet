@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { App as AntApp } from 'ant-design-vue'
-import { SearchOutlined, SlidersOutlined, PlusOutlined, QuestionCircleOutlined, CheckSquareOutlined, ThunderboltOutlined, CameraOutlined, CloseOutlined } from '@ant-design/icons-vue'
+import { SearchOutlined, SlidersOutlined, PlusOutlined, QuestionCircleOutlined, CheckSquareOutlined, ThunderboltOutlined, CameraOutlined, CloseOutlined, AppstoreAddOutlined } from '@ant-design/icons-vue'
 import { onBeforeRouteLeave, useRouter } from 'vue-router'
 import { closetApi, type Garment, type ListQuery, type SearchResult } from '../services/api'
 import { useClosetStore } from '../stores/closet'
 import GarmentCard from '../components/GarmentCard.vue'
 import FloatingPager from '../components/FloatingPager.vue'
 import GarmentCardSkeleton from '../components/GarmentCardSkeleton.vue'
+import PresetPicker from '../presets/PresetPicker.vue'
+import PresetOnboarding from '../presets/PresetOnboarding.vue'
 import { isProcessing } from '../domain/workflow'
 import { DEFAULT_SORT, SORT_OPTIONS, readSort, saveSort, sortLabel } from '../wardrobe/sort'
 import { readView, saveView } from '../wardrobe/viewMemory'
@@ -184,12 +186,21 @@ onUnmounted(() => { window.removeEventListener('pagehide', rememberView); window
 // Choosing an order is remembered on this browser; searching ranks by relevance, so the order only applies when browsing.
 function chooseSort(value: string) { query.sort = value; saveSort(value); query.page = 1; void load() }
 watch(() => [query.category, query.color, query.season, imageStyle.value], debounceLoad)
+// 从常见单品添加（预设衣物库设计 6.1）：勾选后复制进衣柜并标“预设”。
+const presetsOpen = ref(false)
+function presetsImported() { presetsOpen.value = false; void load() }
+// 新用户引导：衣柜为空且本机没关过时弹出一次（预设衣物库设计 6.1）。
+const ONBOARDING_KEY = 'yuda.preset-onboarding.v1'
+const onboardingOpen = ref(false)
+const onboardingSeen = () => { try { return localStorage.getItem(ONBOARDING_KEY) === 'done' } catch { return true } }
+watch([total, loading], ([count, busy]) => { if (!busy && count === 0 && !error.value && !hasFilters.value && !onboardingSeen()) onboardingOpen.value = true })
+function onboardingDone(imported: number) { try { localStorage.setItem(ONBOARDING_KEY, 'done') } catch { /* private mode */ } if (imported) void load() }
 </script>
 
 <template>
   <div class="page-heading wardrobe-heading">
     <div><p class="eyebrow">衣橱空间</p><h1>我的衣柜</h1><p class="page-subtitle">已经核对并确认入柜的衣物，{{ searching ? '搜索结果按相关度排序。' : `按“${sortLabel(query.sort || DEFAULT_SORT)}”排序。` }}</p></div>
-    <div class="wardrobe-heading-side"><a-button v-if="!selecting" class="heading-image-search" @click="picker?.click()"><CameraOutlined /> 用图片搜</a-button><a-button v-if="!selecting && items.length" @click="selecting = true; batchResult = null"><CheckSquareOutlined /> 批量处理</a-button><div class="wardrobe-stats"><strong>{{ total }}</strong><span>{{ searching ? '件符合' : '件已入柜' }}</span></div></div>
+    <div class="wardrobe-heading-side"><a-button v-if="!selecting" @click="presetsOpen = true"><AppstoreAddOutlined /> 从常见单品添加</a-button><a-button v-if="!selecting" class="heading-image-search" @click="picker?.click()"><CameraOutlined /> 用图片搜</a-button><a-button v-if="!selecting && items.length" @click="selecting = true; batchResult = null"><CheckSquareOutlined /> 批量处理</a-button><div class="wardrobe-stats"><strong>{{ total }}</strong><span>{{ searching ? '件符合' : '件已入柜' }}</span></div></div>
   </div>
   <section class="wardrobe-tools" aria-label="搜索和筛选衣物" @dragover.prevent @drop.prevent="dropped">
     <input ref="picker" type="file" accept="image/jpeg,image/png,image/webp" hidden @change="picked" />
@@ -255,8 +266,13 @@ watch(() => [query.category, query.color, query.season, imageStyle.value], debou
   </section>
   <section v-else class="empty-wardrobe">
     <span class="empty-spark"><PlusOutlined /></span><p class="eyebrow">从一件衣服开始</p><h2>{{ hasFilters ? '没有找到这件衣物' : '你的衣柜还没有衣物' }}</h2><p>{{ hasFilters ? (searchResult?.emptyHint || '试试换一个关键词，或清除筛选条件。') : '上传单件衣物照片，处理后核对并确认，它就会出现在这里。' }}</p>
-    <a-button v-if="hasFilters" class="outline-button" @click="clearFilters">清除筛选</a-button><button v-else class="outline-button" @click="router.push('/add')"><PlusOutlined /> 添加第一件衣物</button>
+    <a-button v-if="hasFilters" class="outline-button" @click="clearFilters">清除筛选</a-button><button v-else class="outline-button" @click="router.push('/add')"><PlusOutlined /> 添加第一件衣物</button><a-button v-if="!hasFilters" type="link" @click="presetsOpen = true"><AppstoreAddOutlined /> 先从常见单品里挑几件</a-button>
   </section>
+  <PresetOnboarding v-model:open="onboardingOpen" @done="onboardingDone" />
+  <a-drawer v-model:open="presetsOpen" title="从常见单品添加" :width="narrow ? '100%' : 720" placement="right" destroy-on-close>
+    <p class="muted">勾选你有类似的单品，加入后会标“预设”并参与推荐；之后随时可以在衣物详情里换成自己的照片。</p>
+    <PresetPicker @imported="presetsImported" />
+  </a-drawer>
   <FloatingPager v-if="showFloat" :label="`${query.page} / ${pageCount}`" :hint="narrow ? '' : `共 ${total} 件`" :has-previous="query.page > 1" :has-next="query.page < pageCount" previous-text="上一页" next-text="下一页" :busy="loading" @previous="stepPage(-1)" @next="stepPage(1)" />
   <footer v-if="items.length && (total > pageSize || (!searching && total > PAGE_SIZES[0]))" class="pager-bottom">
     <a-pagination :current="query.page" :page-size="pageSize" :total="total" :disabled="loading" :simple="narrow" :show-size-changer="!searching && !narrow"

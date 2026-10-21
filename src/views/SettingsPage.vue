@@ -3,7 +3,7 @@ import { computed, defineAsyncComponent, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   LockOutlined, ThunderboltOutlined, LinkOutlined, RobotOutlined, UserOutlined, DashboardOutlined,
-  DeleteOutlined, ArrowRightOutlined, ArrowLeftOutlined, DownloadOutlined, SkinOutlined, AuditOutlined, CameraOutlined, CopyOutlined,
+  DeleteOutlined, ArrowRightOutlined, ArrowLeftOutlined, DownloadOutlined, SkinOutlined, AuditOutlined, CameraOutlined, CopyOutlined, AppstoreAddOutlined,
 } from '@ant-design/icons-vue'
 import { useClosetStore } from '../stores/closet'
 import { formatBuildTime, formatVersion, type ServerInfo } from '../domain/app-version'
@@ -36,6 +36,7 @@ interface SettingsCategory {
 const categories: SettingsCategory[] = [
   { key: 'personal', label: '个人形象', eyebrow: '资料与模特', description: '身材资料、参考照片和你的模特。', icon: UserOutlined, hidden: () => firstLogin.value, component: defineAsyncComponent(() => import('./settings/SettingsPersonalSection.vue')) },
   { key: 'templates', label: '搭配模板审核', eyebrow: '管理员', description: '审核经典搭法模板，通过后参与推荐加分。', icon: AuditOutlined, hidden: () => firstLogin.value || closet.user?.role !== 'ADMIN', component: defineAsyncComponent(() => import('./AdminTemplatesPage.vue')) },
+  { key: 'presets', label: '预设衣物库', eyebrow: '管理员', description: '从账号导入常见单品、核对标签与上架，查看覆盖缺口。', icon: AppstoreAddOutlined, hidden: () => firstLogin.value || closet.user?.role !== 'ADMIN', component: defineAsyncComponent(() => import('./settings/SettingsPresetsSection.vue')) },
   { key: 'ootd-samples', label: '整套穿搭样本', eyebrow: '管理员', description: '收集整套穿搭图，提取物品与姿势，审核后生成搭配模板。', icon: CameraOutlined, hidden: () => firstLogin.value || closet.user?.role !== 'ADMIN', component: defineAsyncComponent(() => import('./AdminOotdSamplesPage.vue')) },
   { key: 'processing', label: '任务与资源', eyebrow: '管理员', description: '查看积压、共享账户与调度容量。', icon: DashboardOutlined, hidden: () => firstLogin.value || closet.user?.role !== 'ADMIN', component: defineAsyncComponent(() => import('./AdminProcessingPage.vue')) },
   { key: 'users', label: '用户管理', eyebrow: '管理员', description: '管理用户、登录会话、每日额度和邀请码。', icon: UserOutlined, hidden: () => firstLogin.value || isPortableLogin.value || closet.user?.role !== 'ADMIN', component: defineAsyncComponent(() => import('./AdminUsersPage.vue')) },

@@ -45,7 +45,8 @@ export type Garment = {
   materialComposition: string[]
   careInstructions: string[]
   visibleText: string[]
-  sourceOrigin: 'USER_UPLOAD' | 'GENERATED' | 'UNKNOWN'
+  /** PRESET：从预设衣物库复制来的示意图，换成实拍后变为 USER_UPLOAD。 */
+  sourceOrigin: 'USER_UPLOAD' | 'GENERATED' | 'UNKNOWN' | 'PRESET'
   imageProcessing?: ImageProcessing | null
   assessment?: string
   target?: GarmentTarget | null
@@ -413,6 +414,14 @@ export const closetApi = {
       return fromJob(await request<WorkflowResponse>('/api/closet/garments', { method: 'POST', body: form, headers: { 'Idempotency-Key': createUuid() } }))
     }
     throw new Error('当前是界面演示模式，未连接 AI。请关闭 VITE_USE_MOCKS 并登录真实账号后提交。')
+  },
+  /** 预设衣物“换成我的照片”：同一件衣物换上自己的照片，资料保留（只允许预设副本）。 */
+  async replacePresetPhoto(garmentId: string, file: File, mode: Exclude<ClosetTask['mode'], '图片整理'> = '本地贴纸'): Promise<ClosetTask> {
+    if (usingMocks) throw new Error('演示模式不执行图片处理。')
+    const form = new FormData()
+    form.append('file', file)
+    form.append('workflow', new Blob([JSON.stringify({ mode, restage: false, precut: false, postcut: false, rotationDegrees: 0, transparencyPolicy: 'AUTO' })], { type: 'application/json' }))
+    return fromJob(await request<WorkflowResponse>(`/api/closet/garments/${garmentId}/photo`, { method: 'POST', body: form, headers: { 'Idempotency-Key': createUuid() } }))
   },
   async task(id: string): Promise<ClosetTask> {
     if (!usingMocks) return fromJob(await request<WorkflowResponse>(`/api/workflows/${id}`))
