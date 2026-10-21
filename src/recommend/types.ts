@@ -60,7 +60,12 @@ export type Cooldown = { garmentId: string; name: string; dislikes: number; days
 export type ProfileSettings = {
   boldness: 'CONSERVATIVE' | 'BALANCED' | 'BOLD'; exploration: boolean; profileEnabled: boolean; city: string | null
   blocked: string[]; resetAtMs: number; styleMixing: 'AUTO' | 'ALLOW' | 'FORBID'; semanticStrictness: number | null
+  /** 推荐给谁（2026-10-20）：都可不设；风格年龄感优先于年龄段，着装取向不设时跟随性别。 */
+  ageBand: AgeBand | null; ageFeel: AgeFeel | null; dressExpression: DressExpression | null
 }
+export type AgeBand = 'UNDER_18' | '18_24' | '25_34' | '35_44' | '45_54' | '55_PLUS'
+export type AgeFeel = 'YOUTH' | 'PRIME' | 'MATURE'
+export type DressExpression = 'FEMININE' | 'NEUTRAL' | 'MASCULINE'
 export type StrictnessLevel = { level: number; threshold: number; margin: number }
 export type StyleProfileView = {
   settings: ProfileSettings; statements: Statement[]; cooldowns: Cooldown[]
@@ -82,7 +87,7 @@ export function scoreTone(score: number): 'success' | 'normal' | 'exception' {
 /** GET /api/recommendations/inspiration (P4 今日灵感): reviewed templates filled with the user's own clothes. */
 export type InspirationIdea = { key: string; templateId: string; text: string; kind: 'CLASSIC' | 'TREND'; label: string }
 export type InspirationGap = { templateId: string; text: string; kind: 'CLASSIC' | 'TREND'; missing: string; have: string[]; hint: string }
-export type InspirationView = { view: RecommendationView; ideas: InspirationIdea[]; gaps: InspirationGap[]; approvedTemplates: number; applicableTemplates: number }
+export type InspirationView = { view: RecommendationView; ideas: InspirationIdea[]; gaps: InspirationGap[]; approvedTemplates: number; applicableTemplates: number; audienceSet?: boolean }
 
 /** GET /api/recommendations/stats (P4): adoption and model cost over the last N days. */
 export type RecommendationStats = {
