@@ -20,7 +20,7 @@ onMounted(load); watch(() => props.outfit.key, load)
       <OutfitThumbnail v-if="scene" :scene="scene" :title="outfit.name" /><span v-else-if="!failed" class="recommend-preview-loading" role="status" aria-label="正在准备搭配预览" /><span v-else class="muted">预览无法加载</span>
     </a-button>
     <h3><span>{{ outfit.name }}</span><span class="recommend-score" :aria-label="`总分 ${outfit.score}`">{{ Math.round(outfit.score) }}<small>分</small></span></h3>
-    <div v-if="outfit.tags.length" class="recommend-tags"><a-tag v-for="tag in outfit.tags" :key="tag" :color="tag === '新尝试' ? 'blue' : tag.endsWith('没穿了') ? 'gold' : 'green'">{{ tag }}</a-tag></div>
+    <div v-if="outfit.tags.length || outfit.garments.some(g => g.preset)" class="recommend-tags"><a-tag v-for="tag in outfit.tags" :key="tag" :color="tag === '新尝试' ? 'blue' : tag.endsWith('没穿了') ? 'gold' : 'green'">{{ tag }}</a-tag><a-tag v-if="outfit.garments.some(g => g.preset)" title="这套里有预设衣物的示意图">含预设</a-tag></div>
     <ul class="recommend-highlights"><li v-for="h in outfit.highlights.slice(0, 3)" :key="h">{{ h }}</li></ul>
     <ul v-if="outfit.warnings.length" class="recommend-warnings"><li><WarningOutlined />{{ outfit.warnings[0] }}<template v-if="outfit.warnings.length > 1"> 等 {{ outfit.warnings.length }} 条</template></li></ul>
     <p v-if="outfit.accessories?.length" class="recommend-accessories muted">可以搭配：{{ outfit.accessories.map(a => a.name).join('、') }}</p>

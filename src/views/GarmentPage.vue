@@ -310,6 +310,19 @@ onMounted(async () => { alive = true; window.addEventListener('keydown', stepKey
 onUnmounted(() => { window.removeEventListener('keydown', stepKeys); alive = false; generation++; window.clearTimeout(timer); window.clearInterval(elapsedTimer) })
 watch(() => route.params.id, async () => { trashed = false; generation++; window.clearTimeout(timer); panel.value = 'result'; completed.value = false; editorSnapshot = undefined; advanced.value = ''; void loadSource(); baseline.value = null; task.value = null; imageTask.value = null; parentTask.value = null; continuationKeys.clear(); garment.value = null; loading.value = true; await load(true); schedulePoll() })
 watch(() => route.query.task, async () => { await load(); schedulePoll() })
+// 预设衣物“换成我的照片”（预设衣物库设计 6.2）：上传后在本地抠图，资料保留，完成后不再标预设。
+const replacingPhoto = ref(false)
+async function replacePresetPhoto(file: File) {
+  if (!garment.value || replacingPhoto.value) return false
+  replacingPhoto.value = true
+  try {
+    const next = await closetApi.replacePresetPhoto(garment.value.id, file)
+    useProcessingStore().trackTask(next, true); playSound('success')
+    await router.replace({ path: route.path, query: { ...route.query, task: next.id } }); await refresh()
+  } catch (e) { playSound('error'); error.value = e instanceof Error ? e.message : '没有上传成功。' }
+  finally { replacingPhoto.value = false }
+  return false
+}
 </script>
 
 <template>
@@ -430,6 +443,7 @@ watch(() => route.query.task, async () => { await load(); schedulePoll() })
             <a-button type="primary" :disabled="!forceAsset || Boolean(busy) || usingMocks || blocked || Boolean(connectionError) || garment.status === 'TRASHED'" :loading="busy === 'continue'" @click="continueSticker('FORCE')">重新抠图并制作贴纸</a-button><a-button v-if="canApproveTransparency" :disabled="Boolean(busy) || usingMocks || blocked || Boolean(connectionError) || garment.status === 'TRASHED'" @click="approveTransparency">已核对透明图，继续制作</a-button>
             <div v-if="garment.status === 'DRAFT'" class="section-divider"><h3>稍后再做贴纸</h3><p>本次使用上传原图入柜，以后仍可继续制作。</p><a-button :disabled="Boolean(busy) || blocked || Boolean(connectionError) || !schema.length" @click="useOriginal">暂用上传原图入柜</a-button></div><a-button @click="openPanel('metadata')">编辑衣物资料</a-button><GarmentEdgeHelp />
           </section>
+          <a-alert v-if="garment.sourceOrigin === 'PRESET'" type="info" show-icon class="preset-notice" message="这是预设衣物的示意图" description="资料可以照常修改；换成自己的照片后，推荐和组合台里会显示你的照片。"><template #action><a-upload accept="image/*" :show-upload-list="false" :before-upload="replacePresetPhoto" :disabled="replacingPhoto || garment.status === 'TRASHED'"><a-button type="primary" :loading="replacingPhoto">换成我的照片</a-button></a-upload></template></a-alert>
           <section v-else class="garment-surface garment-summary"><div class="section-heading"><h2>衣物资料</h2><a-button :disabled="garment.status === 'TRASHED'" @click="openPanel('metadata')"><EditOutlined /> 编辑资料</a-button></div><dl class="summary-fields"><div v-for="key in basicKeys" :key="key"><dt>{{ fieldLabels[key as keyof typeof fieldLabels] }}</dt><dd>{{ fieldValue(key) }}</dd></div></dl>
             <div class="section-heading section-divider"><h3>穿着建议</h3><a-popover :trigger="['hover','click']" title="可按实物修改"><template #content><p class="help-copy">照片建议尚未核实时，不能保证实际叠穿。点击编辑资料可核对或修改，也可保持未知。</p></template><a-button type="text" aria-label="穿着建议说明"><InfoCircleOutlined /></a-button></a-popover></div><dl class="summary-fields"><div v-for="key in layeringFields" :key="key"><dt>{{ key === 'fit' ? '版型' : key === 'thickness' ? '厚薄' : '用途' }}</dt><dd>{{ fieldValue(key) }}</dd></div></dl><p class="quiet-copy">{{ layeringVerified ? '穿着建议已根据实物核对。' : '照片建议尚未根据实物核对，之后仍可修改。' }}<a-button v-if="!layeringVerified && garment.status === 'ACTIVE'" type="link" size="small" @click="openPanel('metadata')">厚薄、版型、用途是推测，核对后推荐更准</a-button></p>
             <a-alert v-if="summary && ['warning','error'].includes(summary.tone)" :type="summary.tone === 'error' ? 'error' : 'warning'" :message="summary.title" show-icon><template #description><span>{{ summary.description }}</span><a-button type="link" :disabled="processing || dirty || garment.status === 'TRASHED'" @click="startRun('recognize')">补充说明并重新识别</a-button><a-button type="link" @click="openPanel('history')">查看当前任务</a-button></template></a-alert>
