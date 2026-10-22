@@ -10,6 +10,7 @@
 ![Ant Design Vue](https://img.shields.io/badge/Ant_Design_Vue-4-1677FF?logo=antdesign&logoColor=white)
 ![Konva](https://img.shields.io/badge/Konva-画板-0D83CD)
 ![Tests](https://img.shields.io/badge/测试-107_项-success)
+![License](https://img.shields.io/badge/license-源码仅供评审_·_非开源-red)
 
 [快速开始](#快速开始) · [功能](#功能) · [构建与发布](#构建与发布) · [后端仓库](https://github.com/yumengjh/smart-closet-server) · [界面流程说明](docs/INTERACTION.md)
 
@@ -18,6 +19,16 @@
 </div>
 
 ---
+
+> ### ⚠️ 许可声明：源码仅供评审查看，不是开源软件
+>
+> 鱼搭是独立开发、计划商业化运营的 SaaS 产品。仓库开放，**只是为了让竞赛评委核验项目的真实性与 AI 协同开发过程**。
+>
+> | 允许（仅限评审人员） | 禁止（未经书面授权） |
+> |:--|:--|
+> | 阅读源码、文档与提交历史；在自己的设备上临时克隆、构建、运行和测试，用于核验与评分 | **复制、转发、Fork、镜像、公开发布；修改或二次开发；商业或生产使用；用于训练 AI 模型；提取规则、数据与设计做相似产品** |
+>
+> 完整条款见 [LICENSE](LICENSE)。需要其他用途，请先取得权利人书面授权。
 
 这是鱼搭的**用户端**，需要配合后端 [smart-closet-server](https://github.com/yumengjh/smart-closet-server) 使用。后端提供接口、本地模型、推荐引擎和助手运行时；本仓库只负责界面与交互。两个仓库建议检出到相邻目录：
 
@@ -166,3 +177,7 @@ npm run build
 
 - [页面流程与状态说明](docs/INTERACTION.md) · [PWA](docs/PWA.md) · [OOTD 模特、动作与身材调节界面](docs/2026-10-12-OOTD模特、动作与身材调节界面.md)
 - [衣物入库设计](https://github.com/yumengjh/smart-closet-server/blob/main/docs/design/衣物入库最新设计.md) · [平台级鱼搭与个人 OOTD 设计](https://github.com/yumengjh/smart-closet-server/blob/main/docs/design/2026-10-06-平台级鱼搭助手与个人OOTD设计.md) · [后端运行与接口文档](https://github.com/yumengjh/smart-closet-server/blob/main/docs/CLOSET_PRODUCT.md)
+
+## 许可
+
+本仓库采用[鱼搭源码可见评审许可](LICENSE)：**源码仅供竞赛评审人员核验之用，不是开源软件**。未经权利人书面授权，不得复制、转发、公开发布、Fork、修改、二次开发、商业使用，或将其用于训练 AI 模型。第三方组件与预训练模型遵循各自原有的许可证。
