@@ -6,7 +6,7 @@ import { App, message } from 'ant-design-vue'
 import { CameraOutlined, PictureOutlined, SettingOutlined, CheckCircleFilled, LoadingOutlined, ClockCircleOutlined, ArrowRightOutlined, InboxOutlined, CloseOutlined, DownOutlined } from '@ant-design/icons-vue'
 import { useClosetStore } from '../stores/closet'
 import { useNotificationStore } from '../stores/notifications'
-import { mediaUrl } from '../services/urls'
+import { thumbUrl } from '../services/urls'
 import { prefersNativeCamera } from '../services/camera'
 import { playSound } from '../services/sound'
 import CameraCapture from './CameraCapture.vue'
@@ -29,7 +29,7 @@ const admitted = computed(() => rows.value.filter(row => row.result?.garment.sta
 const thumbnails = new Map<string, string>()
 const active = (row: LocalPhoto) => row.result && ['QUEUED', 'RUNNING'].includes(row.result.task.status)
 function thumbnail(row: LocalPhoto) {
-  if (row.result) return mediaUrl(row.result.garment.displayUrl || row.result.garment.sourceUrl)
+  if (row.result) return thumbUrl(row.result.garment.displayUrl || row.result.garment.sourceUrl, 320)
   if (!row.blob) return ''
   if (!thumbnails.has(row.id)) thumbnails.set(row.id, URL.createObjectURL(row.blob))
   return thumbnails.get(row.id)

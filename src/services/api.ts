@@ -56,7 +56,7 @@ export type Garment = {
   taskStatus?: 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'NEEDS_REVIEW' | 'FAILED' | 'UNKNOWN' | 'CANCEL_REQUESTED' | 'CANCELLED'
   taskId?: string
   restoreStatus?: 'ACTIVE' | 'DRAFT'
-  images: { id: string; url: string; kind: string; reviewStatus: string; aiGenerated?: boolean }[]
+  images: { id: string; url: string; kind: string; reviewStatus: string; aiGenerated?: boolean; width?: number | null; height?: number | null }[]
 }
 
 export type TaskStep = { name: string; type?: string; status: 'completed' | 'running' | 'failed' | 'waiting' | 'review' | 'skipped'; startedAt?: string; finishedAt?: string; inputUrl?: string; outputUrl?: string; error?: string; transparency?: { after: TransparencyReport }; recognition?: { target?: GarmentTarget | null; assessment?: string; issues?: { code?: string; message: string; suggestedAction?: string }[] } }

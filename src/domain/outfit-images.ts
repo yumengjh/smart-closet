@@ -1,12 +1,14 @@
 import { createUuid } from './id'
 import type { Garment } from '../services/api'
 import { mediaUrl, isApiMedia } from '../services/urls'
+import { layerVariantPath, variantPath } from './image-variants'
 import type { OutfitElement, OutfitRole } from './outfit'
 import { formatGarmentLabel, nextElementPosition, OUTFIT_HEIGHT, OUTFIT_WIDTH, roleFromGarment } from './outfit'
 
 const imagePromises = new Map<string, Promise<HTMLImageElement>>()
 
-export type GarmentArtwork = { assetId: string; url: string; kind: string; hasBackground: boolean }
+/** width/height: the stored picture's pixels when the server reports them (layout without downloading the original). */
+export type GarmentArtwork = { assetId: string; url: string; kind: string; hasBackground: boolean; width?: number; height?: number }
 
 function mockArtwork(garment: Garment, role: OutfitRole): string {
   const color = /^#[0-9a-f]{6}$/i.test(garment.imageColor || '') ? garment.imageColor : '#b9b9b3'
@@ -22,6 +24,12 @@ function mockArtwork(garment: Garment, role: OutfitRole): string {
 }
 
 export function artworkForGarment(garment: Garment): GarmentArtwork {
+  const artwork = pickArtwork(garment)
+  const stored = garment.images.find(image => image.id === artwork.assetId)
+  return stored?.width && stored?.height ? { ...artwork, width: stored.width, height: stored.height } : artwork
+}
+
+function pickArtwork(garment: Garment): GarmentArtwork {
   const approved = garment.images.filter((image) => image.reviewStatus === 'APPROVED')
   const transparent = approved.find((image) => ['SEGMENT', 'ENSURE_TRANSPARENCY'].includes(image.kind))
   if (transparent) return { assetId: transparent.id, url: transparent.url, kind: transparent.kind, hasBackground: false }
@@ -34,18 +42,25 @@ export function artworkForGarment(garment: Garment): GarmentArtwork {
   return { assetId: `mock-${garment.id}`, url: mockArtwork(garment, roleFromGarment(garment)), kind: 'MOCK', hasBackground: false }
 }
 
-export function loadOutfitImage(url: string): Promise<HTMLImageElement> {
-  const cached = imagePromises.get(url)
+/**
+ * {@code readable}: load with CORS so the canvas can read pixels back (edge measurement, PNG export). Previews only show
+ * their canvas and pass false: the request then behaves like a plain <img>, so the server may answer with a redirect
+ * to the bucket or CDN instead of sending the bytes itself (a credentialed CORS request cannot follow that redirect).
+ * Cached per mode, so a preview's unreadable image is never handed to code that reads pixels.
+ */
+export function loadOutfitImage(url: string, readable = true): Promise<HTMLImageElement> {
+  const cacheKey = `${readable ? 'cors' : 'plain'} ${url}`
+  const cached = imagePromises.get(cacheKey)
   if (cached) return cached
   const promise = new Promise<HTMLImageElement>((resolve, reject) => {
     const image = new Image()
-    image.crossOrigin = isApiMedia(url) ? 'use-credentials' : 'anonymous'
+    if (readable) image.crossOrigin = isApiMedia(url) ? 'use-credentials' : 'anonymous'
     image.onload = () => resolve(image)
     image.onerror = () => reject(new Error('贴纸图片暂时无法加载，请重试。'))
     image.src = mediaUrl(url)!
   })
-  imagePromises.set(url, promise)
-  promise.catch(() => imagePromises.delete(url))
+  imagePromises.set(cacheKey, promise)
+  promise.catch(() => imagePromises.delete(cacheKey))
   return promise
 }
 
@@ -86,10 +101,21 @@ function measureBounds(image: HTMLImageElement): Bounds {
   }
 }
 
-export async function createOutfitElement(garment: Garment, current: OutfitElement[]): Promise<OutfitElement> {
+/**
+ * The picture an element is measured from. Previews measure a 480 px copy when the original's size is known: the crop
+ * is a fraction and the aspect ratio is the same, so only imageWidth/imageHeight need the original, and those come from
+ * the server. The editor measures the original it is about to show anyway.
+ */
+export function layoutImageUrl(artwork: GarmentArtwork, preview = false): string {
+  return preview && artwork.width && artwork.height ? variantPath(artwork.url, 480) : artwork.url
+}
+
+export async function createOutfitElement(garment: Garment, current: OutfitElement[], preview = false): Promise<OutfitElement> {
   const role = roleFromGarment(garment)
   const artwork = artworkForGarment(garment)
-  const image = await loadOutfitImage(artwork.url)
+  const measured = layoutImageUrl(artwork, preview)
+  const image = await loadOutfitImage(measured)
+  const original = measured === artwork.url ? { width: image.naturalWidth, height: image.naturalHeight } : { width: artwork.width!, height: artwork.height! }
   const crop = transparentBounds(image)
   const position = nextElementPosition(role, current)
   const aspect = (image.naturalWidth * crop.width) / Math.max(1, image.naturalHeight * crop.height)
@@ -103,14 +129,19 @@ export async function createOutfitElement(garment: Garment, current: OutfitEleme
     x, y, width, height, rotation: 0, zIndex: current.length,
     garmentLabel: formatGarmentLabel(garment), cropX: crop.x, cropY: crop.y,
     cropWidth: crop.width, cropHeight: crop.height,
-    garmentRevision: garment.revision, assetUrl: artwork.url, imageWidth: image.naturalWidth,
-    imageHeight: image.naturalHeight, assetKind: artwork.kind, garmentStatus: 'ACTIVE',
+    garmentRevision: garment.revision, assetUrl: artwork.url, imageWidth: original.width,
+    imageHeight: original.height, assetKind: artwork.kind, garmentStatus: 'ACTIVE',
     garmentChanged: false, imageChanged: false,
   }
 }
 
-/** {@code background} is white for exports; on-screen previews pass the theme's board colour (the exported image never follows the theme). */
-export async function drawOutfit(scene: { elements: OutfitElement[] }, width: number, height: number, background = '#fff'): Promise<HTMLCanvasElement> {
+/**
+ * {@code background} is white for exports; on-screen previews pass the theme's board colour (the exported image never follows the theme).
+ * {@code preview} draws each layer from a scaled copy (`?w=`) just large enough for the size it is drawn at, instead of the
+ * full original: a recommendation card no longer downloads several multi-megabyte PNGs. Crops are fractions of the picture,
+ * so a smaller copy draws the same. Exports leave it off and keep the originals.
+ */
+export async function drawOutfit(scene: { elements: OutfitElement[] }, width: number, height: number, background = '#fff', preview = false): Promise<HTMLCanvasElement> {
   const canvas = document.createElement('canvas')
   canvas.width = width; canvas.height = height
   const context = canvas.getContext('2d')
@@ -120,7 +151,9 @@ export async function drawOutfit(scene: { elements: OutfitElement[] }, width: nu
   context.imageSmoothingEnabled = true; context.imageSmoothingQuality = 'high'
   const scaleX = width / 1080, scaleY = height / 1350
   const layers = [...scene.elements].sort((a, b) => a.zIndex - b.zIndex)
-  const images = await Promise.all(layers.map((element) => loadOutfitImage(element.assetUrl)))
+  const images = await Promise.all(layers.map((element) => preview
+    ? loadOutfitImage(layerVariantPath(element.assetUrl, element.width * scaleX, element.cropWidth), false)
+    : loadOutfitImage(element.assetUrl)))
   layers.forEach((element, index) => {
     const image = images[index]
     const sw = Math.max(1, image.naturalWidth * element.cropWidth)
