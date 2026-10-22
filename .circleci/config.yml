@@ -8,7 +8,9 @@
 # Project Settings -> Environment Variables (same names as the GitHub secrets):
 #   required  DEPLOY_SSH_HOST, DEPLOY_SSH_USER, DEPLOY_SSH_KEY or DEPLOY_SSH_PASSWORD
 #   optional  DEPLOY_SSH_PORT, DEPLOY_SSH_KNOWN_HOSTS, DEPLOY_PATH (default /opt/1panel/www/sites/yuda.yumg.cn/index),
-#             DEPLOY_SITE_URL (default https://yuda.yumg.cn/), FRONTEND_API_BASE_URL
+#             DEPLOY_SITE_URL (default https://yuda.yumg.cn/), FRONTEND_API_BASE_URL,
+#             TENCENTCLOUD_SECRET_ID + TENCENTCLOUD_SECRET_KEY (CAM user yuda-cdn-purge: refresh the CDN after deploy),
+#             CDN_PURGE_PATHS (directories to refresh, default the site origin)
 version: 2.1
 
 parameters:
@@ -167,6 +169,12 @@ jobs:
             "${SUDO[@]}" rm -rf "$stage"
             echo "已覆盖 ${target}：$(find "$target" -type f | wc -l) 个文件；上一版备份在 $(dirname "$target")/.index-previous.tar.gz"
             REMOTE
+
+      # Tencent Cloud CDN in front of the site: flush what changed at the origin (index.html, unhashed static files).
+      # Needs TENCENTCLOUD_SECRET_ID / TENCENTCLOUD_SECRET_KEY (CAM user with policy yuda-cdn-purge); skipped without them.
+      - run:
+          name: Refresh CDN cache
+          command: SITE_URL="$SITE_URL" node scripts/purge-cdn.mjs
 
       - run:
           name: Verify the live site

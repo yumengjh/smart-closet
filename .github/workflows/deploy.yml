@@ -131,6 +131,15 @@ jobs:
           echo "已覆盖 $target：$(find "$target" -type f | wc -l) 个文件；上一版备份在 $(dirname "$target")/.index-previous.tar.gz"
           REMOTE
 
+      # Tencent Cloud CDN in front of the site: flush what changed at the origin (index.html, unhashed static files).
+      # Needs secrets TENCENTCLOUD_SECRET_ID / TENCENTCLOUD_SECRET_KEY (CAM user with policy yuda-cdn-purge); skipped without them.
+      - name: Refresh CDN cache
+        env:
+          TENCENTCLOUD_SECRET_ID: ${{ secrets.TENCENTCLOUD_SECRET_ID }}
+          TENCENTCLOUD_SECRET_KEY: ${{ secrets.TENCENTCLOUD_SECRET_KEY }}
+          CDN_PURGE_PATHS: ${{ secrets.CDN_PURGE_PATHS }}
+        run: node scripts/purge-cdn.mjs
+
       - name: Verify the live site
         run: |
           set -euo pipefail
