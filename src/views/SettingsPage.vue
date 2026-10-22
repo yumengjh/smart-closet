@@ -3,7 +3,7 @@ import { computed, defineAsyncComponent, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   LockOutlined, ThunderboltOutlined, LinkOutlined, RobotOutlined, UserOutlined, DashboardOutlined,
-  DeleteOutlined, BgColorsOutlined, ArrowRightOutlined, ArrowLeftOutlined, DownloadOutlined, SkinOutlined, AuditOutlined, CameraOutlined, CopyOutlined, AppstoreAddOutlined,
+  DeleteOutlined, CompassOutlined, BgColorsOutlined, ArrowRightOutlined, ArrowLeftOutlined, DownloadOutlined, SkinOutlined, AuditOutlined, CameraOutlined, CopyOutlined, AppstoreAddOutlined,
 } from '@ant-design/icons-vue'
 import { useClosetStore } from '../stores/closet'
 import { formatBuildTime, formatVersion, type ServerInfo } from '../domain/app-version'
@@ -135,6 +135,7 @@ function selectCategory(key: string) {
   void router.replace({ query: { ...route.query, section: key } })
 }
 
+function replayGuide() { window.dispatchEvent(new CustomEvent('closet-guide-start')) }
 function goBack() {
   void router.replace({ query: { ...route.query, section: undefined } })
 }
@@ -197,6 +198,16 @@ function goBack() {
         </span>
         <ArrowRightOutlined class="settings-nav-arrow" />
       </RouterLink>
+
+      <!-- 新手指引（issue #81）：在衣柜页重新播放一遍 -->
+      <a-button v-if="!firstLogin" type="text" class="settings-nav-item" @click="replayGuide">
+        <span class="settings-nav-icon"><CompassOutlined /></span>
+        <span class="settings-nav-text">
+          <strong>新手指引</strong>
+          <small>再看一遍主要功能在哪里</small>
+        </span>
+        <ArrowRightOutlined class="settings-nav-arrow" />
+      </a-button>
 
       <footer class="settings-version" aria-label="版本信息">
         <span :title="webBuiltAt ? `构建于 ${webBuiltAt}` : undefined">前端 {{ webVersion }}</span>

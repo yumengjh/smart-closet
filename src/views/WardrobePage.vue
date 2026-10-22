@@ -198,7 +198,10 @@ const route = useRoute()
 const demoGuide = computed(() => route.query.guide === '1')
 watch(demoGuide, on => { if (on) onboardingOpen.value = true }, { immediate: true })
 watch([total, loading], ([count, busy]) => { if (!busy && count === 0 && !error.value && !hasFilters.value && !onboardingSeen()) onboardingOpen.value = true })
-function onboardingDone(imported: number) { if (demoGuide.value) void router.replace({ query: { ...route.query, guide: undefined } }); else try { localStorage.setItem(ONBOARDING_KEY, 'done') } catch { /* private mode */ } if (imported) void load() }
+// 新手指引 (issue #81): asked once the first load settles, unless the preset picker took the screen; then it asks on close.
+const guideAsked = ref(false)
+watch(loading, busy => { if (busy || guideAsked.value) return; guideAsked.value = true; window.setTimeout(() => { if (!onboardingOpen.value) window.dispatchEvent(new CustomEvent('closet-guide-first-visit')) }, 800) })
+function onboardingDone(imported: number) { window.setTimeout(() => window.dispatchEvent(new CustomEvent('closet-guide-first-visit')), 600); if (demoGuide.value) void router.replace({ query: { ...route.query, guide: undefined } }); else try { localStorage.setItem(ONBOARDING_KEY, 'done') } catch { /* private mode */ } if (imported) void load() }
 // 底部添加菜单的“从常见单品挑”带 ?presets=1 进来：打开抽屉后去掉参数，返回时不重复打开。
 watch(() => route.query.presets, value => { if (value !== '1') return; presetsOpen.value = true; void router.replace({ query: { ...route.query, presets: undefined } }) }, { immediate: true })
 </script>

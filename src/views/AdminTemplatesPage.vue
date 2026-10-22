@@ -62,6 +62,23 @@ async function batch(status: 'APPROVED' | 'REJECTED') {
   } catch (e) { playSound('error'); message.error(e instanceof Error ? e.message : '批量操作失败。') }
   finally { busy.value = '' }
 }
+// Issue #83: try the template on the reviewer's own clothes before approving it. One garment per slot is shown;
+// 换一件 cycles one slot, 换一套 cycles all of them. Read only and zero model calls on the server.
+type PreviewGarment = { id: string; name: string; color: string; categories: string[]; displayUrl: string | null }
+type Preview = { templateId: string; text: string; closetSize: number; slots: { candidates: PreviewGarment[]; total: number }[] }
+const previewOpen = ref(false), previewLoading = ref(false), previewError = ref('')
+const preview = ref<Preview | null>(null), previewEntry = ref<Entry | null>(null), picks = ref<number[]>([])
+async function openPreview(entry: Entry) {
+  previewEntry.value = entry; preview.value = null; previewError.value = ''; previewOpen.value = true; previewLoading.value = true
+  try { const r = await request<Preview>(`/api/admin/outfit-templates/${encodeURIComponent(entry.id)}/preview`); preview.value = r; picks.value = r.slots.map(() => 0) }
+  catch (e) { previewError.value = e instanceof Error ? e.message : '预览暂时无法加载。' }
+  finally { previewLoading.value = false }
+}
+function swapSlot(i: number) { const n = preview.value?.slots[i].candidates.length || 0; if (n > 1) picks.value = picks.value.map((p, j) => j === i ? (p + 1) % n : p) }
+function swapAll() { picks.value = picks.value.map((p, i) => { const n = preview.value?.slots[i].candidates.length || 0; return n > 1 ? (p + 1) % n : p }) }
+const canSwapAll = computed(() => preview.value?.slots.some(s => s.candidates.length > 1) || false)
+const filledSlots = computed(() => preview.value?.slots.filter(s => s.candidates.length).length || 0)
+function garmentLabel(g: PreviewGarment) { return g.name || `${g.color}${g.categories.join('/')}` }
 const columns = [
   { title: '示意', key: 'preview', width: 112 }, { title: '搭法', key: 'text' }, { title: '条件', key: 'slots' }, { title: '加分', key: 'bonus', width: 120 }, { title: '状态', key: 'status', width: 110 }, { title: '操作', key: 'actions', width: 200 },
 ]
@@ -95,14 +112,46 @@ const columns = [
             <a-button v-if="record.reviewStatus !== 'APPROVED'" size="small" type="primary" :loading="busy === record.id" @click="review(record.id, { reviewStatus: 'APPROVED', enabled: true })">通过</a-button>
             <a-button v-if="record.reviewStatus !== 'REJECTED'" size="small" :loading="busy === record.id" @click="review(record.id, { reviewStatus: 'REJECTED' })">停用</a-button>
             <a-button v-if="record.reviewStatus !== 'PENDING_REVIEW'" size="small" type="link" :loading="busy === record.id" @click="review(record.id, { reviewStatus: 'PENDING_REVIEW' })">退回待审</a-button>
+            <a-button size="small" type="link" @click="openPreview(record)">用我的衣物预览</a-button>
           </a-space>
         </template>
       </template>
     </a-table>
   </div>
+  <a-modal v-model:open="previewOpen" :title="previewEntry ? `预览：${previewEntry.text}` : '预览'" :footer="null" width="760px" destroy-on-close>
+    <p class="muted">用你自己衣柜里符合条件的衣物填进每个位置，只是预览，不会记录或改变推荐。</p>
+    <a-alert v-if="previewError" type="error" show-icon :message="previewError" />
+    <a-skeleton v-else-if="previewLoading" active />
+    <template v-else-if="preview && previewEntry">
+      <a-alert v-if="!preview.closetSize" type="info" show-icon message="你的衣柜还没有已入柜的衣物，无法预览。" />
+      <template v-else>
+        <div class="template-try-grid">
+          <div v-for="(slot, i) in preview.slots" :key="i" class="template-try-slot" :class="{ empty: !slot.candidates.length }">
+            <template v-if="slot.candidates.length">
+              <div class="template-try-image"><img v-if="slot.candidates[picks[i]].displayUrl" :src="slot.candidates[picks[i]].displayUrl!" :alt="garmentLabel(slot.candidates[picks[i]])" loading="lazy" /><span v-else class="muted">无图片</span></div>
+              <strong>{{ garmentLabel(slot.candidates[picks[i]]) }}</strong>
+              <small class="muted">{{ picks[i] + 1 }} / {{ slot.candidates.length }}<template v-if="slot.total > slot.candidates.length">（共 {{ slot.total }} 件符合）</template></small>
+              <a-button size="small" :disabled="slot.candidates.length < 2" @click="swapSlot(i)">换一件</a-button>
+            </template>
+            <template v-else>
+              <div class="template-try-image"><span class="muted">衣柜里没有</span></div>
+              <small class="muted">{{ previewEntry.slots[i] ? slotText(previewEntry.slots[i]) : '' }}</small>
+            </template>
+          </div>
+        </div>
+        <div class="template-try-footer"><span class="muted">已填 {{ filledSlots }} / {{ preview.slots.length }} 个位置</span><a-button type="primary" :disabled="!canSwapAll" @click="swapAll">换一套</a-button></div>
+      </template>
+    </template>
+  </a-modal>
 </template>
 <style scoped>
 .template-preview-large { display: flex; gap: 14px; align-items: flex-start; max-width: 420px; }
 .template-preview-large ul { margin: 0; padding-left: 18px; font-size: 12px; line-height: 1.8; }
+.template-try-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; margin: 12px 0; }
+.template-try-slot { display: grid; gap: 6px; justify-items: start; padding: 10px; border: 1px solid var(--line); border-radius: 12px; }
+.template-try-slot.empty { border-style: dashed; }
+.template-try-image { display: grid; place-items: center; width: 100%; aspect-ratio: 1; border-radius: 10px; background: var(--surface-muted, rgba(127, 127, 127, .08)); overflow: hidden; }
+.template-try-image img { width: 100%; height: 100%; object-fit: contain; }
+.template-try-footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .template-review-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
 </style>

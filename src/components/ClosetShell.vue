@@ -23,6 +23,7 @@ import NavGlyph from '../shell/NavGlyph.vue'
 import AddLauncher from '../shell/AddLauncher.vue'
 import { revealing } from '../shell/revealNavigate'
 import TaskToast from './TaskToast.vue'
+import GuideTour from '../shell/GuideTour.vue'
 import WaitingGame from './WaitingGame.vue'
 import WaitingStarted from './WaitingStarted.vue'
 import RenderSendOff from './RenderSendOff.vue'
@@ -178,6 +179,7 @@ async function signOut() {
           <WaitingGame v-if="!closet.user?.mustChangePassword" />
           <WaitingStarted v-if="!closet.user?.mustChangePassword" /><RenderSendOff v-if="!closet.user?.mustChangePassword" />
           <AssistantPanel v-if="!closet.user?.mustChangePassword" :key="closet.user?.username" />
+          <GuideTour v-if="!closet.user?.mustChangePassword" />
         </main>
         <nav v-if="!closet.user?.mustChangePassword" ref="mobileNav" class="mobile-nav" aria-label="移动端主导航">
           <RouterLink v-for="item in mobileNavItems" :key="item.path" :to="item.path" :class="{ active: isNavActive(item.path), pending: pendingPath === item.path }" :aria-current="isNavActive(item.path) ? 'page' : undefined" @touchstart.passive="prefetch(item.path)"><NavGlyph v-if="item.glyph" :name="item.glyph" :active="isNavActive(item.path)" /><span>{{ item.label }}</span><i v-if="item.path === '/pending' && closet.pendingCount"></i></RouterLink>
