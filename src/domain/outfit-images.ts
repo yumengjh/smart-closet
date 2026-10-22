@@ -42,18 +42,25 @@ function pickArtwork(garment: Garment): GarmentArtwork {
   return { assetId: `mock-${garment.id}`, url: mockArtwork(garment, roleFromGarment(garment)), kind: 'MOCK', hasBackground: false }
 }
 
-export function loadOutfitImage(url: string): Promise<HTMLImageElement> {
-  const cached = imagePromises.get(url)
+/**
+ * {@code readable}: load with CORS so the canvas can read pixels back (edge measurement, PNG export). Previews only show
+ * their canvas and pass false: the request then behaves like a plain <img>, so the server may answer with a redirect
+ * to the bucket or CDN instead of sending the bytes itself (a credentialed CORS request cannot follow that redirect).
+ * Cached per mode, so a preview's unreadable image is never handed to code that reads pixels.
+ */
+export function loadOutfitImage(url: string, readable = true): Promise<HTMLImageElement> {
+  const cacheKey = `${readable ? 'cors' : 'plain'} ${url}`
+  const cached = imagePromises.get(cacheKey)
   if (cached) return cached
   const promise = new Promise<HTMLImageElement>((resolve, reject) => {
     const image = new Image()
-    image.crossOrigin = isApiMedia(url) ? 'use-credentials' : 'anonymous'
+    if (readable) image.crossOrigin = isApiMedia(url) ? 'use-credentials' : 'anonymous'
     image.onload = () => resolve(image)
     image.onerror = () => reject(new Error('贴纸图片暂时无法加载，请重试。'))
     image.src = mediaUrl(url)!
   })
-  imagePromises.set(url, promise)
-  promise.catch(() => imagePromises.delete(url))
+  imagePromises.set(cacheKey, promise)
+  promise.catch(() => imagePromises.delete(cacheKey))
   return promise
 }
 
@@ -144,7 +151,9 @@ export async function drawOutfit(scene: { elements: OutfitElement[] }, width: nu
   context.imageSmoothingEnabled = true; context.imageSmoothingQuality = 'high'
   const scaleX = width / 1080, scaleY = height / 1350
   const layers = [...scene.elements].sort((a, b) => a.zIndex - b.zIndex)
-  const images = await Promise.all(layers.map((element) => loadOutfitImage(preview ? layerVariantPath(element.assetUrl, element.width * scaleX, element.cropWidth) : element.assetUrl)))
+  const images = await Promise.all(layers.map((element) => preview
+    ? loadOutfitImage(layerVariantPath(element.assetUrl, element.width * scaleX, element.cropWidth), false)
+    : loadOutfitImage(element.assetUrl)))
   layers.forEach((element, index) => {
     const image = images[index]
     const sw = Math.max(1, image.naturalWidth * element.cropWidth)
