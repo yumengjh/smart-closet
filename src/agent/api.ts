@@ -1,6 +1,7 @@
 import { readAgentStream } from './sse'
 import { usingMocks } from '../services/api'
 import { apiUrl } from '../services/urls'
+import { fetchWithRetry } from '../domain/network'
 import type { OutfitScene } from '../domain/outfit'
 
 export type AgentContext = { route: string; workspaceId?: string; boardId?: string; contentVersion?: number; boardCount?: number; garmentId?: string; outfitId?: string; name?: string; revision?: number | null; selectedIds?: string[]; scene?: OutfitScene }
@@ -21,11 +22,11 @@ async function response(path: string, init: RequestInit = {}) {
   const headers = new Headers(init.headers)
   if (init.body) headers.set('Content-Type', 'application/json')
   if (init.method && !['GET', 'HEAD'].includes(init.method)) {
-    const csrf = await fetch(apiUrl('/api/auth/csrf'), { credentials: 'include' })
+    const csrf = await fetchWithRetry(apiUrl('/api/auth/csrf'), { credentials: 'include' })
     if (!csrf.ok) throw new Error('无法完成安全校验，请重新登录。')
     headers.set('X-XSRF-TOKEN', (await csrf.json()).token)
   }
-  const result = await fetch(apiUrl('/api/agent' + path), { ...init, headers, credentials: 'include' })
+  const result = await fetchWithRetry(apiUrl('/api/agent' + path), { ...init, headers, credentials: 'include' })
   if (!result.ok) {
     if (result.status === 401) window.dispatchEvent(new Event('closet-session-expired'))
     const error = await result.json().catch(() => ({}))
