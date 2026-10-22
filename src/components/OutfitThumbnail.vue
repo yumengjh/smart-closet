@@ -28,7 +28,8 @@ async function render() {
   const current = ++revision
   failed.value = false
   try {
-    const output = await drawOutfit(props.scene, width.value, height.value, board.value)
+    // On-screen previews draw from scaled copies; only the exported PNG needs the originals.
+    const output = await drawOutfit(props.scene, width.value, height.value, board.value, true)
     if (current !== revision || !canvas.value) return
     const context = canvas.value.getContext('2d')
     if (context) { context.clearRect(0, 0, canvas.value.width, canvas.value.height); context.drawImage(output, 0, 0) }

@@ -19,3 +19,11 @@ export function variantSrcset(path: string | null | undefined, widths: readonly 
   if (!path || !RESIZABLE.test(path)) return undefined
   return widths.map(width => `${resolve(variantPath(path, width))} ${width}w`).join(', ')
 }
+
+/**
+ * Copy for one layer of an outfit preview: the layer shows `cropWidth` (0–1) of its picture across `drawnWidth` canvas
+ * pixels, so the whole picture is needed at drawnWidth / cropWidth. Paths without copies stay as they are.
+ */
+export function layerVariantPath(path: string, drawnWidth: number, cropWidth = 1): string {
+  return variantPath(path, Math.ceil(drawnWidth / Math.max(0.05, cropWidth || 1)))
+}
