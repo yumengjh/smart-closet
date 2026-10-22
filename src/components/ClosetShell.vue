@@ -49,7 +49,8 @@ const closetTheme = computed(() => ({
 const collapsed = ref(readCollapsed())
 function toggleSidebar() { collapsed.value = !collapsed.value; saveCollapsed(collapsed.value) }
 const frameStyle = computed(() => ({ '--sidebar-w': `${sidebarWidth(collapsed.value)}px` }))
-const isLogin = computed(() => ['/login', '/register'].includes(route.path))
+// 注册后问询 /welcome 也是全屏页，但需要已登录（路由守卫负责）。
+const isLogin = computed(() => ['/login', '/register'].includes(route.path) || route.path === '/welcome' && closet.isSignedIn)
 const isOutfitEditor = computed(() => route.path.startsWith('/outfits/'))
 const navItems = [
   { path: '/wardrobe', label: '我的衣柜', icon: AppstoreOutlined, glyph: 'wardrobe' as const },

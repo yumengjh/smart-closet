@@ -1,16 +1,13 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useClosetStore } from '../stores/closet'
-import { useThemeStore } from '../stores/theme'
-import ThemeToggle from '../components/ThemeToggle.vue'
+import AuthShell from '../components/AuthShell.vue'
 import { closetApi, usingMocks } from '../services/api'
 
 const router = useRouter()
 const route = useRoute()
 const closet = useClosetStore()
-const appearance = useThemeStore()
-const loginIllustration = computed(() => appearance.isDark ? '/illustrations/yuda-login-dark.svg' : '/illustrations/yuda-login-light.svg')
 const username = ref('')
 const password = ref('')
 const busy = ref(false)
@@ -37,23 +34,15 @@ async function submit() {
 </script>
 
 <template>
-  <div class="login-page">
-    <div class="login-art" aria-hidden="true">
-      <img class="login-hero-illustration" :src="loginIllustration" alt="" /><p class="art-caption">从照片，<br /><em>到你的数字衣柜。</em></p>
-    </div>
-    <div class="login-side">
-      <div class="login-brand-row"><RouterLink to="/login" class="brand-lockup login-brand"><img class="brand-logo" src="/yuda-logo.png" alt="" /><span><strong>鱼搭</strong><small>数字衣橱</small></span></RouterLink><ThemeToggle /></div>
-      <div class="login-form-wrap">
-        <p class="eyebrow">专属衣橱</p><h1>登录你的衣柜</h1><p class="login-intro">登录后，查看你的照片、任务和衣物。</p>
-        <form class="login-form" @submit.prevent="submit">
-          <label for="username">用户名</label><a-input id="username" v-model:value="username" autocomplete="username" placeholder="请输入你的用户名" autofocus />
-          <label for="password">密码</label><a-input-password id="password" v-model:value="password" autocomplete="current-password" placeholder="请输入密码" />
-          <a-alert v-if="error" type="error" :message="error" show-icon />
-          <a-button type="primary" html-type="submit" :loading="busy" block class="login-submit">进入我的衣橱 <span aria-hidden="true">↗</span></a-button>
-          <a-button v-if="registrationOpen" type="link" @click="router.push('/register')">注册账号</a-button>
-          <p v-if="usingMocks" class="login-hint">界面演示：示例内容并非 AI 结果，不能提交真实任务。</p>
-        </form>
-      </div>
-    </div>
-  </div>
+  <AuthShell eyebrow="欢迎回来" title="登录你的衣柜" intro="查看你的衣物、搭配和处理进度。">
+    <form class="auth-form" @submit.prevent="submit">
+      <label for="username">用户名</label><a-input id="username" v-model:value="username" size="large" autocomplete="username" placeholder="请输入你的用户名" autofocus />
+      <label for="password">密码</label><a-input-password id="password" v-model:value="password" size="large" autocomplete="current-password" placeholder="请输入密码" />
+      <a-alert v-if="error" type="error" :message="error" show-icon />
+      <a-button type="primary" html-type="submit" size="large" :loading="busy" block class="auth-submit">进入我的衣橱</a-button>
+      <a-button v-if="registrationOpen" size="large" block @click="router.push('/register')">还没有账号？注册</a-button>
+      <p v-if="usingMocks" class="auth-hint">界面演示：示例内容并非 AI 结果，不能提交真实任务。</p>
+    </form>
+    <template v-if="!registrationOpen" #footer><span>账号由管理员创建，忘记密码请联系管理员。</span></template>
+  </AuthShell>
 </template>

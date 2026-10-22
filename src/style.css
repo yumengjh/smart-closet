@@ -402,3 +402,8 @@ html[data-density='minimal'] .settings-group { padding-top: 20px; padding-bottom
 ::view-transition-new(root) { z-index: 2; }
 ::view-transition-old(root) { z-index: 1; transform-origin: 50% 40%; }
 ::view-transition-group(root) { background: #0b0c0f; }
+/* 登录、注册、注册后问询的表单（issue #82，外框见 AuthShell.vue）。 */
+.auth-form { display: grid; gap: 10px; margin-top: 28px; }
+.auth-form label { margin-top: 6px; font-size: 13px; color: var(--muted-strong); }
+.auth-submit.ant-btn { height: 50px; margin-top: 14px; font-size: 16px; }
+.auth-hint { margin: 4px 0 0; color: var(--warning); font-size: 12px; line-height: 1.7; }
