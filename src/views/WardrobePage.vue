@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { App as AntApp } from 'ant-design-vue'
-import { SearchOutlined, SlidersOutlined, PlusOutlined, QuestionCircleOutlined, CheckSquareOutlined, ThunderboltOutlined, CameraOutlined, CloseOutlined, AppstoreAddOutlined, MoreOutlined } from '@ant-design/icons-vue'
+import { ExclamationCircleOutlined, SearchOutlined, SlidersOutlined, PlusOutlined, QuestionCircleOutlined, CheckSquareOutlined, ThunderboltOutlined, CameraOutlined, CloseOutlined, AppstoreAddOutlined, MoreOutlined } from '@ant-design/icons-vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { closetApi, type Garment, type ListQuery, type SearchResult } from '../services/api'
 import { quickApi } from '../services/quickIntake'
-import { loadPictureChecks, pictureChecks } from '../wardrobe/pictureChecks'
+import { loadPictureChecks, loadReviewCount, pictureChecks, reviewCount } from '../wardrobe/pictureChecks'
 import { createUuid } from '../domain/id'
 import { useClosetStore } from '../stores/closet'
 import GarmentCard from '../components/GarmentCard.vue'
@@ -184,7 +184,7 @@ function closeTag(tag: SearchTag) {
   debounceLoad()
 }
 onMounted(async () => {
-  void loadPictureChecks()
+  void loadPictureChecks(); void loadReviewCount()
   window.scrollTo({ top: 0, behavior: 'instant' })
   window.addEventListener('pagehide', rememberView); window.addEventListener('keydown', pageKeys)
   narrowQuery = window.matchMedia('(max-width: 767px)'); onNarrow(); narrowQuery.addEventListener('change', onNarrow)
@@ -222,12 +222,14 @@ watch(() => route.query.presets, value => { if (value !== '1') return; presetsOp
     <div class="wardrobe-title"><h1>我的衣柜</h1><span class="wardrobe-count" :title="searching ? '搜索结果按相关度排序' : `按“${sortLabel(query.sort || DEFAULT_SORT)}”排序`"><strong>{{ total }}</strong>{{ searching ? ' 件符合' : ' 件' }}</span></div>
     <div v-if="!selecting" class="wardrobe-heading-side">
       <a-button class="wardrobe-wide-action" @click="presetsOpen = true"><AppstoreAddOutlined /> 从常见单品添加</a-button>
+      <a-button v-if="reviewCount" class="wardrobe-wide-action" @click="router.push('/review')"><ExclamationCircleOutlined /> 待核对 {{ reviewCount }}</a-button>
       <a-button v-if="items.length" class="wardrobe-wide-action" @click="selecting = true; batchResult = null"><CheckSquareOutlined /> 批量处理</a-button>
       <a-dropdown :trigger="['click']" placement="bottomRight">
         <a-button class="wardrobe-more" type="text" aria-label="更多衣柜操作"><MoreOutlined /></a-button>
         <template #overlay><a-menu>
           <a-menu-item @click="presetsOpen = true"><AppstoreAddOutlined /> 从常见单品添加</a-menu-item>
           <a-menu-item @click="picker?.click()"><CameraOutlined /> 用图片搜</a-menu-item>
+          <a-menu-item v-if="reviewCount" @click="router.push('/review')"><ExclamationCircleOutlined /> 待核对 {{ reviewCount }}</a-menu-item>
           <a-menu-item :disabled="!items.length" @click="selecting = true; batchResult = null"><CheckSquareOutlined /> 批量处理</a-menu-item>
         </a-menu></template>
       </a-dropdown>
