@@ -38,6 +38,8 @@ export type Garment = {
   wearingModes?: string[]
   /** garment-v7：适穿性别建议（女款/男款/中性），只是识图推测，用户可改。 */
   genderFit?: string[]
+  /** garment-v8：细分品类（西裤、运动裤、百褶裙……），识图看得出时才有。 */
+  subtype?: string[]
   texture: string[]
   styles: string[]
   seasons: string[]
@@ -78,8 +80,8 @@ export type ClosetTask = {
   attempts?: { provider: string; model: string; status: string; startedAt: string; finishedAt?: string }[]
 }
 
-export const fieldLabels: Record<keyof Pick<Garment, 'category' | 'primaryColor' | 'secondaryColors' | 'patterns' | 'neckline' | 'sleeveLength' | 'garmentLength' | 'closure' | 'texture' | 'fit' | 'thickness' | 'wearingModes' | 'genderFit' | 'styles' | 'seasons' | 'brand' | 'size' | 'materialComposition' | 'careInstructions' | 'visibleText'>, string> = {
-  category: '品类', primaryColor: '主色', secondaryColors: '辅色', patterns: '图案', neckline: '领型',
+export const fieldLabels: Record<keyof Pick<Garment, 'category' | 'subtype' | 'primaryColor' | 'secondaryColors' | 'patterns' | 'neckline' | 'sleeveLength' | 'garmentLength' | 'closure' | 'texture' | 'fit' | 'thickness' | 'wearingModes' | 'genderFit' | 'styles' | 'seasons' | 'brand' | 'size' | 'materialComposition' | 'careInstructions' | 'visibleText'>, string> = {
+  category: '品类', subtype: '细分品类', primaryColor: '主色', secondaryColors: '辅色', patterns: '图案', neckline: '领型',
   sleeveLength: '袖长', garmentLength: '衣物长度', closure: '门襟', texture: '表面纹理', styles: '风格',
   fit: '版型建议（需核对）', thickness: '厚薄线索（需核对）', wearingModes: '穿着用途建议（需核对）', genderFit: '适穿性别（需核对）',
   seasons: '季节', brand: '品牌', size: '尺码', materialComposition: '成分', careInstructions: '洗护', visibleText: '可见文字',
@@ -276,7 +278,7 @@ function fromView(view: GarmentView): Garment {
     metadataEvidence: view.automatic?.attributes || {}, automatic: Object.fromEntries(Object.entries(view.automatic?.attributes || {}).map(([key, attribute]) => [key, attribute.values])), overrides: view.overrides || {},
     category: view.effective.category || [], primaryColor: view.effective.primaryColor || [], secondaryColors: view.effective.secondaryColors || [],
     patterns: view.effective.patterns || [], neckline: view.effective.neckline || [], sleeveLength: view.effective.sleeveLength || [],
-    garmentLength: view.effective.garmentLength || [], closure: view.effective.closure || [], texture: view.effective.texture || [], fit: view.effective.fit || [], thickness: view.effective.thickness || [], wearingModes: view.effective.wearingModes || [], genderFit: view.effective.genderFit || [],
+    garmentLength: view.effective.garmentLength || [], closure: view.effective.closure || [], texture: view.effective.texture || [], fit: view.effective.fit || [], thickness: view.effective.thickness || [], wearingModes: view.effective.wearingModes || [], genderFit: view.effective.genderFit || [], subtype: view.effective.subtype || [],
     styles: view.effective.styles || [], seasons: view.effective.seasons || [], brand: view.effective.brand || [], size: view.effective.size || [],
     materialComposition: view.effective.materialComposition || [], careInstructions: view.effective.careInstructions || [], visibleText: view.effective.visibleText || [],
     sourceOrigin: view.sourceOrigin, imageColor: colors[view.effective.primaryColor?.[0] || ''] || '#d6d5cc',
