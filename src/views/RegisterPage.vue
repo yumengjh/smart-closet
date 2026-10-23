@@ -49,6 +49,8 @@ async function submit() {
   try {
     closet.user = await closetApi.register({ username: username.value, password: password.value, displayName: displayName.value.trim() || undefined, inviteCode: inviteCode.value.trim() || undefined })
     password.value = ''; repeat.value = ''
+    // The new-user tour waits for this account (issue #87); GuideTour marks it done when shown.
+    try { localStorage.setItem(`yuda.guide.v1:${closet.user.username}`, 'pending') } catch { /* private mode: no tour */ }
     await router.replace('/welcome')
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : '注册未能完成，请稍后重试。'

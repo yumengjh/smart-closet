@@ -5,6 +5,7 @@ import { SearchOutlined, SlidersOutlined, PlusOutlined, QuestionCircleOutlined, 
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { closetApi, type Garment, type ListQuery, type SearchResult } from '../services/api'
 import { quickApi } from '../services/quickIntake'
+import { loadPictureChecks, pictureChecks } from '../wardrobe/pictureChecks'
 import { createUuid } from '../domain/id'
 import { useClosetStore } from '../stores/closet'
 import GarmentCard from '../components/GarmentCard.vue'
@@ -183,6 +184,7 @@ function closeTag(tag: SearchTag) {
   debounceLoad()
 }
 onMounted(async () => {
+  void loadPictureChecks()
   window.scrollTo({ top: 0, behavior: 'instant' })
   window.addEventListener('pagehide', rememberView); window.addEventListener('keydown', pageKeys)
   narrowQuery = window.matchMedia('(max-width: 767px)'); onNarrow(); narrowQuery.addEventListener('change', onNarrow)
@@ -292,7 +294,7 @@ watch(() => route.query.presets, value => { if (value !== '1') return; presetsOp
   <GarmentCardSkeleton v-if="loading && !items.length" label="正在加载衣柜…" />
   <section v-else-if="items.length" class="garment-grid" :class="{ 'has-float': showFloat }" aria-label="衣物列表" :aria-busy="loading">
     <div v-for="item in items" :key="item.id" class="search-hit">
-      <GarmentCard :garment="item" :selectable="selecting" :selected="selected.has(item.id)" @toggle="toggle(item.id)" />
+      <GarmentCard :review="pictureChecks[item.id]?.message" :garment="item" :selectable="selecting" :selected="selected.has(item.id)" @toggle="toggle(item.id)" />
       <p v-if="searching && searchResult?.reasons[item.id]?.length" class="search-reasons" :title="searchResult.reasons[item.id].join(' · ')">{{ searchResult.reasons[item.id].join(' · ') }}</p>
     </div>
     <button v-if="!selecting" class="add-card" @click="router.push('/add')"><span class="add-card-icon"><PlusOutlined /></span><strong>添加衣物</strong><small>上传 → 处理 → 核对入柜</small></button>

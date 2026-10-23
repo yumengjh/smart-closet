@@ -62,12 +62,21 @@ async function recompute() {
   catch (e) { message.error(e instanceof Error ? e.message : '重新计算失败。') }
   finally { rerunning.value = false }
 }
+// Issues #80 / #90: small confirmation cards whose acceptance does the whole write on the server (wear log, adding
+// presets, dismissing a duplicate pair); nothing else on the page changes.
+const SIMPLE: Record<string, { title: (names: string) => string; hint: string; done: string; button: string; success: string }> = {
+  WEAR: { title: n => `记录${wearDay.value}穿了：${n}`, hint: '确认后写入穿着记录，用于闲置统计和推荐轮换', done: '已记录', button: '确认记录', success: '已记录穿着，推荐会参考这条记录。' },
+  PRESET_IMPORT: { title: n => `把常见单品加入衣柜：${n}`, hint: '加入后标“预设”，之后可以换成自己的照片', done: '已加入', button: '确认加入', success: '已加入衣柜。' },
+  NOT_DUPLICATE: { title: n => `标记不是重复：${n}`, hint: '确认后这两件不再提示可能重复', done: '已标记', button: '确认', success: '已标记，不再提示。' },
+}
+const simple = computed(() => SIMPLE[props.proposal.kind])
+const simpleNames = computed(() => (props.proposal.payload.items || []).map(i => i.name || '未命名衣物').join('、'))
 // Issue #80: "今天穿了这套" — accepting the card writes the wear log on the server; nothing else changes.
 const wearDay = computed(() => { const d = props.proposal.payload.wornOn; if (!d) return ''; const today = new Date(); const pad = (n: number) => String(n).padStart(2, '0'); return d === `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}` ? '今天' : d })
 async function acceptWear() {
   busy.value = true
-  try { await agentRequest(`/proposals/${props.proposal.id}/accept`, 'POST', { context: pageContext(route.path), current: false }); used.value = true; playSound('success'); message.success('已记录穿着，推荐会参考这条记录。'); emit('applied') }
-  catch (e) { playSound('error'); message.error(e instanceof Error ? e.message : '记录失败。') }
+  try { await agentRequest(`/proposals/${props.proposal.id}/accept`, 'POST', { context: pageContext(route.path), current: false }); used.value = true; playSound('success'); message.success(simple.value?.success || '已完成。'); emit('applied'); if (props.proposal.kind === 'PRESET_IMPORT') void closet.refreshCounts() }
+  catch (e) { playSound('error'); message.error(e instanceof Error ? e.message : '操作失败。') }
   finally { busy.value = false }
 }
 function confirmApply(index: number, intoCurrent: boolean) {
@@ -105,7 +114,7 @@ function confirmApply(index: number, intoCurrent: boolean) {
   <section class="agent-proposal" aria-label="待确认操作">
     <GarmentChoiceCard v-if="proposal.kind === 'GARMENT_CHOICE'" :payload="proposal.payload" />
     <GarmentListCard v-else-if="proposal.kind === 'GARMENT_LIST'" :payload="proposal.payload" />
-    <div v-else-if="proposal.kind === 'WEAR'" class="agent-save-card"><div><strong>记录{{ wearDay }}穿了：{{ (proposal.payload.items || []).map(i => i.name || '未命名衣物').join('、') }}</strong><small>{{ used ? '已记录' : '确认后写入穿着记录，用于闲置统计和推荐轮换' }}</small></div><a-button size="small" type="primary" :disabled="used || busy" :loading="busy" @click="acceptWear">确认记录</a-button></div>
+    <div v-else-if="simple" class="agent-save-card"><div><strong>{{ simple.title(simpleNames) }}</strong><small>{{ used ? simple.done : simple.hint }}</small></div><a-button size="small" type="primary" :disabled="used || busy" :loading="busy" @click="acceptWear">{{ simple.button }}</a-button></div>
     <template v-else-if="proposal.kind !== 'SAVE'">
       <a-button class="agent-proposal-card" block @click="openPreview" :aria-label="isOutfits ? `查看${count}套推荐搭配` : '查看画布修改预览'">
         <div class="agent-proposal-minis"><OutfitThumbnail v-for="(scene, index) in scenes" :key="index" :scene="scene" :title="isOutfits ? proposal.payload.candidates![index].name : '修改后画布'" /><ExpandOutlined v-if="!scenes.length" /></div>

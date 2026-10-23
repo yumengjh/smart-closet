@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { ArrowRightOutlined, ClockCircleOutlined, CheckCircleFilled, ThunderboltOutlined } from '@ant-design/icons-vue'
+import { ArrowRightOutlined, ClockCircleOutlined, CheckCircleFilled, ExclamationCircleOutlined, ThunderboltOutlined } from '@ant-design/icons-vue'
 import { taskLabels, isProcessing } from '../domain/workflow'
 import type { Garment } from '../services/api'
 import GarmentArt from './GarmentArt.vue'
 import { playSound } from '../services/sound'
 
-const props = defineProps<{ garment: Garment; pending?: boolean; trashed?: boolean; selectable?: boolean; selected?: boolean }>()
+/** review (issue #88): why the category needs checking, shown as a small warning badge. */
+const props = defineProps<{ garment: Garment; pending?: boolean; trashed?: boolean; selectable?: boolean; selected?: boolean; review?: string }>()
 const emit = defineEmits<{ toggle: [] }>()
 const router = useRouter()
 const stickerPending = computed(() => Boolean(props.garment.imageProcessing?.stickerRequired && !props.garment.imageProcessing.stickerReady && !isProcessing(props.garment.taskStatus)))
@@ -42,6 +43,9 @@ function openGarment() { if (props.selectable) { emit('toggle'); return }
             <a-tooltip v-else-if="!trashed && stickerPending" title="已入柜 · 贴纸未完成" :trigger="['hover', 'focus']">
               <span class="card-badge done" tabindex="0" role="img" aria-label="已入柜 · 贴纸未完成"><CheckCircleFilled /></span>
             </a-tooltip>
+            <a-tooltip v-if="review" :title="`需核对：${review}`" :trigger="['hover', 'focus']">
+              <span class="card-badge review" tabindex="0" role="img" :aria-label="`需核对：${review}`"><ExclamationCircleOutlined /></span>
+            </a-tooltip>
             <a-tooltip v-if="aiGenerated" title="AI 生成 · 可能含推测细节" :trigger="['hover', 'focus']">
               <span class="card-badge ai" tabindex="0" role="img" aria-label="AI 生成 · 可能含推测细节"><ThunderboltOutlined /></span>
             </a-tooltip>
@@ -61,6 +65,7 @@ function openGarment() { if (props.selectable) { emit('toggle'); return }
 .card-badge{display:grid;place-items:center;width:18px;height:18px;border-radius:50%;color:var(--muted-strong);font-size:12px;cursor:default}
 .card-badge.pending{color:var(--warning)}
 .card-badge.done{color:var(--success)}
+.card-badge.review{color:var(--warning)}
 .card-check{position:absolute;left:10px;top:10px;z-index:1}
 .card-queue{position:absolute;right:8px;bottom:8px;z-index:1;margin:0;font-size:11px;line-height:18px;padding:0 6px;pointer-events:none}
 .garment-card.selected .card-image-wrap{box-shadow:0 0 0 2px var(--accent)}
