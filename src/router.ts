@@ -10,6 +10,7 @@ export const router = createRouter({
     { path: '/', redirect: '/wardrobe' },
     { path: '/login', component: () => import('./views/LoginPage.vue') },
     { path: '/register', component: () => import('./views/RegisterPage.vue') },
+    { path: '/welcome', component: () => import('./views/WelcomePage.vue') },
     { path: '/admin/users', component: () => import('./views/AdminUsersPage.vue') },
     { path: '/wardrobe', component: () => import('./views/WardrobePage.vue') },
     { path: '/pending', component: () => import('./views/PendingPage.vue') },

@@ -10,7 +10,7 @@ import SimilarGarmentsPanel from '../similar/SimilarGarmentsPanel.vue'
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import { ArrowLeftOutlined, CheckOutlined, DeleteOutlined, ReloadOutlined, RollbackOutlined, PictureOutlined, StopOutlined, EyeOutlined, InfoCircleOutlined, EditOutlined, SettingOutlined, HistoryOutlined, SkinOutlined, ScanOutlined, ThunderboltOutlined, ScissorOutlined, MoreOutlined } from '@ant-design/icons-vue'
 import { App as AntApp } from 'ant-design-vue'
-import { closetApi, fieldLabels, usingMocks, type Garment, type ClosetTask } from '../services/api'
+import { closetApi, fieldLabels, request, usingMocks, type Garment, type ClosetTask } from '../services/api'
 import { metadataPatch, rebaseMetadata, type MetadataField } from '../domain/metadata'
 import { isProcessing, blocksConfirmation, workflowSummary, generatedImages, imageLabels, orderedTasks } from '../domain/workflow'
 import { useClosetStore } from '../stores/closet'
@@ -182,6 +182,14 @@ function syncForm(record: Garment) {
   baseline.value = structuredClone(toRaw(record)); selectedAssetId.value = record.displayAssetId; resetFields.value = []
   for (const key of fields) values[key] = [...(record[key] || [])]
 }
+// Issue #79: local image-text second opinion on kinds of trousers; only a hint, the garment is not changed.
+const pictureHint = ref<{ message: string; conflict: boolean } | null>(null)
+let pictureKey = ''
+watch(() => garment.value ? `${garment.value.id}:${garment.value.revision}` : '', async key => {
+  if (!key || key === pictureKey || usingMocks) return
+  pictureKey = key; pictureHint.value = null
+  try { const r = await request<{ checks: { message: string; conflict: boolean }[] }>(`/api/garments/${key.split(':')[0]}/picture-check`); if (pictureKey === key) pictureHint.value = r.checks[0] || null } catch { /* hint only */ }
+})
 async function load(reset = false) {
   const epoch = generation
   try {
@@ -346,6 +354,7 @@ async function replacePresetPhoto(file: File) {
       <a-alert v-if="connectionError" type="warning" :message="`连接中断：${connectionError}`" description="保留上次状态，正在重试。" show-icon><template #action><a-button @click="refresh">重新连接</a-button></template></a-alert>
       <a-alert v-if="error" type="error" :message="error" description="你的图片选择和表单输入仍保留。" show-icon><template #action><a-button @click="reconcile">核对最新版本</a-button></template></a-alert>
       <a-alert v-if="success && !completed" type="success" :message="success" show-icon />
+      <a-alert v-if="pictureHint" :type="pictureHint.conflict ? 'warning' : 'info'" :message="pictureHint.message" show-icon closable @close="pictureHint = null" />
       <section v-if="completed" class="workspace-complete">
         <CheckOutlined class="complete-icon" /><img :src="thumbUrl(garment.displayUrl || previewUrl, 960)" alt="已入柜的衣物展示图" decoding="async" /><h2>{{ title }}</h2><a-alert v-if="garment.images.find(image => image.id === garment?.displayAssetId)?.aiGenerated" type="info" message="AI 生成，可能包含推测细节" show-icon /><p>{{ fieldValue('patterns') }} · {{ fieldValue('seasons') }}</p>
         <div><a-button type="primary" @click="router.push('/wardrobe')">查看衣柜</a-button><a-button @click="router.push('/add')">继续添加衣物</a-button><a-button type="text" @click="completed=false">查看衣物详情</a-button></div>

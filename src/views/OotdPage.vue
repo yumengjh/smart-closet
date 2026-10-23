@@ -23,6 +23,29 @@ const route = useRoute(), router = useRouter(); const { message, modal } = App.u
 const outfits = ref<Outfit[]>([]); const baselines = ref<Baseline[]>([]); const capabilities = ref<Capability[]>([]); const jobs = ref<RenderJob[]>([]); const poseCatalog = ref<PoseCatalog | null>(null)
 const outfitId = ref(String(route.query.outfit || '')); const baselineId = ref(''); const model = ref(''); const selected = ref<string[]>([]); const pose = ref<PoseChoice>({ mode: 'AUTO' })
 const multiLayer = ref(false); const wearRoles = ref<Record<string, string>>({}); const showItems = ref(false)
+// 穿法细节 (issue #48): per garment, only where it applies (上衣：塞法、挽袖；外套：扣/敞、挽袖) plus a short note.
+// Defaults come from the recommendation's proportion rule (POST /api/wear-details/suggestions); '' means 由模型自然处理.
+const wearDetails = ref<Record<string, Record<string, string>>>({}); const wearNote = ref(''); const suggested = ref<Record<string, Record<string, string>>>({})
+const DETAIL_OPTIONS: Record<string, { key: string; label: string; options: { value: string; label: string }[] }[]> = {
+  TOP: [{ key: 'tuck', label: '塞法', options: [{ value: '', label: '自动' }, { value: 'NONE', label: '不塞' }, { value: 'FULL', label: '全塞' }, { value: 'FRONT', label: '只塞前面' }] },
+    { key: 'sleeves', label: '袖子', options: [{ value: '', label: '自然' }, { value: 'ROLLED', label: '挽起' }] }],
+  OUTER: [{ key: 'closure', label: '门襟', options: [{ value: '', label: '自动' }, { value: 'CLOSED', label: '扣上' }, { value: 'OPEN', label: '敞开' }] },
+    { key: 'sleeves', label: '袖子', options: [{ value: '', label: '自然' }, { value: 'ROLLED', label: '挽起' }] }],
+}
+const detailGarments = computed(() => garments.value.filter(g => selected.value.includes(g.garmentId) && DETAIL_OPTIONS[g.role]))
+// One line for the confirmation: "白色 衬衫：全塞、袖子挽起；补充：领口解开一颗扣子".
+const wearSummary = computed(() => {
+  const parts = detailGarments.value.flatMap(g => { const d = wearDetails.value[g.garmentId] || {}; const phrases = DETAIL_OPTIONS[g.role].filter(o => d[o.key]).map(o => `${o.key === 'tuck' ? '' : o.label}${o.options.find(x => x.value === d[o.key])?.label}`); return phrases.length ? [`${g.garmentLabel}：${phrases.join('、')}`] : [] })
+  if (wearNote.value.trim()) parts.push(`补充：${wearNote.value.trim()}`)
+  return parts.join('；')
+})
+function detail(id: string, key: string) { return wearDetails.value[id]?.[key] || '' }
+function setDetail(id: string, key: string, value: string) { const next = { ...(wearDetails.value[id] || {}) }; if (value) next[key] = value; else delete next[key]; wearDetails.value = { ...wearDetails.value, [id]: next } }
+function chosenDetails() { const out: Record<string, Record<string, string>> = {}; for (const id of selected.value) if (wearDetails.value[id] && Object.keys(wearDetails.value[id]).length) out[id] = wearDetails.value[id]; return out }
+async function suggestDetails() {
+  const ids = garments.value.map(g => g.garmentId); if (!ids.length) return
+  try { const r = await platformRequest<{ details: Record<string, Record<string, string>> }>('/api/wear-details/suggestions', 'POST', { garmentIds: ids }); suggested.value = r.details; wearDetails.value = JSON.parse(JSON.stringify(r.details)) } catch { /* defaults are optional */ }
+}
 const loading = ref(true); const error = ref(''); const busy = ref(false); const review = ref<Review | null>(null)
 type Preparation = { id: string; review: Review; expiresAt: number; quotaUnits: number; pose: { mode: string; name: string } | null }
 const preparation = ref<Preparation | null>(null); const confirmOpen = ref(false); const key = ref(createUuid())
@@ -47,11 +70,11 @@ async function load() {
 }
 async function loadPoses() { try { poseCatalog.value = await platformRequest<PoseCatalog>('/api/ootd/poses') } catch { /* The picker keeps the last list. */ } }
 async function refresh() { if (document.hidden) return; try { jobs.value = await platformRequest('/api/ootd/jobs') } catch { /* Next poll retries. */ } }
-watch(current, () => { selected.value = garments.value.map(g => g.garmentId); review.value = null; wearRoles.value = {} })
-watch([selected, multiLayer, wearRoles, model, baselineId, pose], () => { preparation.value = null; confirmOpen.value = false }, { deep: true })
+watch(current, () => { selected.value = garments.value.map(g => g.garmentId); review.value = null; wearRoles.value = {}; wearDetails.value = {}; suggested.value = {}; wearNote.value = ''; void suggestDetails() })
+watch([selected, multiLayer, wearRoles, wearDetails, wearNote, model, baselineId, pose], () => { preparation.value = null; confirmOpen.value = false }, { deep: true })
 
 function body(useOlderBaseline: boolean) {
-  return { outfitId: current.value!.id, revision: current.value!.revision, baselineId: person.value!.id, baselineRevision: person.value!.revision, selectedGarmentIds: selected.value, multiLayer: multiLayer.value, wearRoles: wearRoles.value, provider: capability.value!.provider, model: capability.value!.model, useOlderBaseline, pose: pose.value }
+  return { outfitId: current.value!.id, revision: current.value!.revision, baselineId: person.value!.id, baselineRevision: person.value!.revision, selectedGarmentIds: selected.value, multiLayer: multiLayer.value, wearRoles: wearRoles.value, provider: capability.value!.provider, model: capability.value!.model, useOlderBaseline, pose: pose.value, wearDetails: chosenDetails(), note: wearNote.value.trim() || undefined }
 }
 async function check(nested = false) {
   if (!current.value) return
@@ -165,6 +188,14 @@ onUnmounted(() => clearInterval(timer))
             <a-checkbox-group v-model:value="selected" class="ootd-selections"><a-checkbox v-for="g in garments" :key="g.garmentId" :value="g.garmentId">{{ g.garmentLabel }}</a-checkbox></a-checkbox-group>
             <a-checkbox v-model:checked="multiLayer">多层穿法（打底 + 主体 + 外搭）</a-checkbox>
             <div v-if="multiLayer" class="ootd-wear-roles"><div v-for="g in garments.filter(g => selected.includes(g.garmentId))" :key="g.garmentId"><span>{{ g.garmentLabel }}</span><a-select v-model:value="wearRoles[g.garmentId]" allow-clear :options="[{ value: 'INNER', label: '打底内层' }]" placeholder="按品类判断" /></div></div>
+            <div class="ootd-wear-details">
+              <p class="ootd-note">穿法细节（可选）：只影响生成，不改搭配和推荐。</p>
+              <div v-for="g in detailGarments" :key="g.garmentId" class="ootd-detail-row">
+                <span>{{ g.garmentLabel }}<a-tag v-if="suggested[g.garmentId]" color="green">按搭配规则建议</a-tag></span>
+                <a-select v-for="d in DETAIL_OPTIONS[g.role]" :key="d.key" size="small" class="ootd-detail-select" :aria-label="`${g.garmentLabel}${d.label}`" :value="detail(g.garmentId, d.key)" :options="d.options.map(o => ({ value: o.value, label: `${d.label}：${o.label}` }))" @update:value="(v: string) => setDetail(g.garmentId, d.key, v)" />
+              </div>
+              <a-textarea v-model:value="wearNote" :maxlength="200" show-count :auto-size="{ minRows: 1, maxRows: 3 }" placeholder="补充说明，例如：衬衫领口解开一颗扣子" aria-label="穿法补充说明" />
+            </div>
           </div>
         </template>
       </section>
@@ -251,6 +282,7 @@ onUnmounted(() => clearInterval(timer))
           <dt>模特</dt><dd>{{ person ? modelLabel(person) : '' }}</dd>
           <dt>动作</dt><dd>{{ preparation.pose?.name || '自动' }}</dd>
           <dt>衣物</dt><dd>{{ preparation.review.items.map(i => i.label).join('、') }}</dd>
+          <template v-if="wearSummary"><dt>穿法</dt><dd>{{ wearSummary }}</dd></template>
           <dt>额度</dt><dd>{{ preparation.quotaUnits }} 个图像额度</dd>
         </dl>
       </div>
@@ -340,4 +372,8 @@ onUnmounted(() => clearInterval(timer))
   .ootd-results { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
   .ootd-wear-roles :deep(.ant-select), .ootd-accessory :deep(.ant-select) { width: 100%; min-width: 0; }
 }
+.ootd-wear-details { display: grid; gap: 8px; margin-top: 12px; }
+.ootd-detail-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.ootd-detail-row > span { flex: 1 1 100%; font-size: 13px; }
+.ootd-detail-select { min-width: 132px; }
 </style>

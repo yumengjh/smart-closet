@@ -4,6 +4,8 @@ import { App as AntApp } from 'ant-design-vue'
 import { SearchOutlined, SlidersOutlined, PlusOutlined, QuestionCircleOutlined, CheckSquareOutlined, ThunderboltOutlined, CameraOutlined, CloseOutlined, AppstoreAddOutlined, MoreOutlined } from '@ant-design/icons-vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { closetApi, type Garment, type ListQuery, type SearchResult } from '../services/api'
+import { quickApi } from '../services/quickIntake'
+import { createUuid } from '../domain/id'
 import { useClosetStore } from '../stores/closet'
 import GarmentCard from '../components/GarmentCard.vue'
 import FloatingPager from '../components/FloatingPager.vue'
@@ -55,34 +57,41 @@ let searchTimer: number | undefined
 const { modal, message } = AntApp.useApp()
 const selecting = ref(false)
 const selected = ref(new Set<string>())
-const batchBusy = ref<'' | 'recognize' | 'reprocess'>('')
+const batchBusy = ref<'' | 'recognize' | 'reprocess' | 'enhance'>('')
 const batchProgress = ref({ done: 0, total: 0 })
 const batchResult = ref<{ type: 'success' | 'warning' | 'error'; message: string; description: string } | null>(null)
 const allSelected = computed(() => items.value.length > 0 && items.value.every(item => selected.value.has(item.id)))
 function toggle(id: string) { const next = new Set(selected.value); if (next.has(id)) next.delete(id); else next.add(id); selected.value = next }
 function toggleAll() { selected.value = allSelected.value ? new Set() : new Set(items.value.map(item => item.id)) }
 function exitSelecting() { selecting.value = false; selected.value = new Set() }
-const batchLabels = { recognize: '重新识别资料', reprocess: '重新增强图片' } as const
-async function confirmBatch(mode: 'recognize' | 'reprocess') {
+const batchLabels = { recognize: '重新识别资料', reprocess: '重新增强图片', enhance: 'AI 增强图片' } as const
+type BatchMode = keyof typeof batchLabels
+async function confirmBatch(mode: BatchMode) {
   const targets = items.value.filter(item => selected.value.has(item.id))
   const runnable = targets.filter(item => !isProcessing(item.taskStatus))
   if (!runnable.length) { batchResult.value = { type: 'warning', message: '没有可提交的衣物', description: '所选衣物都在处理中，请等当前任务结束后再试。' }; return }
-  const unit = mode === 'recognize' ? 1 : 2
+  const unit = mode === 'reprocess' ? 2 : 1
   let quotaLine = ''
   try { const quota = await closetApi.quota(); const left = Math.max(0, quota.limit - quota.used); quotaLine = `今日剩余 ${left} 次。${left < runnable.length * unit ? '额度不够时，后面的衣物不会提交。' : ''}` } catch { quotaLine = '' }
   const skipped = targets.length - runnable.length
   modal.confirm({
     title: `${batchLabels[mode]}（${runnable.length} 件）？`,
-    content: `${mode === 'recognize' ? '每件调用一次识别模型，使用 1 次 AI 额度。' : '每件分别调用识别和整理模型，使用 2 次 AI 额度。'}共需 ${runnable.length * unit} 次。${quotaLine}${skipped ? `另有 ${skipped} 件正在处理，将跳过。` : ''}已有人工修改和图片会保留。`,
+    content: `${mode === 'recognize' ? '每件调用一次识别模型，使用 1 次 AI 额度。' : mode === 'enhance' ? '按快速入柜的增强规则重新整理图片（例如丝袜只保留袜子本身），每件使用 1 次 AI 额度；不是快速入柜的衣物会跳过。' : '每件分别调用识别和整理模型，使用 2 次 AI 额度。'}共需 ${runnable.length * unit} 次。${quotaLine}${skipped ? `另有 ${skipped} 件正在处理，将跳过。` : ''}已有人工修改和图片会保留。`,
     okText: '提交真实任务', cancelText: '取消',
     onOk: () => { void runBatch(mode, runnable, skipped) },
   })
 }
-async function runBatch(mode: 'recognize' | 'reprocess', targets: Garment[], skipped: number) {
+// Issue #77: 'enhance' re-runs the quick-intake enhancement (its prompt carries rules such as tights without legs).
+async function enhanceOne(item: Garment) {
+  const { intakeId } = await quickApi.provenance(item.id)
+  if (!intakeId) throw new Error('不是快速入柜的衣物，请在详情里重新处理')
+  await quickApi.enhance(intakeId, createUuid(), '')
+}
+async function runBatch(mode: BatchMode, targets: Garment[], skipped: number) {
   batchBusy.value = mode; batchResult.value = null; batchProgress.value = { done: 0, total: targets.length }
   const failures: string[] = []; let submitted = 0, stoppedByQuota = 0
   for (const [index, item] of targets.entries()) {
-    try { await closetApi[mode](item.id); submitted++ }
+    try { if (mode === 'enhance') await enhanceOne(item); else await closetApi[mode](item.id); submitted++ }
     catch (cause) {
       const message = cause instanceof Error ? cause.message : '提交失败'
       if (message.includes('额度')) { stoppedByQuota = targets.length - index; break }
@@ -198,7 +207,10 @@ const route = useRoute()
 const demoGuide = computed(() => route.query.guide === '1')
 watch(demoGuide, on => { if (on) onboardingOpen.value = true }, { immediate: true })
 watch([total, loading], ([count, busy]) => { if (!busy && count === 0 && !error.value && !hasFilters.value && !onboardingSeen()) onboardingOpen.value = true })
-function onboardingDone(imported: number) { if (demoGuide.value) void router.replace({ query: { ...route.query, guide: undefined } }); else try { localStorage.setItem(ONBOARDING_KEY, 'done') } catch { /* private mode */ } if (imported) void load() }
+// 新手指引 (issue #81): asked once the first load settles, unless the preset picker took the screen; then it asks on close.
+const guideAsked = ref(false)
+watch(loading, busy => { if (busy || guideAsked.value) return; guideAsked.value = true; window.setTimeout(() => { if (!onboardingOpen.value) window.dispatchEvent(new CustomEvent('closet-guide-first-visit')) }, 800) })
+function onboardingDone(imported: number) { window.setTimeout(() => window.dispatchEvent(new CustomEvent('closet-guide-first-visit')), 600); if (demoGuide.value) void router.replace({ query: { ...route.query, guide: undefined } }); else try { localStorage.setItem(ONBOARDING_KEY, 'done') } catch { /* private mode */ } if (imported) void load() }
 // 底部添加菜单的“从常见单品挑”带 ?presets=1 进来：打开抽屉后去掉参数，返回时不重复打开。
 watch(() => route.query.presets, value => { if (value !== '1') return; presetsOpen.value = true; void router.replace({ query: { ...route.query, presets: undefined } }) }, { immediate: true })
 </script>
@@ -262,6 +274,10 @@ watch(() => route.query.presets, value => { if (value !== '1') return; presetsOp
       <span class="batch-mode">
         <a-button :disabled="!selected.size || Boolean(batchBusy)" :loading="batchBusy === 'recognize'" @click="confirmBatch('recognize')">重新识别资料</a-button>
         <a-tooltip :trigger="['hover', 'focus', 'click']" placement="bottom"><template #title><strong>重新识别资料</strong><br />用识别模型重新读取品类、颜色、季节、图案等资料。<br />不改动图片，已手动改过的字段会保留。<br />耗费：每件 1 次 AI 额度。</template><span class="batch-tip" tabindex="0" role="img" aria-label="重新识别资料说明"><QuestionCircleOutlined /></span></a-tooltip>
+      </span>
+      <span class="batch-mode">
+        <a-button :disabled="!selected.size || Boolean(batchBusy)" :loading="batchBusy === 'enhance'" @click="confirmBatch('enhance')">AI 增强图片</a-button>
+        <a-tooltip :trigger="['hover', 'focus', 'click']" placement="bottom"><template #title><strong>AI 增强图片</strong><br />按快速入柜的增强规则重新整理展示图：去掉残留背景、人物和腿部（丝袜、裤袜只保留袜子本身）。<br />原图和历史图片保留。只对快速入柜的衣物有效。<br />耗费：每件 1 次 AI 额度。</template><span class="batch-tip" tabindex="0" role="img" aria-label="AI 增强图片说明"><QuestionCircleOutlined /></span></a-tooltip>
       </span>
       <span class="batch-mode">
         <a-button type="primary" :disabled="!selected.size || Boolean(batchBusy)" :loading="batchBusy === 'reprocess'" @click="confirmBatch('reprocess')">重新增强图片</a-button>

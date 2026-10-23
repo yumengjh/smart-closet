@@ -62,6 +62,14 @@ async function recompute() {
   catch (e) { message.error(e instanceof Error ? e.message : '重新计算失败。') }
   finally { rerunning.value = false }
 }
+// Issue #80: "今天穿了这套" — accepting the card writes the wear log on the server; nothing else changes.
+const wearDay = computed(() => { const d = props.proposal.payload.wornOn; if (!d) return ''; const today = new Date(); const pad = (n: number) => String(n).padStart(2, '0'); return d === `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}` ? '今天' : d })
+async function acceptWear() {
+  busy.value = true
+  try { await agentRequest(`/proposals/${props.proposal.id}/accept`, 'POST', { context: pageContext(route.path), current: false }); used.value = true; playSound('success'); message.success('已记录穿着，推荐会参考这条记录。'); emit('applied') }
+  catch (e) { playSound('error'); message.error(e instanceof Error ? e.message : '记录失败。') }
+  finally { busy.value = false }
+}
 function confirmApply(index: number, intoCurrent: boolean) {
   modal.confirm({ title: props.proposal.kind === 'SAVE' ? '确认保存当前搭配？' : intoCurrent ? '确认将预览应用到当前画布？' : '新建一份独立搭配草稿？',
     content: props.proposal.kind === 'SAVE' ? '保存到账号后可在其他设备继续编辑，版本冲突时不会覆盖。' : '应用后仍是未保存草稿；保存到账号需要你再次确认。',
@@ -97,6 +105,7 @@ function confirmApply(index: number, intoCurrent: boolean) {
   <section class="agent-proposal" aria-label="待确认操作">
     <GarmentChoiceCard v-if="proposal.kind === 'GARMENT_CHOICE'" :payload="proposal.payload" />
     <GarmentListCard v-else-if="proposal.kind === 'GARMENT_LIST'" :payload="proposal.payload" />
+    <div v-else-if="proposal.kind === 'WEAR'" class="agent-save-card"><div><strong>记录{{ wearDay }}穿了：{{ (proposal.payload.items || []).map(i => i.name || '未命名衣物').join('、') }}</strong><small>{{ used ? '已记录' : '确认后写入穿着记录，用于闲置统计和推荐轮换' }}</small></div><a-button size="small" type="primary" :disabled="used || busy" :loading="busy" @click="acceptWear">确认记录</a-button></div>
     <template v-else-if="proposal.kind !== 'SAVE'">
       <a-button class="agent-proposal-card" block @click="openPreview" :aria-label="isOutfits ? `查看${count}套推荐搭配` : '查看画布修改预览'">
         <div class="agent-proposal-minis"><OutfitThumbnail v-for="(scene, index) in scenes" :key="index" :scene="scene" :title="isOutfits ? proposal.payload.candidates![index].name : '修改后画布'" /><ExpandOutlined v-if="!scenes.length" /></div>
