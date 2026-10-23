@@ -33,6 +33,12 @@ const DETAIL_OPTIONS: Record<string, { key: string; label: string; options: { va
     { key: 'sleeves', label: '袖子', options: [{ value: '', label: '自然' }, { value: 'ROLLED', label: '挽起' }] }],
 }
 const detailGarments = computed(() => garments.value.filter(g => selected.value.includes(g.garmentId) && DETAIL_OPTIONS[g.role]))
+// One line for the confirmation: "白色 衬衫：全塞、袖子挽起；补充：领口解开一颗扣子".
+const wearSummary = computed(() => {
+  const parts = detailGarments.value.flatMap(g => { const d = wearDetails.value[g.garmentId] || {}; const phrases = DETAIL_OPTIONS[g.role].filter(o => d[o.key]).map(o => `${o.key === 'tuck' ? '' : o.label}${o.options.find(x => x.value === d[o.key])?.label}`); return phrases.length ? [`${g.garmentLabel}：${phrases.join('、')}`] : [] })
+  if (wearNote.value.trim()) parts.push(`补充：${wearNote.value.trim()}`)
+  return parts.join('；')
+})
 function detail(id: string, key: string) { return wearDetails.value[id]?.[key] || '' }
 function setDetail(id: string, key: string, value: string) { const next = { ...(wearDetails.value[id] || {}) }; if (value) next[key] = value; else delete next[key]; wearDetails.value = { ...wearDetails.value, [id]: next } }
 function chosenDetails() { const out: Record<string, Record<string, string>> = {}; for (const id of selected.value) if (wearDetails.value[id] && Object.keys(wearDetails.value[id]).length) out[id] = wearDetails.value[id]; return out }
@@ -276,6 +282,7 @@ onUnmounted(() => clearInterval(timer))
           <dt>模特</dt><dd>{{ person ? modelLabel(person) : '' }}</dd>
           <dt>动作</dt><dd>{{ preparation.pose?.name || '自动' }}</dd>
           <dt>衣物</dt><dd>{{ preparation.review.items.map(i => i.label).join('、') }}</dd>
+          <template v-if="wearSummary"><dt>穿法</dt><dd>{{ wearSummary }}</dd></template>
           <dt>额度</dt><dd>{{ preparation.quotaUnits }} 个图像额度</dd>
         </dl>
       </div>
