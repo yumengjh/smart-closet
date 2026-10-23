@@ -6,7 +6,8 @@ import { useClosetStore } from '../stores/closet'
 
 /**
  * 新手指引 (issue #81): a short tour over the main entrances, on the desktop sidebar or the mobile bottom bar.
- * Shown once per account on this browser (the wardrobe page asks after it loads, or after the preset picker of an
+ * It starts by itself only for an account just registered here (issue #87).
+ * Shown once, right after registering (the wardrobe page asks after it loads, or after the preset picker of an
  * empty closet closes); 设置 → 新手指引 replays it. Steps whose element is not on screen (OOTD on mobile, a hidden assistant) are left out.
  */
 const KEY = 'yuda.guide.v1:'
@@ -30,7 +31,9 @@ function build() {
     .map(s => ({ title: s.title, description: s.description, ...(s.selector === s.mobile ? { placement: 'top' as const } : {}), target: () => visible(s.selector) || document.body }))
 }
 const key = computed(() => closet.user ? KEY + closet.user.username : '')
-const seen = () => { try { return !key.value || localStorage.getItem(key.value) === 'done' } catch { return true } }
+// Issue #87: only an account registered in this browser waits for the tour ('pending', set by the register page);
+// existing users never get it automatically and replay it from 我的 → 新手指引.
+const seen = () => { try { return !key.value || localStorage.getItem(key.value) !== 'pending' } catch { return true } }
 function remember() { try { if (key.value) localStorage.setItem(key.value, 'done') } catch { /* private mode */ } }
 async function start() {
   if (route.path !== '/wardrobe') await router.push('/wardrobe')
