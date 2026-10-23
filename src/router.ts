@@ -29,6 +29,7 @@ export const router = createRouter({
     { path: '/add', component: () => import('./views/AddGarmentPage.vue') },
     { path: '/garment/:id', component: () => import('./views/GarmentPage.vue') },
     { path: '/trash', component: () => import('./views/TrashPage.vue') },
+    { path: '/review', component: () => import('./views/ReviewPage.vue') },
     { path: '/:pathMatch(.*)*', redirect: '/wardrobe' },
   ],
   // The wardrobe restores its own position after its list has loaded (issue #3); everything else starts at the top.

@@ -17,3 +17,10 @@ export async function loadPictureChecks(force = false) {
 }
 /** After the owner edits a category the hint for that garment is gone until the next check. */
 export function forgetPictureCheck(id: string) { const next = { ...pictureChecks.value }; delete next[id]; pictureChecks.value = next }
+
+/** How many garments wait for a person on the 待核对 page (picture-check conflicts and missing categories). */
+export const reviewCount = ref(0)
+export async function loadReviewCount() {
+  if (usingMocks) return
+  try { reviewCount.value = (await request<{ items: unknown[] }>('/api/garments/needs-review')).items.length } catch { /* entry stays hidden */ }
+}
