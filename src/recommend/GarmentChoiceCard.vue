@@ -18,11 +18,21 @@ const { message } = App.useApp()
 const picked = ref(''); const loading = ref(false); const view = ref<RecommendationView | null>(null)
 const picks = latestRequest()
 const chosen = ref('')
+const sent = ref(false), preference = ref('')
+function send(text: string) {
+  const value = text.trim(); if (sent.value || !value) return
+  sent.value = true; sendToAssistant(value)
+}
+function sendPreference(event?: KeyboardEvent) {
+  if (event?.isComposing || event?.keyCode === 229) return
+  send(preference.value)
+}
 function choose(index: number) {
-  const c = props.payload.candidates?.[index]; if (!c) return
-  chosen.value = c.garmentIds[0]; sendToAssistant(`选第 ${index + 1} 件「${c.name}」`)
+  const c = props.payload.candidates?.[index]; if (!c || sent.value) return
+  chosen.value = c.garmentIds[0]; send(`选第 ${index + 1} 件「${c.name}」`)
 }
 async function pick(id: string) {
+  if (sent.value) return
   const ticket = picks.next()
   picked.value = id; loading.value = true
   try { const next = await recommendApi.recommend({ requiredGarmentIds: [id], count: 3 }); if (picks.isLatest(ticket)) view.value = next }
@@ -35,10 +45,17 @@ async function pick(id: string) {
     <small class="muted">“{{ payload.query }}”找到 {{ payload.total }} 件，点一下告诉助手是哪件；也可以直接用它搭一套（不调用大模型）：</small>
     <div class="garment-choice-options">
       <div v-for="(c, index) in payload.candidates" :key="c.garmentIds[0]" class="garment-choice-option">
-        <a-button :type="chosen === c.garmentIds[0] ? 'primary' : 'default'" :disabled="!!chosen && chosen !== c.garmentIds[0]" :title="c.reasons?.join(' · ')" :aria-label="`就是这件：${c.name}`" @click="choose(index)">
+        <a-button :type="chosen === c.garmentIds[0] ? 'primary' : 'default'" :disabled="sent" :title="c.reasons?.join(' · ')" :aria-label="`就是这件：${c.name}`" @click="choose(index)">
           <GarmentThumb :garment-id="c.garmentIds[0]" :display-url="c.displayUrl" :alt="c.name" :size="64" /><span>{{ c.name }}</span>
         </a-button>
-        <a-button type="link" size="small" :loading="loading && picked === c.garmentIds[0]" @click="pick(c.garmentIds[0])">用它搭一套</a-button>
+        <a-button type="link" size="small" :disabled="sent" :loading="loading && picked === c.garmentIds[0]" @click="pick(c.garmentIds[0])">用它搭一套</a-button>
+      </div>
+    </div>
+    <div class="garment-choice-feedback">
+      <a-button type="text" size="small" :disabled="sent" @click="send(`这几件都不合适，再给我看看别的「${payload.query ?? ''}」`)">都不合适，换几件</a-button>
+      <div class="garment-choice-input">
+        <a-input v-model:value="preference" size="small" placeholder="说说想要哪种" aria-label="说说想要哪种" :disabled="sent" @press-enter="sendPreference" />
+        <a-button size="small" :disabled="sent || !preference.trim()" @click="sendPreference()">发送</a-button>
       </div>
     </div>
     <RecommendationGroup v-if="view" :key="view.runId" :view="view" dense />

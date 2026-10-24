@@ -25,21 +25,32 @@ export function arrangeOutfit(scene: OutfitScene): OutfitScene {
     item.height = item.width / Math.max(.15, Math.min(5, aspect))
     item.rotation = 0; item.freeStretch = false
   }
-  // A pinafore (one-piece together with a top) overlaps the upper half of its top instead of replacing it.
+  // roleFromGarment stores overalls/pinafores as ONE_PIECE on the board.
+  // Show them beside their top as a flat lay, rather than hiding the top behind the bib.
   const pinafore = !!(whole && top)
   const body = pinafore ? [top!, whole!] : whole ? [whole] : [top, bottom].filter((item): item is OutfitElement => !!item)
   if (!body.length && outer) body.push(outer)
   // A collage shows separate garments, not a fitted virtual try-on: keep opaque outerwear beside the body.
   const bodyX = outer && !body.includes(outer) ? 340 : 540
-  const overlap = pinafore ? Math.round(top!.height * 0.55) : body.length > 1 ? 22 : 0
-  const naturalHeight = body.reduce((sum, item) => sum + item.height, 0) - overlap + (shoes?.height || 0) + (shoes ? 10 : 0)
-  const scale = Math.min(1, 1090 / Math.max(1, naturalHeight))
+  const overlap = !pinafore && top && bottom && !whole
+    ? Math.min(22, .15 * top.width * top.height / Math.min(top.width, bottom.width)) : 0
+  const row = pinafore ? [...body, ...(outer ? [outer] : [])] : []
+  const rowWidth = row.reduce((sum, item) => sum + item.width, 0) + Math.max(0, row.length - 1) * 32
+  const bodyHeight = pinafore ? Math.max(...row.map(item => item.height)) : body.reduce((sum, item) => sum + item.height, 0) - overlap
+  const naturalHeight = bodyHeight + (shoes?.height || 0) + (shoes ? 10 : 0)
+  const scale = Math.min(1, 1090 / Math.max(1, naturalHeight), pinafore ? 1048 / rowWidth : 1)
   for (const item of garments) { item.width *= scale; item.height *= scale }
   let edge = Math.max(155, (1350 - naturalHeight * scale) / 2)
   const shoulder = edge
-  for (const item of body) { item.x = bodyX; item.y = edge + item.height / 2; edge += item.height - overlap * scale }
-  if (shoes) { shoes.x = bodyX; shoes.y = Math.min(1315 - shoes.height / 2, edge + overlap * scale + 10 + shoes.height / 2) }
-  if (outer && !body.includes(outer)) { outer.x = 820; outer.y = shoulder + outer.height / 2 }
+  if (pinafore) {
+    let left = (1080 - rowWidth * scale) / 2
+    for (const item of row) { item.x = left + item.width / 2; item.y = shoulder + item.height / 2; left += item.width + 32 * scale }
+    edge += bodyHeight * scale
+  } else {
+    for (const item of body) { item.x = bodyX; item.y = edge + item.height / 2; edge += item.height - overlap * scale }
+    if (outer && !body.includes(outer)) { outer.x = 820; outer.y = shoulder + outer.height / 2 }
+  }
+  if (shoes) { shoes.x = pinafore ? 540 : bodyX; shoes.y = Math.min(1315 - shoes.height / 2, edge + overlap * scale + 10 + shoes.height / 2) }
   const worn = new Set([...body, shoes, outer].filter(Boolean))
   let side = 0
   for (const item of garments) {

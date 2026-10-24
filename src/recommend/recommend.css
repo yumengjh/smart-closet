@@ -69,6 +69,11 @@
 .garment-choice-options { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; }
 .garment-choice-option { display: flex; flex-direction: column; align-items: stretch; min-width: 0; }.garment-choice-option > .ant-btn-link { height: 24px; padding: 0; font-size: 11px; }
 .garment-choice-options .ant-btn:not(.ant-btn-link) { height: auto; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px; white-space: normal; font-size: 12px; line-height: 1.4; }
+.garment-choice-feedback { display: grid; gap: 6px; min-width: 0; }
+.garment-choice-feedback > .ant-btn { justify-self: start; }
+.garment-choice-input { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.garment-choice-input .ant-input { flex: 1; min-width: 0; }
+.garment-choice-input .ant-btn { flex: none; }
 .style-profile-list { list-style: none; margin: 0; padding: 0; }
 .style-profile-list li { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); font-size: 13px; line-height: 1.6; }
 .style-profile-group h4 { margin: 14px 0 4px; font-size: 13px; font-weight: 500; color: var(--muted); }

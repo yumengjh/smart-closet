@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { App } from 'ant-design-vue'
+import { App, Button } from 'ant-design-vue'
 import { DownOutlined, FolderOutlined, CheckOutlined, EditOutlined, DeleteOutlined, PlusOutlined, FolderOpenOutlined, ExpandOutlined, SaveOutlined, CloseOutlined, ArrowLeftOutlined, AimOutlined, MinusOutlined, AppstoreOutlined, MoreOutlined, DownloadOutlined, InfoCircleOutlined, SoundOutlined, AudioMutedOutlined } from '@ant-design/icons-vue'
 import OutfitPage from './OutfitPage.vue'
 import OutfitThumbnail from '../components/OutfitThumbnail.vue'
@@ -172,8 +172,23 @@ function confirmSave(boards = saveTargets.value) {
       } finally { saving.value = false }
     }
     if (pending.length === 1 && pending[0].sourceOutfitId && !pending[0].outfitId) {
-      modal.confirm({ title: '如何保存调整后的搭配？', content: '原搭配仍未改变。可以另存一套，或覆盖原搭配；版本冲突时保留草稿。', okText: '另存新搭配', cancelText: '取消', onOk: () => finish(false), onCancel: () => resolve(), footer: undefined })
-      // Overwrite is a separate explicit action in the board toolbar.
+      let decided = false
+      const decide = (overwrite?: boolean) => {
+        if (decided) return
+        decided = true; dialog.destroy()
+        if (overwrite === undefined) resolve()
+        else void finish(overwrite)
+      }
+      const dialog = modal.confirm({
+        title: '如何保存调整后的搭配？', content: '原搭配仍未改变。可以另存一套，或覆盖原搭配；版本冲突时保留草稿。',
+        width: 480, closable: true, keyboard: true, maskClosable: true, autoFocusButton: null,
+        onCancel: () => decide(),
+        footer: () => h('div', { class: 'ant-modal-confirm-btns' }, [
+          h(Button, { onClick: () => decide() }, () => '取消'),
+          h(Button, { onClick: () => decide(true) }, () => '覆盖原搭配'),
+          h(Button, { type: 'primary', onClick: () => decide(false) }, () => '另存新搭配'),
+        ]),
+      })
     } else if (pending.length === 1) void finish(false) // One board: saving is the obvious intent, no extra dialog.
     else modal.confirm({ title: `保存 ${pending.length} 套搭配？`, content: '每块组合台独立保存到账号。部分失败时只需重试失败项；批量保存调整副本时默认另存。', okText: '确认保存', cancelText: '取消', onOk: () => finish(false), onCancel: () => resolve() })
   })
