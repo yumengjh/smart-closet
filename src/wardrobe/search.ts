@@ -38,7 +38,7 @@ export function buildTags(parsed: ParsedQuery | null, scope: ImageStyleScope | n
 }
 
 /** Examples shown behind the help icon; clicking one runs it. */
-export const SEARCH_EXAMPLES = ['白色上衣', '适合海边的', '可爱的裙子', '千金风', '秋天穿的外套', '卡通的', '全部风格的裙子']
+export const SEARCH_EXAMPLES = ['白色上衣', '适合海边的', '可爱的裙子', '千金风', '秋天穿的外套', '裤子 裙子', '黑色 白色 外套', '卡通的', '全部风格的裙子']
 
 /** Removes a tag's words from the typed query (longest first, so "白色" goes before "白"). */
 export function removeWords(q: string, words: string[]): string {

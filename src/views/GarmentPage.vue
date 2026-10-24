@@ -23,6 +23,7 @@ import GarmentEdgeHelp from '../components/GarmentEdgeHelp.vue'
 import { batchApi } from '../services/batches'
 import { playSound } from '../services/sound'
 import { readView } from '../wardrobe/viewMemory'
+import { readReviewIds, REVIEW_FROM } from '../wardrobe/origin'
 
 const quickIntakeId = ref(''), enhanceOpen = ref(false), enhanceFeedback = ref(''), enhanceKey = ref('')
 async function enhanceQuick() { if (!quickIntakeId.value || busy.value) return; busy.value = 'enhance'; try { enhanceKey.value ||= createUuid(); const view = await quickApi.enhance(quickIntakeId.value, enhanceKey.value, enhanceFeedback.value); quickIntakeId.value = view.intakeId; enhanceKey.value = ''; enhanceOpen.value = false; await load(); schedulePoll() } catch (cause) { error.value = String(cause) } finally { busy.value = '' } }
@@ -108,12 +109,14 @@ const pageTitle = computed(() => completed.value ? '已放进衣柜' : panel.val
 const pageSubtitle = computed(() => panel.value === 'metadata' ? '按需修改，未知可留空。保存后返回结果，无需重新识别。' : panel.value === 'images' ? '对照原图选择展示图片，需要时重新处理衣物边缘。' : panel.value === 'history' ? '任务与图片保留，展示服务端的实际处理状态。' : completed.value ? '图片与衣物信息已保存，之后仍可继续修改。' : processing.value ? '处理在后台继续，你可以先离开，回来后继续。' : blocked.value ? '当前照片无法确认单件衣物，已填写的信息与原图都保留。' : stickerPending.value ? '可继续本地处理，也可以明确选择暂用原图入柜。' : quickIntakeId.value ? '图片保存后自动入柜，可随时调整展示图或编辑资料。' : '确认入柜即可，需要时再调整图片或编辑资料。')
 // Settled garments (not processing, not blocked, sticker done) get the redesigned detail view.
 // Opened from the closet list: 上一件 / 下一件 walk through the page you were looking at (ids saved when leaving the list).
+// Opened from the review page (?from=review): back and 上一件 / 下一件 stay in that list, drafts included.
+const fromReview = computed(() => route.query.from === REVIEW_FROM)
 const neighbours = computed(() => {
-  const ids = readView()?.ids || [], at = ids.indexOf(String(route.params.id))
-  return garment.value?.status === 'ACTIVE' && at >= 0 ? { previous: ids[at - 1], next: ids[at + 1], position: at + 1, count: ids.length } : null
+  const ids = fromReview.value ? readReviewIds() : readView()?.ids || [], at = ids.indexOf(String(route.params.id))
+  return (fromReview.value || garment.value?.status === 'ACTIVE') && at >= 0 ? { previous: ids[at - 1], next: ids[at + 1], position: at + 1, count: ids.length } : null
 })
 const canStep = computed(() => !busy.value && !dirty.value && !processing.value)
-function step(id: string | undefined) { if (id && canStep.value) { playSound('tap'); void router.replace(`/garment/${id}`) } }
+function step(id: string | undefined) { if (id && canStep.value) { playSound('tap'); void router.replace({ path: `/garment/${id}`, query: fromReview.value ? { from: REVIEW_FROM } : undefined }) } }
 // Phones: swipe sideways to move to the neighbouring garment (clearly horizontal, long enough, and not on a control).
 let touch: { x: number; y: number; at: number } | null = null
 function swipeStart(event: TouchEvent) {
@@ -161,7 +164,7 @@ async function saveAndReturn() {
   if (!error.value) returnResult()
 }
 function leaveWorkspace() {
-  const leave = () => router.push(source.value.batchId ? `/batches/${source.value.batchId}` : garment.value?.status === 'ACTIVE' ? '/wardrobe' : '/pending')
+  const leave = () => router.push(fromReview.value ? '/review' : source.value.batchId ? `/batches/${source.value.batchId}` : garment.value?.status === 'ACTIVE' ? '/wardrobe' : '/pending')
   if (dirty.value) modal.confirm({ title: '离开前保存修改？', content: '当前资料或展示图还有未保存的修改。', okText: '保存并离开', cancelText: '继续编辑', onOk: async () => { await save(false); if (!error.value) await leave() } })
   else void leave()
 }
@@ -356,7 +359,7 @@ async function replacePresetPhoto(file: File) {
   <a-modal v-model:open="enhanceOpen" title="独立增强图片" ok-text="开始增强" cancel-text="取消" :confirm-loading="busy === 'enhance'" @ok="enhanceQuick"><p>使用一次增强额度。原图、基础图和历史结果保留，成功后会采用新图；可在展示图片中回退。AI 生成可能包含推测细节。</p><a-textarea v-model:value="enhanceFeedback" :maxlength="1000" :rows="4" placeholder="可选：描述人物残留、边缘损坏、文字错误等问题" /></a-modal>
   <div class="detail-page garment-workspace" @touchstart.passive="swipeStart" @touchend.passive="swipeEnd">
     <div class="workspace-toolbar">
-      <a-button type="text" @click="panel === 'result' ? leaveWorkspace() : returnResult(true)"><ArrowLeftOutlined /> {{ panel !== 'result' ? '返回处理结果' : source.batchId ? '返回本批次' : garment?.status === 'ACTIVE' ? '返回衣柜' : '所有未入柜衣物' }}</a-button>
+      <a-button type="text" @click="panel === 'result' ? leaveWorkspace() : returnResult(true)"><ArrowLeftOutlined /> {{ panel !== 'result' ? '返回处理结果' : fromReview ? '返回待核对' : source.batchId ? '返回本批次' : garment?.status === 'ACTIVE' ? '返回衣柜' : '所有未入柜衣物' }}</a-button>
       <a-tooltip title="处理记录与后台处理状态"><a-button v-if="garment && panel !== 'history' && !completed && !detailMode" type="text" aria-label="查看处理记录与后台处理状态" @click="openPanel('history')"><HistoryOutlined /></a-button></a-tooltip>
     </div>
     <FloatingPager v-if="neighbours && detailMode && !dirty" :label="`${neighbours.position} / ${neighbours.count}`" :has-previous="Boolean(neighbours.previous) && canStep" :has-next="Boolean(neighbours.next) && canStep"
@@ -484,7 +487,7 @@ async function replacePresetPhoto(file: File) {
           <div class="actionbar-buttons">
             <template v-if="panel === 'metadata' || panel === 'images'"><a-button :disabled="Boolean(busy)" @click="returnResult(true)">取消修改</a-button><a-button type="primary" :disabled="processing && !quickIntakeId || Boolean(busy) || Boolean(connectionError) || garment.status === 'TRASHED'" :loading="busy === 'save'" @click="saveAndReturn">{{ panel === 'images' ? '应用图片' : '保存并返回' }}</a-button></template>
             <template v-else-if="panel === 'history'"><a-button @click="returnResult()">返回处理结果</a-button></template>
-            <template v-else><a-tooltip title="移入回收站"><a-button v-if="garment.status !== 'TRASHED'" type="text" danger aria-label="移入回收站" :disabled="Boolean(busy)" @click="remove"><DeleteOutlined /></a-button></a-tooltip><a-button v-if="dirty && garment.status !== 'TRASHED'" :disabled="processing || Boolean(busy)" :loading="busy === 'save'" @click="save(false)">保存草稿</a-button><a-button @click="router.push('/add')">继续添加</a-button><a-button v-if="garment.status === 'DRAFT'" type="primary" :disabled="!canConfirm || Boolean(busy)" :loading="busy === 'confirm'" @click="save(true)"><CheckOutlined /> {{ processing ? '处理中，请稍候' : blocked ? '先处理照片问题' : stickerPending ? '贴纸尚未完成' : '确认入柜' }}</a-button><a-button v-else-if="garment.status === 'ACTIVE'" type="primary" @click="router.push('/wardrobe')">返回衣柜</a-button><a-button v-else type="primary" :loading="busy === 'restore'" @click="restore">恢复衣物</a-button></template>
+            <template v-else><a-tooltip title="移入回收站"><a-button v-if="garment.status !== 'TRASHED'" type="text" danger aria-label="移入回收站" :disabled="Boolean(busy)" @click="remove"><DeleteOutlined /></a-button></a-tooltip><a-button v-if="dirty && garment.status !== 'TRASHED'" :disabled="processing || Boolean(busy)" :loading="busy === 'save'" @click="save(false)">保存草稿</a-button><a-button @click="router.push('/add')">继续添加</a-button><a-button v-if="garment.status === 'DRAFT'" type="primary" :disabled="!canConfirm || Boolean(busy)" :loading="busy === 'confirm'" @click="save(true)"><CheckOutlined /> {{ processing ? '处理中，请稍候' : blocked ? '先处理照片问题' : stickerPending ? '贴纸尚未完成' : '确认入柜' }}</a-button><a-button v-else-if="garment.status === 'ACTIVE'" type="primary" @click="router.push(fromReview ? '/review' : '/wardrobe')">{{ fromReview ? '返回待核对' : '返回衣柜' }}</a-button><a-button v-else type="primary" :loading="busy === 'restore'" @click="restore">恢复衣物</a-button></template>
           </div>
         </footer>
       </template>
