@@ -23,6 +23,13 @@ import { buildTags, combineQuery, imageModelNotice, removeWords, IMAGE_STYLE_LAB
 const router = useRouter()
 const closet = useClosetStore()
 const query = reactive<ListQuery>({ status: 'ACTIVE', q: '', category: '', color: '', season: '', page: 1, size: readPageSize(), sort: readSort() })
+// The three dropdowns take several values: words of one kind are "or" ("裤子 裙子"), different kinds are "and". query.category/color/season
+// hold the value only when exactly one is chosen (the plain list API); several values go through the search, like typed words.
+const sel = reactive({ category: [] as string[], color: [] as string[], season: [] as string[] })
+const chosen = () => [...sel.category, ...sel.color, ...sel.season]
+const multiFilter = computed(() => sel.category.length > 1 || sel.color.length > 1 || sel.season.length > 1)
+function syncSingle() { query.category = sel.category.length === 1 ? sel.category[0] : ''; query.color = sel.color.length === 1 ? sel.color[0] : ''; query.season = sel.season.length === 1 ? sel.season[0] : '' }
+const splitList = (value: string) => value ? value.split('|').filter(Boolean) : []
 const items = ref<Garment[]>([])
 const total = ref(0)
 const loading = ref(false)
@@ -34,21 +41,21 @@ const imageStyle = ref('')
 // Issue #3: coming back from a garment restores the filters, page and scroll position (this tab only, 30 minutes).
 // Applied before the filter watcher below exists, so restoring does not reset the page to 1.
 const remembered = readView()
-if (remembered) { Object.assign(query, { q: remembered.q, category: remembered.category, color: remembered.color, season: remembered.season, page: remembered.page }); imageStyle.value = remembered.imageStyle }
-function rememberView() { saveView({ q: query.q, category: query.category, color: query.color, season: query.season, imageStyle: imageStyle.value, page: query.page, scrollY: Math.round(window.scrollY), ids: items.value.map(item => item.id) }) }
+if (remembered) { Object.assign(query, { q: remembered.q, page: remembered.page }); sel.category = splitList(remembered.category); sel.color = splitList(remembered.color); sel.season = splitList(remembered.season); syncSingle(); imageStyle.value = remembered.imageStyle }
+function rememberView() { saveView({ q: query.q, category: sel.category.join('|'), color: sel.color.join('|'), season: sel.season.join('|'), imageStyle: imageStyle.value, page: query.page, scrollY: Math.round(window.scrollY), ids: items.value.map(item => item.id) }) }
 onBeforeRouteLeave(() => { rememberView() })
 const searchResult = ref<SearchResult | null>(null)
 // 超级搜索 (design 模型内存与图像向量 §9): a picture can join the words in the same box (camera button, paste or drop).
 const queryImage = ref<File | null>(null)
 const queryPreview = ref('')
 const picker = ref<HTMLInputElement | null>(null)
-const searching = computed(() => Boolean(query.q.trim() || imageStyle.value || queryImage.value))
+const searching = computed(() => Boolean(query.q.trim() || imageStyle.value || queryImage.value || multiFilter.value))
 const modelNotice = computed(() => imageModelNotice(searchResult.value?.imageModel, Boolean(queryImage.value)))
 const pageSize = computed(() => searching.value ? 20 : query.size)
 const showFloat = computed(() => !selecting.value && total.value > pageSize.value && items.value.length > 0)
 const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
 const tags = computed(() => searching.value && searchResult.value ? buildTags(searchResult.value.parsed, searchResult.value.imageStyle) : [])
-const hasFilters = computed(() => Boolean(query.q || query.category || query.color || query.season || imageStyle.value || queryImage.value))
+const hasFilters = computed(() => Boolean(query.q || chosen().length || imageStyle.value || queryImage.value))
 const imageStyleOptions = [{ value: '', label: '图片风格：默认' }, ...Object.entries(IMAGE_STYLE_LABELS).filter(([k]) => k !== 'OTHER').map(([value, label]) => ({ value, label }))]
 const options = ref<Record<string, string[]>>({})
 const categories = computed(() => options.value.category || [])
@@ -57,18 +64,41 @@ const seasons = computed(() => options.value.seasons || [])
 let searchTimer: number | undefined
 const { modal, message } = AntApp.useApp()
 const selecting = ref(false)
-const selected = ref(new Set<string>())
+// Selected garments are kept by id (with the garment itself) across pages, so a batch can span the whole result.
+const selected = ref(new Map<string, Garment>())
+const gathering = ref(false)
 const batchBusy = ref<'' | 'recognize' | 'reprocess' | 'enhance'>('')
 const batchProgress = ref({ done: 0, total: 0 })
 const batchResult = ref<{ type: 'success' | 'warning' | 'error'; message: string; description: string } | null>(null)
-const allSelected = computed(() => items.value.length > 0 && items.value.every(item => selected.value.has(item.id)))
-function toggle(id: string) { const next = new Set(selected.value); if (next.has(id)) next.delete(id); else next.add(id); selected.value = next }
-function toggleAll() { selected.value = allSelected.value ? new Set() : new Set(items.value.map(item => item.id)) }
-function exitSelecting() { selecting.value = false; selected.value = new Set() }
+/** One batch is capped so a mistaken "select all" cannot spend a whole day's quota. */
+const MAX_BATCH = 300
+const pageAllSelected = computed(() => items.value.length > 0 && items.value.every(item => selected.value.has(item.id)))
+const otherPages = computed(() => selected.value.size - items.value.filter(item => selected.value.has(item.id)).length)
+const everythingSelected = computed(() => total.value > 0 && selected.value.size >= Math.min(total.value, MAX_BATCH))
+function toggle(item: Garment) { const next = new Map(selected.value); if (next.has(item.id)) next.delete(item.id); else next.set(item.id, item); selected.value = next }
+function togglePage() { const next = new Map(selected.value); if (pageAllSelected.value) for (const item of items.value) next.delete(item.id); else for (const item of items.value) next.set(item.id, item); selected.value = next }
+function exitSelecting() { selecting.value = false; selected.value = new Map() }
+/** Every garment matching the current search/filters, from all pages (the ones on screen are already known). */
+async function selectEverything() {
+  if (gathering.value || !total.value) return
+  gathering.value = true
+  try {
+    const next = new Map(selected.value)
+    for (const item of items.value) next.set(item.id, item)
+    const pages = Math.ceil(total.value / pageSize.value)
+    for (let page = 1; page <= pages && next.size < MAX_BATCH; page++) {
+      if (page === query.page) continue
+      for (const item of (await fetchPage(page)).items) { if (next.size >= MAX_BATCH) break; next.set(item.id, item) }
+    }
+    selected.value = next
+    if (total.value > MAX_BATCH) message.info(`一次最多处理 ${MAX_BATCH} 件，已选前 ${MAX_BATCH} 件，处理完再选下一批。`)
+  } catch (cause) { message.error(cause instanceof Error ? cause.message : '读取全部结果失败，请重试。') }
+  finally { gathering.value = false }
+}
 const batchLabels = { recognize: '重新识别资料', reprocess: '重新增强图片', enhance: 'AI 增强图片' } as const
 type BatchMode = keyof typeof batchLabels
 async function confirmBatch(mode: BatchMode) {
-  const targets = items.value.filter(item => selected.value.has(item.id))
+  const targets = [...selected.value.values()]
   const runnable = targets.filter(item => !isProcessing(item.taskStatus))
   if (!runnable.length) { batchResult.value = { type: 'warning', message: '没有可提交的衣物', description: '所选衣物都在处理中，请等当前任务结束后再试。' }; return }
   const unit = mode === 'reprocess' ? 2 : 1
@@ -107,21 +137,22 @@ async function runBatch(mode: BatchMode, targets: Garment[], skipped: number) {
 
 // Quick clicks on page numbers start several requests; only the newest one may fill the list.
 let latestLoad = 0
+/** One page of the current view (browse, words/filters, or picture search) without touching the screen state. */
+async function fetchPage(page: number): Promise<{ items: Garment[]; total: number; search: SearchResult | null }> {
+  const words = combineQuery(query.q, ...chosen())
+  if (queryImage.value) { const result = await closetApi.superSearch(queryImage.value, words, page); return { items: result.items, total: result.total, search: result } }
+  if (searching.value) { const result = await closetApi.search(words, page, imageStyle.value || undefined); return { items: result.items, total: result.total, search: result } }
+  const result = await closetApi.list({ ...query, page })
+  return { items: result.items, total: result.total, search: null }
+}
 async function load() {
   const mine = ++latestLoad
   loading.value = true
   error.value = ''
   try {
-    if (queryImage.value) {
-      const result = await closetApi.superSearch(queryImage.value, combineQuery(query.q, query.category, query.color, query.season), query.page)
-      searchResult.value = result; items.value = result.items; total.value = result.total
-    } else if (searching.value) {
-      const result = await closetApi.search(combineQuery(query.q, query.category, query.color, query.season), query.page, imageStyle.value || undefined)
-      searchResult.value = result; items.value = result.items; total.value = result.total
-    } else {
-      const page = await closetApi.list(query)
-      searchResult.value = null; items.value = page.items; total.value = page.total
-    }
+    const result = await fetchPage(query.page)
+    if (mine !== latestLoad) return
+    searchResult.value = result.search; items.value = result.items; total.value = result.total
   } catch (cause) { if (mine === latestLoad) error.value = cause instanceof Error ? cause.message : '衣柜暂时无法加载。' }
   finally { if (mine === latestLoad) loading.value = false }
 }
@@ -136,7 +167,6 @@ function scrollToList() {
   if (gap < 0 || gap > window.innerHeight * .6) window.scrollTo({ top: Math.max(0, window.scrollY + gap - 72), behavior: reduceMotion() ? 'instant' : 'smooth' })
 }
 async function goPage(page: number, size: number) {
-  if (selecting.value && selected.value.size) selected.value = new Set()
   if (!searching.value && size !== query.size) { query.page = pageAfterSizeChange(query.page, query.size, size); query.size = size; savePageSize(size) }
   else query.page = page
   await load(); await nextTick(); scrollToList()
@@ -171,15 +201,16 @@ function pasted(event: ClipboardEvent) { const file = [...(event.clipboardData?.
 function dropped(event: DragEvent) { const file = [...(event.dataTransfer?.files || [])].find(f => f.type.startsWith('image/')); if (file) attach(file) }
 const helpOpen = ref(false)
 function tryExample(example: string) { query.q = example; helpOpen.value = false; debounceLoad() }
-function clearFilters() { query.q = ''; query.category = ''; query.color = ''; query.season = ''; imageStyle.value = ''; if (queryImage.value) detach(); else debounceLoad() }
+function clearFilters() { query.q = ''; sel.category = []; sel.color = []; sel.season = []; syncSingle(); imageStyle.value = ''; if (queryImage.value) detach(); else debounceLoad() }
 function closeTag(tag: SearchTag) {
   // A style typed in the box ("卡通的") is removed from the text; the closet default is turned off by choosing "全部风格".
   if (tag.imageStyle) { if (tag.words.some(w => query.q.includes(w))) query.q = removeWords(query.q, tag.words); else imageStyle.value = 'ALL' }
   else {
     query.q = removeWords(query.q, tag.words)
-    if (tag.words.includes(query.category)) query.category = ''
-    if (tag.words.some(w => w && query.color.startsWith(w))) query.color = ''
-    if (tag.words.includes(query.season)) query.season = ''
+    sel.category = sel.category.filter(c => !tag.words.includes(c))
+    sel.color = sel.color.filter(c => !tag.words.some(w => w && c.startsWith(w)))
+    sel.season = sel.season.filter(c => !tag.words.includes(c))
+    syncSingle()
   }
   debounceLoad()
 }
@@ -196,7 +227,7 @@ onMounted(async () => {
 onUnmounted(() => { window.removeEventListener('pagehide', rememberView); window.removeEventListener('keydown', pageKeys); narrowQuery?.removeEventListener('change', onNarrow); window.clearTimeout(searchTimer); if (queryPreview.value) URL.revokeObjectURL(queryPreview.value) })
 // Choosing an order is remembered on this browser; searching ranks by relevance, so the order only applies when browsing.
 function chooseSort(value: string) { query.sort = value; saveSort(value); query.page = 1; void load() }
-watch(() => [query.category, query.color, query.season, imageStyle.value], debounceLoad)
+watch(() => [sel.category.join('|'), sel.color.join('|'), sel.season.join('|'), imageStyle.value], () => { syncSingle(); debounceLoad() })
 // 从常见单品添加（预设衣物库设计 6.1）：勾选后复制进衣柜并标“预设”。
 const presetsOpen = ref(false)
 function presetsImported() { presetsOpen.value = false; void load() }
@@ -244,6 +275,7 @@ watch(() => route.query.presets, value => { if (value !== '1') return; presetsOp
           <template #content>
             <div class="search-help-body">
               <p><strong>可以这样搜</strong>：颜色和品类会精确筛选（问红色不会给粉色），风格词会按衣柜的风格标签筛选（“可爱”≈甜美，聊天里学会的新词也能用），其余描述按本机语义理解，没有就直说没有。</p>
+              <p><strong>多个条件</strong>：同一类的词是“或”，不同类之间是“且”。“裤子 裙子”是裤子或裙子，“黑色 白色 外套”是黑色或白色的外套；品类、颜色、季节的下拉框也可以多选。</p>
               <p>默认只看衣柜里最多的图片风格，可在右侧“图片风格”切换。全部在本机计算，不消耗额度。</p>
               <p><strong>用图片搜</strong>：点相机、粘贴或拖入一张图（商品图、截图、别人的穿搭），找衣柜里像的；再加文字可以限定，例如“红色”“上衣”。装了本地图文模型时，文字描述也会直接和衣物图片比对（如“带小熊图案”）。</p>
               <div class="search-help-examples"><a-tag v-for="example in SEARCH_EXAMPLES" :key="example" class="search-help-example" @click="tryExample(example)">{{ example }}</a-tag></div>
@@ -255,9 +287,9 @@ watch(() => route.query.presets, value => { if (value !== '1') return; presetsOp
     </a-input>
     <a-button v-if="total || hasFilters" class="filter-toggle" :class="{ active: filtersOpen || hasFilters }" @click="filtersOpen = !filtersOpen"><SlidersOutlined /> 筛选<span v-if="hasFilters" class="filter-dot"></span></a-button>
     <div v-if="total || hasFilters" class="filter-row" :class="{ open: filtersOpen }"><span class="filter-label"><SlidersOutlined /> 筛选</span>
-      <a-select :value="query.category || undefined" @update:value="query.category = $event || ''" allow-clear placeholder="全部品类" class="filter-select"><a-select-option v-for="category in categories" :key="category" :value="category">{{ category }}</a-select-option></a-select>
-      <a-select :value="query.color || undefined" @update:value="query.color = $event || ''" allow-clear placeholder="全部颜色" class="filter-select"><a-select-option v-for="color in colors" :key="color" :value="color">{{ color }}</a-select-option></a-select>
-      <a-select :value="query.season || undefined" @update:value="query.season = $event || ''" allow-clear placeholder="全部季节" class="filter-select"><a-select-option v-for="season in seasons" :key="season" :value="season">{{ season }}</a-select-option></a-select>
+      <a-select v-model:value="sel.category" mode="multiple" :max-tag-count="1" allow-clear placeholder="全部品类（可多选）" class="filter-select" :options="categories.map(value => ({ value, label: value }))" aria-label="品类，可多选" />
+      <a-select v-model:value="sel.color" mode="multiple" :max-tag-count="1" allow-clear placeholder="全部颜色（可多选）" class="filter-select" :options="colors.map(value => ({ value, label: value }))" aria-label="颜色，可多选" />
+      <a-select v-model:value="sel.season" mode="multiple" :max-tag-count="1" allow-clear placeholder="全部季节（可多选）" class="filter-select" :options="seasons.map(value => ({ value, label: value }))" aria-label="季节，可多选" />
       <a-select v-model:value="imageStyle" :options="imageStyleOptions" class="filter-select image-style-select" aria-label="图片风格" />
       <a-select :value="query.sort" :options="[...SORT_OPTIONS]" :disabled="searching" class="filter-select sort-select" aria-label="排序方式" @update:value="chooseSort($event as string)" />
       <a-button v-if="hasFilters" type="text" class="clear-filters" @click="clearFilters">清除筛选</a-button>
@@ -270,8 +302,10 @@ watch(() => route.query.presets, value => { if (value !== '1') return; presetsOp
   <a-alert v-if="searching && modelNotice && modelNotice !== searchResult?.notice" type="warning" :message="modelNotice" show-icon class="search-notice" />
   <p v-if="queryImage && searchResult?.note" class="search-image-note">{{ searchResult.note }}</p>
   <section v-if="selecting" class="batch-bar" aria-label="批量处理">
-    <a-checkbox :checked="allSelected" :indeterminate="selected.size > 0 && !allSelected" :disabled="Boolean(batchBusy)" @change="toggleAll">全选本页</a-checkbox>
-    <span class="batch-count">已选 {{ selected.size }} 件</span>
+    <a-checkbox :checked="pageAllSelected" :indeterminate="selected.size > 0 && !pageAllSelected" :disabled="Boolean(batchBusy)" @change="togglePage">全选本页</a-checkbox>
+    <a-button v-if="total > items.length && !everythingSelected" size="small" :loading="gathering" :disabled="Boolean(batchBusy)" @click="selectEverything">选中全部 {{ Math.min(total, MAX_BATCH) }} 件{{ total > MAX_BATCH ? '（上限）' : '' }}</a-button>
+    <span class="batch-count">已选 {{ selected.size }} 件<template v-if="otherPages > 0">（其中 {{ otherPages }} 件在其他页）</template></span>
+    <a-button v-if="selected.size" size="small" type="link" :disabled="Boolean(batchBusy)" @click="selected = new Map()">清空</a-button>
     <a-tooltip v-if="selected.size" :trigger="['hover', 'focus', 'click']" title="AI 额度每天 0 点重置；处理中的衣物会自动跳过，额度不足时剩余衣物不提交。"><span class="batch-cost" tabindex="0"><ThunderboltOutlined /> 识别约 {{ selected.size }} 次 · 增强约 {{ selected.size * 2 }} 次</span></a-tooltip>
     <span v-if="batchBusy" class="batch-count">正在提交 {{ batchProgress.done }} / {{ batchProgress.total }}</span>
     <a-space wrap class="batch-actions">
@@ -296,7 +330,7 @@ watch(() => route.query.presets, value => { if (value !== '1') return; presetsOp
   <GarmentCardSkeleton v-if="loading && !items.length" label="正在加载衣柜…" />
   <section v-else-if="items.length" class="garment-grid" :class="{ 'has-float': showFloat }" aria-label="衣物列表" :aria-busy="loading">
     <div v-for="item in items" :key="item.id" class="search-hit">
-      <GarmentCard :review="pictureChecks[item.id]?.message" :garment="item" :selectable="selecting" :selected="selected.has(item.id)" @toggle="toggle(item.id)" />
+      <GarmentCard :review="pictureChecks[item.id]?.message" :garment="item" :selectable="selecting" :selected="selected.has(item.id)" @toggle="toggle(item)" />
       <p v-if="searching && searchResult?.reasons[item.id]?.length" class="search-reasons" :title="searchResult.reasons[item.id].join(' · ')">{{ searchResult.reasons[item.id].join(' · ') }}</p>
     </div>
     <button v-if="!selecting" class="add-card" @click="router.push('/add')"><span class="add-card-icon"><PlusOutlined /></span><strong>添加衣物</strong><small>上传 → 处理 → 核对入柜</small></button>
