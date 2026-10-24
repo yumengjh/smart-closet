@@ -87,6 +87,8 @@ export const fieldLabels: Record<keyof Pick<Garment, 'category' | 'subtype' | 'p
   seasons: '季节', brand: '品牌', size: '尺码', materialComposition: '成分', careInstructions: '洗护', visibleText: '可见文字',
 }
 
+/** Server-side batch of re-recognitions (POST /api/garments/batch-recognize): the server submits the tasks itself. */
+export type BatchRecognize = { id: string; total: number; submitted: number; failed: number; completed: number; succeeded: number; finished: boolean; createdAtMs: number; failures: { garmentId: string; message: string }[]; jobIds: string[] }
 export type ListQuery = { status: ClosetStatus; q: string; category: string; color: string; season: string; page: number; size: number; sort?: string }
 /** Hybrid wardrobe search result (server: GET /api/garments/search); reasons/parsed/hints are written by the server. */
 export type SearchResult = {
@@ -534,6 +536,12 @@ export const closetApi = {
   },
   async recognize(id: string, targetDescription = '') { return this.startExistingRun(id, '仅识别', targetDescription) },
   async reprocess(id: string) { return this.startExistingRun(id, '识别并整理') },
+  async batchRecognize(garmentIds: string[]): Promise<BatchRecognize> {
+    if (usingMocks) throw new Error('演示模式不会调用 AI，请使用真实账号提交。')
+    return request<BatchRecognize>('/api/garments/batch-recognize', { method: 'POST', headers: { 'Idempotency-Key': createUuid() }, body: JSON.stringify({ garmentIds }) })
+  },
+  batchRecognizeStatus: (id: string) => request<BatchRecognize>(`/api/garments/batch-recognize/${encodeURIComponent(id)}`),
+  batchRecognizeRecent: () => request<BatchRecognize[]>('/api/garments/batch-recognize'),
   async startExistingRun(id: string, mode: ClosetTask['mode'], targetDescription = '') {
     if (!usingMocks) {
       const task = mode === '仅识别'

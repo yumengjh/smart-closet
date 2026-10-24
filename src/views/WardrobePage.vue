@@ -8,6 +8,7 @@ import { quickApi } from '../services/quickIntake'
 import { loadPictureChecks, loadReviewCount, pictureChecks, reviewCount } from '../wardrobe/pictureChecks'
 import { createUuid } from '../domain/id'
 import { useClosetStore } from '../stores/closet'
+import { useProcessingStore } from '../stores/processing'
 import GarmentCard from '../components/GarmentCard.vue'
 import FloatingPager from '../components/FloatingPager.vue'
 import GarmentCardSkeleton from '../components/GarmentCardSkeleton.vue'
@@ -22,6 +23,7 @@ import { buildTags, combineQuery, imageModelNotice, removeWords, IMAGE_STYLE_LAB
 
 const router = useRouter()
 const closet = useClosetStore()
+const processing = useProcessingStore()
 const query = reactive<ListQuery>({ status: 'ACTIVE', q: '', category: '', color: '', season: '', page: 1, size: readPageSize(), sort: readSort() })
 // The three dropdowns take several values: words of one kind are "or" ("裤子 裙子"), different kinds are "and". query.category/color/season
 // hold the value only when exactly one is chosen (the plain list API); several values go through the search, like typed words.
@@ -107,9 +109,9 @@ async function confirmBatch(mode: BatchMode) {
   const skipped = targets.length - runnable.length
   modal.confirm({
     title: `${batchLabels[mode]}（${runnable.length} 件）？`,
-    content: `${mode === 'recognize' ? '每件调用一次识别模型，使用 1 次 AI 额度。' : mode === 'enhance' ? '按快速入柜的增强规则重新整理图片（例如丝袜只保留袜子本身），每件使用 1 次 AI 额度；不是快速入柜的衣物会跳过。' : '每件分别调用识别和整理模型，使用 2 次 AI 额度。'}共需 ${runnable.length * unit} 次。${quotaLine}${skipped ? `另有 ${skipped} 件正在处理，将跳过。` : ''}已有人工修改和图片会保留。`,
+    content: `${mode === 'recognize' ? '每件调用一次识别模型，使用 1 次 AI 额度。' : mode === 'enhance' ? '按快速入柜的增强规则重新整理图片（例如丝袜只保留袜子本身），每件使用 1 次 AI 额度；不是快速入柜的衣物会跳过。' : '每件分别调用识别和整理模型，使用 2 次 AI 额度。'}共需 ${runnable.length * unit} 次。${quotaLine}${mode === 'recognize' ? '提交后由服务器逐件处理，可以关闭页面，进度在右上角的处理中心。' : '提交过程中请保持页面打开。'}${skipped ? `另有 ${skipped} 件正在处理，将跳过。` : ''}已有人工修改和图片会保留。`,
     okText: '提交真实任务', cancelText: '取消',
-    onOk: () => { void runBatch(mode, runnable, skipped) },
+    onOk: () => { void (mode === 'recognize' ? runServerBatch(runnable, skipped) : runBatch(mode, runnable, skipped)) },
   })
 }
 // Issue #77: 'enhance' re-runs the quick-intake enhancement (its prompt carries rules such as tights without legs).
@@ -117,6 +119,18 @@ async function enhanceOne(item: Garment) {
   const { intakeId } = await quickApi.provenance(item.id)
   if (!intakeId) throw new Error('不是快速入柜的衣物，请在详情里重新处理')
   await quickApi.enhance(intakeId, createUuid(), '')
+}
+/** Re-recognition: the server takes the whole list and submits it itself; progress is one entry in the processing centre. */
+async function runServerBatch(targets: Garment[], skipped: number) {
+  batchBusy.value = 'recognize'; batchResult.value = null
+  try {
+    const batch = await closetApi.batchRecognize(targets.map(item => item.id))
+    processing.trackBulk(batch, true)
+    batchResult.value = { type: 'success', message: `重新识别资料：已交给服务器处理 ${targets.length} 件，可以关闭页面。`, description: [skipped ? `${skipped} 件处理中已跳过。` : '', '进度在右上角的处理中心，每件的结果可在任务页查看。'].filter(Boolean).join('\n') }
+    exitSelecting(); await Promise.all([load(), closet.refreshCounts()])
+  } catch (cause) {
+    batchResult.value = { type: 'error', message: '重新识别资料：提交失败', description: cause instanceof Error ? cause.message : '请稍后重试。' }
+  } finally { batchBusy.value = '' }
 }
 async function runBatch(mode: BatchMode, targets: Garment[], skipped: number) {
   batchBusy.value = mode; batchResult.value = null; batchProgress.value = { done: 0, total: targets.length }

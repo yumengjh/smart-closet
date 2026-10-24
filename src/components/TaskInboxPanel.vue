@@ -85,7 +85,7 @@ onUnmounted(() => clearInterval(clock))
         <div v-for="entry in active" :key="entry.key" class="inbox-item">
           <a-button type="text" block class="inbox-row processing" @click="emit('visit', entry)">
             <span class="inbox-state"><span class="inbox-ring" /></span>
-            <span class="inbox-copy"><strong>{{ entry.title }}</strong><span>{{ entry.stage }}</span><span class="inbox-bar"><i /></span><small>已等待 {{ waited(entry.startedAt) }}<template v-if="entry.kind === 'render'"> · {{ entry.note }}</template></small></span>
+            <span class="inbox-copy"><strong>{{ entry.title }}</strong><span>{{ entry.stage }}</span><span class="inbox-bar"><i :class="{ determinate: entry.progress !== undefined }" :style="entry.progress !== undefined ? { width: `${Math.max(3, Math.round(entry.progress * 100))}%` } : undefined" /></span><small>已等待 {{ waited(entry.startedAt) }}<template v-if="entry.kind === 'render'"> · {{ entry.note }}</template></small></span>
             <span class="inbox-action">{{ actionLabel(entry) }}<RightOutlined /></span>
           </a-button>
           <span class="inbox-remove-space" aria-hidden="true" />
@@ -185,5 +185,6 @@ onUnmounted(() => clearInterval(clock))
 @keyframes inbox-spin { to { transform: rotate(360deg); } }
 @keyframes inbox-slide { from { transform: translateX(-100%); } to { transform: translateX(290%); } }
 @media (max-width: 767px) { .inbox-panel { width: 100%; max-height: 72dvh; } .inbox-row.ant-btn { padding: 12px 8px; } .inbox-footnote { padding-bottom: max(10px, env(safe-area-inset-bottom)); } }
-@media (prefers-reduced-motion: reduce) { .inbox-ring, .inbox-bar i { animation: none; } .inbox-bar i { width: 100%; opacity: .4; } }
+.inbox-bar i.determinate { animation: none; transition: width .4s ease; }
+@media (prefers-reduced-motion: reduce) { .inbox-ring, .inbox-bar i { animation: none; } .inbox-bar i:not(.determinate) { width: 100%; opacity: .4; } }
 </style>

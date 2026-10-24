@@ -1,13 +1,16 @@
 import type { ClosetTask } from '../services/api'
 import type { IntakeBatch } from '../services/batches'
 import type { RenderJob } from '../services/platform'
+import type { BatchRecognize } from '../services/api'
 
 export type WaitingEntry = {
-  key: string; kind: 'task' | 'batch' | 'render'; id: string; title: string; startedAt: number
+  key: string; kind: 'task' | 'batch' | 'render' | 'bulk'; id: string; title: string; startedAt: number
   state: 'processing' | 'ready' | 'attention' | 'cancelled'; stage: string; note: string
   href: string; read: boolean; childIds: string[]
   /** Finished image shown beside the result (generated pictures only). */
   thumb?: string
+  /** 0..1 when the work can say how far it is (bulk re-recognition). */
+  progress?: number
 }
 const running = (status: string) => ['QUEUED', 'RUNNING', 'CANCEL_REQUESTED'].includes(status)
 export const batchIsProcessing = (batch: IntakeBatch) =>
@@ -61,4 +64,19 @@ export function renderEntry(job: RenderJob): WaitingEntry {
     note: state === 'processing' ? '通常 1 分钟左右，好了会提醒你' : job.error || '', read: false, childIds: [],
     href: job.purpose === 'BASELINE' ? '/settings?section=personal' : `/ootd?job=${job.id}`,
     thumb: state === 'ready' && job.mediaUrl ? job.mediaUrl : undefined }
+}
+
+/** One entry for a whole batch of re-recognitions, so hundreds of tasks do not flood the centre (the tasks are its children). */
+export function bulkEntry(batch: BatchRecognize): WaitingEntry {
+  const submitting = !batch.finished
+  const working = submitting || batch.completed < batch.submitted
+  const failedTasks = batch.completed - batch.succeeded
+  const stage = submitting ? `正在提交 ${batch.submitted + batch.failed} / ${batch.total} 件，已完成 ${batch.completed} 件`
+    : working ? `已提交 ${batch.submitted} 件，已完成 ${batch.completed} / ${batch.submitted}`
+    : batch.failed || failedTasks ? `完成 ${batch.succeeded} 件，${batch.failed + failedTasks} 件未成功，请检查`
+    : `${batch.succeeded} 件都识别完了`
+  const note = batch.failures.slice(0, 3).map(item => item.message).join('；')
+  return { key: `bulk:${batch.id}`, kind: 'bulk', id: batch.id, title: `批量重新识别资料（${batch.total} 件）`, startedAt: batch.createdAtMs,
+    state: working ? 'processing' : batch.failed || failedTasks ? 'attention' : 'ready', stage, note, read: false,
+    href: '/tasks', childIds: batch.jobIds, progress: batch.total ? Math.min(1, (batch.completed + batch.failed) / batch.total) : 1 }
 }
