@@ -2,7 +2,7 @@
 # Build the site and replace the 1Panel static site over SSH (used by .semaphore/deploy.yml). Same steps as
 # .github/workflows/deploy.yml and the CircleCI deploy job; the tests have already run in the checks pipeline.
 #
-# Secret "deploy" (Semaphore organization): DEPLOY_SSH_HOST, DEPLOY_SSH_USER, DEPLOY_SSH_KEY or DEPLOY_SSH_PASSWORD;
+# Secret "frontend" (Semaphore organization; the web server is not the backend server): DEPLOY_SSH_HOST, DEPLOY_SSH_USER, DEPLOY_SSH_KEY or DEPLOY_SSH_PASSWORD;
 # optional DEPLOY_SSH_PORT, DEPLOY_SSH_KNOWN_HOSTS, DEPLOY_PATH (default /opt/1panel/www/sites/yuda.yumg.cn/index),
 # DEPLOY_SITE_URL (default https://yuda.yumg.cn/), FRONTEND_API_BASE_URL,
 # TENCENTCLOUD_SECRET_ID + TENCENTCLOUD_SECRET_KEY + CDN_PURGE_PATHS (refresh the CDN after deploy).

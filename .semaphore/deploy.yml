@@ -13,9 +13,9 @@ blocks:
   - name: Build and deploy site
     task:
       secrets:
-        - name: deploy
+        - name: frontend
       jobs:
-        - name: deploy
+        - name: frontend
           commands:
             - checkout
             - sem-version node 24
