@@ -13,6 +13,9 @@ import RecommendationFeedback from '../recommend/RecommendationFeedback.vue'
 import { recommendApi } from '../recommend/api'
 import GarmentChoiceCard from '../recommend/GarmentChoiceCard.vue'
 import GarmentListCard from '../recommend/GarmentListCard.vue'
+import AgentQuestionCard from './AgentQuestionCard.vue'
+import AgentOutfitListCard from './AgentOutfitListCard.vue'
+import AgentDuplicatePairsCard from './AgentDuplicatePairsCard.vue'
 import RecommendationDetailModal from '../recommend/RecommendationDetailModal.vue'
 import RecommendationGroup from '../recommend/RecommendationGroup.vue'
 import RecommendIntentBar from '../recommend/RecommendIntentBar.vue'
@@ -114,9 +117,22 @@ function confirmApply(index: number, intoCurrent: boolean) {
   <section class="agent-proposal" aria-label="待确认操作">
     <GarmentChoiceCard v-if="proposal.kind === 'GARMENT_CHOICE'" :payload="proposal.payload" />
     <GarmentListCard v-else-if="proposal.kind === 'GARMENT_LIST'" :payload="proposal.payload" />
+    <AgentQuestionCard v-else-if="proposal.kind === 'QUESTION'" :proposal="proposal" />
+    <AgentOutfitListCard v-else-if="proposal.kind === 'OUTFIT_LIST'" :payload="proposal.payload" @applied="emit('applied')" />
+    <AgentDuplicatePairsCard v-else-if="proposal.kind === 'DUPLICATE_PAIRS'" :payload="proposal.payload" @applied="emit('applied')" />
     <div v-else-if="simple" class="agent-save-card"><div><strong>{{ simple.title(simpleNames) }}</strong><small>{{ used ? simple.done : simple.hint }}</small></div><a-button size="small" type="primary" :disabled="used || busy" :loading="busy" @click="acceptWear">{{ simple.button }}</a-button></div>
     <template v-else-if="proposal.kind !== 'SAVE'">
-      <a-button class="agent-proposal-card" block @click="openPreview" :aria-label="isOutfits ? `查看${count}套推荐搭配` : '查看画布修改预览'">
+      <!-- Outfit suggestions show every outfit side by side, large enough to tell them apart (#107 follow-up). -->
+      <a-button v-if="isOutfits" class="agent-proposal-card outfits" block @click="openPreview" :aria-label="`查看${count}套推荐搭配`">
+        <div class="agent-proposal-head"><div class="agent-proposal-copy"><strong>{{ cardTitle }}</strong><small v-if="isRecommendation && proposal.payload.intent">{{ proposal.payload.intent }}</small></div><span class="agent-proposal-more">{{ used ? '已处理 · 查看' : '看依据' }}<RightOutlined /></span></div>
+        <div class="agent-proposal-outfits">
+          <figure v-for="(candidate, index) in proposal.payload.candidates" :key="index">
+            <OutfitThumbnail v-if="scenes[index]" :scene="scenes[index]" :title="candidate.name" :resolution="240" /><span v-else class="agent-proposal-placeholder" />
+            <figcaption><span :title="candidate.name">{{ candidate.name }}</span><b v-if="candidate.recommendation">{{ Math.round(candidate.recommendation.score) }}</b></figcaption>
+          </figure>
+        </div>
+      </a-button>
+      <a-button v-else class="agent-proposal-card" block @click="openPreview" aria-label="查看画布修改预览">
         <div class="agent-proposal-minis"><OutfitThumbnail v-for="(scene, index) in scenes" :key="index" :scene="scene" :title="isOutfits ? proposal.payload.candidates![index].name : '修改后画布'" /><ExpandOutlined v-if="!scenes.length" /></div>
         <div class="agent-proposal-copy"><strong>{{ cardTitle }}</strong><small v-if="isRecommendation && proposal.payload.intent">{{ proposal.payload.intent }}</small><small>{{ used ? '已处理 · 点击查看' : isRecommendation ? '点开查看搭配和打分依据' : '点开大图，再选择怎么应用' }}</small></div><RightOutlined />
       </a-button>

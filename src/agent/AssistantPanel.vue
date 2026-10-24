@@ -3,10 +3,11 @@ import { createUuid } from '../domain/id'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { App } from 'ant-design-vue'
-import { CloseOutlined, PlusOutlined, SendOutlined, PushpinOutlined, PushpinFilled, MoreOutlined, HistoryOutlined, SettingOutlined } from '@ant-design/icons-vue'
+import { CloseOutlined, PlusOutlined, SendOutlined, PushpinOutlined, PushpinFilled, MoreOutlined, HistoryOutlined, SettingOutlined, CheckOutlined, SkinOutlined, AppstoreOutlined, BlockOutlined, BulbOutlined } from '@ant-design/icons-vue'
 import { usingMocks } from '../services/api'
 import { agentRequest, streamMessage, type AgentSession, type AgentMessage, type Models, type Memory, type Quota } from './api'
 import { pageContext } from './bridge'
+import { ASSISTANT_PREFILL_EVENT, ASSISTANT_SEND_EVENT, type AssistantTextDetail } from './assistantEvents'
 import AgentCommandCard from './AgentCommandCard.vue'
 import AgentProposal from './AgentProposal.vue'
 import QuickRecommend from '../recommend/QuickRecommend.vue'
@@ -26,6 +27,7 @@ import TaskNotice from '../components/TaskNotice.vue'
 import { playSound } from '../services/sound'
 import { useClosetStore } from '../stores/closet'
 import { useFloatingPosition } from './useFloatingPosition'
+import { clampHeight, clampSize, clampWidth, DEFAULT_FLOATING_HEIGHT, DEFAULT_WIDTH, heightBounds, keyboardSize, restoreLayout, widthBounds, type AssistantMode } from './assistantLayout'
 const route = useRoute(); const router = useRouter(); const { modal, message } = App.useApp()
 const open = ref(false); const busy = ref(false); const loading = ref(false); const status = ref(''); const error = ref(''); const input = ref('')
 const avatarCue=ref<AvatarCue|null>(null); const activityTool=ref('')
@@ -41,7 +43,7 @@ let abort: AbortController | undefined
 const closet = useClosetStore()
 const debugOpen = ref(false), debugRequest = ref<string | null>(null), debugUpdates = ref(0)
 const historyOpen = ref(false); const renameOpen = ref(false); const renameTitle = ref(''); const renaming = ref(false)
-const optionsOpen = ref(false); const delighted = ref(false)
+const optionsOpen = ref(false); const layoutMenuOpen = ref(false); const delighted = ref(false)
 const waitingTopics = ref(false)
 const topics = [
   { label: '聊聊穿搭', prompt: '给我一些日常通勤的穿搭灵感吧。' },
@@ -52,19 +54,116 @@ function pickTopic(prompt: string) {
   if (busy.value || input.value.trim()) { message.info('输入框里有正在编辑的消息，先保留你的草稿。'); return }
   input.value = prompt; void nextTick(() => textarea.value?.focus())
 }
+// Empty-chat suggestions show what the assistant can do; tapping one only fills the input.
+const suggestions = [
+  { icon: SkinOutlined, text: '帮我搭三套可爱的，想穿裙子' },
+  { icon: AppstoreOutlined, text: '看看我保存的搭配' },
+  { icon: BlockOutlined, text: '有哪些可能重复的衣服' },
+  { icon: BulbOutlined, text: '记住：约会时我更喜欢裙装' },
+]
+function suggest(text: string) { input.value = text; textarea.value?.focus() }
+// Chat cards (question answers, outfit actions) send or prefill through window events.
+function sendFromCard(event: Event) {
+  const text = (event as CustomEvent<AssistantTextDetail>).detail?.text?.trim()
+  if (!text) return
+  input.value = text
+  if (!models.value.configured) { message.info('助手尚未配置，已把内容放进输入框'); return }
+  if (busy.value) { message.info('助手正在回复，稍后再发送'); return }
+  void send()
+}
+function prefillFromCard(event: Event) {
+  const text = (event as CustomEvent<AssistantTextDetail>).detail?.text
+  if (typeof text !== 'string') return
+  input.value = text; void nextTick(() => textarea.value?.focus())
+}
 async function openFromWaiting(event: Event) {
   waitingTopics.value = Boolean((event as CustomEvent<{ waiting?: boolean }>).detail?.waiting)
   if (!open.value) await toggle()
   else { await nextTick(); textarea.value?.focus() }
 }
-const pinned = ref(true); const viewport = ref({ width: window.innerWidth, height: window.innerHeight })
+const mode = ref<AssistantMode>('overlay'); const preferredWidth = ref(DEFAULT_WIDTH); const floatingHeight = ref(DEFAULT_FLOATING_HEIGHT); const viewport = ref({ width: window.innerWidth, height: window.innerHeight })
 const pinKey = computed(() => `yixu.assistant-pin.v1:${closet.user?.username || 'local'}`)
+const layoutKey = computed(() => `yixu.assistant-layout.v1:${closet.user?.username || 'local'}`)
 const panelKey = computed(() => `yixu.assistant-panel.v1:${closet.user?.username || 'local'}`)
-const dimensions = computed(() => ({ width: Math.min(420, viewport.value.width - 16), height: Math.min(760, viewport.value.height - 32) }))
+const dimensions = computed(() => ({ width: clampWidth(preferredWidth.value, viewport.value.width, mode.value), height: clampHeight(floatingHeight.value, viewport.value.height) }))
 const floating = useFloatingPosition(panelKey, dimensions, () => 16)
 const mobileViewport = ref({ height: window.visualViewport?.height ?? window.innerHeight, top: window.visualViewport?.offsetTop ?? 0 })
 const sheetDrag = ref(0)
-const panelStyle = computed(() => compact.value ? { '--vvt': `${mobileViewport.value.top}px`, '--vvh': `${mobileViewport.value.height}px`, transform: sheetDrag.value ? `translateY(${sheetDrag.value}px)` : undefined } : pinned.value ? undefined : { ...floating.style.value, width: `${dimensions.value.width}px`, height: `${dimensions.value.height}px` })
+const panelStyle = computed(() => compact.value ? { '--vvt': `${mobileViewport.value.top}px`, '--vvh': `${mobileViewport.value.height}px`, transform: sheetDrag.value ? `translateY(${sheetDrag.value}px)` : undefined } : { width: `${dimensions.value.width}px`, ...(mode.value === 'floating' ? { ...floating.style.value, height: `${dimensions.value.height}px` } : {}) })
+const modes: { key: AssistantMode; label: string }[] = [{ key: 'overlay', label: '浮在页面上' }, { key: 'docked', label: '停靠在右侧，挤开页面' }, { key: 'floating', label: '自由窗口' }]
+const modeLabel = computed(() => modes.find(item => item.key === mode.value)!.label)
+function persistLayout() { try { localStorage.setItem(layoutKey.value, JSON.stringify({ mode: mode.value, width: preferredWidth.value, floatingHeight: floatingHeight.value })) } catch {} }
+function restorePreferences() {
+  let raw: string | null = null, pin: string | null = null
+  try { raw = localStorage.getItem(layoutKey.value) } catch {}
+  try { pin = localStorage.getItem(pinKey.value) } catch {}
+  const saved = restoreLayout(raw, pin); mode.value = saved.mode; preferredWidth.value = saved.width; floatingHeight.value = saved.floatingHeight
+  persistLayout()
+}
+function syncDock() {
+  const active = open.value && !compact.value && mode.value === 'docked', root = document.documentElement
+  root.classList.toggle('assistant-docked', active)
+  if (active) root.style.setProperty('--assistant-dock-width', `${dimensions.value.width}px`)
+  else root.style.removeProperty('--assistant-dock-width')
+}
+type ResizeEdge = 'left' | 'right' | 'bottom' | 'corner'
+const resizing = ref(false)
+let resizeOrigin: { pointer: number; edge: ResizeEdge; x: number; y: number; left: number; top: number; width: number; height: number; target: HTMLElement } | undefined
+let resizeFrame = 0, resizePoint = { x: 0, y: 0 }
+function handleBounds(edge: ResizeEdge) {
+  if (edge === 'bottom') { const bounds = heightBounds(viewport.value.height); return { ...bounds, max: Math.min(bounds.max, viewport.value.height - floating.coordinates.value.y - 8) } }
+  const bounds = widthBounds(viewport.value.width, mode.value)
+  if (mode.value !== 'floating') return bounds
+  return { ...bounds, max: Math.min(bounds.max, edge === 'left' ? floating.coordinates.value.x + dimensions.value.width - 8 : viewport.value.width - floating.coordinates.value.x - 8) }
+}
+const resizeHandles = computed(() => (mode.value === 'floating' ? ['left', 'right', 'bottom', 'corner'] as const : ['left'] as const).map(edge => ({ edge, label: edge === 'bottom' ? '调整助手高度' : edge === 'corner' ? '调整助手宽度和高度' : '调整助手宽度', bounds: handleBounds(edge), value: edge === 'bottom' ? dimensions.value.height : dimensions.value.width })))
+function applyResize() {
+  resizeFrame = 0
+  const origin = resizeOrigin
+  if (!origin) return
+  const dx = resizePoint.x - origin.x, dy = resizePoint.y - origin.y
+  if (origin.edge !== 'bottom') {
+    const bounds = widthBounds(viewport.value.width, mode.value), leftEdge = origin.edge === 'left'
+    if (mode.value === 'floating') bounds.max = Math.min(bounds.max, leftEdge ? origin.left + origin.width - 8 : viewport.value.width - origin.left - 8)
+    preferredWidth.value = clampSize(origin.width + (leftEdge ? -dx : dx), bounds, DEFAULT_WIDTH)
+    if (mode.value === 'floating' && leftEdge) floating.place(origin.left + origin.width - dimensions.value.width, origin.top)
+  }
+  if (mode.value === 'floating' && (origin.edge === 'bottom' || origin.edge === 'corner')) floatingHeight.value = clampSize(origin.height + dy, { ...heightBounds(viewport.value.height), max: Math.min(heightBounds(viewport.value.height).max, viewport.value.height - origin.top - 8) }, DEFAULT_FLOATING_HEIGHT)
+  syncDock()
+}
+function startResize(event: PointerEvent, edge: ResizeEdge) {
+  if (compact.value || event.button !== 0 || resizeOrigin) return
+  event.preventDefault(); const target = event.currentTarget as HTMLElement, rect = panel.value!.getBoundingClientRect()
+  resizeOrigin = { pointer: event.pointerId, edge, x: event.clientX, y: event.clientY, left: rect.left, top: rect.top, width: rect.width, height: rect.height, target }; resizePoint = { x: event.clientX, y: event.clientY }
+  resizing.value = true; document.documentElement.classList.add('assistant-resizing'); target.focus({ preventScroll: true }); target.setPointerCapture(event.pointerId)
+}
+function moveResize(event: PointerEvent) { if (!resizeOrigin || event.pointerId !== resizeOrigin.pointer) return; event.preventDefault(); resizePoint = { x: event.clientX, y: event.clientY }; if (!resizeFrame) resizeFrame = requestAnimationFrame(applyResize) }
+function endResize() {
+  if (!resizeOrigin) return
+  if (resizeFrame) { cancelAnimationFrame(resizeFrame); applyResize() }
+  const origin = resizeOrigin; resizeOrigin = undefined; resizing.value = false; document.documentElement.classList.remove('assistant-resizing')
+  if (origin.target.hasPointerCapture(origin.pointer)) origin.target.releasePointerCapture(origin.pointer)
+  persistLayout(); if (mode.value === 'floating') floating.persist()
+}
+function resizeKey(event: KeyboardEvent, edge: ResizeEdge) {
+  const height = edge === 'bottom' || edge === 'corner' && (event.key === 'ArrowUp' || event.key === 'ArrowDown')
+  if (!height && (event.key === 'ArrowUp' || event.key === 'ArrowDown') || height && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) return
+  const value = keyboardSize(event.key, height ? dimensions.value.height : dimensions.value.width, handleBounds(height ? 'bottom' : edge), edge === 'left' ? -1 : 1)
+  if (value === null) return
+  event.preventDefault()
+  if (height) floatingHeight.value = value
+  else { const right = floating.coordinates.value.x + dimensions.value.width; preferredWidth.value = value; if (mode.value === 'floating' && edge === 'left') floating.place(right - dimensions.value.width, floating.coordinates.value.y) }
+  persistLayout(); if (mode.value === 'floating') floating.persist()
+}
+function resetSize(edge: ResizeEdge) {
+  endResize()
+  if (edge === 'bottom') floatingHeight.value = clampHeight(DEFAULT_FLOATING_HEIGHT, viewport.value.height)
+  else { const right = floating.coordinates.value.x + dimensions.value.width; preferredWidth.value = clampWidth(DEFAULT_WIDTH, viewport.value.width, mode.value); if (mode.value === 'floating' && edge === 'left') floating.place(right - dimensions.value.width, floating.coordinates.value.y) }
+  persistLayout(); if (mode.value === 'floating') floating.persist()
+}
+function changeMode({ key }: { key: string | number }) { const next = modes.find(item => item.key === key); if (!next || next.key === mode.value) return; endResize(); floating.end(); mode.value = next.key; persistLayout(); playSound('latch') }
+watch(layoutKey, restorePreferences, { immediate: true })
+watch([open, compact, mode, () => dimensions.value.width], syncDock, { flush: 'sync' })
 // Phones get a bottom sheet: pull the handle or header down far or fast enough to dismiss it.
 let sheetOrigin: { pointer: number; y: number; last: number; time: number; speed: number } | undefined
 function startSheetDrag(event: PointerEvent) {
@@ -113,7 +212,7 @@ function enterPanel(el: Element, done: () => void) {
   if (reducedMotion.matches) { done(); return }
   if (compact.value) { panelEl.animate([{ transform: 'translateY(100%)' }, { transform: 'none' }], { duration: 340, easing: morphEasing }).finished.then(done, done); return }
   const geometry = morphGeometry(el)
-  if (!geometry) { panelEl.animate([{ opacity: 0, transform: 'translateY(12px) scale(.98)' }, { opacity: 1, transform: 'none' }], { duration: 240, easing: morphEasing }).finished.then(done, done); return }
+  if (mode.value === 'docked' || !geometry) { panelEl.animate([{ opacity: 0, transform: 'translateY(12px) scale(.98)' }, { opacity: 1, transform: 'none' }], { duration: 240, easing: morphEasing }).finished.then(done, done); return }
   panelEl.classList.add('morphing')
   void flyGhost(geometry.from, geometry.avatar, 420).then(() => panelEl.classList.remove('morphing'))
   panelEl.animate([{ clipPath: geometry.small, opacity: .4 }, { clipPath: geometry.large, opacity: 1 }], { duration: 420, easing: morphEasing }).finished.then(done, done)
@@ -123,7 +222,7 @@ function leavePanel(el: Element, done: () => void) {
   if (reducedMotion.matches) { done(); return }
   if (compact.value) { panelEl.animate([{ transform: panelEl.style.transform || 'none' }, { transform: 'translateY(100%)' }], { duration: 260, easing: 'cubic-bezier(.4,0,1,1)', fill: 'forwards' }).finished.then(() => { sheetDrag.value = 0; done() }, done); return }
   const geometry = morphGeometry(el)
-  if (!geometry) { panelEl.animate([{ opacity: 1 }, { opacity: 0, transform: 'translateY(12px) scale(.98)' }], { duration: 180, fill: 'forwards' }).finished.then(done, done); return }
+  if (mode.value === 'docked' || !geometry) { panelEl.animate([{ opacity: 1 }, { opacity: 0, transform: 'translateY(12px) scale(.98)' }], { duration: 180, fill: 'forwards' }).finished.then(done, done); return }
   landing.value = true; panelEl.classList.add('morphing')
   void flyGhost(geometry.avatar, geometry.from, 340).then(() => { landing.value = false })
   panelEl.animate([{ clipPath: geometry.large, opacity: 1 }, { clipPath: geometry.small, opacity: 0 }], { duration: 340, easing: 'cubic-bezier(.5,0,.2,1)', fill: 'forwards' }).finished.then(done, done)
@@ -135,9 +234,8 @@ const mood = computed(() => busy.value ? 'thinking' : (error.value||taskFailed.v
 const modelOptions = computed(() => [{ value: '', label: `个人默认 · ${personalModel.value || models.value.defaultModel}` }, ...models.value.models.map(value => ({ value, label: value }))])
 let delightTimer: ReturnType<typeof setTimeout> | undefined
 function celebrate() { delighted.value = true; clearTimeout(delightTimer); delightTimer = setTimeout(() => { delighted.value = false }, 2400) }
-function togglePin() { pinned.value = !pinned.value; try { localStorage.setItem(pinKey.value, String(pinned.value)) } catch {} playSound('latch') }
-function startPanelDrag(event: PointerEvent) { if (!pinned.value && !compact.value) floating.start(event) }
-function close() { waitingTopics.value = false; open.value = false; optionsOpen.value = false; playSound('off'); void nextTick(() => launcher.value?.focus()) }
+function startPanelDrag(event: PointerEvent) { if (mode.value === 'floating' && !compact.value && !resizing.value) floating.start(event) }
+function close() { endResize(); floating.end(); waitingTopics.value = false; open.value = false; optionsOpen.value = false; playSound('off'); void nextTick(() => launcher.value?.focus()) }
 function nearBottom() { return !transcript.value || transcript.value.scrollHeight - transcript.value.scrollTop - transcript.value.clientHeight < 72 }
 
 const session = computed(() => sessions.value.find(s => s.id === selected.value))
@@ -233,7 +331,7 @@ function keyboard(e: KeyboardEvent) {
     else if (!e.shiftKey && document.activeElement === elements.at(-1)) { e.preventDefault(); elements[0]?.focus() }
   }
 }
-function resize() { compact.value = window.innerWidth < 1024; viewport.value = { width: window.innerWidth, height: window.innerHeight }; resizeMobileViewport() }
+function resize() { endResize(); floating.end(); compact.value = window.innerWidth < 1024; viewport.value = { width: window.innerWidth, height: window.innerHeight }; resizeMobileViewport() }
 function resizeMobileViewport() { mobileViewport.value = { height: window.visualViewport?.height ?? window.innerHeight, top: window.visualViewport?.offsetTop ?? 0 } }
 watch(() => closet.user?.username, async username=>{avatarCue.value=null;applyAvatarMode('personal');if(username&&!usingMocks){try{const p=await agentRequest<{avatarMode:string}>('/preferences');if(closet.user?.username===username)applyAvatarMode(p.avatarMode)}catch{}}},{immediate:true})
 watch(() => route.path, () => { imageConsent.value = false; })
@@ -259,8 +357,9 @@ function lockBackground(lock: boolean) {
   }
 }
 watch([open, compact], ([visible, mobile]) => lockBackground(visible && mobile), { flush: 'post' })
-onMounted(() => { window.addEventListener('closet-assistant-open', openFromWaiting); try { pinned.value = localStorage.getItem(pinKey.value) !== 'false' } catch {}; window.addEventListener('resize', resize); window.addEventListener('keydown', keyboard); window.visualViewport?.addEventListener('resize', resizeMobileViewport); window.visualViewport?.addEventListener('scroll', resizeMobileViewport) })
-onUnmounted(() => { window.removeEventListener('closet-assistant-open', openFromWaiting); abort?.abort(); clearTimeout(delightTimer); window.removeEventListener('resize', resize); window.removeEventListener('keydown', keyboard); window.visualViewport?.removeEventListener('resize', resizeMobileViewport); window.visualViewport?.removeEventListener('scroll', resizeMobileViewport); lockBackground(false) })
+onMounted(() => { window.addEventListener('closet-assistant-open', openFromWaiting); window.addEventListener(ASSISTANT_SEND_EVENT, sendFromCard); window.addEventListener(ASSISTANT_PREFILL_EVENT, prefillFromCard); window.addEventListener('resize', resize); window.addEventListener('keydown', keyboard); window.addEventListener('blur', cancelResize); window.visualViewport?.addEventListener('resize', resizeMobileViewport); window.visualViewport?.addEventListener('scroll', resizeMobileViewport) })
+function cancelResize() { endResize() }
+onUnmounted(() => { endResize(); floating.end(); document.documentElement.classList.remove('assistant-docked'); document.documentElement.style.removeProperty('--assistant-dock-width'); window.removeEventListener('closet-assistant-open', openFromWaiting); window.removeEventListener(ASSISTANT_SEND_EVENT, sendFromCard); window.removeEventListener(ASSISTANT_PREFILL_EVENT, prefillFromCard); abort?.abort(); clearTimeout(delightTimer); window.removeEventListener('resize', resize); window.removeEventListener('keydown', keyboard); window.removeEventListener('blur', cancelResize); window.visualViewport?.removeEventListener('resize', resizeMobileViewport); window.visualViewport?.removeEventListener('scroll', resizeMobileViewport); lockBackground(false) })
 </script>
 <template>
   <AgentTraceModal v-model:open="debugOpen" :session-id="selected" :request-id="debugRequest" :updates="debugUpdates" />
@@ -269,14 +368,15 @@ onUnmounted(() => { window.removeEventListener('closet-assistant-open', openFrom
     <Transition name="assistant-scrim"><div v-if="open && compact" class="assistant-scrim" @click="close" /></Transition>
     <span v-if="morph" ref="morphGhost" class="bloub-orb-shape assistant-morph" :style="{ '--orb-size': `${morph.size}px` }" aria-hidden="true"><BloubAvatar v-bind="launcher?.appearance" :size="morph.size * 1.25" /></span>
     <Transition :css="false" @enter="enterPanel" @leave="leavePanel">
-      <aside v-if="open" id="closet-assistant" ref="panel" tabindex="-1" class="assistant-panel" :class="{ pinned: pinned && !compact, floating: !pinned && !compact, sheet: compact, dragging: floating.dragging.value || !!sheetDrag }" :style="panelStyle" :role="compact ? 'dialog' : 'complementary'" :aria-modal="compact || undefined" aria-label="个人助手">
+      <aside v-if="open" id="closet-assistant" ref="panel" tabindex="-1" class="assistant-panel" :class="[compact ? 'sheet' : mode, { pinned: mode === 'overlay' && !compact, dragging: floating.dragging.value || !!sheetDrag, resizing }]" :style="panelStyle" :role="compact ? 'dialog' : 'complementary'" :aria-modal="compact || undefined" aria-label="个人助手">
+        <template v-if="!compact"><a-button v-for="handle in resizeHandles" :key="handle.edge" type="text" class="assistant-resize-handle" :class="`resize-${handle.edge}`" role="separator" :aria-label="handle.label" :aria-orientation="handle.edge === 'bottom' ? 'horizontal' : 'vertical'" :aria-valuenow="Math.round(handle.value)" :aria-valuemin="handle.bounds.min" :aria-valuemax="handle.bounds.max" :aria-valuetext="handle.edge === 'corner' ? `宽 ${Math.round(dimensions.width)} 像素，高 ${Math.round(dimensions.height)} 像素` : undefined" aria-controls="closet-assistant" tabindex="0" data-no-drag data-sound="off" @pointerdown="startResize($event, handle.edge)" @pointermove="moveResize" @pointerup="endResize()" @pointercancel="endResize()" @lostpointercapture="endResize()" @keydown="resizeKey($event, handle.edge)" @dblclick="resetSize(handle.edge)" /></template>
         <header class="assistant-header" @pointerdown="startHeaderDrag" @pointermove="moveHeader" @pointerup="endHeaderDrag" @pointercancel="endHeaderDrag" @lostpointercapture="endHeaderDrag">
           <span v-if="compact" class="assistant-sheet-handle" aria-hidden="true" />
           <div class="assistant-identity"><span class="assistant-face assistant-header-avatar" :class="{'bloub-responding':launcher?.responding}"><BloubAvatar v-bind="launcher?.appearance" :size="48" /></span><div><strong>鱼搭助手</strong><small :title="session?.title">{{ session?.title || '今天也一起好好穿衣' }}</small></div></div>
           <div class="assistant-header-actions" data-no-drag>
             <a-tooltip title="新建对话"><a-button type="text" aria-label="新建对话" :disabled="busy || usingMocks" @click="newSession"><PlusOutlined /></a-button></a-tooltip>
             <a-tooltip title="聊天记录"><a-button type="text" aria-label="聊天记录" :disabled="busy || loading" @click="historyOpen = true"><HistoryOutlined /></a-button></a-tooltip>
-            <a-tooltip v-if="!compact" :title="pinned ? '取消固定 · 拖动顶部移动面板' : '固定到右侧'"><a-button type="text" :aria-label="pinned ? '取消固定助手' : '固定助手到右侧'" :aria-pressed="pinned" @click="togglePin"><component :is="pinned ? PushpinFilled : PushpinOutlined" /></a-button></a-tooltip>
+            <a-dropdown v-if="!compact" v-model:open="layoutMenuOpen" :trigger="['click']"><a-tooltip :title="layoutMenuOpen ? '' : `助手布局：${modeLabel}`"><a-button type="text" :aria-label="`助手布局：${modeLabel}，切换布局`" aria-haspopup="menu" data-sound="off"><component :is="mode === 'floating' ? PushpinOutlined : PushpinFilled" /></a-button></a-tooltip><template #overlay><a-menu :selected-keys="[mode]" aria-label="助手布局模式" @click="changeMode"><a-menu-item v-for="item in modes" :key="item.key" :aria-label="`${item.label}${mode === item.key ? '，当前模式' : ''}`"><CheckOutlined v-if="mode === item.key" />{{ item.label }}</a-menu-item></a-menu></template></a-dropdown>
             <a-dropdown :trigger="['click']"><a-button type="text" aria-label="更多助手操作"><MoreOutlined /></a-button><template #overlay><a-menu @click="menuAction"><a-menu-item key="rename" :disabled="!selected || busy">重命名当前对话</a-menu-item><a-menu-item key="memory">管理长期记忆</a-menu-item><a-menu-item key="help">助手使用说明</a-menu-item><a-menu-divider /><a-menu-item key="delete" :disabled="!selected || busy" danger>删除当前对话</a-menu-item><a-menu-item key="clear" :disabled="!sessions.length || busy" danger>清空聊天记录</a-menu-item></a-menu></template></a-dropdown>
             <a-button type="text" aria-label="关闭个人助手" @click="close"><CloseOutlined /></a-button>
           </div>
@@ -285,7 +385,7 @@ onUnmounted(() => { window.removeEventListener('closet-assistant-open', openFrom
         <div v-if="compact" class="assistant-task-notice"><TaskNotice @opened="close" /></div>
         <div v-if="waitingTopics" class="assistant-waiting-topics"><small>等衣物的这会儿，想聊点什么？选话题后由你发送。</small><div><a-button v-for="topic in topics" :key="topic.label" size="small" :disabled="busy || loading || !models.configured" @click="pickTopic(topic.prompt)">{{ topic.label }}</a-button></div></div>
         <div ref="transcript" class="assistant-transcript" aria-label="聊天记录" aria-live="polite" :aria-busy="busy">
-          <div v-if="!messages.length" class="assistant-welcome"><BloubAvatar class="assistant-face" :size="74" expression="happy" /><p class="eyebrow">你的鱼搭助手</p><h2>今天我能帮你做什么？</h2><p>查衣柜、管理衣物、查看任务，<br />也可以聊穿搭或了解平台。</p><a-button block @click="input = '我有多少件衣物？请按品类统计'; textarea?.focus()">看看我的衣柜数量</a-button><a-button block @click="input = '帮我组合三套通勤穿搭'; textarea?.focus()">准备通勤穿搭</a-button><a-button block @click="input = '组合台怎么使用？'; textarea?.focus()">了解组合台怎么使用</a-button></div>
+          <div v-if="!messages.length" class="assistant-welcome"><BloubAvatar class="assistant-face" :size="74" expression="happy" /><p class="eyebrow">你的鱼搭助手</p><h2>今天我能帮你做什么？</h2><p>按衣柜搭配、翻看保存的搭配、找出重复衣物，<br />也能记住你的穿衣偏好。</p><div class="assistant-welcome-suggestions"><a-button v-for="item in suggestions" :key="item.text" block @click="suggest(item.text)"><component :is="item.icon" /><span>{{ item.text }}</span></a-button></div></div>
           <article v-for="item in messages" :key="item.id" class="assistant-message" :class="item.role"><small>{{ item.role === 'user' ? '你' : '鱼搭助手' }}</small><p v-if="item.content" class="assistant-text">{{ item.content }}</p><span v-if="item.status === 'FAILED'" class="assistant-interrupted">回复未完成</span>
             <a-button v-if="item.role === 'assistant'" type="link" size="small" @click="debugRequest = item.requestId || null; debugOpen = true">查看决策与执行记录</a-button>
             <a-collapse v-if="item.events.some(e => e.event === 'operation_result')" ghost class="assistant-operation-record"><a-collapse-panel key="steps" header="查看搭台操作记录"><ol><li v-for="event in item.events.filter(e => e.event === 'operation_result')" :key="event.data.operationId">{{ event.data.success ? '✓' : '!' }} {{ event.data.label }}<small v-if="event.data.message"> · {{ event.data.message }}</small></li></ol></a-collapse-panel></a-collapse>
