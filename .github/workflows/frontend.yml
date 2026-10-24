@@ -1,20 +1,14 @@
 name: Frontend checks
 
-# Everyday checks on pull requests to main, frugally: only when frontend code changed, and a newer push cancels the
-# older run. Releases are tested again in deploy.yml.
+# Everyday checks run on CircleCI (.circleci/config.yml); this workflow is kept for manual runs only.
 on:
-  pull_request:
-    branches: [main]
-    paths-ignore:
-      - "**/*.md"
-      - "docs/**"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: frontend-checks-${{ github.event.pull_request.number || github.ref }}
+  group: frontend-checks-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
