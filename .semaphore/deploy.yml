@@ -1,0 +1,24 @@
+# Started by the promotion of a passed pipeline (automatically for v* tags): scripts/ci/deploy.sh.
+version: v1.0
+name: Deploy site
+agent:
+  machine:
+    type: f1-standard-2
+    os_image: ubuntu2404
+
+execution_time_limit:
+  minutes: 20
+
+blocks:
+  - name: Build and deploy site
+    task:
+      secrets:
+        - name: deploy
+      jobs:
+        - name: deploy
+          commands:
+            - checkout
+            - sem-version node 24
+            - cache restore npm-$(checksum package-lock.json)
+            - npm ci
+            - bash scripts/ci/deploy.sh

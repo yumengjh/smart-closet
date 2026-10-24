@@ -1,0 +1,42 @@
+# Semaphore: everyday checks, and the site deployment of a version tag (README: 持续集成与部署).
+#
+#   push a branch  -> checks (test, typecheck, build)
+#   push a tag v*  -> checks, then deploy.yml automatically: build and replace the 1Panel site over SSH
+#   Promote "Deploy this commit" by hand -> deploy.yml for any checked commit
+version: v1.0
+name: Checks
+agent:
+  machine:
+    type: f1-standard-2
+    os_image: ubuntu2404
+
+# A newer push replaces the running check on a branch; main and tags always finish.
+auto_cancel:
+  running:
+    when: "branch != 'main' AND tag !~ '.*'"
+  queued:
+    when: "branch != 'main' AND tag !~ '.*'"
+
+execution_time_limit:
+  minutes: 20
+
+blocks:
+  - name: Verify
+    task:
+      jobs:
+        - name: test, typecheck, build
+          commands:
+            - checkout
+            - sem-version node 24
+            - cache restore npm-$(checksum package-lock.json)
+            - npm ci
+            - cache store npm-$(checksum package-lock.json) ~/.npm
+            - npm test
+            - npm run typecheck
+            - VITE_USE_MOCKS=false VITE_API_BASE_URL="" npm run build
+
+promotions:
+  - name: Deploy this commit
+    pipeline_file: deploy.yml
+    auto_promote:
+      when: "result = 'passed' AND tag =~ '^v'"
