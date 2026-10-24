@@ -13,7 +13,12 @@
 #             CDN_PURGE_PATHS (directories to refresh, default the site origin)
 version: 2.1
 
+# Paused since 2026-10-24 to save credits: pushes and tags start nothing. Trigger Pipeline with auto=true runs the
+# checks (branch) or the release (tag) as before. Set the default back to true to resume.
 parameters:
+  auto:
+    type: boolean
+    default: false
   deploy:
     type: boolean
     default: false
@@ -196,13 +201,17 @@ jobs:
 workflows:
   checks:
     when:
-      not: << pipeline.parameters.deploy >>
+      and:
+        - not: << pipeline.parameters.deploy >>
+        - << pipeline.parameters.auto >>
     jobs:
       - verify
 
   release:
     when:
-      not: << pipeline.parameters.deploy >>
+      and:
+        - not: << pipeline.parameters.deploy >>
+        - << pipeline.parameters.auto >>
     jobs:
       - verify:
           filters: &release_filters

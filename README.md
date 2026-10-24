@@ -162,7 +162,7 @@ npm test
 npm run build
 ```
 
-107 项测试覆盖工作区注册、侧栏偏好、翻页件数、OOTD 任务状态、搭配错误等。CircleCI（`.circleci/config.yml`）在每次推送与 PR 时使用 Node.js 24，在干净检出中运行 `npm ci`、测试、类型检查和关闭模拟的构建；不会调用真实 AI 或发布页面。GitHub Actions 只负责标签部署与手动检查。
+107 项测试覆盖工作区注册、侧栏偏好、翻页件数、OOTD 任务状态、搭配错误等。CircleCI（`.circleci/config.yml`）在每次推送与 PR 时使用 Node.js 24，在干净检出中运行 `npm ci`、测试、类型检查和关闭模拟的构建；不会调用真实 AI 或发布页面。GitHub Actions 只负责标签部署与手动检查。2026-10-24 起 CircleCI 自动运行暂停：需要时 Trigger Pipeline 并加参数 `auto=true`，把默认值改回 `true` 即恢复。
 
 后端回归在 `smart-closet-server` 执行 `mvn test`。
 
