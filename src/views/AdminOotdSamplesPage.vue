@@ -252,8 +252,9 @@ const columns = [
   </div>
 </template>
 <style scoped>
-.ootd-samples { display: grid; gap: 16px; }
-.ootd-pane { display: grid; gap: 12px; }
+/* minmax(0, 1fr): the table's scroll width must not widen the page on phones. */
+.ootd-samples { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.ootd-pane { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
 .ootd-upload { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .ootd-upload-url { flex: 1 1 220px; }
 .ootd-upload-license { width: 190px; }

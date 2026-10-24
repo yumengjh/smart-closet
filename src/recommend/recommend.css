@@ -11,7 +11,7 @@
 .recommend-intent-label { font-size: 12px; color: var(--muted); margin-right: 8px; white-space: nowrap; }
 .recommend-occasion-tags { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
 .recommend-occasion-tags .ant-tag { margin: 0; min-height: 32px; display: inline-flex; align-items: center; padding: 0 14px; border-radius: 16px; border: 1px solid var(--line); background: var(--surface); font-size: 13px; }
-.recommend-occasion-tags .ant-tag-checkable-checked { border-color: var(--action); background: var(--action); color: var(--action-fg); }
+.recommend-occasion-tags .ant-tag-checkable-checked { border-color: var(--action-bg); background: var(--action-bg); color: var(--action-fg); }
 .recommend-intent-extra { display: flex; align-items: center; gap: 8px; margin-left: auto; min-width: 0; }
 .recommend-intent-temp.ant-input-number-group-wrapper { width: 128px; }
 .recommend-intent-avoid.ant-select { width: 168px; }
@@ -81,7 +81,7 @@
   .recommend-strip-mode .ant-segmented-item { flex: 1; }
   .recommend-strip-body { margin-top: 12px; gap: 12px; }
   .recommend-conditions { padding: 10px; margin-inline: -2px; }
-  .recommend-intent-bar { flex-direction: column; align-items: stretch; gap: 10px; }
+  .recommend-intent-bar { flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 10px; }
   /* Occasions scroll sideways instead of wrapping into several rows. */
   .recommend-strip .recommend-occasion-tags { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-inline: -10px; padding-inline: 10px; scroll-padding-inline: 10px; }
   .recommend-strip .recommend-occasion-tags::-webkit-scrollbar { display: none; }
@@ -99,6 +99,8 @@
   .recommend-group-footer small { flex: 1 1 60%; min-width: 0; }
   .recommend-detail { grid-template-columns: 1fr; }
 }
+/* Very narrow phones: temperature and avoid share a row, the button takes its own. */
+@media (max-width: 339px) { .recommend-intent-bar:not(.is-compact) .recommend-intent-extra { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .recommend-intent-bar:not(.is-compact) .recommend-intent-extra > .ant-btn { grid-column: 1 / -1; } }
 /* 今日灵感 (P4) */
 
 .recommend-inspiration { display: grid; gap: 12px; min-width: 0; }

@@ -87,8 +87,11 @@ function placeIndicator() {
   indicator.value = { x: box.left - base.left + box.width / 2 - w / 2, y: box.top - base.top + box.height / 2 - h / 2, w, h, instant: !indicator.value }
 }
 watch([navPath, () => preferences.navLabels, mobileNav], () => { void nextTick(placeIndicator) }, { immediate: true })
+// The bar's own size, not window resize: its width also changes when the layout viewport does (page zoom, fonts, scrollbars).
+const navResize = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => placeIndicator())
+watch(mobileNav, (el, old) => { if (old) navResize?.unobserve(old); if (el) navResize?.observe(el) })
 onMounted(() => window.addEventListener('resize', placeIndicator))
-onUnmounted(() => window.removeEventListener('resize', placeIndicator))
+onUnmounted(() => { window.removeEventListener('resize', placeIndicator); navResize?.disconnect() })
 // Route fade, in script rather than CSS classes: a reveal navigation (revealNavigate) swaps pages instantly inside a
 // View Transition, where no frame is rendered, so the fade must be skippable without touching the <Transition> itself.
 const calm = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches
