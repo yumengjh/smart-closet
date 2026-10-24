@@ -1,8 +1,8 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
-import { closetApi, usingMocks, type ClosetTask } from '../services/api'
+import { closetApi, usingMocks, type BatchRecognize, type ClosetTask } from '../services/api'
 import { batchApi, type IntakeBatch } from '../services/batches'
-import { batchEntry, renderEntry, taskEntry, type WaitingEntry } from '../domain/waiting'
+import { batchEntry, bulkEntry, renderEntry, taskEntry, type WaitingEntry } from '../domain/waiting'
 import { platformRequest, type RenderJob } from '../services/platform'
 import { playSound } from '../services/sound'
 
@@ -28,8 +28,8 @@ export const useProcessingStore = defineStore('processing', () => {
     if (!username) return false
     const hadActive = activeCount.value > 0
     // Batch child workflows also occur in the single-item task API.
-    if (entry.kind === 'task' && entries.value.some(batch => batch.kind === 'batch' && batch.childIds.includes(entry.id))) return false
-    if (entry.kind === 'batch') {
+    if (entry.kind === 'task' && entries.value.some(batch => (batch.kind === 'batch' || batch.kind === 'bulk') && batch.childIds.includes(entry.id))) return false
+    if (entry.kind === 'batch' || entry.kind === 'bulk') {
       entries.value = entries.value.filter(item => item.kind !== 'task' || !entry.childIds.includes(item.id))
       if (latestNotice.value?.kind === 'task' && entry.childIds.includes(latestNotice.value.id)) latestNotice.value = null
       if (startPrompt.value?.kind === 'task' && entry.childIds.includes(startPrompt.value.id)) startPrompt.value = null
@@ -63,7 +63,7 @@ export const useProcessingStore = defineStore('processing', () => {
   }
   function offerActivities(entry: WaitingEntry) {
     if (!username || entry.state !== 'processing' || entry.stage === '正在取消处理' || invited.has(entry.key)) return
-    if (entry.kind === 'task' && entries.value.some(batch => batch.kind === 'batch' && batch.childIds.includes(entry.id))) return
+    if (entry.kind === 'task' && entries.value.some(batch => (batch.kind === 'batch' || batch.kind === 'bulk') && batch.childIds.includes(entry.id))) return
     invited.add(entry.key); startPrompt.value = entry; save()
   }
   function trackTask(task: ClosetTask, submitted = false, offer = false) {
@@ -74,6 +74,8 @@ export const useProcessingStore = defineStore('processing', () => {
     const entry = batchEntry(batch)
     if (receive(entry, submitted) && (submitted || offer)) offerActivities(entry)
   }
+  /** A batch of re-recognitions the server is submitting: one entry with a progress bar instead of one per garment. */
+  function trackBulk(batch: BatchRecognize, submitted = false) { receive(bulkEntry(batch), submitted) }
   /** Image generation runs about a minute; the send-off animation hands it to this centre instead of a page spinner. */
   function trackRender(job: RenderJob, submitted = false) { receive(renderEntry(job), submitted) }
   /** Rehearsal of the whole hand-off for the OOTD page's preview button: nothing is sent and no quota is used. */
@@ -124,11 +126,12 @@ export const useProcessingStore = defineStore('processing', () => {
     try {
       let failed = false
       if (discover || Date.now() - discoveredAt > 30_000) {
-        const results = await Promise.allSettled([closetApi.tasks(), usingMocks ? Promise.resolve([] as IntakeBatch[]) : batchApi.history(), renderJobs()])
+        const results = await Promise.allSettled([closetApi.tasks(), usingMocks ? Promise.resolve([] as IntakeBatch[]) : batchApi.history(), renderJobs(), usingMocks ? Promise.resolve([] as BatchRecognize[]) : closetApi.batchRecognizeRecent()])
         if (generation !== epoch) return
-        const [tasks, batches, renders] = results
+        const [tasks, batches, renders, bulks] = results
         if (renders.status === 'fulfilled') renders.value.forEach(job => trackRender(job))
-        const children = new Set(batches.status === 'fulfilled' ? batches.value.flatMap(batch => batch.targets.flatMap(target => target.jobId ? [target.jobId] : [])) : [])
+        if (bulks.status === 'fulfilled') bulks.value.forEach(batch => trackBulk(batch))
+        const children = new Set([...(batches.status === 'fulfilled' ? batches.value.flatMap(batch => batch.targets.flatMap(target => target.jobId ? [target.jobId] : [])) : []), ...(bulks.status === 'fulfilled' ? bulks.value.flatMap(batch => batch.jobIds) : [])])
         if (batches.status === 'fulfilled') batches.value.forEach(batch => trackBatch(batch))
         else failed = true
         // If batch discovery failed, defer newly discovered single tasks to avoid duplicate child notices.
@@ -141,7 +144,7 @@ export const useProcessingStore = defineStore('processing', () => {
       const active = entries.value.filter(entry => entry.state === 'processing' && entry.kind !== 'render')
       const rendering = entries.value.filter(entry => entry.state === 'processing' && entry.kind === 'render' && !entry.id.startsWith('demo-'))
       const [results, renders] = await Promise.all([
-        Promise.allSettled(active.map(async entry => ({ entry, value: entry.kind === 'task' ? taskEntry(await closetApi.task(entry.id)) : batchEntry(await batchApi.get(entry.id)) }))),
+        Promise.allSettled(active.map(async entry => ({ entry, value: entry.kind === 'task' ? taskEntry(await closetApi.task(entry.id)) : entry.kind === 'bulk' ? await bulkStatus(entry) : batchEntry(await batchApi.get(entry.id)) }))),
         rendering.length ? renderJobs().then(list => list, () => null) : Promise.resolve([] as RenderJob[]),
       ])
       if (generation !== epoch) return
@@ -159,6 +162,14 @@ export const useProcessingStore = defineStore('processing', () => {
       if (generation === epoch) { busy = false; schedule() }
     }
   }
+  /** The server forgets a batch's progress when it restarts; the tasks it already submitted keep running as single tasks. */
+  async function bulkStatus(entry: WaitingEntry): Promise<WaitingEntry> {
+    try { return bulkEntry(await closetApi.batchRecognizeStatus(entry.id)) }
+    catch (cause) {
+      if (cause instanceof Error && cause.message.includes('没有找到这次批量任务')) return { ...entry, state: 'attention', stage: '服务重启，进度已丢失；已提交的任务不受影响，可在任务页查看', childIds: [], progress: undefined }
+      throw cause
+    }
+  }
   function schedule() {
     clearTimeout(timer)
     if (username && !document.hidden) timer = setTimeout(() => { void refresh() }, connectionError.value ? 10_000 : activeCount.value ? 4_000 : 30_000)
@@ -174,7 +185,7 @@ export const useProcessingStore = defineStore('processing', () => {
     stop(); username = user
     try {
       const saved: WaitingEntry[] = JSON.parse(sessionStorage.getItem(storageKey()) || '[]')
-      if (Array.isArray(saved)) entries.value = saved.filter(entry => entry && ['task', 'batch', 'render'].includes(entry.kind) && typeof entry.id === 'string' && entry.key === `${entry.kind}:${entry.id}` && Array.isArray(entry.childIds) && !(entry.id.startsWith('demo-') && entry.state === 'processing'))
+      if (Array.isArray(saved)) entries.value = saved.filter(entry => entry && ['task', 'batch', 'render', 'bulk'].includes(entry.kind) && typeof entry.id === 'string' && entry.key === `${entry.kind}:${entry.id}` && Array.isArray(entry.childIds) && !(entry.id.startsWith('demo-') && entry.state === 'processing'))
       const hints: unknown = JSON.parse(sessionStorage.getItem(`${storageKey()}:invited`) || '[]')
       if (Array.isArray(hints)) for (const key of hints) if (typeof key === 'string') invited.add(key)
     } catch { /* A fresh tab discovers active jobs from the server. */ }
@@ -182,5 +193,5 @@ export const useProcessingStore = defineStore('processing', () => {
     document.addEventListener('visibilitychange', visibility)
     void refresh(true)
   }
-  return { entries, ordered, latestNotice, startPrompt, activeCount, unreadCount, connectionError, start, stop, refresh, trackTask, trackBatch, trackRender, simulateRender, dismissStartPrompt, dismissNotice, viewed, dismiss, dismissFinished, isHidden, hideTask, hideAllTasks }
+  return { entries, ordered, latestNotice, startPrompt, activeCount, unreadCount, connectionError, start, stop, refresh, trackTask, trackBatch, trackBulk, trackRender, simulateRender, dismissStartPrompt, dismissNotice, viewed, dismiss, dismissFinished, isHidden, hideTask, hideAllTasks }
 })
