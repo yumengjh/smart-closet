@@ -12,7 +12,7 @@
 ![Tests](https://img.shields.io/badge/测试-107_项-success)
 ![License](https://img.shields.io/badge/license-源码仅供评审_·_非开源-red)
 
-[快速开始](#快速开始) · [功能](#功能) · [构建与发布](#构建与发布) · [后端仓库](https://github.com/yumengjh/smart-closet-server) · [界面流程说明](docs/INTERACTION.md)
+[快速开始](#快速开始) · [功能](#功能) · [构建与发布](#构建与发布) · [相关仓库](#相关仓库) · [后端仓库（评审副本）](https://github.com/yumengjh/smart-closet-server-review) · [界面流程说明](docs/INTERACTION.md)
 
 <img src="docs/readme/today-outfits.jpg" alt="穿搭组合台：我的搭配" width="88%">
 
@@ -30,7 +30,7 @@
 >
 > 完整条款见 [LICENSE](LICENSE)。需要其他用途，请先取得权利人书面授权。
 
-这是鱼搭的**用户端**，需要配合后端 [smart-closet-server](https://github.com/yumengjh/smart-closet-server) 使用。后端提供接口、本地模型、推荐引擎和助手运行时；本仓库只负责界面与交互。两个仓库建议检出到相邻目录：
+这是鱼搭的**用户端**，需要配合后端使用。公开的后端是评审裁剪副本 [smart-closet-server-review](https://github.com/yumengjh/smart-closet-server-review)，完整后端 smart-closet-server 为私有仓库。后端提供接口、本地模型、推荐引擎和助手运行时；本仓库只负责界面与交互。两个仓库建议检出到相邻目录：
 
 ```text
 project/
@@ -75,7 +75,7 @@ project/
 
 ## 快速开始
 
-需要 Node.js 22+（本机验证使用 Node 24.18 / npm 11.16）。先启动后端（见[后端 README](https://github.com/yumengjh/smart-closet-server#快速开始)），再：
+需要 Node.js 22+（本机验证使用 Node 24.18 / npm 11.16）。先启动后端（见[后端 README](https://github.com/yumengjh/smart-closet-server-review#源码运行开发)），再：
 
 ```sh
 npm ci
@@ -124,7 +124,7 @@ cd ../smart-closet-server && mvn spring-boot:run
 
 后端 `static/assets/` 是被忽略的构建产物，干净检出必须先执行此构建再打包后端。`build:server` 固定以 `VITE_USE_MOCKS=false` 构建。局域网访问时给后端设置 `SERVER_ADDRESS=0.0.0.0`。
 
-**独立部署**（前端静态站点 + 后端分开）：复制 `.env.example` 为 `.env.production.local`，填写公开的 `VITE_API_BASE_URL`，执行 `npm run build:standalone`，把 `dist/` 交给任意静态服务器；后端需配置 `CLOSET_CORS_ALLOWED_ORIGINS` 与 `CLOSET_COOKIE_SECURE`。详见[前后端独立部署](https://github.com/yumengjh/smart-closet-server/blob/main/docs/INDEPENDENT_DEPLOYMENT.md)。
+**独立部署**（前端静态站点 + 后端分开）：复制 `.env.example` 为 `.env.production.local`，填写公开的 `VITE_API_BASE_URL`，执行 `npm run build:standalone`，把 `dist/` 交给任意静态服务器；后端需配置 `CLOSET_CORS_ALLOWED_ORIGINS` 与 `CLOSET_COOKIE_SECURE`。详见[前后端独立部署](https://github.com/yumengjh/smart-closet-server-review/blob/main/docs/INDEPENDENT_DEPLOYMENT.md)。
 
 推送 `v*` 标签时，持续集成会发布静态站点。
 
@@ -178,10 +178,23 @@ npm run build
 - 音效走 `src/services/sound.ts` 并尊重开关；动效尊重 `prefers-reduced-motion`。
 - 改界面先改本仓库源码，再用 `npm run build:server` 发布，不手工改后端的构建产物。
 
+## 相关仓库
+
+| 仓库 | 内容 | 可见性 |
+|---|---|---|
+| [smart-closet](https://github.com/yumengjh/smart-closet) | 用户端（本仓库）：Vue 3 + Ant Design Vue | 公开（评审许可） |
+| [smart-closet-server-review](https://github.com/yumengjh/smart-closet-server-review) | 后端评审裁剪副本，核心规则与提示词已移除，不能直接构建 | 公开（评审许可） |
+| smart-closet-server | 完整后端 | 私有 |
+| [smart-closet-mp](https://github.com/yumengjh/smart-closet-mp) | 微信小程序（uni-app） | 公开（评审许可） |
+| [smart-closet-admin](https://github.com/yumengjh/smart-closet-admin) | 管理平台前端（Vue 3 + Element Plus） | 公开 |
+| [smart-closet-admin-server](https://github.com/yumengjh/smart-closet-admin-server) | 管理平台后端（Spring Boot） | 公开 |
+| [yuda-website](https://github.com/yumengjh/yuda-website) | 产品官网 | 公开 |
+| [smart-closet-promo](https://github.com/yumengjh/smart-closet-promo) | 演示视频（Remotion） | 公开 |
+
 ## 更多文档
 
 - [页面流程与状态说明](docs/INTERACTION.md) · [PWA](docs/PWA.md) · [OOTD 模特、动作与身材调节界面](docs/2026-10-12-OOTD模特、动作与身材调节界面.md)
-- [衣物入库设计](https://github.com/yumengjh/smart-closet-server/blob/main/docs/design/衣物入库最新设计.md) · [平台级鱼搭与个人 OOTD 设计](https://github.com/yumengjh/smart-closet-server/blob/main/docs/design/2026-10-06-平台级鱼搭助手与个人OOTD设计.md) · [后端运行与接口文档](https://github.com/yumengjh/smart-closet-server/blob/main/docs/CLOSET_PRODUCT.md)
+- [衣物入库设计](https://github.com/yumengjh/smart-closet-server-review/blob/main/docs/design/衣物入库最新设计.md) · [平台级鱼搭与个人 OOTD 设计](https://github.com/yumengjh/smart-closet-server-review/blob/main/docs/design/2026-10-06-平台级鱼搭助手与个人OOTD设计.md) · [后端运行与接口文档](https://github.com/yumengjh/smart-closet-server-review/blob/main/docs/CLOSET_PRODUCT.md)
 
 ## 许可
 

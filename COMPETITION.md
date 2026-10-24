@@ -1,4 +1,4 @@
-> 本文是**第九届传智杯 · AI WEB 网页开发挑战赛**的参赛说明，只服务于评审。用户端的介绍、运行与开发文档见 [README.md](README.md)；完整的作品说明、技术架构与 AI 方案见后端仓库的 [COMPETITION.md](https://github.com/yumengjh/smart-closet-server/blob/main/COMPETITION.md)。
+> 本文是**第九届传智杯 · AI WEB 网页开发挑战赛**的参赛说明，只服务于评审。用户端的介绍、运行与开发文档见 [README.md](README.md)；完整的作品说明、技术架构与 AI 方案见后端仓库的 [COMPETITION.md](https://github.com/yumengjh/smart-closet-server-review/blob/main/COMPETITION.md)。
 
 <div align="center">
 
@@ -16,7 +16,7 @@
 |:--|:--|
 | 在线体验 | 【待填写：用户端线上地址】 |
 | 评审体验账号 | 用户名：【待填写】；密码：见提交页说明（不写入仓库） |
-| 总体说明、AI 技术方案 | [后端仓库 COMPETITION.md](https://github.com/yumengjh/smart-closet-server/blob/main/COMPETITION.md) |
+| 总体说明、AI 技术方案 | [后端仓库 COMPETITION.md](https://github.com/yumengjh/smart-closet-server-review/blob/main/COMPETITION.md) |
 | 本地运行 | [README.md 快速开始](README.md#快速开始) |
 
 ## 前端工程亮点（对应评审的“前端工程质量”与“用户体验”）
