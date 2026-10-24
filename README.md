@@ -14,7 +14,7 @@
 
 [快速开始](#快速开始) · [功能](#功能) · [构建与发布](#构建与发布) · [后端仓库](https://github.com/yumengjh/smart-closet-server) · [界面流程说明](docs/INTERACTION.md)
 
-<img src="docs/readme/today-outfits.jpg" alt="今天穿什么" width="88%">
+<img src="docs/readme/today-outfits.jpg" alt="穿搭组合台：我的搭配" width="88%">
 
 </div>
 
@@ -67,6 +67,9 @@ project/
 <tr>
 <td><img src="docs/readme/assistant.jpg" alt="全局助手"><br><sub><b>全局助手</b></sub></td>
 <td><img src="docs/readme/mobile.jpg" alt="手机端"><br><sub><b>手机端</b></sub></td>
+</tr>
+<tr>
+<td colspan="2"><img src="docs/readme/ootd.jpg" alt="OOTD 上身图"><br><sub><b>OOTD 上身</b>：年轻女生、年轻男生、成熟男士；人物均为 AI 生成的虚拟模特</sub></td>
 </tr>
 </table>
 
