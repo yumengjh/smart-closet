@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { garmentAnswer } from '../agent/question'
 import { App } from 'ant-design-vue'
 import GarmentThumb from './GarmentThumb.vue'
 import RecommendationGroup from './RecommendationGroup.vue'
@@ -19,9 +20,9 @@ const picked = ref(''); const loading = ref(false); const view = ref<Recommendat
 const picks = latestRequest()
 const chosen = ref('')
 const sent = ref(false), preference = ref('')
-function send(text: string) {
+function send(text: string, modelContent?: string) {
   const value = text.trim(); if (sent.value || !value) return
-  sent.value = true; sendToAssistant(value)
+  sent.value = true; sendToAssistant(value, modelContent)
 }
 function sendPreference(event?: KeyboardEvent) {
   if (event?.isComposing || event?.keyCode === 229) return
@@ -29,7 +30,7 @@ function sendPreference(event?: KeyboardEvent) {
 }
 function choose(index: number) {
   const c = props.payload.candidates?.[index]; if (!c || sent.value) return
-  chosen.value = c.garmentIds[0]; send(`选第 ${index + 1} 件「${c.name}」（garmentId: ${c.garmentIds[0]}）`)
+  chosen.value = c.garmentIds[0]; const answer = garmentAnswer(c.name, c.garmentIds[0]); send(answer.text, answer.modelContent)
 }
 async function pick(id: string) {
   if (sent.value) return

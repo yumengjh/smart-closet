@@ -36,7 +36,7 @@ async function submit(indexes: number[], typed: string) {
   try { await agentRequest(`/proposals/${props.proposal.id}/accept`, 'POST', { context: pageContext(route.path), current: false }) }
   catch (e) { console.warn('助手提问未能标记为已回答', e) }
   answer.value = text; sending.value = false
-  sendToAssistant(text)
+  sendToAssistant(text, answerText(options.value, indexes, typed, multiple.value, true))
 }
 // Enter while an input method is composing only commits the characters (keyCode 229 covers older Safari).
 function sendCustom(event?: KeyboardEvent) { if (event?.isComposing || event?.keyCode === 229) return; event?.preventDefault(); void submit([], custom.value) }

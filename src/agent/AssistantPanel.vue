@@ -7,6 +7,7 @@ import { CloseOutlined, PlusOutlined, SendOutlined, PushpinOutlined, PushpinFill
 import { usingMocks } from '../services/api'
 import { agentRequest, streamMessage, type AgentSession, type AgentMessage, type Models, type Memory, type Quota } from './api'
 import { pageContext } from './bridge'
+import { userMessageText } from './question'
 import { ASSISTANT_PREFILL_EVENT, ASSISTANT_SEND_EVENT, type AssistantTextDetail } from './assistantEvents'
 import AgentCommandCard from './AgentCommandCard.vue'
 import AgentProposal from './AgentProposal.vue'
@@ -63,10 +64,12 @@ const suggestions = [
 ]
 function suggest(text: string) { input.value = text; textarea.value?.focus() }
 // Chat cards (question answers, outfit actions) send or prefill through window events.
+const pendingCard = ref<AssistantTextDetail | null>(null)
 function sendFromCard(event: Event) {
   const text = (event as CustomEvent<AssistantTextDetail>).detail?.text?.trim()
   if (!text) return
   input.value = text
+  pendingCard.value = (event as CustomEvent<AssistantTextDetail>).detail
   if (!models.value.configured) { message.info('助手尚未配置，已把内容放进输入框'); return }
   if (busy.value) { message.info('助手正在回复，稍后再发送'); return }
   void send()
@@ -283,12 +286,12 @@ function quickResult(view: RecommendationView) {
 async function send() {
   if (busy.value || !input.value.trim() || !models.value.configured) return
   avatarCue.value=null;taskFailed.value=false;activityTool.value=''; error.value = ''; busy.value = true; activityPhase.value = 'thinking'; status.value = '正在理解你的请求'; playSound('bubble'); let reply: AgentMessage | undefined
-  const body = { requestId: createUuid(), content: input.value.trim(), context: context.value, imageConsent: imageConsent.value }
+  const body = { requestId: createUuid(), content: input.value.trim(), modelContent: pendingCard.value?.text === input.value.trim() ? pendingCard.value.modelContent : undefined, context: context.value, imageConsent: imageConsent.value }
   try {
     if (!selected.value) await createSession()
     messages.value.push({ id: body.requestId, role: 'user', content: body.content, status: 'COMPLETE', events: [] })
     messages.value.push({ id: createUuid(), role: 'assistant', content: '', status: 'RUNNING', events: [], requestId: body.requestId }); reply = messages.value[messages.value.length - 1]
-    input.value = ''; imageConsent.value = false; abort = new AbortController(); await scrollBottom()
+    input.value = ''; pendingCard.value = null; imageConsent.value = false; abort = new AbortController(); await scrollBottom()
     await streamMessage(selected.value, body, event => {
       const follow = nearBottom()
       if (event.event === 'token') { reply!.content += event.data.text; activityPhase.value = 'responding' }
@@ -386,7 +389,7 @@ onUnmounted(() => { endResize(); floating.end(); document.documentElement.classL
         <div v-if="waitingTopics" class="assistant-waiting-topics"><small>等衣物的这会儿，想聊点什么？选话题后由你发送。</small><div><a-button v-for="topic in topics" :key="topic.label" size="small" :disabled="busy || loading || !models.configured" @click="pickTopic(topic.prompt)">{{ topic.label }}</a-button></div></div>
         <div ref="transcript" class="assistant-transcript" aria-label="聊天记录" aria-live="polite" :aria-busy="busy">
           <div v-if="!messages.length" class="assistant-welcome"><BloubAvatar class="assistant-face" :size="74" expression="happy" /><p class="eyebrow">你的鱼搭助手</p><h2>今天我能帮你做什么？</h2><p>按衣柜搭配、翻看保存的搭配、找出重复衣物，<br />也能记住你的穿衣偏好。</p><div class="assistant-welcome-suggestions"><a-button v-for="item in suggestions" :key="item.text" block @click="suggest(item.text)"><component :is="item.icon" /><span>{{ item.text }}</span></a-button></div></div>
-          <article v-for="item in messages" :key="item.id" class="assistant-message" :class="item.role"><small>{{ item.role === 'user' ? '你' : '鱼搭助手' }}</small><p v-if="item.content" class="assistant-text">{{ item.content }}</p><span v-if="item.status === 'FAILED'" class="assistant-interrupted">回复未完成</span>
+          <article v-for="item in messages" :key="item.id" class="assistant-message" :class="item.role"><small>{{ item.role === 'user' ? '你' : '鱼搭助手' }}</small><p v-if="item.content" class="assistant-text">{{ item.role === 'user' ? userMessageText(item.content) : item.content }}</p><span v-if="item.status === 'FAILED'" class="assistant-interrupted">回复未完成</span>
             <a-button v-if="item.role === 'assistant'" type="link" size="small" @click="debugRequest = item.requestId || null; debugOpen = true">查看决策与执行记录</a-button>
             <a-collapse v-if="item.events.some(e => e.event === 'operation_result')" ghost class="assistant-operation-record"><a-collapse-panel key="steps" header="查看搭台操作记录"><ol><li v-for="event in item.events.filter(e => e.event === 'operation_result')" :key="event.data.operationId">{{ event.data.success ? '✓' : '!' }} {{ event.data.label }}<small v-if="event.data.message"> · {{ event.data.message }}</small></li></ol></a-collapse-panel></a-collapse>
             <template v-for="(event, index) in item.events" :key="index">

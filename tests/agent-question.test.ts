@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { answerText } from '../src/agent/question.ts'
+import { answerText, userMessageText, garmentAnswer } from '../src/agent/question.ts'
 
 const options = [{ label: '裙装' }, { label: '裤装', description: '更方便走路' }, { label: '都可以' }]
 
@@ -24,7 +24,17 @@ test('nothing usable gives an empty answer', () => {
 
 test('garment choice sends its stable id, and generic value survives independently of label', () => {
   const id = '11111111-1111-4111-8111-111111111111'
-  assert.equal(answerText([{ label: '白色运动鞋', garmentId: id }, { label: '去看看', value: 'view' }], [0]), `白色运动鞋（garmentId: ${id}）`)
-  assert.equal(answerText([{ label: '去看看', value: 'view' }], [0]), '去看看（value: view）')
+  assert.equal(answerText([{ label: '白色运动鞋', garmentId: id }, { label: '去看看', value: 'view' }], [0], '', false, true), `白色运动鞋（garmentId: ${id}）`)
+  assert.equal(answerText([{ label: '去看看', value: 'view' }], [0], '', false, true), '去看看（value: view）')
   assert.equal(answerText([{ label: '白色运动鞋', garmentId: id }], [0], '重新找'), '重新找')
+})
+
+test('card labels stay human while model transport keeps values and ids', () => {
+  const id = '11111111-1111-4111-8111-111111111111'
+  assert.equal(answerText([{ label: '郊外轻松爬山', value: '轻松爬山' }], [0]), '郊外轻松爬山')
+  assert.equal(answerText([{ label: '粉色运动鞋', garmentId: id }], [0]), '粉色运动鞋')
+  assert.deepEqual(garmentAnswer('粉色运动鞋', id), { text: '选粉色运动鞋', modelContent: `选粉色运动鞋（garmentId: ${id}）` })
+  assert.equal(userMessageText(`选第 1 件「粉色运动鞋」（garmentId: ${id}）`), '选粉色运动鞋')
+  assert.equal(userMessageText('郊外轻松爬山（value: 轻松爬山）'), '郊外轻松爬山')
+  assert.equal(userMessageText('我喜欢衬衫（宽松一点）'), '我喜欢衬衫（宽松一点）')
 })
