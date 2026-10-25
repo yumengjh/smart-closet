@@ -1,4 +1,6 @@
 import { nextTick, reactive } from 'vue'
+import { canvasBridge } from './bridge'
+import { applyEditorOperation } from './editor-canvas'
 import { recordBoardTrace } from './trace-client'
 import { router } from '../router'
 import { useClosetStore } from '../stores/closet'
@@ -14,6 +16,7 @@ export type CanvasCommand = { runId: string; sessionId: string; workspaceId: str
 export const canvasExecution = reactive({ runId: '', workspaceId: '', boardId: '', label: '', following: true, error: '' })
 type LocalRun = { cancelled: boolean; space: OutfitWorkspace; path: string }
 const runs = new Map<string, LocalRun>()
+const editorRuns = new Map<string, { source: AgentContext; cancelled: boolean }>()
 const applied = new Map<string, { version: number; scene?: unknown; boardCount?: number }>()
 let queue = Promise.resolve()
 
@@ -21,6 +24,7 @@ export function handleCanvasCommand(command: CanvasCommand) {
   queue = queue.then(() => execute(command)).catch(() => {})
 }
 export async function stopCanvasRun(runId = canvasExecution.runId) {
+  const editor = editorRuns.get(runId); if (editor) editor.cancelled = true
   const run = runs.get(runId)
   if (run) {
     run.cancelled = true
@@ -29,7 +33,7 @@ export async function stopCanvasRun(runId = canvasExecution.runId) {
   if (canvasExecution.runId === runId) { canvasExecution.runId = ''; canvasExecution.label = '' }
   try { await agentRequest(`/runs/${runId}/cancel`, 'POST', {}) } catch { /* Server also expires unacknowledged commands. */ }
 }
-export function failCanvasExecution() { for (const [id, run] of runs) if (!run.cancelled) void stopCanvasRun(id) }
+export function failCanvasExecution() { for (const [id, run] of editorRuns) if (!run.cancelled) void stopCanvasRun(id); for (const [id, run] of runs) if (!run.cancelled) void stopCanvasRun(id) }
 
 async function execute(command: CanvasCommand) {
   const owner = useClosetStore().user?.username
@@ -44,6 +48,34 @@ async function execute(command: CanvasCommand) {
   if (duplicate) { try { await ack({ success: true, ...duplicate }); reported('DUPLICATE_CONFIRMED') } catch (e) { reported('DUPLICATE_ACK_FAILED', e instanceof Error ? e.message : '') }; return }
   try {
     if (!owner) throw new Error('登录已失效。')
+    if (command.workspaceId.startsWith('editor:')) {
+      const bridge = canvasBridge.value
+      if (!bridge) throw new Error('当前编辑页已关闭。')
+      if (command.kind === 'open') {
+        const source = command.payload.source as AgentContext
+        const c = bridge.context()
+        if (c.workspaceId !== source.workspaceId || c.boardId !== source.boardId || c.contentVersion !== source.contentVersion) throw new Error('当前草稿已变化，请重新发起调整。')
+        editorRuns.set(command.runId, { source, cancelled: false })
+        Object.assign(canvasExecution, { runId: command.runId, workspaceId: command.workspaceId, boardId: source.boardId, label: command.label, error: '' })
+        const result = { version: 0, boardCount: 1 }; applied.set(command.operationId, result); await ack({ success: true, ...result }); return
+      }
+      const editor = editorRuns.get(command.runId)
+      if (!editor || editor.cancelled) throw new Error('画布操作已停止。')
+      if (command.kind === 'complete') {
+        editor.cancelled = true; canvasExecution.runId = ''; canvasExecution.label = ''; playSound('complete')
+        const result = { version: 0 }; applied.set(command.operationId, result); await ack({ success: true, ...result }); return
+      }
+      const context = await applyEditorOperation(bridge, editor.source, command.expectedVersion, command.kind, command.payload, async (id, scene) => {
+        const garment = await closetApi.detail(id)
+        if (garment.status !== 'ACTIVE') throw new Error('衣物已不在衣柜中。')
+        const item = await createOutfitElement(garment, scene.elements)
+        if (editor.cancelled) throw new Error('画布操作已停止。')
+        return item
+      })
+      await nextTick()
+      const result = { version: context.contentVersion!, scene: sceneWrite(context.scene!) }
+      applied.set(command.operationId, result); await ack({ success: true, ...result }); return
+    }
     let run = runs.get(command.runId)
     if (command.kind === 'open') {
       const space = workspace(owner, command.workspaceId)
@@ -122,6 +154,7 @@ async function execute(command: CanvasCommand) {
     const text = e instanceof Error ? e.message : '组合台操作失败。'
     reported('FAILED', text)
     canvasExecution.error = text
+    const editor = editorRuns.get(command.runId); if (editor) editor.cancelled = true
     const run = runs.get(command.runId)
     if (run) { run.cancelled = true; for (const board of run.space.boards) if (board.locked === command.runId) { board.locked = undefined; board.status = '操作中断'; board.error = text } }
     if (canvasExecution.runId === command.runId) canvasExecution.runId = ''
@@ -129,6 +162,6 @@ async function execute(command: CanvasCommand) {
   }
 }
 function isRunRoute(to: { path: string; query: Record<string, unknown> }, run: LocalRun) { return to.path === '/outfits/workspace' && to.query.session === run.space.id.slice('agent:'.length) }
-router.afterEach(to => { for (const [id, run] of runs) if (!run.cancelled && !isRunRoute(to, run)) void stopCanvasRun(id) })
+router.afterEach(to => { for (const [id, run] of editorRuns) if (!run.cancelled && canvasBridge.value?.context().workspaceId !== run.source.workspaceId) void stopCanvasRun(id); for (const [id, run] of runs) if (!run.cancelled && !isRunRoute(to, run)) void stopCanvasRun(id) })
 window.addEventListener('pagehide', failCanvasExecution)
 window.addEventListener('closet-session-expired', failCanvasExecution)
