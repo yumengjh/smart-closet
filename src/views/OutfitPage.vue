@@ -118,6 +118,7 @@ const outfitId = ref('')
 const revision = ref<number | null>(null)
 const name = ref('未命名搭配')
 const draftOwner = ref('')
+const editorContentVersion = ref(0)
 const elements = ref<OutfitElement[]>([])
 const undoStack = ref<OutfitElement[][]>([])
 const redoStack = ref<OutfitElement[][]>([])
@@ -152,6 +153,7 @@ const stageWidth = computed(() => viewGeometry.value.stageWidth)
 const stageHeight = computed(() => viewGeometry.value.stageHeight)
 const focusedView = computed(() => !pickerVisible.value && !inspectorVisible.value)
 const scene = computed<OutfitScene>(() => ({ version: OUTFIT_VERSION, elements: elements.value }))
+watch(elements, () => { editorContentVersion.value++ }, { deep: true, flush: 'sync' })
 const currentItem = computed(() => elements.value.find((item) => elementKey(item) === selectedId.value) || null)
 const selectedIndex = computed(() => elements.value.findIndex(item => elementKey(item) === selectedId.value))
 const canForward = computed(() => selectedIndex.value >= 0 && selectedIndex.value < elements.value.length - 1)
@@ -963,8 +965,8 @@ onMounted(() => {
   else void loadLibrary()
   if (closet.isSignedIn) { void loadGarments(); void loadPeople() }
   if (!props.board) canvasBridge.value = {
-    context: () => ({ route: route.path, outfitId: String(route.params.id || ''), name: name.value, revision: revision.value, selectedIds: [...selectedIds.value], ...(currentItem.value?.kind !== 'PERSON_PART' && currentItem.value?.garmentId ? { garmentId: currentItem.value.garmentId } : {}), ...(editing.value && !pageLoading.value ? { scene: scene.value } : {}) }),
-    apply: (next, title) => { if (!loaded || !editing.value) throw new Error('画布尚未就绪。'); recordChange(next.elements.map(item => ({ ...item }))); if (title) name.value = title; persistDraft() },
+    context: () => ({ route: route.path, workspaceId: `editor:${draftKey.value}`, boardId: draftKey.value, contentVersion: editorContentVersion.value, outfitId: String(route.params.id || ''), name: name.value, revision: revision.value, selectedIds: [...selectedIds.value], ...(currentItem.value?.kind !== 'PERSON_PART' && currentItem.value?.garmentId ? { garmentId: currentItem.value.garmentId } : {}), ...(editing.value && !pageLoading.value ? { scene: scene.value } : {}) }),
+    apply: (next, title) => { if (!loaded || !editing.value) throw new Error('画布尚未就绪。'); const beforeVersion = editorContentVersion.value; recordChange(next.elements.map(item => ({ ...item }))); if (editorContentVersion.value === beforeVersion) editorContentVersion.value++; if (title) name.value = title; persistDraft() },
     save: async () => { error.value = ''; await saveOutfit(); if (error.value || remoteConflict.value) throw new Error(error.value || '搭配版本冲突。') },
   }
   window.addEventListener('keydown', handleKeyboard)
