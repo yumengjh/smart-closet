@@ -289,7 +289,7 @@ onMounted(() => {
   if (dedupeOpenOutfits(owner(), wsId.value)) { refreshWorkspaces(); message.info('已合并重复打开的同一套搭配。') }
   void loadRoute().then(async () => { await nextTick(); if (!focus.value) fitOverview() })
   canvasBridge.value = {
-    context: () => { editor.value?.flush(); const board = active.value; const selected = board?.scene.elements.find(e => board.selectedIds.includes(e.elementId || e.garmentId) && e.kind !== 'PERSON_PART'); return { route: route.path, workspaceId: space.value.id, boardId: board?.id, boardCount: space.value.boards.length, contentVersion: board?.contentVersion, outfitId: board?.outfitId, revision: board?.revision, name: board?.name, selectedIds: board?.selectedIds || [], garmentId: selected?.garmentId, scene: board?.scene } },
+    context: () => { editor.value?.flush(); const board = active.value; const selected = board?.scene.elements.find(e => board.selectedIds.includes(e.elementId || e.garmentId) && e.kind !== 'PERSON_PART'); return { route: route.path, workspaceId: space.value.id, boardId: board?.id, boardCount: space.value.boards.length, contentVersion: board?.contentVersion, outfitId: board?.outfitId, sourceOutfitId: board?.sourceOutfitId, revision: board?.revision, name: board?.name, selectedIds: board?.selectedIds || [], garmentId: selected?.garmentId, scene: board?.scene } },
     apply: (scene, title) => { const board = active.value; if (!board || board.locked) throw new Error('请先选中可编辑组合台。'); mutateBoard(board, scene); if (title) board.name = title },
     save: async () => { if (!active.value) throw new Error('请先选中组合台。'); await confirmSave([active.value]) },
   }

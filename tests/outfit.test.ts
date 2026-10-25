@@ -270,3 +270,9 @@ test('outerwear stays beside both garments when a top is paired with overalls', 
     for (const item of arranged) assertInsideCanvas(item)
   }
 })
+
+test('overall switch classification follows the server priority without changing the collage role', async () => {
+  const { isOverallCategory } = await import('../src/domain/outfit.ts')
+  for (const word of ['背带裙', '牛仔背带裤', 'JSK', 'overalls']) assert.ok(isOverallCategory([word]))
+  for (const word of ['连衣裙', '衬衫', '背带裙配套袜', '背带裙配套发夹']) assert.ok(!isOverallCategory([word]))
+})

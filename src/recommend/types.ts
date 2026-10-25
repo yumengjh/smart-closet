@@ -37,7 +37,7 @@ export type Occasion = typeof OCCASIONS[number]['value']
 
 /** Body of POST /api/recommendations (design 5.1). */
 export type IntentInput = {
-  occasion?: Occasion; temperatureC?: number | null; season?: string; wantStyles?: string[]; wantColors?: string[]; avoidColors?: string[]
+  occasion?: Occasion; temperatureC?: number | null; season?: string; wantStyles?: string[]; wantColors?: string[]; avoidCategories?: string[]; avoidColors?: string[]
   freeText?: string; requiredGarmentIds?: string[]; excludedGarmentIds?: string[]; wantCategories?: string[]; count?: number
 }
 /** Intent echoed by the server: the input fields plus a plain-language description. */

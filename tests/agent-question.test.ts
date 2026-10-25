@@ -21,3 +21,10 @@ test('nothing usable gives an empty answer', () => {
   assert.equal(answerText(options, [5, -1, 1.5], '', false), '')
   assert.equal(answerText([{ label: '  ' }, { label: '好' }], [0, 1], '', true), '好')
 })
+
+test('garment choice sends its stable id, and generic value survives independently of label', () => {
+  const id = '11111111-1111-4111-8111-111111111111'
+  assert.equal(answerText([{ label: '白色运动鞋', garmentId: id }, { label: '去看看', value: 'view' }], [0]), `白色运动鞋（garmentId: ${id}）`)
+  assert.equal(answerText([{ label: '去看看', value: 'view' }], [0]), '去看看（value: view）')
+  assert.equal(answerText([{ label: '白色运动鞋', garmentId: id }], [0], '重新找'), '重新找')
+})

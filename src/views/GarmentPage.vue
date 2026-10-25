@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { isOverallCategory } from '../domain/outfit'
 import FloatingPager from '../components/FloatingPager.vue'
 import GarmentProcessingStatus from '../components/GarmentProcessingStatus.vue'
 import { createUuid } from '../domain/id'
@@ -45,7 +46,9 @@ const layeringFields = ['fit', 'thickness', 'wearingModes']
 const confirmLayering = ref(false)
 const layeringVerified = computed(() => layeringFields.every(key => (garment.value?.overrides[key] || []).length && JSON.stringify(values[key] || []) === JSON.stringify(garment.value?.overrides[key] || [])))
 const fields = Object.keys(fieldLabels) as (keyof typeof fieldLabels)[]
-const dirty = computed(() => Boolean(baseline.value && (confirmLayering.value || resetFields.value.length || selectedAssetId.value !== baseline.value.displayAssetId || fields.some(key => JSON.stringify(values[key] || []) !== JSON.stringify(baseline.value?.[key] || [])))))
+const canWearAlone = ref<string[]>([])
+const overall = computed(() => isOverallCategory(values.category || []))
+const dirty = computed(() => Boolean(baseline.value && (JSON.stringify(canWearAlone.value) !== JSON.stringify(baseline.value.overrides.canWearAlone || []) || confirmLayering.value || resetFields.value.length || selectedAssetId.value !== baseline.value.displayAssetId || fields.some(key => JSON.stringify(values[key] || []) !== JSON.stringify(baseline.value?.[key] || [])))))
 const title = computed(() => garment.value?.name || (garment.value?.category[0] ? `${garment.value.primaryColor[0] || ''}${garment.value.category[0]}` : '新上传衣物'))
 const processing = computed(() => isProcessing(task.value?.status) || isProcessing(garment.value?.taskStatus) || isProcessing(imageTask.value?.status))
 const currentTasks = computed(() => orderedTasks(task.value, imageTask.value))
@@ -145,13 +148,14 @@ const displayIsAi = computed(() => Boolean(garment.value?.images.find(image => i
 const toolsLocked = computed(() => processing.value || dirty.value || Boolean(busy.value) || usingMocks || garment.value?.status === 'TRASHED')
 function moreAction({ key }: { key: string | number }) { if (key === 'history') openPanel('history'); else if (key === 'compare') originalOpen.value = true; else if (key === 'trash') remove() }
 function fieldValue(key: string) { return (values[key] || []).join('、') || '未知' }
-let editorSnapshot: { values: Record<string, string[]>; image: string; resets: string[]; layering: boolean } | undefined
+let editorSnapshot: { values: Record<string, string[]>; image: string; resets: string[]; layering: boolean; canWearAlone: string[] } | undefined
 function openPanel(next: typeof panel.value) {
-  editorSnapshot = { values: Object.fromEntries(Object.entries(values).map(([key, value]) => [key, [...value]])), image: selectedAssetId.value, resets: [...resetFields.value], layering: confirmLayering.value }
+  editorSnapshot = { values: Object.fromEntries(Object.entries(values).map(([key, value]) => [key, [...value]])), image: selectedAssetId.value, resets: [...resetFields.value], layering: confirmLayering.value, canWearAlone: [...canWearAlone.value] }
   panel.value = next; advanced.value = ''; window.scrollTo({ top: 0, behavior: 'instant' })
 }
 function returnResult(cancelEdits = false) {
   if (cancelEdits && editorSnapshot) {
+    canWearAlone.value = [...editorSnapshot.canWearAlone]
     for (const key of fields) values[key] = [...(editorSnapshot.values[key] || [])]
     selectedAssetId.value = editorSnapshot.image; resetFields.value = [...editorSnapshot.resets]; confirmLayering.value = editorSnapshot.layering
   }
@@ -183,6 +187,7 @@ onBeforeRouteLeave(() => {
 let timer = 0; let elapsedTimer = 0; let alive = false; let pollDelay = 2000; let generation = 0
 function syncForm(record: Garment) {
   confirmLayering.value = false
+  canWearAlone.value = [...(record.overrides.canWearAlone || [])]
   baseline.value = structuredClone(toRaw(record)); selectedAssetId.value = record.displayAssetId; resetFields.value = []
   for (const key of fields) values[key] = [...(record[key] || [])]
 }
@@ -236,7 +241,7 @@ function schedulePoll() {
   if (!alive || (!processing.value && !connectionError.value)) return
   timer = window.setTimeout(async () => { await load(); schedulePoll() }, pollDelay)
 }
-function patchFromForm() { const patch = metadataPatch(schema.value, values, baseline.value || {}, resetFields.value); if (confirmLayering.value) for (const key of layeringFields) patch[key] = [...(values[key] || [])]; return patch }
+function patchFromForm() { const patch = metadataPatch(schema.value, values, baseline.value || {}, resetFields.value); if (JSON.stringify(canWearAlone.value) !== JSON.stringify(baseline.value?.overrides.canWearAlone || [])) patch.canWearAlone = [...canWearAlone.value]; if (confirmLayering.value) for (const key of layeringFields) patch[key] = [...(values[key] || [])]; return patch }
 function editField(key: string, next: string[]) { if (layeringFields.includes(key)) confirmLayering.value = false; values[key] = next; resetFields.value = resetFields.value.filter(field => field !== key) }
 function restoreAutomatic(key: string) { if (layeringFields.includes(key)) confirmLayering.value = false; if (!resetFields.value.includes(key)) resetFields.value.push(key); values[key] = [...(garment.value?.automatic[key] || [])] }
 async function save(confirming = false, originalFallback = false) {
@@ -279,14 +284,16 @@ function reconcile() {
   modal.confirm({ title: '核对当前服务端版本', content: '保留你修改过的字段，更新未修改的字段。请核对服务端当前值后再主动保存。', okText: '保留输入并核对', cancelText: '返回编辑', onOk: async () => {
     const previous = baseline.value
     const input = Object.fromEntries(Object.entries(values).map(([key, value]) => [key, [...value]]))
-    const image = selectedAssetId.value; const resets = [...resetFields.value]
+    const image = selectedAssetId.value; const resets = [...resetFields.value]; const alone = [...canWearAlone.value]
     await load()
     if (!garment.value || !previous || connectionError.value) return
     Object.assign(values, rebaseMetadata(schema.value, input, previous, garment.value))
+    canWearAlone.value = JSON.stringify(alone) === JSON.stringify(previous.overrides.canWearAlone || []) ? [...(garment.value.overrides.canWearAlone || [])] : alone
     selectedAssetId.value = image === previous.displayAssetId ? garment.value.displayAssetId : image
     resetFields.value = resets
     for (const key of resets) values[key] = [...(garment.value.automatic[key] || [])]
     if (editorSnapshot) {
+      if (JSON.stringify(editorSnapshot.canWearAlone) === JSON.stringify(previous.overrides.canWearAlone || [])) editorSnapshot.canWearAlone = [...(garment.value.overrides.canWearAlone || [])]
       editorSnapshot.values = rebaseMetadata(schema.value, editorSnapshot.values, previous, garment.value)
       if (editorSnapshot.image === previous.displayAssetId) editorSnapshot.image = garment.value.displayAssetId
       for (const key of editorSnapshot.resets) editorSnapshot.values[key] = [...(garment.value.automatic[key] || [])]
@@ -385,6 +392,7 @@ async function replacePresetPhoto(file: File) {
             <div class="section-heading"><h2>衣物基本信息</h2><a-tag>按需修改</a-tag></div>
             <GarmentMetadataFields :schema="basicSchema" :values="values" :garment="garment" :reset-fields="resetFields" :disabled="processing && !quickIntakeId || Boolean(busy) || garment.status === 'TRASHED'" @edit="editField" @restore="restoreAutomatic" />
             <div class="section-heading section-divider"><h2>穿着建议</h2><a-popover title="根据实物核对" :trigger="['hover', 'click']"><template #content><p class="help-copy">照片不能保证实际版型、厚薄和叠穿用途。不确定可留空，资料不足不会自动推断为适合叠穿。</p></template><a-button type="text" aria-label="穿着建议说明"><InfoCircleOutlined /></a-button></a-popover></div>
+            <div v-if="overall" class="section-heading"><div><label for="overall-alone">可单穿</label><p class="quiet-copy">按实物确认后，推荐时可以不加上装内搭。</p></div><a-switch id="overall-alone" :checked="canWearAlone.includes('yes')" :disabled="processing && !quickIntakeId || Boolean(busy) || garment.status === 'TRASHED'" @change="canWearAlone = [$event ? 'yes' : 'no']" /></div>
             <GarmentMetadataFields :schema="layeringSchema" :values="values" :garment="garment" :reset-fields="resetFields" :disabled="processing && !quickIntakeId || Boolean(busy) || garment.status === 'TRASHED'" @edit="editField" @restore="restoreAutomatic" />
             <a-checkbox :checked="confirmLayering || layeringVerified" :disabled="processing && !quickIntakeId || Boolean(busy) || garment.status === 'TRASHED' || !layeringFields.every(key => values[key]?.length) || layeringVerified" @update:checked="confirmLayering=Boolean($event)">我已根据实物核对这些穿着建议</a-checkbox>
             <div class="advanced-actions section-divider"><a-button @click="advanced='appearance'"><SettingOutlined /> 更多外观资料</a-button><a-button @click="advanced='labels'">品牌、尺码与其他标签</a-button></div>

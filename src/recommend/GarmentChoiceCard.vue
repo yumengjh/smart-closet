@@ -29,7 +29,7 @@ function sendPreference(event?: KeyboardEvent) {
 }
 function choose(index: number) {
   const c = props.payload.candidates?.[index]; if (!c || sent.value) return
-  chosen.value = c.garmentIds[0]; send(`选第 ${index + 1} 件「${c.name}」`)
+  chosen.value = c.garmentIds[0]; send(`选第 ${index + 1} 件「${c.name}」（garmentId: ${c.garmentIds[0]}）`)
 }
 async function pick(id: string) {
   if (sent.value) return
