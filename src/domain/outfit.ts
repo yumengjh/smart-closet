@@ -81,6 +81,13 @@ export const outfitRoleOptions: OutfitRoleOption[] = [
   { value: 'BAG', label: '包' }, { value: 'ACCESSORY', label: '配饰' }, { value: 'OTHER', label: '其他' },
 ]
 
+export function isOverallCategory(categories: string[]): boolean {
+  const name = categories.join(' ')
+  // Socks and headwear have priority over overalls, as on the server.
+  if (/袜(?![靴鞋])|腿套|\b(socks|tights|stockings|pantyhose)\b|发箍|发夹|发卡|发带|发饰|头花|头饰|头纱|头箍|抓夹|发圈|(?<![A-Za-z])KC(?![A-Za-z])|\b(headband|hair ?clip|hairpin|scrunchie)\b/i.test(name)) return false
+  return /背带裙|背带裤|吊带裤|(?<![A-Za-z])JSK(?![A-Za-z])|\b(pinafore|overalls|jumper ?skirt|dungarees)\b/i.test(categories.join(' '))
+}
+
 export function roleFromGarment(garment: Pick<Garment, 'category'>): OutfitRole {
   const name = garment.category.join(' ').trim()
   if (name === '裙装') return 'OTHER'
@@ -88,7 +95,7 @@ export function roleFromGarment(garment: Pick<Garment, 'category'>): OutfitRole 
   // hand-held objects: a pinafore sits in the one-piece slot over its top, hair accessories on the head, the rest aside.
   if (/袜(?![靴鞋])|腿套|\b(socks|tights|stockings|pantyhose)\b/i.test(name)) return 'ACCESSORY'
   if (/发箍|发夹|发卡|发带|发饰|头花|头饰|头纱|头箍|抓夹|发圈|(?<![A-Za-z])KC(?![A-Za-z])|\b(headband|hair ?clip|hairpin|scrunchie)\b/i.test(name)) return 'HAT'
-  if (/背带裙|背带裤|吊带裤|(?<![A-Za-z])JSK(?![A-Za-z])|\b(pinafore|overalls|jumper ?skirt|dungarees)\b/i.test(name)) return 'ONE_PIECE'
+  if (isOverallCategory(garment.category)) return 'ONE_PIECE'
   if (/连衣裙|背心裙|马甲裙|吊带裙|连体|连身|小黑裙|礼服|婚纱|旗袍|晚装|套装|(?<![A-Za-z])OP(?![A-Za-z])|\b(dress|jumpsuit|romper|gown)\b/i.test(name)) return 'ONE_PIECE'
   if (/马甲|(牛仔|西装|西服|针织|毛衣|毛线|羊毛|羽绒|皮|工装)背心|\b(waistcoat|gilet)\b/i.test(name)) return 'OUTER'
   if (/外套|夹克|西装外套|西装上衣|西服上衣|^西装$|大衣|风衣|羽绒|冲锋衣|罩衫|开衫|\b(coat|jacket|blazer|cardigan|parka)\b/i.test(name)) return 'OUTER'

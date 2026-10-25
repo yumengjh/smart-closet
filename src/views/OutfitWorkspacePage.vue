@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { assertSaveTarget, type SaveChoice } from '../agent/save'
+import { computed, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { App } from 'ant-design-vue'
+import { App, Button } from 'ant-design-vue'
 import { DownOutlined, FolderOutlined, CheckOutlined, EditOutlined, DeleteOutlined, PlusOutlined, FolderOpenOutlined, ExpandOutlined, SaveOutlined, CloseOutlined, ArrowLeftOutlined, AimOutlined, MinusOutlined, AppstoreOutlined, MoreOutlined, DownloadOutlined, InfoCircleOutlined, SoundOutlined, AudioMutedOutlined } from '@ant-design/icons-vue'
 import OutfitPage from './OutfitPage.vue'
 import OutfitThumbnail from '../components/OutfitThumbnail.vue'
@@ -159,21 +160,37 @@ async function writeBoard(board: WorkspaceBoard, overwrite = false, copy = false
   board.outfitId = result.id; board.revision = result.revision; board.scene = normalizeScene(result.scene); board.contentVersion++
   window.dispatchEvent(new Event('closet-outfit-saved')); board.savedSignature = boardSignature(board); board.status = '已保存'; board.error = ''; board.sourceOutfitId = undefined; board.sourceRevision = undefined
 }
-function confirmSave(boards = saveTargets.value) {
+function confirmSave(boards = saveTargets.value, choice?: SaveChoice) {
   editor.value?.flush()
-  const pending = boards.filter(b => !b.locked && b.scene.elements.length && boardSignature(b) !== b.savedSignature)
+  const pending = boards.filter(b => !b.locked && b.scene.elements.length && (choice?.saveMode === 'NEW' || boardSignature(b) !== b.savedSignature))
   if (!pending.length) { message.info('所选组合台已保存、正在操作或仍为空。'); return Promise.resolve() }
   return new Promise<void>((resolve, reject) => {
     const finish = async (overwrite = false) => {
       saving.value = true; const failures: string[] = []
-      try { for (const board of pending) { try { await writeBoard(board, overwrite); checked.value = checked.value.filter(id => id !== board.id) } catch (e) { board.error = e instanceof Error ? e.message : '保存失败'; failures.push(`${board.name}：${board.error}`) } }
+      try { for (const board of pending) { try { await writeBoard(board, overwrite && !!board.sourceOutfitId, choice?.saveMode === 'NEW'); checked.value = checked.value.filter(id => id !== board.id) } catch (e) { board.error = e instanceof Error ? e.message : '保存失败'; failures.push(`${board.name}：${board.error}`) } }
         if (failures.length) { error.value = failures.join('\n'); playSound('error'); message.error(`有 ${failures.length} 块组合台未保存，成功项已保留。`); reject(new Error(error.value)) }
         else { error.value = ''; playSound('success'); message.success(`已保存 ${pending.length} 套搭配。`); resolve() }
       } finally { saving.value = false }
     }
-    if (pending.length === 1 && pending[0].sourceOutfitId && !pending[0].outfitId) {
-      modal.confirm({ title: '如何保存调整后的搭配？', content: '原搭配仍未改变。可以另存一套，或覆盖原搭配；版本冲突时保留草稿。', okText: '另存新搭配', cancelText: '取消', onOk: () => finish(false), onCancel: () => resolve(), footer: undefined })
-      // Overwrite is a separate explicit action in the board toolbar.
+    if (choice?.saveMode && pending.length === 1) { assertSaveTarget(choice, pending[0]); void finish(choice.saveMode === 'OVERWRITE') }
+    else if (pending.length === 1 && pending[0].sourceOutfitId && !pending[0].outfitId) {
+      let decided = false
+      const decide = (overwrite?: boolean) => {
+        if (decided) return
+        decided = true; dialog.destroy()
+        if (overwrite === undefined) resolve()
+        else void finish(overwrite)
+      }
+      const dialog = modal.confirm({
+        title: '如何保存调整后的搭配？', content: '原搭配仍未改变。可以另存一套，或覆盖原搭配；版本冲突时保留草稿。',
+        width: 480, closable: true, keyboard: true, maskClosable: true, autoFocusButton: null,
+        onCancel: () => decide(),
+        footer: () => h('div', { class: 'ant-modal-confirm-btns' }, [
+          h(Button, { onClick: () => decide() }, () => '取消'),
+          h(Button, { onClick: () => decide(true) }, () => '覆盖原搭配'),
+          h(Button, { type: 'primary', onClick: () => decide(false) }, () => '另存新搭配'),
+        ]),
+      })
     } else if (pending.length === 1) void finish(false) // One board: saving is the obvious intent, no extra dialog.
     else modal.confirm({ title: `保存 ${pending.length} 套搭配？`, content: '每块组合台独立保存到账号。部分失败时只需重试失败项；批量保存调整副本时默认另存。', okText: '确认保存', cancelText: '取消', onOk: () => finish(false), onCancel: () => resolve() })
   })
@@ -274,9 +291,9 @@ onMounted(() => {
   if (dedupeOpenOutfits(owner(), wsId.value)) { refreshWorkspaces(); message.info('已合并重复打开的同一套搭配。') }
   void loadRoute().then(async () => { await nextTick(); if (!focus.value) fitOverview() })
   canvasBridge.value = {
-    context: () => { editor.value?.flush(); const board = active.value; const selected = board?.scene.elements.find(e => board.selectedIds.includes(e.elementId || e.garmentId) && e.kind !== 'PERSON_PART'); return { route: route.path, workspaceId: space.value.id, boardId: board?.id, boardCount: space.value.boards.length, contentVersion: board?.contentVersion, outfitId: board?.outfitId, revision: board?.revision, name: board?.name, selectedIds: board?.selectedIds || [], garmentId: selected?.garmentId, scene: board?.scene } },
+    context: () => { editor.value?.flush(); const board = active.value; const selected = board?.scene.elements.find(e => board.selectedIds.includes(e.elementId || e.garmentId) && e.kind !== 'PERSON_PART'); return { route: route.path, workspaceId: space.value.id, boardId: board?.id, boardCount: space.value.boards.length, contentVersion: board?.contentVersion, outfitId: board?.outfitId, sourceOutfitId: board?.sourceOutfitId, sourceRevision: board?.sourceRevision, revision: board?.revision, name: board?.name, selectedIds: board?.selectedIds || [], garmentId: selected?.garmentId, scene: board?.scene } },
     apply: (scene, title) => { const board = active.value; if (!board || board.locked) throw new Error('请先选中可编辑组合台。'); mutateBoard(board, scene); if (title) board.name = title },
-    save: async () => { if (!active.value) throw new Error('请先选中组合台。'); await confirmSave([active.value]) },
+    save: async (choice) => { if (!active.value) throw new Error('请先选中组合台。'); await confirmSave([active.value], choice) },
   }
 })
 onUnmounted(() => { endGlowPreview(); window.removeEventListener('resize', resizeWorkspace); editor.value?.flush(); canvasBridge.value = null })

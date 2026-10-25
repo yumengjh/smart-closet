@@ -210,6 +210,7 @@ async function signOut() {
 .sidebar { transition: width .2s ease, padding .2s ease; }
 .main-area { transition: margin-left .2s ease; }
 @media (min-width: 1024px) {
+  html.assistant-docked .app-frame { padding-right: var(--assistant-dock-width, 0px); }
   .sidebar-edge-toggle.ant-btn { display: inline-flex; }
   .sidebar:hover ~ .sidebar-edge-toggle.ant-btn, .sidebar-edge-toggle.ant-btn:hover, .sidebar-edge-toggle.ant-btn:focus-visible { opacity: 1; }
   .app-frame .sidebar { width: var(--sidebar-w, 224px); }

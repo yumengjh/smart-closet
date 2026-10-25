@@ -34,5 +34,19 @@ const changes = computed(() => {
 })
 async function act(action: string) { busy.value = true; try { current.value = await agentRequest(`/commands/${current.value.id}/${action}`, 'POST', {}); window.dispatchEvent(new Event(isGeneration.value?'closet-render-changed':current.value.kind==='MEMORY_PATCH'?'closet-agent-memory-changed':'closet-garment-changed')); } catch(e) { message.error(String(e)) } finally { busy.value = false } }
 </script>
-<template><div class="assistant-memory-notice" style="display:block"><strong>{{ labels[current.kind] || '平台操作' }}</strong><p>{{ current.parameters.targetLabel || '已选对象' }}</p><dl><template v-for="row in changes" :key="row.label"><dt>{{row.label}}</dt><dd>{{row.value}}</dd></template></dl><img v-if="current.parameters.photoUrl" :src="mediaUrl(current.parameters.photoUrl)" alt="本次参考全身照" class="command-photo" /><a-alert v-for="issue in current.parameters.review?.warnings || []" :key="issue.code" type="warning" :message="issue.message" /><p>{{ statusText }}</p><RouterLink v-if="(isGeneration || current.kind==='GARMENT_WORKFLOW') && current.status==='SUCCEEDED'" to="/tasks">查看任务进度</RouterLink><a-space wrap v-if="current.status === 'PREPARED'"><a-button type="primary" size="small" :loading="busy" @click="act('confirm')">{{ isGeneration?'确认生成单张':'确认操作' }}</a-button><a-button size="small" :disabled="busy" @click="act('cancel')">取消</a-button></a-space><a-button v-else-if="current.canUndo" size="small" :loading="busy" @click="act('undo')">撤销</a-button></div></template>
-<style scoped>.command-photo{max-width:120px;max-height:180px;object-fit:contain}dt{font-size:12px;opacity:.7}dd{margin:4px 0 12px;white-space:pre-wrap;overflow-wrap:anywhere}</style>
+<template>
+  <a-card class="agent-command-card" size="small">
+    <template #title><span class="command-title">{{ labels[current.kind] || '平台操作' }}</span></template>
+    <template #extra><a-tag>{{ statusText }}</a-tag></template>
+    <p class="command-target">{{ current.parameters.targetLabel || '已选对象' }}</p>
+    <a-descriptions :column="1" size="small" :colon="false"><a-descriptions-item v-for="row in changes" :key="row.label" :label="row.label"><span class="command-value">{{ row.value }}</span></a-descriptions-item></a-descriptions>
+    <img v-if="current.parameters.photoUrl" :src="mediaUrl(current.parameters.photoUrl)" alt="本次参考全身照" class="command-photo" />
+    <a-alert v-for="issue in current.parameters.review?.warnings || []" :key="issue.code" type="warning" :message="issue.message" />
+    <RouterLink v-if="(isGeneration || current.kind==='GARMENT_WORKFLOW') && current.status==='SUCCEEDED'" to="/tasks">查看任务进度</RouterLink>
+    <a-space wrap v-if="current.status === 'PREPARED'" class="command-actions"><a-button type="primary" size="small" :loading="busy" @click="act('confirm')">{{ isGeneration?'确认生成单张':'确认操作' }}</a-button><a-button size="small" :disabled="busy" @click="act('cancel')">取消</a-button></a-space>
+    <a-button v-else-if="current.canUndo" class="command-actions" size="small" :loading="busy" @click="act('undo')">撤销</a-button>
+  </a-card>
+</template>
+<style scoped>
+.agent-command-card{min-width:0;background:var(--surface);border-color:var(--line)}.agent-command-card :deep(.ant-card-head-wrapper){flex-wrap:wrap;gap:8px}.agent-command-card :deep(.ant-card-head-title){white-space:normal}.agent-command-card :deep(.ant-card-extra){margin-inline-start:0}.agent-command-card :deep(.ant-tag){white-space:normal;margin:0}.command-title{font-size:14px;font-weight:600}.command-target{color:var(--muted-copy);margin:0 0 12px;font-size:13px}.command-value{white-space:pre-wrap;overflow-wrap:anywhere;min-width:0}.command-actions{margin-top:12px}.command-photo{max-width:120px;max-height:180px;object-fit:contain}
+</style>

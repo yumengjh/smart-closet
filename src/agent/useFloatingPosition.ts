@@ -1,4 +1,5 @@
 import { computed, onMounted, onUnmounted, ref, watch, type Ref } from 'vue'
+import { clampPosition } from './assistantLayout'
 
 // Store viewport-relative positions so a resize never strands a floating control.
 // With `snap`, a released control settles against the nearer side edge, like a docked companion.
@@ -9,7 +10,7 @@ export function useFloatingPosition(key: Ref<string>, size: Ref<{ width: number;
   let origin: { pointer: number; x: number; y: number; left: number; top: number } | undefined
   let suppressClick = false
   const bounds = computed(() => ({ x: Math.max(8, viewport.value.width - size.value.width - 8), y: Math.max(8, viewport.value.height - size.value.height - 8) }))
-  const coordinates = computed(() => ({ x: Math.max(8, Math.min(bounds.value.x, position.value?.x ?? viewport.value.width - size.value.width - 24)), y: Math.max(8, Math.min(bounds.value.y, position.value?.y ?? viewport.value.height - size.value.height - bottom())) }))
+  const coordinates = computed(() => clampPosition({ x: position.value?.x ?? viewport.value.width - size.value.width - 24, y: position.value?.y ?? viewport.value.height - size.value.height - bottom() }, viewport.value, size.value))
   const style = computed(() => ({ left: `${coordinates.value.x}px`, top: `${coordinates.value.y}px` }))
   const side = computed<'left' | 'right'>(() => coordinates.value.x + size.value.width / 2 < viewport.value.width / 2 ? 'left' : 'right')
   const settling = ref(false)
@@ -24,6 +25,7 @@ export function useFloatingPosition(key: Ref<string>, size: Ref<{ width: number;
     try { const value = JSON.parse(localStorage.getItem(key.value) || 'null'); if (Number.isFinite(value?.x) && Number.isFinite(value?.y)) position.value = { x: value.x * bounds.value.x, y: value.y * bounds.value.y } } catch {}
   }
   function persist() { try { localStorage.setItem(key.value, JSON.stringify({ x: coordinates.value.x / bounds.value.x, y: coordinates.value.y / bounds.value.y })) } catch {} }
+  function place(x: number, y: number) { position.value = clampPosition({ x, y }, viewport.value, size.value) }
   function start(event: PointerEvent) {
     if (event.button !== 0 || (event.target as Element).closest('input, a, [data-no-drag]')) return
     origin = { pointer: event.pointerId, x: event.clientX, y: event.clientY, left: coordinates.value.x, top: coordinates.value.y }
@@ -55,5 +57,5 @@ export function useFloatingPosition(key: Ref<string>, size: Ref<{ width: number;
   watch(key, restore)
   onMounted(() => { restore(); window.addEventListener('resize', resize) })
   onUnmounted(() => { clearTimeout(settleTimer); window.removeEventListener('resize', resize) })
-  return { style, side, dragging, settling, start, move, end, clicked, keyboard }
+  return { style, coordinates, place, persist, side, dragging, settling, start, move, end, clicked, keyboard }
 }

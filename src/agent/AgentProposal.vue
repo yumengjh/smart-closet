@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { savePresentation, assertSaveTarget } from './save'
 import { App } from 'ant-design-vue'
 import { useRouter, useRoute } from 'vue-router'
 import OutfitThumbnail from '../components/OutfitThumbnail.vue'
@@ -13,6 +14,9 @@ import RecommendationFeedback from '../recommend/RecommendationFeedback.vue'
 import { recommendApi } from '../recommend/api'
 import GarmentChoiceCard from '../recommend/GarmentChoiceCard.vue'
 import GarmentListCard from '../recommend/GarmentListCard.vue'
+import AgentQuestionCard from './AgentQuestionCard.vue'
+import AgentOutfitListCard from './AgentOutfitListCard.vue'
+import AgentDuplicatePairsCard from './AgentDuplicatePairsCard.vue'
 import RecommendationDetailModal from '../recommend/RecommendationDetailModal.vue'
 import RecommendationGroup from '../recommend/RecommendationGroup.vue'
 import RecommendIntentBar from '../recommend/RecommendIntentBar.vue'
@@ -31,6 +35,7 @@ const isOutfits = computed(() => props.proposal.kind === 'OUTFITS' || props.prop
 const isRecommendation = computed(() => props.proposal.kind === 'RECOMMENDATION')
 // Server-written limits (e.g. paused garments) and user-only notes; shown as-is, never rephrased here.
 const notices = computed(() => isRecommendation.value ? [...(props.proposal.payload.limits ?? []), ...(props.proposal.payload.notes ?? [])] : [])
+const saveCard = computed(() => savePresentation(props.proposal.payload))
 const count = computed(() => props.proposal.payload.candidates?.length || 0)
 const cardTitle = computed(() => isRecommendation.value ? `为你推荐了 ${count.value} 套搭配` : isOutfits.value ? '为你挑了三套搭配' : '画布修改预览')
 const explained = ref<string[]>([])
@@ -80,9 +85,9 @@ async function acceptWear() {
   finally { busy.value = false }
 }
 function confirmApply(index: number, intoCurrent: boolean) {
-  modal.confirm({ title: props.proposal.kind === 'SAVE' ? '确认保存当前搭配？' : intoCurrent ? '确认将预览应用到当前画布？' : '新建一份独立搭配草稿？',
-    content: props.proposal.kind === 'SAVE' ? '保存到账号后可在其他设备继续编辑，版本冲突时不会覆盖。' : '应用后仍是未保存草稿；保存到账号需要你再次确认。',
-    okText: props.proposal.kind === 'SAVE' ? '确认保存' : '确认应用', cancelText: '取消',
+  modal.confirm({ title: props.proposal.kind === 'SAVE' ? saveCard.value.title : intoCurrent ? '确认将预览应用到当前画布？' : '新建一份独立搭配草稿？',
+    content: props.proposal.kind === 'SAVE' ? saveCard.value.summary : '应用后仍是未保存草稿；保存到账号需要你再次确认。',
+    okText: props.proposal.kind === 'SAVE' ? saveCard.value.button : '确认应用', cancelText: '取消',
     async onOk() {
       busy.value = true
       try {
@@ -90,10 +95,11 @@ function confirmApply(index: number, intoCurrent: boolean) {
         if (proposal.kind === 'SAVE' && !canvasBridge.value) throw new Error('请先打开生成建议时的组合台。')
         let scene = scenes.value[index]
         if (isOutfits.value && intoCurrent) scene = await candidateScene(proposal.payload.candidates![index], proposal.context.scene?.elements.filter(e => e.kind === 'PERSON_PART') || [])
+        if (proposal.kind === 'SAVE') assertSaveTarget(proposal.payload, pageContext(route.path))
         // All preview work succeeds before the one-time confirmation token is consumed.
         await agentRequest(`/proposals/${proposal.id}/accept`, 'POST', { context: pageContext(route.path), current: intoCurrent })
         used.value = true
-        if (proposal.kind === 'SAVE') await canvasBridge.value!.save()
+        if (proposal.kind === 'SAVE') await canvasBridge.value!.save(proposal.payload)
         else if (intoCurrent) canvasBridge.value!.apply(scene, isOutfits.value ? proposal.payload.candidates![index].name : undefined)
         else {
           const name = proposal.payload.candidates![index].name
@@ -114,9 +120,22 @@ function confirmApply(index: number, intoCurrent: boolean) {
   <section class="agent-proposal" aria-label="待确认操作">
     <GarmentChoiceCard v-if="proposal.kind === 'GARMENT_CHOICE'" :payload="proposal.payload" />
     <GarmentListCard v-else-if="proposal.kind === 'GARMENT_LIST'" :payload="proposal.payload" />
+    <AgentQuestionCard v-else-if="proposal.kind === 'QUESTION'" :proposal="proposal" />
+    <AgentOutfitListCard v-else-if="proposal.kind === 'OUTFIT_LIST'" :payload="proposal.payload" @applied="emit('applied')" />
+    <AgentDuplicatePairsCard v-else-if="proposal.kind === 'DUPLICATE_PAIRS'" :payload="proposal.payload" @applied="emit('applied')" />
     <div v-else-if="simple" class="agent-save-card"><div><strong>{{ simple.title(simpleNames) }}</strong><small>{{ used ? simple.done : simple.hint }}</small></div><a-button size="small" type="primary" :disabled="used || busy" :loading="busy" @click="acceptWear">{{ simple.button }}</a-button></div>
     <template v-else-if="proposal.kind !== 'SAVE'">
-      <a-button class="agent-proposal-card" block @click="openPreview" :aria-label="isOutfits ? `查看${count}套推荐搭配` : '查看画布修改预览'">
+      <!-- Outfit suggestions show every outfit side by side, large enough to tell them apart (#107 follow-up). -->
+      <a-button v-if="isOutfits" class="agent-proposal-card outfits" block @click="openPreview" :aria-label="`查看${count}套推荐搭配`">
+        <div class="agent-proposal-head"><div class="agent-proposal-copy"><strong>{{ cardTitle }}</strong><small v-if="isRecommendation && proposal.payload.intent">{{ proposal.payload.intent }}</small></div><span class="agent-proposal-more">{{ used ? '已处理 · 查看' : '看依据' }}<RightOutlined /></span></div>
+        <div class="agent-proposal-outfits">
+          <figure v-for="(candidate, index) in proposal.payload.candidates" :key="index">
+            <OutfitThumbnail v-if="scenes[index]" :scene="scenes[index]" :title="candidate.name" :resolution="240" /><span v-else class="agent-proposal-placeholder" />
+            <figcaption><span :title="candidate.name">{{ candidate.name }}</span><b v-if="candidate.recommendation">{{ Math.round(candidate.recommendation.score) }}</b></figcaption>
+          </figure>
+        </div>
+      </a-button>
+      <a-button v-else class="agent-proposal-card" block @click="openPreview" aria-label="查看画布修改预览">
         <div class="agent-proposal-minis"><OutfitThumbnail v-for="(scene, index) in scenes" :key="index" :scene="scene" :title="isOutfits ? proposal.payload.candidates![index].name : '修改后画布'" /><ExpandOutlined v-if="!scenes.length" /></div>
         <div class="agent-proposal-copy"><strong>{{ cardTitle }}</strong><small v-if="isRecommendation && proposal.payload.intent">{{ proposal.payload.intent }}</small><small>{{ used ? '已处理 · 点击查看' : isRecommendation ? '点开查看搭配和打分依据' : '点开大图，再选择怎么应用' }}</small></div><RightOutlined />
       </a-button>
@@ -147,6 +166,6 @@ function confirmApply(index: number, intoCurrent: boolean) {
       </a-modal>
       <RecommendationDetailModal v-if="isRecommendation && proposal.payload.runId" v-model:open="detailOpen" v-model:index="detailIndex" :run-id="proposal.payload.runId" :outfits="recommended" :intent="proposal.payload.intent" @replace="replaceOutfit" />
     </template>
-    <div v-else class="agent-save-card"><div><strong>准备保存这份搭配？</strong><small>{{ used ? '已处理' : '确认后保存到你的账号' }}</small></div><a-button size="small" type="primary" :disabled="used || !current || busy" @click="confirmApply(0, true)">确认保存</a-button></div>
+    <div v-else class="agent-save-card"><div><strong>{{ saveCard.title }}</strong><small>{{ used ? '已处理' : saveCard.summary }}</small></div><a-button size="small" type="primary" :disabled="used || !current || busy" @click="confirmApply(0, true)">{{ saveCard.button }}</a-button></div>
   </section>
 </template>

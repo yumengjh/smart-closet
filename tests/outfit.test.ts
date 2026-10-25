@@ -9,6 +9,30 @@ const minimal = (overrides: Partial<OutfitElement> = {}): OutfitElement => ({
   assetUrl: '/private/asset.png', imageWidth: 600, imageHeight: 800, assetKind: 'SEGMENT', ...overrides,
 })
 
+test('plain top, bottom and shoes retain their original layout coordinates', () => {
+  const result = arrangeOutfit({ version: 2, elements: [
+    minimal({ garmentId: 'top', imageWidth: 500, imageHeight: 400 }),
+    minimal({ garmentId: 'bottom', role: 'BOTTOM', imageWidth: 400, imageHeight: 500 }),
+    minimal({ garmentId: 'shoes', role: 'SHOES', imageWidth: 240, imageHeight: 120 }),
+  ] })
+  assert.deepEqual(result.elements.map(({ garmentId, x, y, width, height, zIndex }) => ({ garmentId, x, y, width, height, zIndex })), [
+    { garmentId: 'bottom', x: 540, y: 799, width: 400, height: 500, zIndex: 0 },
+    { garmentId: 'top', x: 540, y: 371, width: 500, height: 400, zIndex: 1 },
+    { garmentId: 'shoes', x: 540, y: 1119, width: 240, height: 120, zIndex: 2 },
+  ])
+})
+
+test('one-piece and shoes retain their original layout coordinates', () => {
+  const result = arrangeOutfit({ version: 2, elements: [
+    minimal({ garmentId: 'dress', role: 'ONE_PIECE', imageWidth: 510, imageHeight: 800 }),
+    minimal({ garmentId: 'shoes', role: 'SHOES', imageWidth: 240, imageHeight: 120 }),
+  ] })
+  assert.deepEqual(result.elements.map(({ garmentId, x, y, width, height, zIndex }) => ({ garmentId, x, y, width, height, zIndex })), [
+    { garmentId: 'dress', x: 540, y: 610, width: 510, height: 800, zIndex: 0 },
+    { garmentId: 'shoes', x: 540, y: 1080, width: 240, height: 120, zIndex: 1 },
+  ])
+})
+
 test('drop coordinates follow the displayed canvas including its scroll offset and zoom', () => {
   const bounds = { left: 275, top: 190, width: 432, height: 540 }
   assert.deepEqual(outfitDropPosition(491, 460, bounds), { x: 540, y: 675 })
@@ -47,13 +71,65 @@ test('maps familiar and open category names to editable outfit roles', () => {
   ] as const) assert.equal(roleFromGarment({ category: [category] }), role, category)
 })
 
-test('a pinafore is painted over its top and overlaps it', () => {
-  const scene: OutfitScene = { version: 2, elements: [minimal({ garmentId: 'jsk', role: 'ONE_PIECE' }), minimal({ garmentId: 'blouse', role: 'TOP', zIndex: 1 })] }
+const intersectionWidth = (a: OutfitElement, b: OutfitElement) => Math.max(0, Math.min(a.x + a.width / 2, b.x + b.width / 2) - Math.max(a.x - a.width / 2, b.x - b.width / 2))
+const intersectionArea = (a: OutfitElement, b: OutfitElement) => intersectionWidth(a, b) * Math.max(0, Math.min(a.y + a.height / 2, b.y + b.height / 2) - Math.max(a.y - a.height / 2, b.y - b.height / 2))
+function assertInsideCanvas(item: OutfitElement) {
+  assert.ok(item.x - item.width / 2 >= 16 - 1e-9)
+  assert.ok(item.x + item.width / 2 <= 1064 + 1e-9)
+  assert.ok(item.y - item.height / 2 >= 16 - 1e-9)
+  assert.ok(item.y + item.height / 2 <= 1334 + 1e-9)
+}
+
+test('overalls and tops lie side by side inside the canvas, with shoes centered below', () => {
+  for (const category of ['背带裤', '牛仔背带裤', '背带裙', '洛丽塔JSK', 'overalls']) {
+    for (const topRatio of [.15, .3, .75, 1, 2, 5]) for (const overallRatio of [.15, .3, .75, 1, 2, 5]) {
+      const role = roleFromGarment({ category: [category] })
+      assert.equal(role, 'ONE_PIECE', 'board roles retain the existing API contract')
+      const scene: OutfitScene = { version: 2, elements: [
+        minimal({ garmentId: 'overall', role, imageWidth: 600, imageHeight: 600 / overallRatio }),
+        minimal({ garmentId: 'top', zIndex: 1, imageWidth: 600, imageHeight: 600 / topRatio }),
+        minimal({ garmentId: 'shoes', role: 'SHOES', imageWidth: 240, imageHeight: 120 }),
+      ] }
+      const before = structuredClone(scene)
+      const arranged = arrangeOutfit(scene).elements
+      const [top, overall, shoes] = arranged
+      assert.deepEqual(arranged.map(item => item.garmentId), ['top', 'overall', 'shoes'])
+      assert.ok(top.x + top.width / 2 < overall.x - overall.width / 2)
+      assert.equal(intersectionArea(top, overall), 0)
+      assert.ok(Math.abs(top.width / overall.width - 500 / 510) < 1e-9, 'comparable widths')
+      assert.equal(shoes.x, 540)
+      assert.ok(shoes.y - shoes.height / 2 > Math.max(top.y + top.height / 2, overall.y + overall.height / 2))
+      for (const item of arranged) assertInsideCanvas(item)
+      assert.deepEqual(scene, before)
+    }
+  }
+})
+
+test('lower pieces never overlap more than fifteen percent of the top area', () => {
+  for (const lowerRole of ['BOTTOM', 'ONE_PIECE'] as const) {
+    for (const topRatio of [.15, .75, 1, 5]) for (const lowerRatio of [.15, .75, 1, 5]) {
+      const arranged = arrangeOutfit({ version: 2, elements: [
+        minimal({ garmentId: 'top', imageWidth: 500, imageHeight: 500 / topRatio }),
+        minimal({ garmentId: 'lower', role: lowerRole, imageWidth: 400, imageHeight: 400 / lowerRatio }),
+      ] }).elements
+      const top = arranged.find(item => item.garmentId === 'top')!, lower = arranged.find(item => item.garmentId === 'lower')!
+      assert.ok(intersectionArea(top, lower) <= .15 * top.width * top.height + 1e-9)
+    }
+  }
+})
+
+test('flat lays retain cropped aspect ratios, accessory slots and person-part geometry', () => {
+  const person = minimal({ garmentId: 'person', kind: 'PERSON_PART', x: 700, y: 800, rotation: 15, freeStretch: true })
+  const scene: OutfitScene = { version: 2, elements: [
+    person, minimal({ garmentId: 'top', cropWidth: .6, cropHeight: .8 }),
+    minimal({ garmentId: 'overall', role: roleFromGarment({ category: ['背带裙'] }) }),
+    minimal({ garmentId: 'bag', role: 'BAG' }), minimal({ garmentId: 'scarf', role: 'ACCESSORY' }),
+  ] }
   const arranged = arrangeOutfit(scene).elements
-  assert.deepEqual(arranged.map(item => item.garmentId), ['blouse', 'jsk'])
-  const [blouse, jsk] = arranged
-  assert.ok(jsk.y - jsk.height / 2 < blouse.y + blouse.height / 2, 'pinafore starts inside the top')
-  assert.ok(jsk.y > blouse.y, 'pinafore hangs below the top')
+  const top = arranged.find(item => item.garmentId === 'top')!
+  assert.ok(Math.abs(top.width / top.height - 600 * .6 / (800 * .8)) < 1e-9)
+  assert.deepEqual(arranged[0], { ...person, elementId: 'person', flipX: false })
+  assert.deepEqual(arranged.filter(item => ['bag', 'scarf'].includes(item.garmentId)).map(({ x, y }) => [x, y]), [[190, 350], [875, 350]])
 })
 
 test('AI layouts keep outerwear above tops and dresses regardless of selection order', () => {
@@ -172,8 +248,31 @@ test('collage layout exposes the body beside outerwear instead of covering it', 
       const result = arrangeOutfit(input)
       const body = result.elements.find(e => e.garmentId === 'body')!, outer = result.elements.find(e => e.garmentId === 'outer')!
       assert.ok(body.x + body.width / 2 + 16 <= outer.x - outer.width / 2)
+      assert.ok(1 - intersectionWidth(body, outer) / body.width >= .45, 'at least 45% of inner width stays uncovered')
+      assert.ok(outer.zIndex > body.zIndex)
       for (const item of result.elements) { assert.ok(item.x - item.width / 2 >= 16); assert.ok(item.x + item.width / 2 <= 1064); assert.ok(item.y + item.height / 2 <= 1334) }
       assert.equal(input.elements[0]!.width, 600)
     }
   }
+})
+
+test('outerwear stays beside both garments when a top is paired with overalls', () => {
+  for (const ratio of [.15, .75, 5]) {
+    const arranged = arrangeOutfit({ version: 2, elements: [
+      minimal({ garmentId: 'outer', role: 'OUTER', imageWidth: 600, imageHeight: 600 / ratio }),
+      minimal({ garmentId: 'top' }), minimal({ garmentId: 'overall', role: 'ONE_PIECE' }),
+    ] }).elements
+    const outer = arranged.find(item => item.role === 'OUTER')!
+    for (const inner of arranged.filter(item => item !== outer)) {
+      assert.ok(1 - intersectionWidth(inner, outer) / inner.width >= .45)
+      assert.ok(outer.zIndex > inner.zIndex)
+    }
+    for (const item of arranged) assertInsideCanvas(item)
+  }
+})
+
+test('overall switch classification follows the server priority without changing the collage role', async () => {
+  const { isOverallCategory } = await import('../src/domain/outfit.ts')
+  for (const word of ['背带裙', '牛仔背带裤', 'JSK', 'overalls']) assert.ok(isOverallCategory([word]))
+  for (const word of ['连衣裙', '衬衫', '背带裙配套袜', '背带裙配套发夹']) assert.ok(!isOverallCategory([word]))
 })
