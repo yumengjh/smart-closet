@@ -5,6 +5,7 @@ import { App, Empty } from 'ant-design-vue'
 import { ReloadOutlined, UserOutlined } from '@ant-design/icons-vue'
 import { closetApi } from '../services/api'
 import { mediaUrl } from '../services/urls'
+import AiBadge from '../components/AiBadge.vue'
 import { platformRequest, PlatformRequestError, type RenderSubmission, type Baseline, type Capability, type RenderJob, type Review, type PoseCatalog, type PoseChoice } from '../services/platform'
 import type { Outfit } from '../domain/outfit'
 import { createUuid } from '../domain/id'
@@ -240,7 +241,8 @@ onUnmounted(() => clearInterval(timer))
     <div v-else class="ootd-results">
       <article v-for="job in jobs" :key="job.id" class="ootd-result">
         <button type="button" class="ootd-result-media" :class="{ pending: !job.mediaUrl }" :aria-label="job.mediaUrl ? '查看大图' : `${adviceFor(job).label}，查看详情`" @click="openJob(job)">
-          <img v-if="job.mediaUrl" :src="mediaUrl(job.mediaUrl)" alt="OOTD 生成结果" loading="lazy" />
+          <img v-if="job.mediaUrl" :src="mediaUrl(job.mediaUrl)" alt="OOTD 生成结果（AI 生成）" loading="lazy" />
+          <AiBadge v-if="job.mediaUrl" />
           <span v-else class="ootd-result-state" :class="[adviceFor(job).tone, { busy: adviceFor(job).tone === 'running' }]">{{ adviceFor(job).label }}<small v-if="adviceFor(job).canRetry">点开查看</small></span>
           <span v-if="job.summary?.kind === 'ADJUST'" class="ootd-result-flag">身材调整</span>
         </button>
@@ -277,7 +279,7 @@ onUnmounted(() => clearInterval(timer))
     <template v-if="preparation">
       <a-alert v-if="error" type="error" :message="error" show-icon role="status" aria-live="polite" style="margin-bottom:12px" />
       <div class="confirm-summary">
-        <img v-if="person?.mediaUrl" :src="mediaUrl(person.mediaUrl)" :alt="person ? modelLabel(person) : '模特'" />
+        <span v-if="person?.mediaUrl" class="confirm-photo"><img :src="mediaUrl(person.mediaUrl)" :alt="person ? modelLabel(person) : '模特'" /><AiBadge small /></span>
         <dl>
           <dt>模特</dt><dd>{{ person ? modelLabel(person) : '' }}</dd>
           <dt>动作</dt><dd>{{ preparation.pose?.name || '自动' }}</dd>
@@ -344,6 +346,7 @@ onUnmounted(() => clearInterval(timer))
 .ootd-result-error { margin: 0; font-size: 12px; color: var(--danger); overflow-wrap: anywhere; }
 .ootd-result-actions { display: flex; gap: var(--space-2); }
 .confirm-summary { display: flex; gap: var(--space-4); align-items: flex-start; }
+.confirm-photo { position: relative; flex-shrink: 0; display: block; width: 84px; height: 126px; }
 .confirm-summary img { flex-shrink: 0; width: 84px; height: 126px; border-radius: var(--radius-md); object-fit: cover; object-position: top; background: var(--surface-alt); }
 .confirm-summary dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; margin: 0; font-size: 13px; }
 .confirm-summary dt { color: var(--muted-copy); }

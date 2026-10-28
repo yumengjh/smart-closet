@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { App } from 'ant-design-vue'
 import { platformRequest, PlatformRequestError, type RenderJob, type RenderSubmission, type Profile, type ProfileSnapshot, type Baseline, type Capability } from '../../services/platform'
 import { mediaUrl } from '../../services/urls'
+import AiBadge from '../../components/AiBadge.vue'
 import { createUuid } from '../../domain/id'
 import { modelLabel } from '../../ootd/labels'
 import { useProcessingStore } from '../../stores/processing'
@@ -162,7 +163,7 @@ onUnmounted(()=>{clearInterval(timer);if(photoPreview.value)URL.revokeObjectURL(
       <a-empty v-if="!baselines.length" description="还没有模特，生成后在这里确认" />
       <div v-else class="baseline-list">
         <article v-for="b in baselines" :key="b.id" class="baseline-card" :class="{ 'is-default': b.currentDefault }">
-          <div class="baseline-media"><img v-if="b.mediaUrl" :src="mediaUrl(b.mediaUrl)" :alt="modelLabel(b)" /></div>
+          <div class="baseline-media"><img v-if="b.mediaUrl" :src="mediaUrl(b.mediaUrl)" :alt="modelLabel(b)" /><AiBadge v-if="b.mediaUrl" /></div>
           <div class="baseline-body">
             <strong class="baseline-name">{{ modelLabel(b) }}</strong>
             <div class="baseline-meta">
@@ -199,7 +200,7 @@ onUnmounted(()=>{clearInterval(timer);if(photoPreview.value)URL.revokeObjectURL(
 .baseline-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: var(--space-4); margin-top: var(--space-5); }
 .baseline-card { display: flex; flex-direction: column; min-width: 0; overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
 .baseline-card.is-default { border-color: var(--success-line); box-shadow: 0 0 0 1px var(--success-line); }
-.baseline-media { height: 240px; overflow: hidden; background: var(--surface-alt); }
+.baseline-media { position: relative; height: 240px; overflow: hidden; background: var(--surface-alt); }
 .baseline-media img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .baseline-body { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); }
 .baseline-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; }

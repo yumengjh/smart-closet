@@ -17,7 +17,7 @@ const parts = computed(() => (loose.value === 'loose' ? props.catalog?.sets.flat
       <a-segmented v-model:value="loose" block :options="[{ label: '角色套装', value: 'sets' }, { label: '零散部位', value: 'loose' }]" />
       <a-select v-if="loose === 'sets'" v-model:value="selectedSet" aria-label="人物套装" :options="catalog.sets.map(set => ({ value: set.id, label: set.label }))" />
       <a-input v-model:value="search" allow-clear placeholder="搜索人物部位" aria-label="搜索人物部位" />
-      <p class="outfit-panel-description">逐件{{ mobile ? '点选' : '点选或拖入' }}，每张贴纸都能自由调整和重复添加。</p>
+      <p class="outfit-panel-description">逐件{{ mobile ? '点选' : '点选或拖入' }}，每张贴纸都能自由调整和重复添加。人物贴纸为 AI 生成素材。</p>
       <div class="outfit-person-grid">
         <button v-for="part in parts" :key="part.id" type="button" class="outfit-person-part" :draggable="!mobile" @click="emit('select', part)" @dragstart="emit('dragstart', $event, part)" @dragend="emit('dragend')">
           <img :src="mediaUrl(part.url)" :alt="part.label" draggable="false" /><span>{{ part.label }}</span>

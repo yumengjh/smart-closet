@@ -19,7 +19,7 @@ test('signed headers carry the scope for the UTC date and the signed header list
 })
 
 test('purge paths default to the site origin and must be directories', () => {
-  assert.deepEqual(purgePaths({ SITE_URL: 'https://yuda.yumg.cn/wardrobe?x=1' }), ['https://yuda.yumg.cn/'])
+  assert.deepEqual(purgePaths({ SITE_URL: 'https://closet.example.com/wardrobe?x=1' }), ['https://closet.example.com/'])
   assert.deepEqual(purgePaths({ CDN_PURGE_PATHS: 'https://a.example/, https://a.example/icons/', SITE_URL: 'https://b.example/' }),
     ['https://a.example/', 'https://a.example/icons/'])
   assert.deepEqual(purgePaths({}), [])

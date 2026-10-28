@@ -139,3 +139,5 @@
 .agent-proposal-outfits .outfit-thumbnail, .agent-proposal-placeholder { display: block; width: 100%; aspect-ratio: 3 / 4; height: auto; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--paper); overflow: hidden; }
 .agent-proposal-outfits figcaption { display: flex; align-items: baseline; gap: 4px; min-width: 0; font-size: 11px; color: var(--muted-strong, var(--muted)); }.agent-proposal-outfits figcaption > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.agent-proposal-outfits figcaption b { flex: none; font-weight: 600; color: var(--accent-strong); }
 
+
+.assistant-ai-note { margin: 2px 0 0; text-align: center; font-size: 10px; color: var(--muted-subtle); }

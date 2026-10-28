@@ -415,6 +415,7 @@ onUnmounted(() => { endResize(); floating.end(); document.documentElement.classL
             <div><SoundToggle /><a-popover v-model:open="optionsOpen" title="本次对话选项" trigger="click" placement="topLeft" overlay-class-name="assistant-options-popover"><a-button type="text" aria-label="助手对话选项" :aria-expanded="optionsOpen"><SettingOutlined /></a-button><template #content><div class="assistant-options"><label>本会话模型</label><a-select :value="session?.model || ''" aria-label="本会话模型" :options="modelOptions" :disabled="!selected || busy" @change="setModel" /><small v-if="!selected">发送消息或新建对话后可设置会话模型。</small><a-checkbox v-if="context.garmentId" v-model:checked="imageConsent" :disabled="busy">发送当前衣物图片到模型（仅本条）</a-checkbox><RouterLink to="/settings" @click="optionsOpen=false;showPage()">设置角色动效与预览 ↗</RouterLink></div></template></a-popover><span v-if="imageConsent" class="assistant-consent-badge">本条已授权</span></div>
             <small>{{ quota ? `今日剩余 ${Math.max(0, quota.limit - quota.used)} 条` : '正在读取额度' }}</small>
           </div>
+          <p class="assistant-ai-note">内容由 AI 生成，请注意甄别</p>
         </footer>
       </aside>
     </Transition>

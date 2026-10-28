@@ -13,7 +13,7 @@ const STYLES = ['都市通勤', '高智极简', '美式休闲', '户外机能', 
 const SEASONS = ['春', '夏', '秋', '冬'].map(value => ({ value, label: value }))
 
 const status = ref<PresetStatus>('DRAFT'); const items = ref<AdminPreset[]>([]); const coverage = ref<PresetCoverage[]>([])
-const loading = ref(false); const busy = ref(''); const error = ref(''); const username = ref('yaopinxin')
+const loading = ref(false); const busy = ref(''); const error = ref(''); const username = ref('demo')
 
 async function load() {
   loading.value = true; error.value = ''
@@ -29,7 +29,7 @@ async function run(key: string, task: () => Promise<unknown>, done: string) {
   catch (e) { playSound('error'); message.error(e instanceof Error ? e.message : '没有成功。') }
   finally { busy.value = '' }
 }
-const importDrafts = () => run('import', () => presetApi.adminImport(username.value.trim() || 'yaopinxin'), '已导入为草稿，核对后上架。')
+const importDrafts = () => run('import', () => presetApi.adminImport(username.value.trim() || 'demo'), '已导入为草稿，核对后上架。')
 const edit = (item: AdminPreset, patch: Parameters<typeof presetApi.adminEdit>[1]) => run(item.id, () => presetApi.adminEdit(item.id, patch), '已保存。')
 const listAll = () => run('list-all', async () => { for (const item of items.value) await presetApi.adminEdit(item.id, { status: 'LISTED' }) }, '已全部上架。')
 
@@ -49,7 +49,7 @@ const groupOf = (item: AdminPreset) => presetGroup(item)
       <h3>导入草稿</h3>
       <p class="muted">从指定账号的已入柜衣物生成草稿。图片只复制一份；可见文字、尺码、洗护、品牌、成分不会带走，穿着记录和反馈也不会。已上架的不会被覆盖。</p>
       <div class="settings-row"><a-input v-model:value="username" :maxlength="80" style="max-width: 220px" placeholder="账号" />
-        <a-popconfirm :title="`从 ${username || 'yaopinxin'} 的衣柜导入草稿？`" ok-text="导入" cancel-text="取消" @confirm="importDrafts"><a-button type="primary" :loading="busy === 'import'">导入草稿</a-button></a-popconfirm></div>
+        <a-popconfirm :title="`从 ${username || 'demo'} 的衣柜导入草稿？`" ok-text="导入" cancel-text="取消" @confirm="importDrafts"><a-button type="primary" :loading="busy === 'import'">导入草稿</a-button></a-popconfirm></div>
     </section>
     <section class="settings-card">
       <div class="presets-head"><h3>预设衣物</h3><a-segmented v-model:value="status" :options="STATUS" @change="load" />
