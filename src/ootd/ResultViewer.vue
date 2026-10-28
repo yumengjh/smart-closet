@@ -6,6 +6,7 @@ import { platformRequest, PlatformRequestError, type BodyAdjustments, type Rende
 import { mediaUrl } from '../services/urls'
 import { createUuid } from '../domain/id'
 import { BODY_DIMENSIONS, describeAdjustments } from './body-adjust'
+import AiBadge from '../components/AiBadge.vue'
 
 const props = defineProps<{ job: RenderJob | null; canAdjust: boolean }>()
 const emit = defineEmits<{ close: []; changed: []; submitted: [RenderJob]; remove: [RenderJob] }>()
@@ -48,7 +49,7 @@ async function saveFeedback() {
 <template>
   <a-modal :open="!!job" :footer="null" width="min(920px, 96vw)" class="result-viewer" :title="null" @cancel="emit('close')">
     <div v-if="job" class="viewer">
-      <div class="viewer-media"><img v-if="job.mediaUrl" :src="mediaUrl(job.mediaUrl)" alt="OOTD 生成结果大图" /></div>
+      <div class="viewer-media"><span v-if="job.mediaUrl" class="viewer-frame"><img :src="mediaUrl(job.mediaUrl)" alt="OOTD 生成结果大图（AI 生成）" /><AiBadge /></span></div>
       <div class="viewer-side">
         <div class="viewer-meta">
           <a-tag v-if="job.summary?.kind === 'ADJUST'" color="purple">身材调整</a-tag>
@@ -61,7 +62,7 @@ async function saveFeedback() {
         <template v-if="!adjusting">
           <div class="viewer-actions">
             <a-button v-if="canAdjust" type="primary" block @click="adjusting = true"><ColumnWidthOutlined /> 调节身材</a-button>
-            <a-button v-if="job.mediaUrl" block :href="mediaUrl(job.mediaUrl)" :download="`ootd-${job.id.slice(0, 8)}.png`"><DownloadOutlined /> 保存图片</a-button>
+            <a-button v-if="job.mediaUrl" block :href="mediaUrl(job.mediaUrl) + '?download=1'" :download="`ootd-${job.id.slice(0, 8)}.png`"><DownloadOutlined /> 保存图片</a-button>
             <div class="viewer-row">
               <a-button block @click="openFeedback"><MessageOutlined /> 反馈</a-button>
               <a-button block danger @click="emit('remove', job)"><DeleteOutlined /> 删除</a-button>
@@ -95,6 +96,7 @@ async function saveFeedback() {
 <style scoped>
 .viewer { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(260px, 1fr); gap: var(--space-6); }
 .viewer-media { display: grid; place-items: center; min-height: 360px; max-height: 76vh; overflow: hidden; border-radius: var(--radius-lg); background: var(--surface-alt); }
+.viewer-frame { position: relative; display: inline-block; line-height: 0; max-width: 100%; }
 .viewer-media img { display: block; max-width: 100%; max-height: 76vh; object-fit: contain; }
 .viewer-side { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; padding-top: var(--space-5); }
 .viewer-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; color: var(--muted-copy); font-size: 12px; }
