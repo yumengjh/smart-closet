@@ -134,6 +134,13 @@ export type QuotaBucket = { limit: number; used: number; overridden: boolean }
 export type AccountQuota = { image: QuotaBucket; agent: QuotaBucket; resetAtMs: number }
 export type QuotaUpdate = { imageDailyLimit: number | null; agentDailyLimit: number | null }
 export type AccountEvent = { occurredAtMs: number; actor: string; action: string; detail: string | null }
+export type SecurityAuditItem = { id: string; occurredAtMs: number; category: string; source: string; type: string; subject: string; actor: string; result: string | null; detail: string | null }
+export type SecurityAuditPage = { items: SecurityAuditItem[]; total: number; page: number; size: number }
+export type SecurityAuditCatalog = { categories: Record<string, string[]>; retentionDays: number }
+export type SecurityAuditProblem = { day: string; kind: 'ROWS_MODIFIED' | 'CHAIN_BROKEN' | 'DIGEST_ALTERED'; message: string }
+export type SecurityAuditIntegrity = { status: 'INTACT' | 'TAMPERED' | 'EMPTY'; sealedDays: number; verifiedDays: number; expiredDays: number; unsealedDays: number; latestDay: string | null; latestDigest: string | null; problems: SecurityAuditProblem[] }
+export type SecurityAuditExport = { blob: Blob; truncated: boolean; filename: string }
+export type SecurityAuditQuery = { from?: string; to?: string; category?: string; type?: string; username?: string; page: number; size: number }
 export type AdminRegistration = Registration & { activeInviteCount: number }
 export type RegistrationInvite = { id: string; note: string | null; maxUses: number; usedCount: number; createdBy: string; createdAtMs: number; expiresAtMs: number; revokedAtMs: number | null; status: 'ACTIVE' | 'USED_UP' | 'EXPIRED' | 'REVOKED' }
 export type InviteCreate = { note?: string; maxUses: number; expiresInDays: number }
@@ -640,6 +647,33 @@ export const closetApi = {
   async adminUserEvents(username: string): Promise<AccountEvent[]> {
     if (!usingMocks) return request(`/api/admin/users/${encodeURIComponent(username)}/events`)
     await delay(); return readMockAccounts().events[username] || []
+  },
+  async adminSecurityAudit(query: SecurityAuditQuery): Promise<SecurityAuditPage> {
+    if (!usingMocks) { const params = new URLSearchParams(); for (const [key, value] of Object.entries(query)) if (value !== undefined && value !== '') params.set(key, String(value)); return request(`/api/admin/security-audit?${params}`) }
+    await delay()
+    const items = Object.entries(readMockAccounts().events).flatMap(([username, list]) => list.map((event, index) => ({ id: `${username}-${index}`, occurredAtMs: event.occurredAtMs, category: event.action.startsWith('ADMIN_') ? 'ACCOUNT' : 'AUTH', source: 'ACCOUNT_EVENT', type: event.action, subject: username, actor: event.actor, result: null, detail: event.detail })))
+      .filter(item => (!query.category || item.category === query.category) && (!query.type || item.type === query.type) && (!query.username || item.subject === query.username)).sort((a, b) => b.occurredAtMs - a.occurredAtMs)
+    return { items: items.slice((query.page - 1) * query.size, query.page * query.size), total: items.length, page: query.page, size: query.size }
+  },
+  async adminSecurityAuditIntegrity(): Promise<SecurityAuditIntegrity> {
+    if (!usingMocks) return request('/api/admin/security-audit/integrity')
+    await delay(); return { status: 'INTACT', sealedDays: 12, verifiedDays: 12, expiredDays: 0, unsealedDays: 0, latestDay: new Date(Date.now() - 86400000).toISOString().slice(0, 10), latestDigest: '0'.repeat(64), problems: [] }
+  },
+  async adminSecurityAuditExport(query: Omit<SecurityAuditQuery, 'page' | 'size'>): Promise<SecurityAuditExport> {
+    const params = new URLSearchParams(); for (const [key, value] of Object.entries(query)) if (value !== undefined && value !== '') params.set(key, String(value))
+    if (usingMocks) { await delay(); return { blob: new Blob(['\uFEFF时间,分类,事件类型,对象,操作者,结果,详情\r\n'], { type: 'text/csv;charset=UTF-8' }), truncated: false, filename: 'security-audit-demo.csv' } }
+    const response = await fetchWithRetry(apiUrl(`/api/admin/security-audit/export?${params}`), { credentials: 'include' })
+    if (!response.ok) {
+      if (response.status === 401) window.dispatchEvent(new Event('closet-session-expired'))
+      const data = await response.json().catch(() => ({})) as { message?: string }
+      throw new Error(data.message || `导出失败 (${response.status})`)
+    }
+    const name = /filename="([^"]+)"/.exec(response.headers.get('Content-Disposition') || '')?.[1]
+    return { blob: await response.blob(), truncated: response.headers.get('X-Export-Truncated') === 'true', filename: name || 'security-audit.csv' }
+  },
+  async adminSecurityAuditCatalog(): Promise<SecurityAuditCatalog> {
+    if (!usingMocks) return request('/api/admin/security-audit/catalog')
+    return { categories: { AUTH: ['LOGIN_SUCCEEDED', 'LOGIN_FAILED', 'LOGIN_LOCKED'], ACCESS: ['ACCESS_DENIED', 'CSRF_REJECTED'], ACCOUNT: ['ADMIN_USER_CREATED'], INVITE: ['INVITE_CREATED'], ASSISTANT: ['AGENT_COMMAND'], MANAGEMENT: [], MODEL: ['MODEL_CALL', 'MODEL_ATTEMPT'] }, retentionDays: 180 }
   },
   async adminRegistration(): Promise<AdminRegistration> {
     if (!usingMocks) return request('/api/admin/registration')
