@@ -23,7 +23,7 @@ export type Article = { id: string; title: string; markdown: string; href: strin
 export type AgentEvent = { event: string; data: any }
 export type AgentMessage = { id: string; role: string; content: string; status: string; events: AgentEvent[]; requestId?: string | null }
 export type Models = { defaultModel: string; models: string[]; configured: boolean }
-export type Quota = { limit: number; used: number; resetAt: string }
+export type Quota = { limit: number; used: number; resetAt: string; tokenLimit?: number; tokensUsed?: number }
 
 export class AgentRequestError extends Error { constructor(message: string, public status: number) { super(message) } }
 async function response(path: string, init: RequestInit = {}) {

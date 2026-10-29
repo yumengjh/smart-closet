@@ -33,3 +33,14 @@ for (const terminal of ['done', 'error']) {
     assert.deepEqual(events.map(e => e.event), [terminal])
   })
 }
+
+test('a keepalive comment line from the server is ignored and never ends the stream', async () => {
+  const result: StreamEvent[] = []
+  await readAgentStream(stream(': keepalive\n\nevent: token\ndata: {"text":"好"}\n\n: keepalive\n\nevent: done\ndata: {"quota":{"used":1},"charged":true}\n\n'), e => result.push(e))
+  assert.deepEqual(result.map(e => e.event), ['token', 'done'])
+})
+test('an error frame keeps the server classification for the page (issue #120)', async () => {
+  await assert.rejects(readAgentStream(stream('event: error\ndata: {"message":"这段对话太长了，请新开一个对话再试。","code":"AGENT_RUN_FAILED","errorType":"INPUT_LIMIT","retry":"NEW_SESSION"}\n\n'), () => {}), (error: any) => {
+    return error.message.includes('太长') && error.retry === 'NEW_SESSION' && error.errorType === 'INPUT_LIMIT'
+  })
+})
