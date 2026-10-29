@@ -134,6 +134,10 @@ export type QuotaBucket = { limit: number; used: number; overridden: boolean }
 export type AccountQuota = { image: QuotaBucket; agent: QuotaBucket; resetAtMs: number }
 export type QuotaUpdate = { imageDailyLimit: number | null; agentDailyLimit: number | null }
 export type AccountEvent = { occurredAtMs: number; actor: string; action: string; detail: string | null }
+export type SecurityAuditItem = { id: string; occurredAtMs: number; category: string; source: string; type: string; subject: string; actor: string; result: string | null; detail: string | null }
+export type SecurityAuditPage = { items: SecurityAuditItem[]; total: number; page: number; size: number }
+export type SecurityAuditCatalog = { categories: Record<string, string[]>; retentionDays: number }
+export type SecurityAuditQuery = { from?: string; to?: string; category?: string; type?: string; username?: string; page: number; size: number }
 export type AdminRegistration = Registration & { activeInviteCount: number }
 export type RegistrationInvite = { id: string; note: string | null; maxUses: number; usedCount: number; createdBy: string; createdAtMs: number; expiresAtMs: number; revokedAtMs: number | null; status: 'ACTIVE' | 'USED_UP' | 'EXPIRED' | 'REVOKED' }
 export type InviteCreate = { note?: string; maxUses: number; expiresInDays: number }
@@ -640,6 +644,17 @@ export const closetApi = {
   async adminUserEvents(username: string): Promise<AccountEvent[]> {
     if (!usingMocks) return request(`/api/admin/users/${encodeURIComponent(username)}/events`)
     await delay(); return readMockAccounts().events[username] || []
+  },
+  async adminSecurityAudit(query: SecurityAuditQuery): Promise<SecurityAuditPage> {
+    if (!usingMocks) { const params = new URLSearchParams(); for (const [key, value] of Object.entries(query)) if (value !== undefined && value !== '') params.set(key, String(value)); return request(`/api/admin/security-audit?${params}`) }
+    await delay()
+    const items = Object.entries(readMockAccounts().events).flatMap(([username, list]) => list.map((event, index) => ({ id: `${username}-${index}`, occurredAtMs: event.occurredAtMs, category: event.action.startsWith('ADMIN_') ? 'ACCOUNT' : 'AUTH', source: 'ACCOUNT_EVENT', type: event.action, subject: username, actor: event.actor, result: null, detail: event.detail })))
+      .filter(item => (!query.category || item.category === query.category) && (!query.type || item.type === query.type) && (!query.username || item.subject === query.username)).sort((a, b) => b.occurredAtMs - a.occurredAtMs)
+    return { items: items.slice((query.page - 1) * query.size, query.page * query.size), total: items.length, page: query.page, size: query.size }
+  },
+  async adminSecurityAuditCatalog(): Promise<SecurityAuditCatalog> {
+    if (!usingMocks) return request('/api/admin/security-audit/catalog')
+    return { categories: { AUTH: ['LOGIN_SUCCEEDED', 'LOGIN_FAILED', 'LOGIN_LOCKED'], ACCESS: ['ACCESS_DENIED', 'CSRF_REJECTED'], ACCOUNT: ['ADMIN_USER_CREATED'], INVITE: ['INVITE_CREATED'], ASSISTANT: ['AGENT_COMMAND'], MANAGEMENT: [], MODEL: ['MODEL_CALL', 'MODEL_ATTEMPT'] }, retentionDays: 180 }
   },
   async adminRegistration(): Promise<AdminRegistration> {
     if (!usingMocks) return request('/api/admin/registration')
