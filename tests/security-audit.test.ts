@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { auditResultColor, auditResultLabel, auditSubjectLabel, auditTypeLabel, auditTypeOptions } from '../src/domain/securityAudit.ts'
+import { auditResultColor, auditResultLabel, auditSubjectLabel, auditTypeLabel, auditTypeOptions, integritySummary } from '../src/domain/securityAudit.ts'
 import { accountEventLabel } from '../src/domain/account.ts'
 
 test('login failure subjects show only a short digest and never pretend to be a user name', () => {
@@ -29,4 +29,12 @@ test('type options follow the chosen category and management operation names are
 test('the account event drawer also labels the new security events', () => {
   assert.equal(accountEventLabel('LOGIN_LOCKED'), '登录被锁定')
   assert.equal(accountEventLabel('INVITE_USED'), '使用邀请码')
+})
+test('the integrity summary says complete, or names the first changed day', () => {
+  const base = { verifiedDays: 30, expiredDays: 0, unsealedDays: 0, problems: [] as { day: string; kind: string }[] }
+  assert.equal(integritySummary({ ...base, status: 'INTACT' }), '审计记录完整：已核对 30 天的记录。')
+  assert.match(integritySummary({ ...base, status: 'INTACT', expiredDays: 5, unsealedDays: 1 }), /5 天记录已过保留期.*1 天尚未封存/)
+  assert.equal(integritySummary({ ...base, status: 'TAMPERED', problems: [{ day: '2026-10-01', kind: 'ROWS_MODIFIED' }, { day: '2026-10-02', kind: 'CHAIN_BROKEN' }] }), '发现异常：2026-10-01 记录被改动或删除，另有 1 处。')
+  assert.match(integritySummary({ ...base, status: 'EMPTY' }), /还没有已封存/)
+  assert.equal(auditResultLabel('CANCELLED'), '已中止')
 })
