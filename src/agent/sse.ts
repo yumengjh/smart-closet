@@ -1,3 +1,4 @@
+import { AgentStreamError, type RetryHint } from './failure.ts'
 export type StreamEvent = { event: string; data: any }
 export async function readAgentStream(body: ReadableStream<Uint8Array>, onEvent: (event: StreamEvent) => void) {
   const reader = body.getReader(); const decoder = new TextDecoder(); let buffer = ''; let terminal = false
@@ -18,7 +19,7 @@ export async function readAgentStream(body: ReadableStream<Uint8Array>, onEvent:
           // The protocol has ended even if a proxy keeps the HTTP connection open.
           if (terminal) {
             void reader.cancel().catch(() => {})
-            if (event === 'error') throw new Error(parsed.message || '回复已中断，请主动重试。')
+            if (event === 'error') throw new AgentStreamError(parsed.message || '回复已中断，请主动重试。', parsed.retry as RetryHint | undefined, parsed.errorType)
             return
           }
         }

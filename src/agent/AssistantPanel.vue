@@ -3,10 +3,11 @@ import { createUuid } from '../domain/id'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { App } from 'ant-design-vue'
-import { CloseOutlined, PlusOutlined, SendOutlined, PushpinOutlined, PushpinFilled, MoreOutlined, HistoryOutlined, SettingOutlined, CheckOutlined, SkinOutlined, AppstoreOutlined, BlockOutlined, BulbOutlined } from '@ant-design/icons-vue'
+import { CloseOutlined, PlusOutlined, SendOutlined, StopOutlined, PushpinOutlined, PushpinFilled, MoreOutlined, HistoryOutlined, SettingOutlined, CheckOutlined, SkinOutlined, AppstoreOutlined, BlockOutlined, BulbOutlined } from '@ant-design/icons-vue'
 import { usingMocks } from '../services/api'
 import { agentRequest, streamMessage, type AgentSession, type AgentMessage, type Models, type Memory, type Quota } from './api'
 import { pageContext } from './bridge'
+import { AgentStreamError, failureAdvice, isStopped } from './failure'
 import { userMessageText } from './question'
 import { ASSISTANT_PREFILL_EVENT, ASSISTANT_SEND_EVENT, type AssistantTextDetail } from './assistantEvents'
 import AgentCommandCard from './AgentCommandCard.vue'
@@ -41,6 +42,14 @@ const models = ref<Models>({ defaultModel: '', models: [], configured: false });
 const imageConsent = ref(false); const compact = ref(window.innerWidth < 1024)
 const textarea = ref<{ focus: () => void } | null>(null); const transcript = ref<HTMLDivElement | null>(null); const panel = ref<HTMLElement | null>(null); const launcher = ref<InstanceType<typeof AssistantOrb> | null>(null)
 let abort: AbortController | undefined
+const errorHint = ref(''); const errorNewSession = ref(false)
+/** Stop button (issue #122): the browser drops its request; the server marks the turn stopped and gives the count back. */
+function stop() { abort?.abort() }
+function showFailure(e: unknown, fallback: string) {
+  error.value = e instanceof Error ? e.message : fallback
+  const advice = failureAdvice(e instanceof AgentStreamError ? e.retry : undefined)
+  errorHint.value = advice.hint; errorNewSession.value = advice.newSession
+}
 const closet = useClosetStore()
 const debugOpen = ref(false), debugRequest = ref<string | null>(null), debugUpdates = ref(0)
 const historyOpen = ref(false); const renameOpen = ref(false); const renameTitle = ref(''); const renaming = ref(false)
@@ -285,7 +294,7 @@ function quickResult(view: RecommendationView) {
 }
 async function send() {
   if (busy.value || !input.value.trim() || !models.value.configured) return
-  avatarCue.value=null;taskFailed.value=false;activityTool.value=''; error.value = ''; busy.value = true; activityPhase.value = 'thinking'; status.value = '正在理解你的请求'; playSound('bubble'); let reply: AgentMessage | undefined
+  avatarCue.value=null;taskFailed.value=false;activityTool.value=''; error.value = ''; errorHint.value = ''; errorNewSession.value = false; busy.value = true; activityPhase.value = 'thinking'; status.value = '正在理解你的请求'; playSound('bubble'); let reply: AgentMessage | undefined
   const body = { requestId: createUuid(), content: input.value.trim(), modelContent: pendingCard.value?.text === input.value.trim() ? pendingCard.value.modelContent : undefined, context: context.value, imageConsent: imageConsent.value }
   try {
     if (!selected.value) await createSession()
@@ -299,8 +308,8 @@ async function send() {
       else if (event.event === 'debug_trace') { debugUpdates.value++; reply!.requestId = event.data.requestId }
       else if (event.event === 'status') { activityTool.value=event.data.tool||'';status.value = event.data.text; activityPhase.value = event.data.phase === 'operating' ? 'operating' : 'thinking' }
       else if (event.event === 'canvas_operation') { activityPhase.value = 'operating'; status.value = event.data.label; handleCanvasCommand(event.data) }
-      else if (event.event === 'done') { reply!.status = 'COMPLETE'; quota.value = event.data.quota; if(!taskFailed.value)celebrate(); playSound('complete') }
-      else if (event.event === 'error') { failCanvasExecution(); error.value = event.data.message; reply!.status = 'FAILED'; playSound('error') }
+      else if (event.event === 'done') { reply!.status = 'COMPLETE'; quota.value = event.data.quota; if (event.data.charged === false) message.info('本次点选没有调用模型，不占用对话次数。'); if(!taskFailed.value)celebrate(); playSound('complete') }
+      else if (event.event === 'error') { failCanvasExecution(); const advice = failureAdvice(event.data.retry); error.value = event.data.message; errorHint.value = advice.hint; errorNewSession.value = advice.newSession; reply!.status = 'FAILED'; playSound('error') }
       else {
         reply!.events.push(event)
         if(event.event==='workspace_result'&&event.data.status==='FAILED')taskFailed.value=true
@@ -309,7 +318,12 @@ async function send() {
       }
       if (follow) void scrollBottom()
     }, abort.signal)
-  } catch (e) { failCanvasExecution(); error.value = e instanceof Error ? e.message : '回复未完成。'; if (reply) reply.status = 'FAILED' }
+  } catch (e) {
+    failCanvasExecution()
+    if (isStopped(e)) { error.value = ''; if (reply) reply.status = 'CANCELLED'; message.info('已停止生成，本次不计次。') }
+    else if (e instanceof AgentStreamError) { error.value = e.message; const advice = failureAdvice(e.retry); errorHint.value = advice.hint; errorNewSession.value = advice.newSession; if (reply) reply.status = 'FAILED' }
+    else { showFailure(e, '回复未完成。'); if (reply) reply.status = 'FAILED' }
+  }
   finally { busy.value = false; status.value = ''; abort = undefined; try { await refreshSessions(); quota.value = await agentRequest<Quota>('/quota') } catch {} }
 }
 function showPage() { if (compact.value) open.value = false }
@@ -362,7 +376,7 @@ function lockBackground(lock: boolean) {
 watch([open, compact], ([visible, mobile]) => lockBackground(visible && mobile), { flush: 'post' })
 onMounted(() => { window.addEventListener('closet-assistant-open', openFromWaiting); window.addEventListener(ASSISTANT_SEND_EVENT, sendFromCard); window.addEventListener(ASSISTANT_PREFILL_EVENT, prefillFromCard); window.addEventListener('resize', resize); window.addEventListener('keydown', keyboard); window.addEventListener('blur', cancelResize); window.visualViewport?.addEventListener('resize', resizeMobileViewport); window.visualViewport?.addEventListener('scroll', resizeMobileViewport) })
 function cancelResize() { endResize() }
-onUnmounted(() => { endResize(); floating.end(); document.documentElement.classList.remove('assistant-docked'); document.documentElement.style.removeProperty('--assistant-dock-width'); window.removeEventListener('closet-assistant-open', openFromWaiting); window.removeEventListener(ASSISTANT_SEND_EVENT, sendFromCard); window.removeEventListener(ASSISTANT_PREFILL_EVENT, prefillFromCard); abort?.abort(); clearTimeout(delightTimer); window.removeEventListener('resize', resize); window.removeEventListener('keydown', keyboard); window.removeEventListener('blur', cancelResize); window.visualViewport?.removeEventListener('resize', resizeMobileViewport); window.visualViewport?.removeEventListener('scroll', resizeMobileViewport); lockBackground(false) })
+onUnmounted(() => { abort?.abort(); endResize(); floating.end(); document.documentElement.classList.remove('assistant-docked'); document.documentElement.style.removeProperty('--assistant-dock-width'); window.removeEventListener('closet-assistant-open', openFromWaiting); window.removeEventListener(ASSISTANT_SEND_EVENT, sendFromCard); window.removeEventListener(ASSISTANT_PREFILL_EVENT, prefillFromCard); abort?.abort(); clearTimeout(delightTimer); window.removeEventListener('resize', resize); window.removeEventListener('keydown', keyboard); window.removeEventListener('blur', cancelResize); window.visualViewport?.removeEventListener('resize', resizeMobileViewport); window.visualViewport?.removeEventListener('scroll', resizeMobileViewport); lockBackground(false) })
 </script>
 <template>
   <AgentTraceModal v-model:open="debugOpen" :session-id="selected" :request-id="debugRequest" :updates="debugUpdates" />
@@ -389,7 +403,7 @@ onUnmounted(() => { endResize(); floating.end(); document.documentElement.classL
         <div v-if="waitingTopics" class="assistant-waiting-topics"><small>等衣物的这会儿，想聊点什么？选话题后由你发送。</small><div><a-button v-for="topic in topics" :key="topic.label" size="small" :disabled="busy || loading || !models.configured" @click="pickTopic(topic.prompt)">{{ topic.label }}</a-button></div></div>
         <div ref="transcript" class="assistant-transcript" aria-label="聊天记录" aria-live="polite" :aria-busy="busy">
           <div v-if="!messages.length" class="assistant-welcome"><BloubAvatar class="assistant-face" :size="74" expression="happy" /><p class="eyebrow">你的鱼搭助手</p><h2>今天我能帮你做什么？</h2><p>按衣柜搭配、翻看保存的搭配、找出重复衣物，<br />也能记住你的穿衣偏好。</p><div class="assistant-welcome-suggestions"><a-button v-for="item in suggestions" :key="item.text" block @click="suggest(item.text)"><component :is="item.icon" /><span>{{ item.text }}</span></a-button></div></div>
-          <article v-for="item in messages" :key="item.id" class="assistant-message" :class="item.role"><small>{{ item.role === 'user' ? '你' : '鱼搭助手' }}</small><p v-if="item.content" class="assistant-text">{{ item.role === 'user' ? userMessageText(item.content) : item.content }}</p><span v-if="item.status === 'FAILED'" class="assistant-interrupted">回复未完成</span>
+          <article v-for="item in messages" :key="item.id" class="assistant-message" :class="item.role"><small>{{ item.role === 'user' ? '你' : '鱼搭助手' }}</small><p v-if="item.content" class="assistant-text">{{ item.role === 'user' ? userMessageText(item.content) : item.content }}</p><span v-if="item.status === 'FAILED'" class="assistant-interrupted">回复未完成</span><span v-else-if="item.status === 'CANCELLED'" class="assistant-interrupted">已停止生成</span>
             <a-button v-if="item.role === 'assistant'" type="link" size="small" @click="debugRequest = item.requestId || null; debugOpen = true">查看决策与执行记录</a-button>
             <a-collapse v-if="item.events.some(e => e.event === 'operation_result')" ghost class="assistant-operation-record"><a-collapse-panel key="steps" header="查看搭台操作记录"><ol><li v-for="event in item.events.filter(e => e.event === 'operation_result')" :key="event.data.operationId">{{ event.data.success ? '✓' : '!' }} {{ event.data.label }}<small v-if="event.data.message"> · {{ event.data.message }}</small></li></ol></a-collapse-panel></a-collapse>
             <template v-for="(event, index) in item.events" :key="index">
@@ -404,12 +418,13 @@ onUnmounted(() => { endResize(); floating.end(); document.documentElement.classL
           <div v-if="busy && (isOperating || activityPhase !== 'responding')" class="assistant-activity"><ThoughtLine v-if="isOperating" :label="canvasExecution.runId ? canvasExecution.label || status : status || '正在操作'" :steps="operationSteps" /><LatticeLoader v-else :label="status || '正在思考'" /></div>
         </div>
         <footer class="assistant-composer">
-          <a-alert v-if="error" type="error" :message="error" show-icon closable @close="error = ''" />
+          <a-alert v-if="error" type="error" :message="error" :description="errorHint || undefined" show-icon closable @close="error = ''"><template v-if="errorNewSession" #action><a-button size="small" type="primary" @click="error = ''; newSession()">新建对话</a-button></template></a-alert>
           <p v-if="!models.configured && !loading" class="assistant-not-configured">{{ usingMocks ? '演示模式不调用助手' : '助手尚未配置，请联系平台维护者。' }}</p>
           <QuickRecommend v-if="showQuick" :disabled="busy" @result="quickResult" />
           <form class="assistant-input-box" @submit.prevent="send">
             <a-textarea ref="textarea" v-model:value="input" aria-label="发送给助手的消息" :maxlength="4000" :auto-size="{ minRows: 1, maxRows: 4 }" placeholder="想怎么搭？或者问问平台用法…" :bordered="false" :disabled="busy || !models.configured" @keydown.enter.exact="enter" />
-            <a-button type="primary" html-type="submit" shape="circle" aria-label="发送消息" data-sound="off" :loading="busy" :disabled="busy || !input.trim() || !models.configured"><template #icon><SendOutlined /></template></a-button>
+            <a-tooltip v-if="busy" title="停止生成"><a-button type="primary" danger shape="circle" aria-label="停止生成" data-sound="off" @click="stop"><template #icon><StopOutlined /></template></a-button></a-tooltip>
+            <a-button v-else type="primary" html-type="submit" shape="circle" aria-label="发送消息" data-sound="off" :disabled="!input.trim() || !models.configured"><template #icon><SendOutlined /></template></a-button>
           </form>
           <div class="assistant-composer-tools">
             <div><SoundToggle /><a-popover v-model:open="optionsOpen" title="本次对话选项" trigger="click" placement="topLeft" overlay-class-name="assistant-options-popover"><a-button type="text" aria-label="助手对话选项" :aria-expanded="optionsOpen"><SettingOutlined /></a-button><template #content><div class="assistant-options"><label>本会话模型</label><a-select :value="session?.model || ''" aria-label="本会话模型" :options="modelOptions" :disabled="!selected || busy" @change="setModel" /><small v-if="!selected">发送消息或新建对话后可设置会话模型。</small><a-checkbox v-if="context.garmentId" v-model:checked="imageConsent" :disabled="busy">发送当前衣物图片到模型（仅本条）</a-checkbox><RouterLink to="/settings" @click="optionsOpen=false;showPage()">设置角色动效与预览 ↗</RouterLink></div></template></a-popover><span v-if="imageConsent" class="assistant-consent-badge">本条已授权</span></div>
