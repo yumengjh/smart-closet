@@ -2,6 +2,7 @@ import type { SessionUser } from '../domain/session'
 import { createUuid } from '../domain/id'
 import { apiUrl } from './urls'
 import { fetchWithRetry } from '../domain/network'
+import { accountHeaders, assertAccountCurrent, captureAccount } from '../domain/accountSession'
 import { normalizeScene, sceneWrite } from '../domain/outfit'
 import personCatalog from '../domain/person-stickers.json'
 import type { PersonCatalog } from '../domain/person-stickers'
@@ -241,17 +242,25 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
   const headers = new Headers(init.headers)
   if (init.body && !(init.body instanceof FormData)) headers.set('Content-Type', 'application/json')
   const method = (init.method || 'GET').toUpperCase()
-  if (!usingMocks && !['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+  // Shared Cookie: a page of another account (or one made stale by a switch in another tab) must not read or write as the new account.
+  const stillSameAccount = captureAccount()
+  const write = !['GET', 'HEAD', 'OPTIONS'].includes(method)
+  if (!usingMocks && write) {
     const csrf = await fetchWithRetry(apiUrl('/api/auth/csrf'), { credentials: 'include' })
+    stillSameAccount()
     if (csrf.ok) csrfToken = ((await csrf.json()) as { token: string }).token
     if (csrfToken) headers.set('X-XSRF-TOKEN', csrfToken)
   }
+  if (!usingMocks && write) for (const [name, value] of Object.entries(accountHeaders(path))) headers.set(name, value)
   // Reads retry after a dropped connection (iPhone backgrounding, network switch); a final failure is a NetworkError.
   const response = await fetchWithRetry(apiUrl(path), { ...init, headers, credentials: 'include' })
+  // A response that outlived an account switch belongs to the previous account: never hand it to the new one.
+  stillSameAccount()
   if (!response.ok) {
     if (response.status === 401 && !['/api/auth/login', '/api/auth/portable-login', '/api/auth/me'].includes(path)) window.dispatchEvent(new Event('closet-session-expired'))
     const data = await response.json().catch(() => ({})) as { code?: string; message?: string; detail?: string }
     if (response.status === 403 && data.code === 'PASSWORD_CHANGE_REQUIRED') window.dispatchEvent(new Event('closet-password-change-required'))
+    if (response.status === 409 && data.code === 'ACCOUNT_MISMATCH') window.dispatchEvent(new Event('closet-account-mismatch'))
     throw new Error(data.message || data.detail || `请求失败 (${response.status})`)
   }
   return response.status === 204 ? undefined as T : await response.json() as T
@@ -662,6 +671,7 @@ export const closetApi = {
   async adminSecurityAuditExport(query: Omit<SecurityAuditQuery, 'page' | 'size'>): Promise<SecurityAuditExport> {
     const params = new URLSearchParams(); for (const [key, value] of Object.entries(query)) if (value !== undefined && value !== '') params.set(key, String(value))
     if (usingMocks) { await delay(); return { blob: new Blob(['\uFEFF时间,分类,事件类型,对象,操作者,结果,详情\r\n'], { type: 'text/csv;charset=UTF-8' }), truncated: false, filename: 'security-audit-demo.csv' } }
+    assertAccountCurrent()
     const response = await fetchWithRetry(apiUrl(`/api/admin/security-audit/export?${params}`), { credentials: 'include' })
     if (!response.ok) {
       if (response.status === 401) window.dispatchEvent(new Event('closet-session-expired'))

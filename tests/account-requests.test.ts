@@ -1,0 +1,98 @@
+import { test } from 'node:test'
+import assert from 'node:assert/strict'
+import { build } from 'esbuild'
+// One bundle so the request layers, the notification store and the account state share a single module instance.
+const bundle = await build({
+  stdin: { resolveDir: process.cwd(), loader: 'ts', contents: `
+    export * from './src/domain/accountSession.ts'
+    export { request } from './src/services/api.ts'
+    export { platformRequest } from './src/services/platform.ts'
+    export { useNotificationStore } from './src/stores/notifications.ts'
+    export { createPinia, setActivePinia } from 'pinia'` },
+  bundle: true, format: 'esm', platform: 'node', write: false, define: { 'import.meta.env.VITE_USE_MOCKS': '"false"', 'import.meta.env.VITE_API_BASE_URL': '""' },
+})
+const m = await import('data:text/javascript;base64,' + Buffer.from(bundle.outputFiles[0].text).toString('base64'))
+const json = (body: unknown, status = 200) => Response.json(body, { status })
+const isCsrf = (url: unknown) => String(url).endsWith('/api/auth/csrf')
+test.beforeEach(() => { m.resetAccountSession(); m.setActivePinia(m.createPinia()) })
+
+test('writes carry the page account so the server can refuse a submit that raced the broadcast', async t => {
+  const seen: Record<string, string | null> = {}
+  t.mock.method(globalThis, 'fetch', async (url: unknown, init: RequestInit) => {
+    if (isCsrf(url)) return json({ token: 'csrf-for-bob' })
+    seen[String(url)] = new Headers(init.headers).get('X-Closet-Account'); return json({ ok: true })
+  })
+  m.setActiveAccount('alice')
+  await m.request('/api/closet/quick-intakes', { method: 'POST', body: new FormData() })
+  await m.platformRequest('/api/me/wearer-profile', 'PUT', { revision: 0 })
+  await m.request('/api/closet/garments')
+  assert.deepEqual(seen, { '/api/closet/quick-intakes': 'alice', '/api/me/wearer-profile': 'alice', '/api/closet/garments': null })
+})
+test('a server refusal of the account is announced so the page can ask for a reload', async t => {
+  t.mock.method(globalThis, 'fetch', async (url: unknown) => isCsrf(url) ? json({ token: 't' }) : json({ code: 'ACCOUNT_MISMATCH', message: '账号已切换' }, 409))
+  const events: string[] = []; const original = globalThis.window
+  globalThis.window = { dispatchEvent: (event: Event) => { events.push(event.type); return true } } as unknown as Window & typeof globalThis
+  try {
+    m.setActiveAccount('alice')
+    await assert.rejects(m.request('/api/closet/garments', { method: 'POST', body: '{}' }), /账号已切换/)
+    await assert.rejects(m.platformRequest('/api/me/wearer-profile', 'PUT', {}), /账号已切换/)
+    assert.deepEqual(events, ['closet-account-mismatch', 'closet-account-mismatch'])
+  } finally { globalThis.window = original }
+})
+test('a stale tab sends nothing at all, neither the CSRF lookup nor the submit', async t => {
+  let calls = 0; t.mock.method(globalThis, 'fetch', async () => { calls++; return json({}) })
+  m.setActiveAccount('alice'); m.markAccountStale()
+  await assert.rejects(m.request('/api/closet/quick-intakes', { method: 'POST', body: new FormData() }), m.AccountSwitchedError)
+  await assert.rejects(m.platformRequest('/api/me/wearer-profile', 'PUT', {}), m.AccountSwitchedError)
+  await assert.rejects(m.request('/api/closet/garments'), m.AccountSwitchedError)
+  assert.equal(calls, 0)
+})
+test('the account switching while the CSRF token is fetched stops the submit before it is sent', async t => {
+  const sent: string[] = []
+  t.mock.method(globalThis, 'fetch', async (url: unknown) => {
+    sent.push(String(url))
+    if (isCsrf(url)) { m.setActiveAccount(null); m.setActiveAccount('bob'); return json({ token: 'csrf-for-bob' }) }
+    return json({})
+  })
+  m.setActiveAccount('alice')
+  await assert.rejects(m.request('/api/closet/quick-intakes', { method: 'POST', body: new FormData() }), m.AccountSwitchedError)
+  await assert.rejects(m.platformRequest('/api/me/wearer-profile', 'PUT', {}), m.AccountSwitchedError)
+  assert.equal(sent.some(url => !isCsrf(url)), false, 'no upload or profile write may reach the server')
+})
+test('a read answered after the account changed is dropped, not shown to the new account', async t => {
+  let release!: (response: Response) => void
+  t.mock.method(globalThis, 'fetch', () => new Promise<Response>(resolve => { release = resolve }))
+  m.setActiveAccount('alice')
+  const pending = m.request('/api/closet/garments')
+  m.setActiveAccount(null); m.setActiveAccount('bob')
+  release(json({ owner: 'alice-private' }))
+  await assert.rejects(pending, m.AccountSwitchedError)
+})
+
+// These two tests leave the account state alone on purpose: the store's own generation must hold even if the request layer's check did not.
+test('notifications: A answers after B has been loaded, B keeps its data (issue #159)', async t => {
+  const answers: Record<string, (response: Response) => void> = {}
+  t.mock.method(globalThis, 'fetch', (url: unknown, init: RequestInit) => new Promise<Response>(resolve => { answers[(init.headers as Headers | undefined)?.get?.('x-test') ?? String(answers.n = (answers.n as unknown as number ?? 0) + 1)] = resolve }))
+  const store = m.useNotificationStore()
+  const note = (id: string, title: string) => ({ id, kind: 'DUPLICATE', title, body: '', href: null, payload: {}, createdAt: 1, read: false })
+  store.start()                       // request 1: Alice's
+  store.stop(); store.start()         // sign out, sign in as Bob: request 2
+  answers['2'](json({ items: [note('b1', 'bob-note')], unread: 1 }))
+  await new Promise(r => setTimeout(r, 0))
+  assert.deepEqual(store.items.map((i: { title: string }) => i.title), ['bob-note'])
+  answers['1'](json({ items: [note('a1', 'alice-private')], unread: 1 }))
+  await new Promise(r => setTimeout(r, 0))
+  assert.deepEqual(store.items.map((i: { title: string }) => i.title), ['bob-note'])
+  assert.equal(store.unread, 1); assert.equal(store.latest, null)
+  store.stop()
+})
+test('notifications: after sign-out a late answer cannot refill the emptied store', async t => {
+  let release!: (response: Response) => void
+  t.mock.method(globalThis, 'fetch', () => new Promise<Response>(resolve => { release = resolve }))
+  const store = m.useNotificationStore()
+  store.start()
+  store.stop()
+  release(json({ items: [{ id: 'a1', kind: 'DUPLICATE', title: 'alice-private', body: '', href: null, payload: {}, createdAt: 1, read: false }], unread: 1 }))
+  await new Promise(r => setTimeout(r, 0))
+  assert.deepEqual(store.items, []); assert.equal(store.unread, 0); assert.equal(store.latest, null)
+})

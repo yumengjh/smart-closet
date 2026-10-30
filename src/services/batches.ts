@@ -1,5 +1,6 @@
 import { request } from './api'
 import { apiUrl } from './urls'
+import { accountHeaders, captureAccount } from '../domain/accountSession'
 export type IntakeStrategy = 'SMART' | 'FULL' | 'MANUAL'
 export type IntakeChannel = 'SINGLE' | 'MULTIPLE'
 export type Marker = { sourceId: string; x: number; y: number }
@@ -9,20 +10,23 @@ export type BatchCall = { id: string; type: string; status: string; model: strin
 export type IntakeBatch = { id: string; channel: IntakeChannel; strategy: IntakeStrategy; status: string; metrics?: {uploaded:number; recognized:number; skipped:number; generated:number; confirmed:number}; error?: string; createdAtMs: number; sources: BatchSource[]; targets: BatchTarget[]; calls: BatchCall[] }
 export type GenerateOptions = { targetIds: string[]; groupSize: number; referenceSide: number; sizePolicy: 'FIXED' | 'PER_ITEM'; provider?: string; model?: string; quality: string }
 async function upload(path: string, key: string, form: FormData, progress: (percent: number) => void): Promise<IntakeBatch> {
+  const stillSameAccount = captureAccount()
   const csrf = await request<{ token: string }>('/api/auth/csrf')
+  stillSameAccount()
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
     xhr.open('POST', apiUrl(path))
     xhr.withCredentials = true
     xhr.setRequestHeader('Idempotency-Key', key)
     xhr.setRequestHeader('X-XSRF-TOKEN', csrf.token)
+    for (const [name, value] of Object.entries(accountHeaders(path))) xhr.setRequestHeader(name, value)
     xhr.upload.onprogress = (event) => { if (event.lengthComputable) progress(Math.round(event.loaded / event.total * 100)) }
     xhr.onerror = () => reject(new Error('上传连接中断，照片仍保留；重试会复用本次上传编号。'))
     xhr.onload = () => {
       let data: IntakeBatch & { message?: string; detail?: string }
       try { data = JSON.parse(xhr.responseText) } catch { reject(new Error(`服务器无法接收照片 (${xhr.status})，请检查上传大小限制。`)); return }
       if (xhr.status >= 200 && xhr.status < 300) resolve(data)
-      else { if (xhr.status === 401) window.dispatchEvent(new Event('closet-session-expired')); reject(new Error(data.message || data.detail || `上传失败 (${xhr.status})`)) }
+      else { if (xhr.status === 401) window.dispatchEvent(new Event('closet-session-expired')); if (xhr.status === 409 && (data as { code?: string }).code === 'ACCOUNT_MISMATCH') window.dispatchEvent(new Event('closet-account-mismatch')); reject(new Error(data.message || data.detail || `上传失败 (${xhr.status})`)) }
     }
     xhr.send(form)
   })
