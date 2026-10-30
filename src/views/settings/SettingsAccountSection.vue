@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import { App } from 'ant-design-vue'
 import { ArrowRightOutlined } from '@ant-design/icons-vue'
 import { closetApi, type AccountProfile, type AccountSession } from '../../services/api'
-import { accountTime, registeredViaLabels } from '../../domain/account'
+import { accountTime, passwordProblem, registeredViaLabels } from '../../domain/account'
 import { useClosetStore } from '../../stores/closet'
 
 const closet = useClosetStore(); const router = useRouter(); const { modal, message } = App.useApp()
@@ -40,7 +40,8 @@ async function saveProfile() {
 async function changePassword() {
   if (loading.value) return
   error.value = ''; success.value = ''
-  if (newPassword.value.length < 12) { error.value = '新密码至少需要 12 个字符。'; return }
+  const problem = passwordProblem(newPassword.value)
+  if (problem) { error.value = '新' + problem; return }
   if (newPassword.value !== repeatPassword.value) { error.value = '两次输入的新密码不一致。'; return }
   loading.value = true; const wasFirstLogin = firstLogin.value
   try {
@@ -91,7 +92,7 @@ function openDeactivation() { deactivatePassword.value = ''; deactivateError.val
       </template>
     </section>
     <section class="settings-group">
-      <header class="settings-group-head"><h3>{{ firstLogin ? '设置新密码' : '修改密码' }}</h3><p>密码至少 12 个字符，修改后立即生效。</p></header>
+      <header class="settings-group-head"><h3>{{ firstLogin ? '设置新密码' : '修改密码' }}</h3><p>密码至少 12 个字符、不超过 72 字节（汉字约 3 字节），修改后立即生效。</p></header>
       <form class="password-form" @submit.prevent="changePassword">
         <template v-if="!firstLogin"><label for="old-pass">当前密码</label><a-input-password id="old-pass" v-model:value="currentPassword" autocomplete="current-password" placeholder="输入当前密码" /></template>
         <label for="new-pass">新密码</label><a-input-password id="new-pass" v-model:value="newPassword" autocomplete="new-password" placeholder="至少 12 个字符" />

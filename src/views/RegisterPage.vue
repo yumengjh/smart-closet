@@ -5,6 +5,7 @@ import { CheckCircleFilled, MinusCircleOutlined } from '@ant-design/icons-vue'
 import { useClosetStore } from '../stores/closet'
 import AuthShell from '../components/AuthShell.vue'
 import { closetApi, usingMocks, type RegistrationMode } from '../services/api'
+import { PASSWORD_MAX_BYTES, PASSWORD_MIN_CHARS, passwordBytes, passwordProblem, usernameProblem } from '../domain/account'
 
 /**
  * 注册分三步 (issue #82)：账号 → 密码 → 称呼。每步只校验本步，最后一步才提交；服务端拒绝时跳回出错的那一步。
@@ -24,16 +25,19 @@ async function loadMode() {
 }
 onMounted(loadMode)
 const checks = computed(() => [
-  { ok: password.value.length >= 12, text: '至少 12 个字符' },
+  { ok: [...password.value].length >= PASSWORD_MIN_CHARS, text: '至少 12 个字符' },
+  { ok: passwordBytes(password.value) <= PASSWORD_MAX_BYTES, text: `不超过 72 字节（已用 ${passwordBytes(password.value)}，汉字约 3 字节）` },
   { ok: password.value.length > 0 && password.value === repeat.value, text: '两次输入一致' },
 ])
 function validate(at: number) {
   if (at === 0) {
-    if (!/^[A-Za-z0-9_.-]{2,80}$/.test(username.value)) return '用户名需为 2–80 个字符，只能包含字母、数字、下划线、点和短横线。'
+    const nameProblem = usernameProblem(username.value)
+    if (nameProblem) return nameProblem
     if (mode.value === 'INVITE' && !inviteCode.value.trim()) return '请输入邀请码。'
   }
   if (at === 1) {
-    if (password.value.length < 12) return '密码至少需要 12 个字符。'
+    const problem = passwordProblem(password.value)
+    if (problem) return problem
     if (password.value !== repeat.value) return '两次输入的密码不一致。'
   }
   if (at === 2 && (displayName.value.trim().length > 40 || /[\x00-\x1f\x7f]/.test(displayName.value))) return '昵称不能超过 40 个字符，也不能包含控制字符。'

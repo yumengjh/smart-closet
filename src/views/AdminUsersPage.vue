@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import { App, Alert, Button, Input, Space, Tabs as ATabs } from 'ant-design-vue'
 import { closetApi, type AdminUser, type AdminUsersQuery, type AdminUsersPage, type AdminRegistration, type RegistrationInvite, type TemporaryPassword, type InviteCreated, type AccountQuota, type AccountEvent, type UserRole } from '../services/api'
 import { useClosetStore } from '../stores/closet'
-import { accountTime, registeredViaLabels, accountEventLabel } from '../domain/account'
+import { accountTime, registeredViaLabels, accountEventLabel, usernameProblem } from '../domain/account'
 
 const ATabPane = ATabs.TabPane
 defineProps<{ embedded?: boolean }>()
@@ -70,7 +70,8 @@ function openCreateUser() { Object.assign(newUser, { username: '', displayName: 
 async function createUser() {
   if (createBusy.value) return
   createError.value = ''
-  if (!/^[A-Za-z0-9_.-]{2,80}$/.test(newUser.username)) { createError.value = '用户名需为 2–80 个字符，只能包含字母、数字、下划线、点和短横线。'; return }
+  const nameProblem = usernameProblem(newUser.username)
+  if (nameProblem) { createError.value = nameProblem; return }
   if (newUser.displayName.trim().length > 40 || /[\x00-\x1f\x7f]/.test(newUser.displayName)) { createError.value = '昵称不能超过 40 个字符，也不能包含控制字符。'; return }
   createBusy.value = true
   try { const result = await closetApi.adminCreateUser({ ...newUser, displayName: newUser.displayName.trim() || undefined }); createOpen.value = false; showPassword(result); await loadUsers() }
