@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { createUuid } from '../domain/id'
+import { isAccountSwitched, mayPoll } from '../domain/accountSession'
 import { mediaUrl, thumbUrl } from '../services/urls'
 import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
@@ -94,9 +95,9 @@ function addMarker(sourceId: string,point: {x:number;y:number}){
   markers.value.push({sourceId,...point})
 }
 async function poll(){
-  if(!batch.value||!alive)return
-  try{batch.value=await batchApi.get(batch.value.id);await refreshQuota()}catch(e){error.value=e instanceof Error?e.message:'暂时无法读取进度，请稍后重试。'}
-  if(alive)timer=setTimeout(poll,active.value?2000:10000)
+  if(!batch.value||!alive||!mayPoll())return
+  try{batch.value=await batchApi.get(batch.value.id);await refreshQuota()}catch(e){if(!isAccountSwitched(e))error.value=e instanceof Error?e.message:'暂时无法读取进度，请稍后重试。'}
+  if(alive&&mayPoll())timer=setTimeout(poll,active.value?2000:10000)
 }
 async function upload(){
   if(!selected.value.length||locked.value||usingMocks)return

@@ -14,6 +14,31 @@ export class AccountSwitchedError extends Error {
   constructor(message = '登录账号已在其他窗口切换，本页内容已过期，请重新加载页面。') { super(message); this.name = 'AccountSwitchedError' }
 }
 
+/** True for the expected refusal of an out-of-date page: nothing to report, the shell already asks for a reload. */
+export const isAccountSwitched = (cause: unknown): cause is AccountSwitchedError => cause instanceof AccountSwitchedError
+
+/**
+ * Timers and polls of a page that has gone stale (another tab signed in as someone else) must stop instead of retrying a
+ * request that is refused every time. Check before sending and before scheduling the next round (smart-closet-server#177).
+ */
+export const mayPoll = () => !stale
+
+/**
+ * Request-layer sink for the refusal above: a request that nobody awaits (fire-and-forget, `void load()`, an interval tick)
+ * would otherwise end as "Uncaught (in promise) AccountSwitchedError" in the console. Other rejections still surface.
+ * Returns the function that removes the listener.
+ */
+export function silenceAccountSwitch(target: { addEventListener(type: 'unhandledrejection', listener: (event: PromiseRejectionEvent) => void): void; removeEventListener(type: 'unhandledrejection', listener: (event: PromiseRejectionEvent) => void): void }) {
+  const listener = (event: PromiseRejectionEvent) => { if (isAccountSwitched(event.reason)) event.preventDefault() }
+  target.addEventListener('unhandledrejection', listener)
+  return () => target.removeEventListener('unhandledrejection', listener)
+}
+
+/** Vue's error hook: the expected refusal is dropped, anything else goes to `otherwise` (the console by default). */
+export function accountAwareErrorHandler(otherwise: (error: unknown, info: string) => void = (error, info) => console.error(`[Vue] ${info}`, error)) {
+  return (error: unknown, _instance: unknown, info: string) => { if (!isAccountSwitched(error)) otherwise(error, info) }
+}
+
 /** Sends a tab-to-tab message; returns a function that closes the transport. */
 export type AccountTransport = { post(account: string | null): void; listen(handler: (account: string | null) => void): void; close(): void }
 

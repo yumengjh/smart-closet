@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { createUuid } from '../domain/id'
+import { isAccountSwitched, mayPoll } from '../domain/accountSession'
 import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { App, message } from 'ant-design-vue'
@@ -166,7 +167,7 @@ function pollDelay() {
   return localCount.value ? 1200 : 4000
 }
 async function refresh() {
-  const account = owner(); if (!alive || !account) return
+  const account = owner(); if (!alive || !account || !mayPoll()) return
   try {
     await refreshUploads(account)
     // Bulk intake (100+ photos) must not fan out one request per photo every tick: poll in small batches.
@@ -181,8 +182,8 @@ async function refresh() {
       if (current) current.result = view
     }))
     error.value = ''
-  } catch { if (rows.value.some(row => row.state === 'SAVED' && active(row))) error.value = '暂时无法刷新进度，已保存的照片不受影响，连接恢复后继续。' }
-  if (alive) timer = window.setTimeout(refresh, pollDelay())
+  } catch (cause) { if (!isAccountSwitched(cause) && rows.value.some(row => row.state === 'SAVED' && active(row))) error.value = '暂时无法刷新进度，已保存的照片不受影响，连接恢复后继续。' }
+  if (alive && mayPoll()) timer = window.setTimeout(refresh, pollDelay())
 }
 watch(rows, list => {
   for (const [id, url] of thumbnails) if (!list.some(row => row.id === id && row.blob)) { URL.revokeObjectURL(url); thumbnails.delete(id) }

@@ -2,6 +2,7 @@ import { createUuid } from '../domain/id'
 import { ref } from 'vue'
 import { request, closetApi } from './api'
 import { useProcessingStore } from '../stores/processing'
+import { isAccountSwitched, mayPoll } from '../domain/accountSession'
 export type Hint = { kind: 'POINT' | 'BOX'; x: number; y: number; width?: number; height?: number }
 export type QuickView = { intakeId: string; garmentId: string; sourceSaved: boolean; revision: number; awaitTargetHint: boolean; task: { status: string; steps: { type: string; status: string; error?: { message: string } }[] }; garment: { status: string; sourceUrl: string; displayUrl: string; displayAssetId: string; images: { id: string; kind: string; url: string; aiGenerated: boolean }[]; imageProcessing?: { stickerReady: boolean } }; quality: { needsEnhancement: boolean; reason: string } | null }
 export type LocalPhoto = { id: string; owner: string; blob?: Blob; name: string; options: { admissionMode: string; captureSessionId: string; targetHint?: Hint }; created: number; state: 'PENDING' | 'UPLOADING' | 'SAVED' | 'ERROR' | 'MARKING'; nextAttemptAt?: number; leaseUntil?: number; leaseOwner?: string; error?: string; result?: QuickView }
@@ -31,16 +32,16 @@ async function finish(row: LocalPhoto, result?: QuickView, error?: string, retry
 async function renew(row: LocalPhoto) { await change<void>('readwrite', (store, done) => { store.get(row.id).onsuccess = e => { const current = (e.target as IDBRequest).result as LocalPhoto; if (current?.leaseOwner === tabId && current.state === 'UPLOADING') store.put({ ...current, leaseUntil: Date.now() + 30000 }); done() } }) }
 let pumpBusy = false
 export async function pumpUploads(getOwner: () => string | undefined) {
-  if (pumpBusy || !navigator.onLine) return; pumpBusy = true
+  if (pumpBusy || !navigator.onLine || !mayPoll()) return; pumpBusy = true
   try { const owner = getOwner(); if (!owner) return; const rows: LocalPhoto[] = []; for (let i = 0; i < 2; i++) { const row = await claim(owner); if (row) rows.push(row) }
     if (rows.length && getOwner() === owner) await refreshUploads(owner)
     await Promise.all(rows.map(async row => { if (getOwner() !== owner) { await finish(row, undefined, '账户已切换，请回到原账户重试。'); return }; const heartbeat = window.setInterval(() => void renew(row), 10000)
       try { const form = new FormData(); if (!row.blob) throw new Error('本机原图已丢失，请重新选择照片。'); form.append('file', row.blob, row.name); form.append('options', JSON.stringify(row.options)); const result = await request<QuickView>('/api/closet/quick-intakes', { method: 'POST', headers: { 'Idempotency-Key': row.id, 'X-Upload-Owner': owner }, body: form }); if (!result.sourceSaved || result.intakeId !== row.id) throw new Error('服务器尚未确认保存'); await finish(row, result)
         if (getOwner() === owner) { await refreshUploads(owner); void closetApi.task(result.intakeId).then(task => { if (getOwner() === owner) useProcessingStore().trackTask(task) }).catch(() => {}) }
       }
-      catch (cause) { await finish(row, undefined, cause instanceof Error ? cause.message : '未收到保存确认，可安全重试。', cause instanceof TypeError || !navigator.onLine) } finally { clearInterval(heartbeat); if (getOwner() === owner) await refreshUploads(owner) }
+      catch (cause) { if (isAccountSwitched(cause)) return; await finish(row, undefined, cause instanceof Error ? cause.message : '未收到保存确认，可安全重试。', cause instanceof TypeError || !navigator.onLine) } finally { clearInterval(heartbeat); if (getOwner() === owner) await refreshUploads(owner) }
     })); if (getOwner() === owner) await refreshUploads(owner)
-  } catch (cause) { uploadError.value = cause instanceof Error ? cause.message : '本机照片队列无法读取。' } finally { pumpBusy = false }
+  } catch (cause) { if (!isAccountSwitched(cause)) uploadError.value = cause instanceof Error ? cause.message : '本机照片队列无法读取。' } finally { pumpBusy = false }
 }
 export const quickApi = {
  get: (id: string) => request<QuickView>(`/api/closet/quick-intakes/${id}`),
