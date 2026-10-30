@@ -1,5 +1,6 @@
 import { apiUrl } from './urls'
 import { usingMocks } from './api'
+import { AccountSwitchedError, accountHeaders, captureAccount } from '../domain/accountSession'
 export class PlatformRequestError extends Error {
   readonly uncertain: boolean
   readonly status?: number
@@ -12,6 +13,7 @@ export async function platformRequest<T>(path: string, method = 'GET', body?: un
   if (usingMocks) throw new Error('演示模式不提供真实个人资料或生成。')
   const headers = new Headers(), controller = new AbortController()
   const write = !['GET', 'HEAD'].includes(method), multipart = body instanceof FormData
+  const stillSameAccount = captureAccount()
   let sent = false, timedOut = false
   const timer = setTimeout(() => { timedOut = true; controller.abort() }, options.timeoutMs ?? 30000)
   try {
@@ -21,17 +23,22 @@ export async function platformRequest<T>(path: string, method = 'GET', body?: un
       const csrf = await fetch(apiUrl('/api/auth/csrf'), { credentials: 'include', signal: controller.signal })
       if (!csrf.ok) throw new PlatformRequestError(csrf.status === 401 ? '登录已失效，请重新登录。' : '无法获取提交凭证，请稍后重试。', false, csrf.status)
       headers.set('X-XSRF-TOKEN', (await csrf.json()).token)
+      // The shared cookie may have changed hands while the token was fetched; a stale page must not submit.
+      stillSameAccount()
+      for (const [name, value] of Object.entries(accountHeaders(path))) headers.set(name, value)
     }
     sent = write
     const response = await fetch(apiUrl(path), { method, headers, credentials: 'include', signal: controller.signal, body: body === undefined ? undefined : multipart ? body : JSON.stringify(body) })
     if (!response.ok) {
       if (response.status === 401) window.dispatchEvent(new Event('closet-session-expired'))
       const error = await response.json().catch(() => ({}))
+      if (response.status === 409 && error.code === 'ACCOUNT_MISMATCH') window.dispatchEvent(new Event('closet-account-mismatch'))
       throw new PlatformRequestError(error.message || `请求未完成 (${response.status})`, write && (response.status >= 500 || response.status === 408), response.status, error.code)
     }
+    stillSameAccount()
     return response.status === 204 ? undefined as T : await response.json()
   } catch (error) {
-    if (error instanceof PlatformRequestError) throw error
+    if (error instanceof PlatformRequestError || error instanceof AccountSwitchedError) throw error
     throw new PlatformRequestError(timedOut ? '请求超时，请核对提交结果。' : sent ? '连接中断，尚无法确认提交结果。' : '暂时无法连接到服务，请检查连接后重试。', sent)
   } finally { clearTimeout(timer) }
 }

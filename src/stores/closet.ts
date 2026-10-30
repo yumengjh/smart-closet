@@ -1,8 +1,9 @@
 import { useNotificationStore } from './notifications'
 import { defineStore } from 'pinia'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { closetApi, usingMocks } from '../services/api'
 import { canUseCloset, type SessionUser } from '../domain/session'
+import { AccountSwitchedError, connectAccountTransport, markAccountStale, setActiveAccount } from '../domain/accountSession'
 
 export const useClosetStore = defineStore('closet', () => {
   const user = ref<SessionUser | null>(null)
@@ -12,16 +13,27 @@ export const useClosetStore = defineStore('closet', () => {
   const taskCount = ref(0)
   const pendingCount = ref(0)
   const isSignedIn = computed(() => Boolean(user.value))
+  // Every place that signs in or out assigns `user`; the account epoch and the other tabs follow from this one watcher (smart-closet-server#159, #160).
+  connectAccountTransport()
+  watch(user, current => setActiveAccount(current?.username ?? null), { immediate: true, flush: 'sync' })
 
   function refreshUser() {
     if (userRequest) return userRequest
     userRequest = (async () => {
       loadingUser.value = true
       try { user.value = await closetApi.currentUser() }
-      catch { user.value = null }
+      catch (cause) { if (!(cause instanceof AccountSwitchedError)) user.value = null }
       finally { loadingUser.value = false; userInitialized = true; userRequest = null }
     })()
     return userRequest
+  }
+  /** Compare the session cookie's account with the one this page shows (a tab that missed the broadcast, or woke from sleep). */
+  async function verifyAccount() {
+    if (!user.value || usingMocks) return
+    try {
+      const current = await closetApi.currentUser()
+      if (current && user.value && current.username !== user.value.username) markAccountStale()
+    } catch { /* Offline, signed out or already stale: nothing to compare. */ }
   }
   async function ensureUser() { if (!userInitialized) await refreshUser() }
   async function refreshCounts() {
@@ -49,5 +61,5 @@ export const useClosetStore = defineStore('closet', () => {
     pendingCount.value = 0
     for (const key of Object.keys(localStorage)) if (key === 'closetWorkflow' || key === 'yixu.mock-first-login') localStorage.removeItem(key)
   }
-  return { user, loadingUser, isSignedIn, taskCount, pendingCount, refreshUser, ensureUser, refreshCounts, signOut, clearSession, usingMocks }
+  return { user, loadingUser, isSignedIn, taskCount, pendingCount, refreshUser, ensureUser, verifyAccount, refreshCounts, signOut, clearSession, usingMocks }
 })

@@ -30,6 +30,8 @@ import RenderSendOff from './RenderSendOff.vue'
 import { useProcessingStore } from '../stores/processing'
 import { installInteractionSounds, unlockSound } from '../services/sound'
 import { pendingPath, prefetchRoute, prefetchWhenIdle } from '../composables/useRouteProgress'
+import { accountIsStale, markAccountStale, onAccountChange } from '../domain/accountSession'
+import { useNotificationStore } from '../stores/notifications'
 
 const route = useRoute()
 const router = useRouter()
@@ -130,6 +132,23 @@ function viewKey(component: { type: unknown } | undefined) {
 watch(() => [closet.user?.username, closet.user?.mustChangePassword], () => { void closet.refreshCounts() }, { immediate: true })
 function sessionExpired() { closet.user = null; closet.taskCount = 0; closet.pendingCount = 0; void router.replace('/login') }
 function passwordRequired() { if (closet.user) closet.user.mustChangePassword = true; closet.taskCount = 0; closet.pendingCount = 0; void router.replace('/settings?firstLogin=1') }
+// Another tab signed in as someone else (smart-closet-server#160): this page still shows the previous account, so it stops
+// polling, forgets what it fetched and asks for a reload instead of letting later clicks run as the new account.
+const accountStale = ref(accountIsStale())
+function accountChanged() {
+  accountStale.value = accountIsStale()
+  if (!accountStale.value) return
+  useNotificationStore().stop(); processing.stop()
+  closet.taskCount = 0; closet.pendingCount = 0
+}
+const stopWatchingAccount = onAccountChange(accountChanged)
+function accountMismatch() { markAccountStale() }
+function wakeUp() { if (document.visibilityState === 'visible') void closet.verifyAccount() }
+function reloadPage() { window.location.reload() }
+document.addEventListener('visibilitychange', wakeUp)
+window.addEventListener('focus', wakeUp)
+window.addEventListener('closet-account-mismatch', accountMismatch)
+onUnmounted(() => { stopWatchingAccount(); document.removeEventListener('visibilitychange', wakeUp); window.removeEventListener('focus', wakeUp); window.removeEventListener('closet-account-mismatch', accountMismatch) })
 window.addEventListener('closet-session-expired', sessionExpired)
 window.addEventListener('closet-password-change-required', passwordRequired)
 onUnmounted(() => { window.removeEventListener('closet-session-expired', sessionExpired); window.removeEventListener('closet-password-change-required', passwordRequired) })
@@ -147,6 +166,11 @@ async function signOut() {
 <template>
   <a-config-provider :theme="closetTheme" :locale="zhCN">
     <a-app>
+      <a-modal :open="accountStale" title="登录账号已切换" :closable="false" :mask-closable="false" :keyboard="false" centered :mask-style="{ backdropFilter: 'blur(14px)' }" :z-index="3000">
+        <p>这个浏览器已在另一个窗口切换了登录账号。本页还停留在之前的账号，为避免照片或资料提交到新账号，已暂停所有操作。</p>
+        <p>请重新加载页面，进入当前账号。</p>
+        <template #footer><a-button type="primary" @click="reloadPage">重新加载</a-button></template>
+      </a-modal>
       <div class="route-progress" :class="{ active: showProgress }" role="progressbar" aria-label="页面加载中" :aria-hidden="!showProgress"><span></span></div>
       <div v-if="isLogin" class="login-frame"><RouterView /></div>
       <div v-else-if="closet.isSignedIn && (!closet.user?.mustChangePassword || route.path === '/settings')" class="app-frame" :class="{ 'outfit-editing': isOutfitEditor, 'sidebar-collapsed': collapsed }" :style="frameStyle">

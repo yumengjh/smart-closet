@@ -2,6 +2,7 @@ import { readAgentStream } from './sse'
 import { usingMocks } from '../services/api'
 import { apiUrl } from '../services/urls'
 import { fetchWithRetry } from '../domain/network'
+import { accountHeaders, captureAccount } from '../domain/accountSession'
 import type { OutfitScene } from '../domain/outfit'
 import type { QuestionOption } from './question'
 
@@ -30,16 +31,21 @@ async function response(path: string, init: RequestInit = {}) {
   if (usingMocks) throw new Error('界面演示不调用助手。请连接真实后端。')
   const headers = new Headers(init.headers)
   if (init.body) headers.set('Content-Type', 'application/json')
+  const stillSameAccount = captureAccount()
   if (init.method && !['GET', 'HEAD'].includes(init.method)) {
     const csrf = await fetchWithRetry(apiUrl('/api/auth/csrf'), { credentials: 'include' })
     if (!csrf.ok) throw new Error('无法完成安全校验，请重新登录。')
     headers.set('X-XSRF-TOKEN', (await csrf.json()).token)
+    stillSameAccount()
+    for (const [name, value] of Object.entries(accountHeaders())) headers.set(name, value)
   }
   const result = await fetchWithRetry(apiUrl('/api/agent' + path), { ...init, headers, credentials: 'include' })
+  stillSameAccount()
   if (!result.ok) {
     if (result.status === 401) window.dispatchEvent(new Event('closet-session-expired'))
     const error = await result.json().catch(() => ({}))
     if (error.code === 'PASSWORD_CHANGE_REQUIRED') window.dispatchEvent(new Event('closet-password-change-required'))
+    if (result.status === 409 && error.code === 'ACCOUNT_MISMATCH') window.dispatchEvent(new Event('closet-account-mismatch'))
     throw new AgentRequestError(error.message || `助手请求失败 (${result.status})`, result.status)
   }
   return result
