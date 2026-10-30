@@ -20,3 +20,10 @@ export function passwordProblem(password: string): string {
   if (passwordBytes(password) > PASSWORD_MAX_BYTES) return '密码不能超过 72 字节（英文、数字和符号各占 1 字节，汉字通常占 3 字节，表情符号占 4 字节）。'
   return ''
 }
+
+/** Same rule as the server for new usernames (issue #164): no name made of dots and no "..", which URLs treat as a path segment. */
+export function usernameProblem(username: string): string {
+  if (!/^[A-Za-z0-9_.-]{2,80}$/.test(username)) return '用户名需为 2–80 个字符，只能包含字母、数字、下划线、点和短横线。'
+  if (username.includes('..') || /^\.+$/.test(username)) return '用户名不能只由点组成，也不能包含连续的点。'
+  return ''
+}

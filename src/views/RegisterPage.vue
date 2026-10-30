@@ -5,7 +5,7 @@ import { CheckCircleFilled, MinusCircleOutlined } from '@ant-design/icons-vue'
 import { useClosetStore } from '../stores/closet'
 import AuthShell from '../components/AuthShell.vue'
 import { closetApi, usingMocks, type RegistrationMode } from '../services/api'
-import { PASSWORD_MAX_BYTES, PASSWORD_MIN_CHARS, passwordBytes, passwordProblem } from '../domain/account'
+import { PASSWORD_MAX_BYTES, PASSWORD_MIN_CHARS, passwordBytes, passwordProblem, usernameProblem } from '../domain/account'
 
 /**
  * 注册分三步 (issue #82)：账号 → 密码 → 称呼。每步只校验本步，最后一步才提交；服务端拒绝时跳回出错的那一步。
@@ -31,7 +31,8 @@ const checks = computed(() => [
 ])
 function validate(at: number) {
   if (at === 0) {
-    if (!/^[A-Za-z0-9_.-]{2,80}$/.test(username.value)) return '用户名需为 2–80 个字符，只能包含字母、数字、下划线、点和短横线。'
+    const nameProblem = usernameProblem(username.value)
+    if (nameProblem) return nameProblem
     if (mode.value === 'INVITE' && !inviteCode.value.trim()) return '请输入邀请码。'
   }
   if (at === 1) {
