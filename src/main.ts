@@ -7,6 +7,7 @@ import 'ant-design-vue/dist/reset.css'
 import App from './App.vue'
 import { router } from './router'
 import { installPwa } from './services/pwa'
+import { accountAwareErrorHandler, silenceAccountSwitch } from './domain/accountSession'
 import './style.css'
 import './styles/outfit.css'
 import './styles/alert.css'
@@ -19,6 +20,9 @@ try {
 } catch { /* Storage access is optional. */ }
 
 const app = createApp(App).use(createPinia()).use(router).use(VueKonva)
+// A page made stale by another tab's sign-in refuses every request; those refusals are expected and stay out of the console (#177).
+silenceAccountSwitch(window)
+app.config.errorHandler = accountAwareErrorHandler()
 for (const [name, component] of Object.entries({
   'a-card': Card, 'a-table': Table, 'a-pagination': Pagination, 'a-popconfirm': Popconfirm, 'a-skeleton-image': Skeleton.Image,
   'a-badge': Badge, 'a-upload': Upload, 'a-divider': Divider, 'a-space': Space, 'a-checkbox-group': Checkbox.Group, 'a-steps': Steps, 'a-alert': Alert, 'a-app': AntApp, 'a-button': Button, 'a-config-provider': ConfigProvider,

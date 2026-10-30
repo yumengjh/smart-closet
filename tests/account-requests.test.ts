@@ -96,3 +96,47 @@ test('notifications: after sign-out a late answer cannot refill the emptied stor
   await new Promise(r => setTimeout(r, 0))
   assert.deepEqual(store.items, []); assert.equal(store.unread, 0); assert.equal(store.latest, null)
 })
+
+// Issue smart-closet-server#177: a stale page's stray requests must not leave console noise, and its timers must stop.
+test('the refusal of a stale page is recognised, other errors are not', () => {
+  assert.equal(m.isAccountSwitched(new m.AccountSwitchedError()), true)
+  assert.equal(m.isAccountSwitched(new Error('boom')), false)
+  assert.equal(m.isAccountSwitched(undefined), false)
+})
+test('an unawaited request of a stale page leaves no unhandled rejection, other rejections still surface', async () => {
+  const listeners = new Set<(event: { reason: unknown; defaultPrevented: boolean; preventDefault(): void }) => void>()
+  const target = { addEventListener: (_: string, l: never) => { listeners.add(l) }, removeEventListener: (_: string, l: never) => { listeners.delete(l) } }
+  const fire = (reason: unknown) => { const event = { reason, defaultPrevented: false, preventDefault() { this.defaultPrevented = true } }; listeners.forEach(l => l(event)); return event.defaultPrevented }
+  const remove = m.silenceAccountSwitch(target)
+  m.setActiveAccount('alice'); m.markAccountStale()
+  const stray = await m.request('/api/closet/garments').catch((error: unknown) => error)
+  assert.equal(fire(stray), true)
+  assert.equal(fire(new Error('real bug')), false)
+  remove()
+  assert.equal(listeners.size, 0)
+})
+test('Vue error hook drops the refusal and forwards everything else', () => {
+  const seen: unknown[] = []
+  const hook = m.accountAwareErrorHandler((error: unknown) => seen.push(error))
+  hook(new m.AccountSwitchedError(), null, 'watcher'); hook(new Error('real bug'), null, 'watcher')
+  assert.deepEqual(seen.map(error => (error as Error).message), ['real bug'])
+})
+test('timers may poll until the page goes stale, then stop for good', () => {
+  assert.equal(m.mayPoll(), true)
+  m.setActiveAccount('alice'); m.setActiveAccount('bob')
+  assert.equal(m.mayPoll(), true)
+  m.markAccountStale()
+  assert.equal(m.mayPoll(), false)
+})
+test('a notification poll that fires after the page went stale sends nothing', async t => {
+  let calls = 0; t.mock.method(globalThis, 'fetch', async () => { calls++; return json({ items: [], unread: 0 }) })
+  t.mock.timers.enable({ apis: ['setInterval'] })
+  const original = globalThis.document; globalThis.document = { visibilityState: 'visible' } as Document
+  const store = m.useNotificationStore()
+  try {
+    m.setActiveAccount('alice'); store.start(); await new Promise(r => setImmediate(r))
+    const before = calls
+    m.markAccountStale(); t.mock.timers.tick(120_000); await new Promise(r => setImmediate(r))
+    assert.equal(calls, before)
+  } finally { globalThis.document = original; store.stop() }
+})

@@ -5,6 +5,7 @@ import { batchApi, type IntakeBatch } from '../services/batches'
 import { batchEntry, bulkEntry, renderEntry, taskEntry, type WaitingEntry } from '../domain/waiting'
 import { platformRequest, type RenderJob } from '../services/platform'
 import { playSound } from '../services/sound'
+import { mayPoll } from '../domain/accountSession'
 
 export const useProcessingStore = defineStore('processing', () => {
   const entries = ref<WaitingEntry[]>([])
@@ -120,7 +121,7 @@ export const useProcessingStore = defineStore('processing', () => {
     save()
   }
   async function refresh(discover = false) {
-    if (!username || busy || document.hidden) return
+    if (!username || busy || document.hidden || !mayPoll()) return
     busy = true
     const epoch = generation
     try {
@@ -172,7 +173,7 @@ export const useProcessingStore = defineStore('processing', () => {
   }
   function schedule() {
     clearTimeout(timer)
-    if (username && !document.hidden) timer = setTimeout(() => { void refresh() }, connectionError.value ? 10_000 : activeCount.value ? 4_000 : 30_000)
+    if (username && !document.hidden && mayPoll()) timer = setTimeout(() => { void refresh() }, connectionError.value ? 10_000 : activeCount.value ? 4_000 : 30_000)
   }
   function visibility() { clearTimeout(timer); if (!document.hidden) void refresh(true) }
   function stop() {

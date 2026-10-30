@@ -2,6 +2,7 @@
 import { RouterLink } from 'vue-router'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { App } from 'ant-design-vue'
+import { isAccountSwitched, mayPoll } from '../domain/accountSession'
 import { platformRequest, type RenderJob } from '../services/platform'
 const { modal } = App.useApp()
 const jobs = ref<RenderJob[]>([])
@@ -13,11 +14,11 @@ const states: Record<string,string> = {QUEUED:'排队中',WAITING_RESOURCE:'等�
 let timer: ReturnType<typeof setTimeout> | undefined
 let alive = false
 async function load() {
-  if (!alive || document.hidden) return
+  if (!alive || document.hidden || !mayPoll()) return
   try { jobs.value = await platformRequest('/api/me/image-render-jobs'); error.value = '' }
-  catch(e) { error.value = String(e) }
+  catch(e) { if (!isAccountSwitched(e)) error.value = String(e) }
 }
-function poll() { if(alive) timer=setTimeout(async()=>{await load();poll()},error.value?15000:5000) }
+function poll() { if(alive && mayPoll()) timer=setTimeout(async()=>{await load();poll()},error.value?15000:5000) }
 function cancel(job: RenderJob) {
   modal.confirm({title:'取消这次生成？',content:'本平台将停止后续发布；已发出的请求无法保证上游停止或退还额度。',okText:'取消任务',cancelText:'继续等待',async onOk(){cancelling.value=job.id;try{await platformRequest(`/api/me/image-render-jobs/${job.id}/cancel`,'POST',{});await load()}finally{cancelling.value=''}}})
 }

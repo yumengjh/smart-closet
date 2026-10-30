@@ -1,5 +1,6 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
+import { mayPoll } from '../domain/accountSession'
 import { notificationApi, type ClosetNotification } from '../notifications/api'
 
 /**
@@ -64,7 +65,7 @@ export const useNotificationStore = defineStore('notifications', () => {
     if (timer) return
     generation++
     void refresh()
-    timer = setInterval(() => { if (document.visibilityState === 'visible') void refresh() }, 60_000)
+    timer = setInterval(() => { if (document.visibilityState === 'visible' && mayPoll()) void refresh() }, 60_000)
   }
   /** A garment just entered the closet: look for its duplicate notice every 5 s for the next two minutes. */
   function expectSoon(ms = 120_000) {
@@ -73,7 +74,7 @@ export const useNotificationStore = defineStore('notifications', () => {
     if (fast) return
     fast = setInterval(() => {
       if (Date.now() > fastUntil) { clearInterval(fast); fast = undefined; return }
-      if (document.visibilityState === 'visible') void refresh()
+      if (document.visibilityState === 'visible' && mayPoll()) void refresh()
     }, 5_000)
   }
   function stop() { generation++; clearInterval(fast); fast = undefined; fastUntil = 0; clearInterval(timer); timer = undefined; started = false; items.value = []; unread.value = 0; seen = new Set(); latest.value = null }

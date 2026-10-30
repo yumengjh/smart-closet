@@ -8,6 +8,7 @@ import type { ClosetTask } from '../services/api'
 import { thumbUrl } from '../services/urls'
 import { quickApi } from '../services/quickIntake'
 import { createUuid } from '../domain/id'
+import { isAccountSwitched, mayPoll } from '../domain/accountSession'
 import { useClosetStore } from '../stores/closet'
 
 /**
@@ -65,16 +66,16 @@ function enhanceHint(task: ExecutionTask) { return `使用 1 次 AI 额度重新
 async function enhance(task: ExecutionTask) {
   busy.value = task.id
   try { await quickApi.enhance(task.businessId, createUuid(), ''); message.success('已重新发起增强，完成后右上角会提醒你'); await load() }
-  catch (cause) { message.error(cause instanceof Error ? cause.message : '重新增强没有发起成功') }
+  catch (cause) { if (!isAccountSwitched(cause)) message.error(cause instanceof Error ? cause.message : '重新增强没有发起成功') }
   finally { busy.value = '' }
 }
 function when(ms: number) {
   const date = new Date(ms), time = date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })
   return date.toDateString() === new Date().toDateString() ? `今天 ${time}` : `${date.getMonth() + 1}月${date.getDate()}日 ${time}`
 }
-async function load() { try { items.value = (await processingApi.list(1)).items; error.value = '' } catch (cause) { error.value = cause instanceof Error ? cause.message : String(cause) } }
-async function poll() { await load(); if (alive) timer = window.setTimeout(poll, visible.value.length ? 3000 : 15000) }
-async function act(id: string, action: () => Promise<unknown>) { busy.value = id; try { await action(); await load() } catch (cause) { message.error(cause instanceof Error ? cause.message : String(cause)) } finally { busy.value = '' } }
+async function load() { if (!mayPoll()) return; try { items.value = (await processingApi.list(1)).items; error.value = '' } catch (cause) { if (!isAccountSwitched(cause)) error.value = cause instanceof Error ? cause.message : String(cause) } }
+async function poll() { await load(); if (alive && mayPoll()) timer = window.setTimeout(poll, visible.value.length ? 3000 : 15000) }
+async function act(id: string, action: () => Promise<unknown>) { busy.value = id; try { await action(); await load() } catch (cause) { if (!isAccountSwitched(cause)) message.error(cause instanceof Error ? cause.message : String(cause)) } finally { busy.value = '' } }
 onMounted(poll); onBeforeUnmount(() => { alive = false; clearTimeout(timer) })
 </script>
 <template>
