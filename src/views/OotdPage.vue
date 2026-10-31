@@ -13,9 +13,10 @@ import OutfitThumbnail from '../components/OutfitThumbnail.vue'
 import ModelPicker from '../ootd/ModelPicker.vue'
 import PosePicker from '../ootd/PosePicker.vue'
 import ResultViewer from '../ootd/ResultViewer.vue'
+import RenderSource from '../ootd/RenderSource.vue'
 import { modelLabel } from '../ootd/labels'
 import { describeAdjustments } from '../ootd/body-adjust'
-import { adviceFor, routeTarget } from '../ootd/jobStatus'
+import { adviceFor, failureReason, groupRecords, routeTarget } from '../ootd/jobStatus'
 import { usePreferencesStore } from '../stores/preferences'
 import { useProcessingStore } from '../stores/processing'
 import { useSendOffStore } from '../stores/sendOff'
@@ -58,6 +59,12 @@ const capability = computed(() => available.value.find(c => c.provider + ':' + c
 const filledSlots = computed(() => review.value?.slots.filter(slot => slot.items.length || slot.state === 'CONFLICT' || slot.state === 'UNKNOWN') || [])
 const garments = computed(() => [...new Map((current.value?.scene.elements || []).filter(e => e.kind !== 'PERSON_PART').map(e => [e.garmentId, e])).values()])
 const hint = computed(() => !current.value ? '先选一套已保存的搭配' : !person.value ? '先选一位模特' : !capability.value ? '暂无可用的生成模型' : '')
+// Issue #106: pictures, running jobs and failures are shown apart; a failure replaced by a successful retry folds away.
+const groups = computed(() => groupRecords(jobs.value)); const showReplaced = ref<string[]>([])
+const thumbs = computed(() => { const out = new Map<string, string>(); for (const o of outfits.value) for (const e of o.scene.elements) if (e.garmentId && e.assetUrl && !out.has(e.garmentId)) out.set(e.garmentId, e.assetUrl); return out })
+function recordTitle(job: RenderJob) { return job.summary?.kind === 'ADJUST' ? `身材调整 · ${describeAdjustments(job.summary.adjustments)}` : job.summary?.outfit || [job.summary?.model, job.summary?.pose].filter(Boolean).join(' · ') || '未记录来源' }
+function recordLine(job: RenderJob) { return [job.summary?.kind !== 'ADJUST' && job.summary?.outfit ? [job.summary?.model, job.summary?.pose].filter(Boolean).join(' · ') : '', new Date(job.createdAt).toLocaleString('zh-CN', { hour12: false, month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })].filter(Boolean).join(' · ') }
+function viewReplacement(job: RenderJob) { const next = jobs.value.find(j => j.id === groups.value.replacedBy.get(job.id)); statusId.value = ''; if (next) viewing.value = next }
 const viewingJob = computed(() => viewing.value && (jobs.value.find(j => j.id === viewing.value!.id) || viewing.value))
 
 async function load() {
@@ -155,6 +162,7 @@ const advice = computed(() => statusJob.value ? adviceFor(statusJob.value) : nul
 const retryKeys = new Map<string, string>(); const retrying = ref('')
 function openJob(job: RenderJob) { if (job.mediaUrl) viewing.value = job; else statusId.value = job.id }
 function retry(job: RenderJob) {
+  if (groups.value.retryState.get(job.id) !== 'open') { message.info(groups.value.retryState.get(job.id) === 'retrying' ? '这条已经在重新生成，请稍等。' : '这条已经重新生成成功了。'); return }
   modal.confirm({
     title: '重新生成这张图？', okText: '重新生成（1 个额度）', cancelText: '先不了',
     content: job.status === 'UNKNOWN' ? '上一次请求可能已经在服务商那边出图并扣了额度，重新生成会再用 1 个图像额度。' : '会按原来的搭配、模特和动作再生成一张，再用 1 个图像额度。',
@@ -236,39 +244,74 @@ onUnmounted(() => clearInterval(timer))
   </div>
 
   <section class="ootd-records">
-    <header class="ootd-records-head"><h2>我的 OOTD <small v-if="jobs.length">{{ jobs.length }}</small></h2><a-button type="text" aria-label="刷新" @click="refresh"><ReloadOutlined /></a-button></header>
+    <header class="ootd-records-head"><h2>我的 OOTD <small v-if="groups.done.length">{{ groups.done.length }} 张</small></h2><a-button type="text" aria-label="刷新" @click="refresh"><ReloadOutlined /></a-button></header>
     <div v-if="!jobs.length" class="ootd-card"><a-empty description="生成的图片会保存在这里" /></div>
-    <div v-else class="ootd-results">
-      <article v-for="job in jobs" :key="job.id" class="ootd-result">
-        <button type="button" class="ootd-result-media" :class="{ pending: !job.mediaUrl }" :aria-label="job.mediaUrl ? '查看大图' : `${adviceFor(job).label}，查看详情`" @click="openJob(job)">
-          <img v-if="job.mediaUrl" :src="mediaUrl(job.mediaUrl)" alt="OOTD 生成结果（AI 生成）" loading="lazy" />
-          <AiBadge v-if="job.mediaUrl" />
-          <span v-else class="ootd-result-state" :class="[adviceFor(job).tone, { busy: adviceFor(job).tone === 'running' }]">{{ adviceFor(job).label }}<small v-if="adviceFor(job).canRetry">点开查看</small></span>
+
+    <div v-if="groups.running.length" class="ootd-group ootd-running" role="status" aria-live="polite">
+      <h3 class="ootd-group-head"><span class="ootd-dot running" />正在生成 {{ groups.running.length }} 张<small>做好后会出现在下方图片列表并提醒你，可以先离开这个页面。</small></h3>
+      <article v-for="job in groups.running" :key="job.id" class="ootd-row">
+        <span class="ootd-result-state running busy">{{ adviceFor(job).label }}</span>
+        <div class="ootd-row-body"><p class="ootd-result-title">{{ recordTitle(job) }}<a-tag v-if="job.summary?.retryOf" color="processing">重新生成</a-tag></p><RenderSource :job="job" :thumbs="thumbs" compact /></div>
+        <div class="ootd-row-actions"><a-button v-if="adviceFor(job).canCancel" size="small" @click="cancel(job)">取消</a-button></div>
+      </article>
+    </div>
+
+    <div v-if="groups.failed.length || groups.replaced.length" class="ootd-group ootd-failures">
+      <h3 v-if="groups.failed.length" class="ootd-group-head"><span class="ootd-dot failed" />没有生成成功 {{ groups.failed.length }} 条<small>失败的记录单独放在这里，不进图片列表；重新生成成功后会自动收起。</small></h3>
+      <article v-for="job in groups.failed" :key="job.id" class="ootd-row">
+        <a-tag class="ootd-row-tag" :color="adviceFor(job).tone === 'warning' ? 'warning' : adviceFor(job).tone === 'failed' ? 'error' : 'default'">{{ adviceFor(job).label }}</a-tag>
+        <div class="ootd-row-body">
+          <p class="ootd-result-title">{{ recordTitle(job) }}</p>
+          <p class="ootd-row-reason">{{ failureReason(job) }}</p>
+          <RenderSource :job="job" :thumbs="thumbs" compact />
+        </div>
+        <div class="ootd-row-actions">
+          <a-tag v-if="groups.retryState.get(job.id) === 'retrying'" color="processing">正在重新生成</a-tag>
+          <a-button v-else-if="adviceFor(job).canRetry" size="small" type="primary" :loading="retrying === job.id" @click="retry(job)">重新生成</a-button>
+          <a-button size="small" @click="openJob(job)">详情</a-button>
+          <a-button v-if="adviceFor(job).canDelete" size="small" danger @click="remove(job)">删除</a-button>
+        </div>
+      </article>
+      <a-collapse v-if="groups.replaced.length" v-model:active-key="showReplaced" ghost class="ootd-replaced">
+        <a-collapse-panel key="replaced" :header="`已重新生成成功的失败记录 ${groups.replaced.length} 条`">
+          <article v-for="job in groups.replaced" :key="job.id" class="ootd-row">
+            <a-tag class="ootd-row-tag" color="success">已重试成功</a-tag>
+            <div class="ootd-row-body"><p class="ootd-result-title">{{ recordTitle(job) }}</p><p class="ootd-row-reason muted">{{ failureReason(job) }} · {{ recordLine(job) }}</p></div>
+            <div class="ootd-row-actions"><a-button size="small" @click="viewReplacement(job)">查看新图</a-button><a-button v-if="adviceFor(job).canDelete" size="small" danger @click="remove(job)">删除</a-button></div>
+          </article>
+        </a-collapse-panel>
+      </a-collapse>
+    </div>
+
+    <div v-if="groups.done.length" class="ootd-results">
+      <article v-for="job in groups.done" :key="job.id" class="ootd-result">
+        <button type="button" class="ootd-result-media" aria-label="查看大图" @click="openJob(job)">
+          <img :src="mediaUrl(job.mediaUrl!)" alt="OOTD 生成结果（AI 生成）" loading="lazy" />
+          <AiBadge />
           <span v-if="job.summary?.kind === 'ADJUST'" class="ootd-result-flag">身材调整</span>
         </button>
         <div class="ootd-result-body">
-          <p class="ootd-result-title">{{ job.summary?.kind === 'ADJUST' ? describeAdjustments(job.summary.adjustments) : [job.summary?.model, job.summary?.pose].filter(Boolean).join(' · ') || new Date(job.createdAt).toLocaleDateString() }}</p>
-          <p v-if="job.error" class="ootd-result-error">{{ job.error }}</p>
-          <div v-if="!job.mediaUrl" class="ootd-result-actions">
-            <a-button v-if="adviceFor(job).canCancel" size="small" @click="cancel(job)">取消</a-button>
-            <a-button v-if="adviceFor(job).canRetry" size="small" type="primary" :loading="retrying === job.id" @click="retry(job)">重新生成</a-button>
-            <a-button v-if="adviceFor(job).canDelete" size="small" danger @click="remove(job)">删除</a-button>
-          </div>
+          <p class="ootd-result-title" :title="recordTitle(job)">{{ recordTitle(job) }}</p>
+          <p class="ootd-result-line">{{ recordLine(job) }}</p>
+          <a-popover trigger="click" placement="top" title="生图原资料" :overlay-style="{ maxWidth: '320px' }">
+            <template #content><RenderSource :job="job" :thumbs="thumbs" /></template>
+            <a-button type="link" size="small" class="ootd-source-link">原资料</a-button>
+          </a-popover>
         </div>
       </article>
     </div>
+    <p v-else-if="jobs.length" class="ootd-note">还没有生成成功的图片。</p>
   </section>
 
   <a-modal :open="!!statusJob" :title="advice?.title" :footer="null" width="420px" @cancel="statusId = ''">
     <template v-if="statusJob && advice">
       <a-alert :type="advice.tone === 'failed' ? 'error' : advice.tone === 'warning' ? 'warning' : 'info'" show-icon :message="advice.label" :description="advice.body || undefined" class="status-alert" />
-      <dl class="status-facts">
-        <dt>开始于</dt><dd>{{ new Date(statusJob.createdAt).toLocaleString('zh-CN', { hour12: false }) }}</dd>
-        <template v-if="statusJob.summary?.model"><dt>模特</dt><dd>{{ statusJob.summary.model }}</dd></template>
-        <template v-if="statusJob.summary?.pose"><dt>动作</dt><dd>{{ statusJob.summary.pose }}</dd></template>
-      </dl>
+      <a-alert v-if="groups.retryState.get(statusJob.id) === 'replaced'" type="success" show-icon message="已经重新生成成功，新图在图片列表里。" class="status-alert" />
+      <a-alert v-else-if="groups.retryState.get(statusJob.id) === 'retrying'" type="info" show-icon message="已经在重新生成，做好后这条会自动收起。" class="status-alert" />
+      <RenderSource :job="statusJob" :thumbs="thumbs" class="status-facts" />
       <a-space wrap class="status-actions">
-        <a-button v-if="advice.canRetry" type="primary" :loading="retrying === statusJob.id" @click="retry(statusJob)">重新生成</a-button>
+        <a-button v-if="groups.retryState.get(statusJob.id) === 'replaced'" type="primary" @click="viewReplacement(statusJob)">查看新图</a-button>
+        <a-button v-else-if="advice.canRetry && groups.retryState.get(statusJob.id) !== 'retrying'" type="primary" :loading="retrying === statusJob.id" @click="retry(statusJob)">重新生成</a-button>
         <a-button v-if="advice.canCancel" @click="cancel(statusJob)">取消生成</a-button>
         <a-button v-if="advice.canDelete" danger @click="statusId = ''; remove(statusJob)">删除这条记录</a-button>
         <a-button @click="statusId = ''">关闭</a-button>
@@ -292,7 +335,7 @@ onUnmounted(() => clearInterval(timer))
       <p class="ootd-note">生成图是视觉预览，不代表真实尺码是否合身。</p>
     </template>
   </a-modal>
-  <ResultViewer :job="viewingJob" :can-adjust="!!available.length" @close="viewing = null" @changed="refresh" @submitted="adjusted" @remove="remove" />
+  <ResultViewer :job="viewingJob" :thumbs="thumbs" :can-adjust="!!available.length" @close="viewing = null" @changed="refresh" @submitted="adjusted" @remove="remove" />
 </template>
 
 <style scoped>
@@ -326,7 +369,6 @@ onUnmounted(() => clearInterval(timer))
 .ootd-results { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: var(--space-4); }
 .ootd-result { display: flex; flex-direction: column; min-width: 0; overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
 .ootd-result-media { position: relative; display: grid; place-items: center; aspect-ratio: 2 / 3; padding: 0; overflow: hidden; border: 0; background: var(--surface-alt); cursor: zoom-in; }
-.ootd-result-media.pending { cursor: pointer; }
 .ootd-result-media img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: top; transition: transform .25s ease; }
 .ootd-result-media:hover img { transform: scale(1.02); }
 .ootd-result-state { display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--muted-copy); font-size: 13px; }
@@ -343,8 +385,26 @@ onUnmounted(() => clearInterval(timer))
 .ootd-result-flag { position: absolute; top: 8px; left: 8px; padding: 0 8px; border-radius: 999px; background: #6b4fbbe6; color: #fff; font-size: 11px; line-height: 20px; }
 .ootd-result-body { display: flex; flex: 1; flex-direction: column; gap: var(--space-2); padding: 10px 12px; }
 .ootd-result-title { margin: 0; overflow: hidden; font-size: 12px; color: var(--muted-strong); text-overflow: ellipsis; white-space: nowrap; }
-.ootd-result-error { margin: 0; font-size: 12px; color: var(--danger); overflow-wrap: anywhere; }
-.ootd-result-actions { display: flex; gap: var(--space-2); }
+.ootd-result-line { margin: 0; overflow: hidden; font-size: 12px; color: var(--muted-subtle); text-overflow: ellipsis; white-space: nowrap; }
+.ootd-source-link { align-self: flex-start; height: auto; padding: 0; font-size: 12px; }
+.ootd-group { display: flex; flex-direction: column; gap: var(--space-2); margin-bottom: var(--space-5); padding: var(--space-4) var(--space-5); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
+.ootd-failures { border-color: color-mix(in srgb, var(--danger, #c0392b) 35%, var(--line)); }
+.ootd-group-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; margin: 0 0 var(--space-1); font-size: 15px; font-weight: 600; }
+.ootd-group-head small { color: var(--muted-subtle); font-size: 12px; font-weight: 400; }
+.ootd-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
+.ootd-dot.running { background: var(--accent); }
+.ootd-dot.failed { background: var(--danger, #c0392b); }
+.ootd-row { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-2) var(--space-3); padding: 10px 0; border-top: 1px solid var(--line); }
+.ootd-row:first-of-type { border-top: 0; }
+.ootd-row > .ootd-result-state { flex: 0 0 72px; padding-top: 2px; font-size: 12px; }
+.ootd-row-tag { flex-shrink: 0; margin: 2px 0 0; }
+.ootd-row-body { display: flex; flex: 1 1 260px; flex-direction: column; gap: 4px; min-width: 0; }
+.ootd-row-body .ootd-result-title { display: flex; align-items: center; gap: 6px; white-space: normal; font-size: 13px; font-weight: 600; }
+.ootd-row-reason { margin: 0; color: var(--danger, #c0392b); font-size: 12px; }
+.ootd-row-reason.muted { color: var(--muted-subtle); }
+.ootd-row-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-left: auto; }
+.ootd-replaced :deep(.ant-collapse-header) { padding-inline: 0 !important; color: var(--muted-copy); font-size: 13px; }
+.ootd-replaced :deep(.ant-collapse-content-box) { padding: 0 !important; }
 .confirm-summary { display: flex; gap: var(--space-4); align-items: flex-start; }
 .confirm-photo { position: relative; flex-shrink: 0; display: block; width: 84px; height: 126px; }
 .confirm-summary img { flex-shrink: 0; width: 84px; height: 126px; border-radius: var(--radius-md); object-fit: cover; object-position: top; background: var(--surface-alt); }

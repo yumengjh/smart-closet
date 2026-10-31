@@ -28,3 +28,55 @@ export function routeTarget(id: string, jobs: RenderJob[], loaded: boolean): Rou
   if (job) return { action: job.mediaUrl ? 'view' : 'status', job }
   return { action: loaded ? 'missing' : 'wait' }
 }
+
+const ENDED = new Set(['UNKNOWN', 'FAILED', 'CANCELLED'])
+/** Ended without a picture: the jobs the failure area collects (issue #106). */
+export function isFailure(job: Pick<RenderJob, 'status' | 'mediaUrl'>) { return !job.mediaUrl && ENDED.has(job.status) }
+
+/** One short, plain reason for a failure card; the full text stays in the status dialog. */
+export function failureReason(job: Pick<RenderJob, 'status' | 'error'>): string {
+  if (job.status === 'UNKNOWN') return '生成中断，结果待核实'
+  if (job.status === 'CANCELLED') return '已取消，没有出图'
+  const error = (job.error || '').trim()
+  if (!error) return '模型没有返回可用的图片'
+  if (/超时|timeout/i.test(error)) return '服务商响应超时'
+  if (/审核|安全策略|违规|policy|safety|moderation/i.test(error)) return '被服务商的内容审核拦下，可换动作或衣物再试'
+  if (/额度|quota/i.test(error)) return '图像额度不足'
+  if (/连接|网络|connect|network/i.test(error)) return '连接服务商失败'
+  if (/变化|已改变|已删除|已清理/.test(error)) return '原资料已变化，请回到上方重新准备'
+  if (/[一-鿿]/.test(error)) return error.split(/[；。\n]/)[0].slice(0, 40)
+  return '模型没有返回可用的图片'
+}
+
+export type RetryState = 'open' | 'retrying' | 'replaced'
+export type RecordGroups = { running: RenderJob[]; done: RenderJob[]; failed: RenderJob[]; replaced: RenderJob[]; retryState: Map<string, RetryState>; replacedBy: Map<string, string> }
+/**
+ * Splits the OOTD records (issue #106): pictures by time, running jobs, and failures. A failure whose retry chain (retryOf,
+ * also through failed retries) produced a picture is "replaced" and folded away; one with a retry still running is "retrying".
+ */
+export function groupRecords(jobs: RenderJob[]): RecordGroups {
+  const byTime = [...jobs].sort((a, b) => b.createdAt - a.createdAt)
+  const children = new Map<string, RenderJob[]>()
+  for (const j of byTime) { const parent = j.summary?.retryOf; if (parent) children.set(parent, [...(children.get(parent) || []), j]) }
+  const retryState = new Map<string, RetryState>(), replacedBy = new Map<string, string>()
+  const walk = (id: string, seen: Set<string>): { state: RetryState; by?: string } => {
+    let state: RetryState = 'open'; let by: string | undefined
+    for (const child of children.get(id) || []) {
+      if (seen.has(child.id)) continue; seen.add(child.id)
+      if (child.mediaUrl) return { state: 'replaced', by: child.id }
+      if (RUNNING.has(child.status)) state = 'retrying'
+      const deeper = walk(child.id, seen)
+      if (deeper.state === 'replaced') return deeper
+      if (deeper.state === 'retrying') state = 'retrying'
+    }
+    return { state, by }
+  }
+  const running: RenderJob[] = [], done: RenderJob[] = [], failed: RenderJob[] = [], replaced: RenderJob[] = []
+  for (const j of byTime) {
+    if (j.mediaUrl) { done.push(j); continue }
+    if (!isFailure(j)) { running.push(j); continue }
+    const r = walk(j.id, new Set([j.id])); retryState.set(j.id, r.state); if (r.by) replacedBy.set(j.id, r.by)
+    ;(r.state === 'replaced' ? replaced : failed).push(j)
+  }
+  return { running, done, failed, replaced, retryState, replacedBy }
+}

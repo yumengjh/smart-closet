@@ -7,8 +7,9 @@ import { mediaUrl } from '../services/urls'
 import { createUuid } from '../domain/id'
 import { BODY_DIMENSIONS, describeAdjustments } from './body-adjust'
 import AiBadge from '../components/AiBadge.vue'
+import RenderSource from './RenderSource.vue'
 
-const props = defineProps<{ job: RenderJob | null; canAdjust: boolean }>()
+const props = withDefaults(defineProps<{ job: RenderJob | null; canAdjust: boolean; thumbs?: Map<string, string> }>(), { thumbs: () => new Map() })
 const emit = defineEmits<{ close: []; changed: []; submitted: [RenderJob]; remove: [RenderJob] }>()
 const { message } = App.useApp()
 const adjusting = ref(false); const values = ref<Required<BodyAdjustments>>({ build: 0, shoulders: 0, waist: 0, hips: 0, legs: 0 })
@@ -55,9 +56,9 @@ async function saveFeedback() {
           <a-tag v-if="job.summary?.kind === 'ADJUST'" color="purple">身材调整</a-tag>
           <a-tag v-if="job.summary?.model">{{ job.summary.model }}</a-tag>
           <a-tag v-if="job.summary?.pose">动作 · {{ job.summary.pose }}</a-tag>
-          <span>{{ new Date(job.createdAt).toLocaleString() }}</span>
+          <a-tag v-if="job.summary?.retryOf" color="processing">重新生成</a-tag>
         </div>
-        <p v-if="job.summary?.adjustments" class="viewer-note">{{ describeAdjustments(job.summary.adjustments) }}</p>
+        <RenderSource :job="job" :thumbs="thumbs" />
 
         <template v-if="!adjusting">
           <div class="viewer-actions">
