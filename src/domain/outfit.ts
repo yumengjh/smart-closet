@@ -98,9 +98,10 @@ export function roleFromGarment(garment: Pick<Garment, 'category'>): OutfitRole 
   if (isOverallCategory(garment.category)) return 'ONE_PIECE'
   if (/连衣裙|背心裙|马甲裙|吊带裙|连体|连身|小黑裙|礼服|婚纱|旗袍|晚装|套装|(?<![A-Za-z])OP(?![A-Za-z])|\b(dress|jumpsuit|romper|gown)\b/i.test(name)) return 'ONE_PIECE'
   if (/马甲|(牛仔|西装|西服|针织|毛衣|毛线|羊毛|羽绒|皮|工装)背心|\b(waistcoat|gilet)\b/i.test(name)) return 'OUTER'
-  if (/外套|夹克|西装外套|西装上衣|西服上衣|^西装$|大衣|风衣|羽绒|冲锋衣|罩衫|开衫|\b(coat|jacket|blazer|cardigan|parka)\b/i.test(name)) return 'OUTER'
+  if (/外套|夹克|西装外套|西装上衣|西服上衣|外搭上衣|^西装$|大衣|风衣|羽绒|冲锋衣|罩衫|开衫|\b(coat|jacket|blazer|cardigan|parka)\b/i.test(name)) return 'OUTER'
   if (/长裤|短裤|牛仔裤|半身裙|下装|裤|裙|(?<![A-Za-z])SK(?![A-Za-z])|\b(pants|trousers|jeans|shorts|skirt)\b/i.test(name)) return 'BOTTOM'
-  if (/T恤|衬衫|卫衣|毛衣|针织|背心|上装|Polo|\b(t-shirt|shirt|sweater|hoodie|sweatshirt|top|vest|blouse)\b/i.test(name)) return 'TOP'
+  // A bare 上衣 is a top; 西装上衣, 外搭上衣 and 开衫上衣 matched OUTER above (#104).
+  if (/T恤|衬衫|卫衣|毛衣|针织|背心|上装|上衣|Polo|\b(t-shirt|shirt|sweater|hoodie|sweatshirt|top|vest|blouse)\b/i.test(name)) return 'TOP'
   if (/鞋|靴|\b(shoes|boots|sneakers|sandals)\b/i.test(name)) return 'SHOES'
   if (/帽|\b(hat|cap|beret)\b/i.test(name)) return 'HAT'
   if (/背包|手提包|斜挎包|包袋|包|\b(bag|backpack|handbag)\b/i.test(name)) return 'BAG'

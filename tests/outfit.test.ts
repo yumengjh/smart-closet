@@ -68,6 +68,9 @@ test('maps familiar and open category names to editable outfit roles', () => {
     ['连裤袜', 'ACCESSORY'], ['过膝袜', 'ACCESSORY'], ['袜靴', 'SHOES'], ['小黑裙', 'ONE_PIECE'], ['礼服裙', 'ONE_PIECE'],
     ['洛丽塔OP', 'ONE_PIECE'], ['洛丽塔SK', 'BOTTOM'], ['洛丽塔JSK', 'ONE_PIECE'], ['背带裙', 'ONE_PIECE'], ['水手服套装', 'ONE_PIECE'],
     ['伞裙', 'BOTTOM'], ['发箍', 'HAT'], ['KC', 'HAT'], ['小熊玩偶', 'ACCESSORY'], ['娃娃领衬衫', 'TOP'], ['手拿包', 'BAG'],
+    // #104: a bare 上衣 is a top; outer meanings stay OUTER.
+    ['上衣', 'TOP'], ['水手服上衣', 'TOP'], ['短袖上衣', 'TOP'], ['长袖上衣', 'TOP'], ['西装上衣', 'OUTER'], ['外搭上衣', 'OUTER'],
+    ['开衫上衣', 'OUTER'], ['罩衫', 'OUTER'],
   ] as const) assert.equal(roleFromGarment({ category: [category] }), role, category)
 })
 
