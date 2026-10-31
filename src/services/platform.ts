@@ -1,6 +1,7 @@
 import { apiUrl } from './urls'
 import { usingMocks } from './api'
 import { AccountSwitchedError, accountHeaders, captureAccount } from '../domain/accountSession'
+import { signalSessionExpired } from '../domain/sessionNotice'
 export class PlatformRequestError extends Error {
   readonly uncertain: boolean
   readonly status?: number
@@ -30,8 +31,8 @@ export async function platformRequest<T>(path: string, method = 'GET', body?: un
     sent = write
     const response = await fetch(apiUrl(path), { method, headers, credentials: 'include', signal: controller.signal, body: body === undefined ? undefined : multipart ? body : JSON.stringify(body) })
     if (!response.ok) {
-      if (response.status === 401) window.dispatchEvent(new Event('closet-session-expired'))
       const error = await response.json().catch(() => ({}))
+      if (response.status === 401) signalSessionExpired(error.code)
       if (response.status === 409 && error.code === 'ACCOUNT_MISMATCH') window.dispatchEvent(new Event('closet-account-mismatch'))
       throw new PlatformRequestError(error.message || `请求未完成 (${response.status})`, write && (response.status >= 500 || response.status === 408), response.status, error.code)
     }

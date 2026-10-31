@@ -3,6 +3,7 @@ import { createUuid } from '../domain/id'
 import { apiUrl } from './urls'
 import { fetchWithRetry } from '../domain/network'
 import { accountHeaders, assertAccountCurrent, captureAccount } from '../domain/accountSession'
+import { noteSessionLost, signalSessionExpired } from '../domain/sessionNotice'
 import { normalizeScene, sceneWrite } from '../domain/outfit'
 import personCatalog from '../domain/person-stickers.json'
 import type { PersonCatalog } from '../domain/person-stickers'
@@ -257,8 +258,10 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
   // A response that outlived an account switch belongs to the previous account: never hand it to the new one.
   stillSameAccount()
   if (!response.ok) {
-    if (response.status === 401 && !['/api/auth/login', '/api/auth/portable-login', '/api/auth/me'].includes(path)) window.dispatchEvent(new Event('closet-session-expired'))
     const data = await response.json().catch(() => ({})) as { code?: string; message?: string; detail?: string }
+    // The start-up /api/auth/me only notes why (the login page shows it); other protected requests also leave the page.
+    if (response.status === 401 && path === '/api/auth/me') noteSessionLost(data.code)
+    else if (response.status === 401 && !['/api/auth/login', '/api/auth/portable-login'].includes(path)) signalSessionExpired(data.code)
     if (response.status === 403 && data.code === 'PASSWORD_CHANGE_REQUIRED') window.dispatchEvent(new Event('closet-password-change-required'))
     if (response.status === 409 && data.code === 'ACCOUNT_MISMATCH') window.dispatchEvent(new Event('closet-account-mismatch'))
     throw new Error(data.message || data.detail || `请求失败 (${response.status})`)
@@ -674,8 +677,8 @@ export const closetApi = {
     assertAccountCurrent()
     const response = await fetchWithRetry(apiUrl(`/api/admin/security-audit/export?${params}`), { credentials: 'include' })
     if (!response.ok) {
-      if (response.status === 401) window.dispatchEvent(new Event('closet-session-expired'))
-      const data = await response.json().catch(() => ({})) as { message?: string }
+      const data = await response.json().catch(() => ({})) as { code?: string; message?: string }
+      if (response.status === 401) signalSessionExpired(data.code)
       throw new Error(data.message || `导出失败 (${response.status})`)
     }
     const name = /filename="([^"]+)"/.exec(response.headers.get('Content-Disposition') || '')?.[1]
