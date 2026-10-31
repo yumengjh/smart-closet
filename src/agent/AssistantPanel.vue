@@ -320,7 +320,7 @@ async function send() {
     }, abort.signal)
   } catch (e) {
     failCanvasExecution()
-    if (isStopped(e)) { error.value = ''; if (reply) reply.status = 'CANCELLED'; message.info('已停止生成，本次不计次。') }
+    if (isStopped(e)) { error.value = ''; if (reply) reply.status = 'CANCELLED'; message.info('已停止生成。这条消息已提交，仍计入今日对话次数。') }
     else if (e instanceof AgentStreamError) { error.value = e.message; const advice = failureAdvice(e.retry); errorHint.value = advice.hint; errorNewSession.value = advice.newSession; if (reply) reply.status = 'FAILED' }
     else { showFailure(e, '回复未完成。'); if (reply) reply.status = 'FAILED' }
   }
