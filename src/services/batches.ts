@@ -1,6 +1,7 @@
 import { request } from './api'
 import { apiUrl } from './urls'
 import { accountHeaders, captureAccount } from '../domain/accountSession'
+import { signalSessionExpired } from '../domain/sessionNotice'
 export type IntakeStrategy = 'SMART' | 'FULL' | 'MANUAL'
 export type IntakeChannel = 'SINGLE' | 'MULTIPLE'
 export type Marker = { sourceId: string; x: number; y: number }
@@ -26,7 +27,7 @@ async function upload(path: string, key: string, form: FormData, progress: (perc
       let data: IntakeBatch & { message?: string; detail?: string }
       try { data = JSON.parse(xhr.responseText) } catch { reject(new Error(`服务器无法接收照片 (${xhr.status})，请检查上传大小限制。`)); return }
       if (xhr.status >= 200 && xhr.status < 300) resolve(data)
-      else { if (xhr.status === 401) window.dispatchEvent(new Event('closet-session-expired')); if (xhr.status === 409 && (data as { code?: string }).code === 'ACCOUNT_MISMATCH') window.dispatchEvent(new Event('closet-account-mismatch')); reject(new Error(data.message || data.detail || `上传失败 (${xhr.status})`)) }
+      else { if (xhr.status === 401) signalSessionExpired((data as { code?: string }).code); if (xhr.status === 409 && (data as { code?: string }).code === 'ACCOUNT_MISMATCH') window.dispatchEvent(new Event('closet-account-mismatch')); reject(new Error(data.message || data.detail || `上传失败 (${xhr.status})`)) }
     }
     xhr.send(form)
   })

@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useClosetStore } from '../stores/closet'
 import AuthShell from '../components/AuthShell.vue'
 import { closetApi, usingMocks } from '../services/api'
+import { takeSessionNotice } from '../domain/sessionNotice'
 
 const router = useRouter()
 const route = useRoute()
@@ -12,6 +13,8 @@ const username = ref('')
 const password = ref('')
 const busy = ref(false)
 const error = ref('')
+// smart-closet-server#175: this device was signed out by a newer login on the same account.
+const notice = ref(takeSessionNotice() ?? '')
 const registrationOpen = ref(false)
 onMounted(async () => {
   try { registrationOpen.value = (await closetApi.registration()).mode !== 'CLOSED' } catch { /* 登录仍可使用。 */ }
@@ -27,6 +30,7 @@ async function submit() {
   error.value = ''
   try {
     closet.user = await closetApi.login(username.value, password.value)
+    notice.value = ''
     await router.replace(closet.user.mustChangePassword ? '/settings?firstLogin=1' : '/wardrobe')
   } catch (cause) { error.value = cause instanceof Error ? cause.message : '登录失败，请稍后重试。' }
   finally { busy.value = false }
@@ -38,6 +42,7 @@ async function submit() {
     <form class="auth-form" @submit.prevent="submit">
       <label for="username">用户名</label><a-input id="username" v-model:value="username" size="large" autocomplete="username" placeholder="请输入你的用户名" autofocus />
       <label for="password">密码</label><a-input-password id="password" v-model:value="password" size="large" autocomplete="current-password" placeholder="请输入密码" />
+      <a-alert v-if="notice && !error" type="warning" :message="notice" show-icon />
       <a-alert v-if="error" type="error" :message="error" show-icon />
       <a-button type="primary" html-type="submit" size="large" :loading="busy" block class="auth-submit">进入我的衣橱</a-button>
       <a-button v-if="registrationOpen" size="large" block @click="router.push('/register')">还没有账号？注册</a-button>

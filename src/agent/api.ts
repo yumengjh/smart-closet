@@ -3,6 +3,7 @@ import { usingMocks } from '../services/api'
 import { apiUrl } from '../services/urls'
 import { fetchWithRetry } from '../domain/network'
 import { accountHeaders, captureAccount } from '../domain/accountSession'
+import { signalSessionExpired } from '../domain/sessionNotice'
 import type { OutfitScene } from '../domain/outfit'
 import type { QuestionOption } from './question'
 
@@ -42,8 +43,8 @@ async function response(path: string, init: RequestInit = {}) {
   const result = await fetchWithRetry(apiUrl('/api/agent' + path), { ...init, headers, credentials: 'include' })
   stillSameAccount()
   if (!result.ok) {
-    if (result.status === 401) window.dispatchEvent(new Event('closet-session-expired'))
     const error = await result.json().catch(() => ({}))
+    if (result.status === 401) signalSessionExpired(error.code)
     if (error.code === 'PASSWORD_CHANGE_REQUIRED') window.dispatchEvent(new Event('closet-password-change-required'))
     if (result.status === 409 && error.code === 'ACCOUNT_MISMATCH') window.dispatchEvent(new Event('closet-account-mismatch'))
     throw new AgentRequestError(error.message || `助手请求失败 (${result.status})`, result.status)
