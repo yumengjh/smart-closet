@@ -17,7 +17,8 @@ const webVersion = formatVersion(webBuild)
 const webBuiltAt = formatBuildTime(webBuild.builtAt)
 const server = ref<ServerInfo | null | undefined>(undefined)
 onMounted(async () => { server.value = await serverBuild() })
-const serverVersion = computed(() => server.value === undefined ? '读取中…' : server.value ? formatVersion(server.value) : '无法连接')
+// Issue #192: the public health check no longer carries version/commit, so a reachable server reads as online.
+const serverVersion = computed(() => server.value === undefined ? '读取中…' : !server.value ? '无法连接' : server.value.version || server.value.commit ? formatVersion(server.value) : '在线')
 
 const firstLogin = computed(() => Boolean(closet.user?.mustChangePassword))
 const isPortableLogin = computed(() => Boolean(closet.user?.portableLogin))

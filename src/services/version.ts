@@ -5,7 +5,7 @@ import { usingMocks } from './api'
 /** Injected by vite.config.ts at build time. */
 export const webBuild: BuildInfo = { version: __APP_VERSION__, commit: __APP_COMMIT__, builtAt: __APP_BUILT_AT__ }
 
-/** The server's version from the public /api/health; null when it cannot be reached. */
+/** Reachability from the public /api/health (no version since #192); null when it cannot be reached. */
 export async function serverBuild(): Promise<ServerInfo | null> {
   if (usingMocks) return { version: 'mock' }
   try {
