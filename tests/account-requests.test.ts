@@ -96,6 +96,47 @@ test('notifications: after sign-out a late answer cannot refill the emptied stor
   await new Promise(r => setTimeout(r, 0))
   assert.deepEqual(store.items, []); assert.equal(store.unread, 0); assert.equal(store.latest, null)
 })
+// read/readAll/remove/removeAll answer with the server's unread count; Alice's late counts must not land on Bob's badge.
+function heldFetch(t: { mock: { method: typeof import('node:test').mock.method } }) {
+  const held: { url: string; release: (response: Response) => void }[] = []
+  t.mock.method(globalThis, 'fetch', (url: unknown) => isCsrf(url) ? Promise.resolve(json({ token: 't' })) : new Promise<Response>(resolve => { held.push({ url: String(url), release: resolve }) }))
+  const answer = async (match: (url: string) => boolean, body: unknown) => {
+    for (let i = 0; i < 20 && !held.some(h => match(h.url)); i++) await new Promise(r => setImmediate(r))
+    const index = held.findIndex(h => match(h.url)); assert.notEqual(index, -1, 'request was sent')
+    held.splice(index, 1)[0].release(json(body)); await new Promise(r => setImmediate(r))
+  }
+  return { held, answer }
+}
+const aliceNote = (id: string) => ({ id, kind: 'DUPLICATE', title: 'alice-private', body: '', href: null, payload: {}, createdAt: 1, read: false })
+const isList = (url: string) => url.includes('/api/notifications?')
+test('notifications: A\'s late read/readAll/remove counts do not overwrite B\'s unread (issue #159)', async t => {
+  const { answer } = heldFetch(t)
+  const store = m.useNotificationStore()
+  t.after(() => store.stop())
+  store.start()
+  await answer(isList, { items: [aliceNote('a1'), aliceNote('a2'), aliceNote('a3')], unread: 3 })
+  void store.read(store.items[0]); void store.remove(store.items[1]); void store.readAll(); void store.removeAll()
+  store.stop(); store.start()
+  await answer(isList, { items: [{ ...aliceNote('b1'), title: 'bob-note' }], unread: 7 })
+  await answer(url => url.endsWith('/a1/read'), { unread: 0 })
+  await answer(url => url.endsWith('/a2'), { unread: 0 })
+  await answer(url => url.endsWith('/read-all'), { unread: 0 })
+  await answer(url => url.endsWith('/api/notifications'), { unread: 0 })
+  assert.deepEqual(store.items.map((i: { title: string }) => i.title), ['bob-note'])
+  assert.equal(store.unread, 7); assert.equal(store.latest, null)
+})
+test('notifications: after sign-out a late count from a write cannot refill the badge', async t => {
+  const { answer } = heldFetch(t)
+  const store = m.useNotificationStore()
+  t.after(() => store.stop())
+  store.start()
+  await answer(isList, { items: [aliceNote('a1')], unread: 1 })
+  void store.read(store.items[0]); void store.readAll()
+  store.stop()
+  await answer(url => url.endsWith('/a1/read'), { unread: 4 })
+  await answer(url => url.endsWith('/read-all'), { unread: 4 })
+  assert.deepEqual(store.items, []); assert.equal(store.unread, 0); assert.equal(store.latest, null)
+})
 
 // Issue smart-closet-server#177: a stale page's stray requests must not leave console noise, and its timers must stop.
 test('the refusal of a stale page is recognised, other errors are not', () => {
