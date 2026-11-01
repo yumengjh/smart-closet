@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { isOverallCategory } from '../domain/outfit'
+import { tryOnAccess } from '../tryon/access'
 import FloatingPager from '../components/FloatingPager.vue'
 import GarmentProcessingStatus from '../components/GarmentProcessingStatus.vue'
 import { createUuid } from '../domain/id'
@@ -428,6 +429,7 @@ async function replacePresetPhoto(file: File) {
               </div>
               <div class="info-actions">
                 <a-button v-if="garment.status === 'ACTIVE'" type="primary" @click="router.push({ path: '/outfits', query: { with: garment.id } })"><SkinOutlined /> 用它搭一套</a-button>
+                <a-button v-if="tryOnAccess?.enabled && garment.status === 'ACTIVE'" @click="router.push({ path: '/try-on', query: { garment: garment.id } })"><SkinOutlined /> 实时试穿</a-button>
                 <a-button :disabled="garment.status === 'TRASHED'" @click="openPanel('metadata')"><EditOutlined /> 编辑资料</a-button>
                 <a-dropdown :trigger="['click']" placement="bottomRight">
                   <a-button aria-label="更多操作"><MoreOutlined /></a-button>

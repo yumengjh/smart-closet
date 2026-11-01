@@ -36,7 +36,15 @@ export default defineConfig(({ mode }) => {
     rollupOptions: {
       output: {
         manualChunks(id) {
+          if (id.includes('vite/preload-helper') || id.includes('commonjsHelpers')) return 'vendor'
           if (!id.includes('node_modules')) return
+          // Keep realtime/recording optional: closed accounts must not fetch RTC engines on ordinary wardrobe pages.
+          if (id.includes('/@xmaxai/')) return 'tryon-sdk'
+          if (id.includes('/mediabunny/')) return 'tryon-recording'
+          if (id.includes('agora-')) return 'tryon-agora'
+          if (id.includes('/@volcengine/')) return 'tryon-volc'
+          if (id.includes('/trtc-sdk-v5/')) return 'tryon-trtc'
+          if (id.includes('/cos-js-sdk-v5/') || id.includes('/fast-xml-parser/') || id.includes('/strnum/')) return 'tryon-storage'
           if (id.includes('ant-design-vue') || id.includes('@ant-design/icons-vue')) return 'ui-kit'
           if (id.includes('/vue/') || id.includes('/vue-router/') || id.includes('/pinia/') || id.includes('/@vue/')) return 'vue-vendor'
           return 'vendor'

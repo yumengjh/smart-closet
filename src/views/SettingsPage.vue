@@ -2,12 +2,13 @@
 import { computed, defineAsyncComponent, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  LockOutlined, ThunderboltOutlined, LinkOutlined, RobotOutlined, UserOutlined, DashboardOutlined,
+  LockOutlined, ThunderboltOutlined, LinkOutlined, RobotOutlined, UserOutlined, DashboardOutlined, PictureOutlined,
   DeleteOutlined, CompassOutlined, BgColorsOutlined, ArrowRightOutlined, ArrowLeftOutlined, DownloadOutlined, SkinOutlined, AuditOutlined, CameraOutlined, CopyOutlined, AppstoreAddOutlined, SafetyCertificateOutlined,
 } from '@ant-design/icons-vue'
 import { useClosetStore } from '../stores/closet'
 import { formatBuildTime, formatVersion, type ServerInfo } from '../domain/app-version'
 import { serverBuild, webBuild } from '../services/version'
+import { tryOnAccess } from '../tryon/access'
 
 const closet = useClosetStore()
 const route = useRoute()
@@ -172,6 +173,7 @@ function goBack() {
   />
 
   <div class="settings-layout" :class="{ 'first-login-layout': firstLogin }">
+    <div v-if="!firstLogin && (tryOnAccess?.enabled || tryOnAccess?.hasHistory)" class="tryon-settings-links"><a-button v-if="tryOnAccess?.enabled" @click="router.push('/try-on')"><CameraOutlined /> 实时试穿</a-button><a-button @click="router.push('/try-on?history=1')"><PictureOutlined /> 试穿拍摄历史</a-button></div>
     <!-- 分类导航（PC 始终显示；移动端仅在列表页显示） -->
     <nav class="settings-nav" :class="{ 'mobile-hidden': mobileInSection }" aria-label="设置分类">
       <a-button

@@ -7,8 +7,9 @@ import QuickIntake from '../components/QuickIntake.vue'
 import BatchIntake from '../components/BatchIntake.vue'
 import GarmentEdgeHelp from '../components/GarmentEdgeHelp.vue'
 import { useProcessingStore } from '../stores/processing'
+import { takeTryOnIntake } from '../tryon/intake'
 const intake = ref(useRoute().query.mode === 'multiple')
-const preferQuick = useRoute().query.mode !== 'multiple' && useRoute().query.mode !== 'single'
+const preferQuick = useRoute().query.mode !== 'multiple' && useRoute().query.mode !== 'single' && useRoute().query.from !== 'tryon'
 const quick = ref(false); const quickEnabled = ref(false)
 const entryMode = computed({ get: () => quick.value ? 'quick' : intake.value ? 'multiple' : 'single', set: (value: string) => { quick.value = value === 'quick'; intake.value = value === 'multiple' } })
 const entryOptions = computed(() => [...(quickEnabled.value ? [{ label: '快速入柜', value: 'quick' }] : []), { label: '单件处理', value: 'single' }, { label: '多件整理', value: 'multiple' }])
@@ -58,6 +59,7 @@ async function detectCamera() {
 }
 function chooseCamera({ key }: { key: string | number }) { (key === 'selfie' ? selfieInput.value : rearInput.value)?.click() }
 onMounted(async () => {
+  const fromTryOn = takeTryOnIntake(); if (fromTryOn) setFile(fromTryOn)
   void request<{quickIntake:boolean}>('/api/processing/capabilities').then(flags => { if(alive){quickEnabled.value=flags.quickIntake;quick.value=flags.quickIntake && preferQuick} }).catch(() => {})
   mobileCamera.value = prefersNativeCamera()
   void detectCamera()
