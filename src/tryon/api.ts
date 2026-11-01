@@ -6,7 +6,7 @@ import type { Outfit } from '../domain/outfit'
 export type Limits = { dailySeconds: number; sessionSeconds: number; startupSeconds: number; firstFrameSeconds: number; queueSeconds: number; offerSeconds: number; recordingSeconds: number; recordingBytes: number; storageBytes: number }
 export type Capabilities = { enabled: boolean; ready: boolean; reason: string; quota: { limit: number; used: number; reserved: number; remaining: number }; limits: Limits; hasHistory: boolean }
 export type Selection = { type: 'GARMENT' | 'TEMPORARY'; id: string; revision?: number; assetId?: string }
-export type Item = Selection & { assetId: string; hash: string; name: string }
+export type Item = Selection & { assetId: string; hash: string; name: string; wearingRole?: string | null }
 export type Prepared = { id: string; revision: number; items: Item[]; previewUrl: string; referencePath: string; expiresAtMs: number }
 export type Candidate = { id: string; revision: number; name: string; ready: boolean; reason: string; imageUrl: string; assetId?: string }
 export type Session = { id: string; state: string; preparationId: string; reservedPoints: number; consumedPoints: number; userSeconds: number; firstFrame: boolean; createdAtMs: number; connectedAtMs: number | null; deadlineAtMs: number; remainingSeconds: number; reason: string | null; environment: 'china' | 'global' }

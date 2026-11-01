@@ -10,6 +10,7 @@ import { refreshTryOnAccess } from '../tryon/access'
 import { onAccountChange, accountIsStale } from '../domain/accountSession'
 import MediaPreview from '../tryon/MediaPreview.vue'
 import TryOnPicker from '../tryon/TryOnPicker.vue'
+import { framingHint } from '../tryon/context'
 import OutfitThumbnail from '../components/OutfitThumbnail.vue'
 import type { Outfit } from '../domain/outfit'
 
@@ -54,7 +55,7 @@ const startHint = computed(() => {
   if (live.value) return '连接成功后开始计时，首帧仍在生成，请保持人在画面中。'
   if (!selected.value.length) return '先选一套搭配或几件衣物，再打开相机。'
   if (!cameraReady.value) return '衣物已选好。打开相机先看本地预览，不消耗额度。'
-  return '当前为本地预览。点击开始试穿后，连接计时并消耗额度。'
+  return `${framingHint(prepared.value?.items || [])} 点击开始后连接计时。`
 })
 const mainLabel = computed(() => !selected.value.length ? '选择试穿衣物' : !cameraReady.value ? '打开相机预览' : offered.value ? `开始试穿 · ${waitSeconds.value}秒` : '开始试穿')
 const pickerProps = computed(() => ({ garments: garments.value, outfits: outfits.value, selected: selected.value, temporary: temporary.value,

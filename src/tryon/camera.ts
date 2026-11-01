@@ -2,6 +2,8 @@ import type { RealtimeMediaStream, XmaxRealtimeManaging, XmaxRealtimeVideoView }
 import { bindControlPlane } from './sdkBridge'
 import { request } from '../services/api'
 import type { Prepared } from './api'
+import { tryOnPrompt } from './context'
+import { observeFirstFrame } from './firstFrame'
 
 export class TryOnCamera {
   private manager?: XmaxRealtimeManaging
@@ -13,6 +15,9 @@ export class TryOnCamera {
   private front = true
   private disposed = false
   private revision = 0
+  private reportedLease = ''
+  private cancelFrameObservation?: () => void
+  private reportFrame() { if (!this.lease || this.reportedLease === this.lease) return; this.reportedLease = this.lease; this.host.classList.add('has-result'); this.onFrame() }
   constructor(private host: HTMLElement, private onFrame: () => void, private onFailure: (error: Error) => void) {}
   get video() { return this.remoteView?.videoElement }
   get ready() { return Boolean(this.local) }
@@ -32,7 +37,7 @@ export class TryOnCamera {
     this.localView.attach(this.host); this.remoteView.attach(this.host)
     this.localView.element.classList.add('tryon-local'); this.remoteView.element.classList.add('tryon-remote')
     this.localView.isMirrored = this.front; this.remoteView.isMirrored = false
-    this.remoteView.frameDisplayHandler = () => { this.host.classList.add('has-result'); this.onFrame() }
+    this.remoteView.frameDisplayHandler = () => this.reportFrame()
     await manager.setStateListener(state => { if (state.reason?.kind === 'failure') this.onFailure(new Error(state.reason.error.message)) })
     await manager.setRemoteAudioVolume(0)
     const portrait = window.matchMedia('(max-width: 767px)').matches
@@ -49,11 +54,16 @@ export class TryOnCamera {
   async change(prepared: Prepared) {
     if (!this.manager || !this.local || !this.lease) throw new Error('请先开始试穿。')
     const sdk = await import('@xmaxai/web-sdk')
-    const remote = await this.manager.startGeneration({ localStream: this.local, context: new sdk.RealtimeContext({ prompt: '只将视频中人物的衣物替换为参考图中的服装组合，保持各件颜色、图案、文字、版型和层次。保持本人外貌、动作和真实背景，不添加参考图背景或其他物品。', referencePath: prepared.referencePath }), faceRestoration: true })
-    if (this.remoteView) this.remoteView.track = remote.videoTrack
+    const remote = await this.manager.startGeneration({ localStream: this.local, context: new sdk.RealtimeContext({ prompt: tryOnPrompt(prepared.items), referencePath: prepared.referencePath }), faceRestoration: true })
+    if (this.remoteView) {
+      this.cancelFrameObservation?.()
+      const view = this.remoteView, lease = this.lease, track = remote.videoTrack
+      view.track = track
+      this.cancelFrameObservation = observeFirstFrame(view.videoElement, () => { if (this.lease === lease && view.track === track) this.reportFrame() })
+    }
   }
   async switchCamera() { if (!this.manager) return; await this.manager.switchCamera(); this.front = !this.front; if (this.localView) this.localView.isMirrored = this.front }
-  async stop() { this.host.classList.remove('has-result'); await this.manager?.disconnect(); if (this.remoteView) this.remoteView.track = undefined; this.lease = '' }
-  async release() { this.host.classList.remove('has-result'); await this.manager?.close(); this.localView?.detach(); this.remoteView?.detach(); this.manager = undefined; this.local = undefined; this.localView = undefined; this.remoteView = undefined; this.lease = '' }
+  async stop() { this.lease = ''; this.cancelFrameObservation?.(); this.cancelFrameObservation = undefined; this.reportedLease = ''; this.host.classList.remove('has-result'); await this.manager?.disconnect(); if (this.remoteView) this.remoteView.track = undefined; this.lease = '' }
+  async release() { this.lease = ''; this.cancelFrameObservation?.(); this.cancelFrameObservation = undefined; this.reportedLease = ''; this.host.classList.remove('has-result'); await this.manager?.close(); this.localView?.detach(); this.remoteView?.detach(); this.manager = undefined; this.local = undefined; this.localView = undefined; this.remoteView = undefined; this.lease = '' }
   async dispose() { this.disposed = true; this.revision++; await this.release() }
 }
