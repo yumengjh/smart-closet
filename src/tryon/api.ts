@@ -1,4 +1,4 @@
-import { request } from '../services/api'
+import { request, currentCsrfToken } from '../services/api'
 import { apiUrl } from '../services/urls'
 import { accountHeaders } from '../domain/accountSession'
 
@@ -36,9 +36,9 @@ export const tryOnApi = {
 function postForm<T>(path: string, form: FormData) { return request<T>(path, { method: 'POST', body: form }) }
 /** Best effort only. Server leases are the guarantee when mobile browsers never run this callback. */
 export function emergencyStop(id: string) {
-  const token = document.cookie.split(';').map(v => v.trim()).find(v => v.startsWith('XSRF-TOKEN='))?.slice(11)
+  const token = currentCsrfToken()
   const path = `/api/tryon/sessions/${id}/stop`
-  void fetch(apiUrl(path), { method: 'POST', credentials: 'include', keepalive: true, headers: { ...accountHeaders(path), 'Content-Type': 'application/json', ...(token ? { 'X-XSRF-TOKEN': decodeURIComponent(token) } : {}) }, body: '{}' }).catch(() => {})
+  void fetch(apiUrl(path), { method: 'POST', credentials: 'include', keepalive: true, headers: { ...accountHeaders(path), 'Content-Type': 'application/json', ...(token ? { 'X-XSRF-TOKEN': token } : {}) }, body: '{}' }).catch(() => {})
 }
 export const mediaUrl = (path: string) => apiUrl(path)
 export const finished = (s: Session | null) => !s || ['CLOSED', 'FAILED', 'CANCELLED'].includes(s.state)
