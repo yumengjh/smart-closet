@@ -1,13 +1,14 @@
 import { request, currentCsrfToken } from '../services/api'
 import { apiUrl } from '../services/urls'
 import { accountHeaders } from '../domain/accountSession'
+import type { Outfit } from '../domain/outfit'
 
 export type Limits = { dailySeconds: number; sessionSeconds: number; startupSeconds: number; firstFrameSeconds: number; queueSeconds: number; offerSeconds: number; recordingSeconds: number; recordingBytes: number; storageBytes: number }
 export type Capabilities = { enabled: boolean; ready: boolean; reason: string; quota: { limit: number; used: number; reserved: number; remaining: number }; limits: Limits; hasHistory: boolean }
-export type Selection = { type: 'GARMENT' | 'TEMPORARY'; id: string; revision?: number }
+export type Selection = { type: 'GARMENT' | 'TEMPORARY'; id: string; revision?: number; assetId?: string }
 export type Item = Selection & { assetId: string; hash: string; name: string }
 export type Prepared = { id: string; revision: number; items: Item[]; previewUrl: string; referencePath: string; expiresAtMs: number }
-export type Candidate = { id: string; revision: number; name: string; ready: boolean; reason: string; imageUrl: string }
+export type Candidate = { id: string; revision: number; name: string; ready: boolean; reason: string; imageUrl: string; assetId?: string }
 export type Session = { id: string; state: string; preparationId: string; reservedPoints: number; consumedPoints: number; userSeconds: number; firstFrame: boolean; createdAtMs: number; connectedAtMs: number | null; deadlineAtMs: number; remainingSeconds: number; reason: string | null; environment: 'china' | 'global' }
 export type Media = { id: string; type: 'PHOTO' | 'VIDEO'; state: string; mimeType: string; sessionId: string; hasAudio: boolean; durationMs: number; bytes: number; createdAtMs: number; url: string; downloadUrl: string }
 const post = <T>(path: string, body: unknown = {}, init: RequestInit = {}) => request<T>(path, { ...init, method: 'POST', body: JSON.stringify(body) })
@@ -15,7 +16,7 @@ export const tryOnApi = {
   capabilities: () => request<Capabilities>('/api/tryon/capabilities'),
   garments: (page = 1, query = '') => request<Candidate[]>(`/api/tryon/garments?page=${page}&size=60&query=${encodeURIComponent(query)}`),
   garment: (id: string) => request<Candidate>(`/api/tryon/garments/${encodeURIComponent(id)}`),
-  outfits: () => request<{ id: string; name: string; revision: number }[]>('/api/tryon/outfits'),
+  outfits: () => request<Outfit[]>('/api/outfits'),
   prepare: (items: Selection[], outfitId?: string, allowLatest = false) => post<Prepared>('/api/tryon/preparations', { items, outfitId, allowLatest }),
   start: (p: Prepared, key: string) => post<Session>('/api/tryon/sessions', { preparationId: p.id, revision: p.revision }, { headers: { 'Idempotency-Key': key } }),
   session: (id: string) => request<Session>(`/api/tryon/sessions/${id}`),
