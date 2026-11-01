@@ -11,6 +11,7 @@ import { onAccountChange, accountIsStale } from '../domain/accountSession'
 import MediaPreview from '../tryon/MediaPreview.vue'
 import TryOnPicker from '../tryon/TryOnPicker.vue'
 import { framingHint } from '../tryon/context'
+import { stageLabel } from '../tryon/diagnostic'
 import OutfitThumbnail from '../components/OutfitThumbnail.vue'
 import type { Outfit } from '../domain/outfit'
 
@@ -75,7 +76,7 @@ async function openCamera() {
   if (!cap.value?.enabled || !host.value || busy.value) return
   busy.value = true; busyPhase.value = '正在打开摄像头，请在浏览器提示中允许访问。'; error.value = ''
   try {
-    camera ??= new TryOnCamera(host.value, () => { if (!finished(lease.value)) { frameReady.value = true; busyPhase.value = ''; void pulse() } }, cause => { fail(cause); if (live.value) void stop(true) })
+    camera ??= new TryOnCamera(host.value, () => { if (!finished(lease.value)) { frameReady.value = true; busyPhase.value = ''; void pulse() } }, cause => { fail(cause); if (live.value) void stop(true) }, stage => { if (live.value) { busyPhase.value = stageLabel[stage]; void pulse() } })
     await camera.open(); cameraReady.value = camera.ready
   } catch (e) { fail(e) } finally { busy.value = false; busyPhase.value = '' }
 }
@@ -99,17 +100,21 @@ async function begin() {
     lease.value = s
     if (s.state === 'RESERVED') { busyPhase.value = '正在连接实时服务…'; await connect(s, p) }
   } catch (e) { fail(e); if (lease.value && !finished(lease.value) && !queued.value && !offered.value) await stop(true) }
-  finally { if (attempt === action) { busy.value = false; busyPhase.value = '' } }
+  finally { if (attempt === action) { busy.value = false; if (!live.value) busyPhase.value = '' } }
 }
 async function pulse() {
   const current = lease.value
   if (!current || finished(current) || pulseRunning || document.hidden || disposed) return
   pulseRunning = true
   try {
-    const state = reclaiming.value ? await tryOnApi.session(current.id) : await tryOnApi.pulse(current.id, frameReady.value)
+    const state = reclaiming.value ? await tryOnApi.session(current.id) : await tryOnApi.pulse(current.id, frameReady.value, camera?.diagnostic)
     if (lease.value?.id !== state.id || disposed) return
     lease.value = state
     if (finished(state) || ['STOPPING', 'UNKNOWN'].includes(state.state)) {
+      if (['STARTUP_TIMEOUT','FIRST_FRAME_TIMEOUT','LEASE_EXPIRED','CLIENT_HEARTBEAT_TIMEOUT'].includes(state.reason || '')) {
+        const stage = state.diagnostic?.stage || camera?.diagnostic.stage
+        error.value = `${stage ? stageLabel[stage] : '实时连接'}超时，连接已结束。请先排查连接或参考图访问，再重试。`
+      }
       frameReady.value = false; void finishRecording(true); await camera?.stop(); await refresh()
     }
   } catch (e) { fail(e); if (live.value && !reclaiming.value) void stop(true) }

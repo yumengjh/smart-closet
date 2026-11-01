@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { CheckOutlined, PlusOutlined, ExpandOutlined } from '@ant-design/icons-vue'
 import type { Outfit } from '../domain/outfit'
 import OutfitThumbnail from '../components/OutfitThumbnail.vue'
+import { thumbUrl } from '../services/urls'
 import { mediaUrl, type Candidate, type Selection } from './api'
 const props = defineProps<{
   garments: Candidate[]; outfits: Outfit[]; selected: Selection[]; search: string; tab: string
@@ -25,7 +26,7 @@ function choose(o: Outfit) { preview.value = null; emit('outfit', o.id) }
       <a-input :value="search" placeholder="查找衣柜成品" allow-clear @update:value="(value: string) => emit('update:search', value)" />
       <p class="picker-note">选择当前已完成处理的成品图，可自由组合。</p>
       <a-empty v-if="!garments.length" description="暂无可选成品，可先完成处理或临时上传" />
-      <div class="picker-garments"><a-button v-for="g in garments" :key="g.id" class="picker-garment" :class="{ selected: has(g.id) }" :disabled="!g.ready || blocked || !!busyId" :aria-pressed="has(g.id)" :title="g.reason || g.name" @click="emit('toggle', { type:'GARMENT', id:g.id, revision:g.revision, assetId:g.assetId })"><img v-if="g.ready" :src="mediaUrl(g.imageUrl)" :alt="g.name || '衣物成品'" loading="lazy" /><span v-else class="picker-unready">请先完成处理</span><span>{{ g.name || '衣物' }}</span><CheckOutlined v-if="has(g.id)" class="picker-check" /></a-button></div>
+      <div class="picker-garments"><a-button v-for="g in garments" :key="g.id" class="picker-garment" :class="{ selected: has(g.id) }" :disabled="!g.ready || blocked || !!busyId" :aria-pressed="has(g.id)" :title="g.reason || g.name" @click="emit('toggle', { type:'GARMENT', id:g.id, revision:g.revision, assetId:g.assetId })"><img v-if="g.ready" :src="thumbUrl(g.imageUrl, 320)" :alt="g.name || '衣物成品'" loading="lazy" decoding="async" /><span v-else class="picker-unready">请先完成处理</span><span>{{ g.name || '衣物' }}</span><CheckOutlined v-if="has(g.id)" class="picker-check" /></a-button></div>
       <a-button block @click="emit('more')">加载更多衣物</a-button>
     </template>
     <template v-else-if="tab === '已存搭配'">
