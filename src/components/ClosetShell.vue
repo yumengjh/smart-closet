@@ -49,14 +49,21 @@ const closetTheme = computed(() => ({
   token: antTokens(appearance.isDark ? 'dark' : 'light'),
   components: antComponentTokens(appearance.isDark ? 'dark' : 'light'),
 }))
+const tryonRoute = computed(() => route.path === '/try-on')
+watch(tryonRoute, on => { if (on) tryonExpanded.value = false })
 // Desktop sidebar: expanded (icons + names) or collapsed (icons only); remembered on this browser.
-const collapsed = ref(readCollapsed())
-function toggleSidebar() { collapsed.value = !collapsed.value; saveCollapsed(collapsed.value) }
+const savedCollapsed = ref(readCollapsed())
+// 实时试穿要尽量大的取景框：进入时侧栏临时收起成图标，展开只在本次停留有效，不改写保存的偏好。
+const tryonExpanded = ref(false)
+const collapsed = computed(() => tryonRoute.value ? !tryonExpanded.value : savedCollapsed.value)
+function toggleSidebar() {
+  if (tryonRoute.value) { tryonExpanded.value = !tryonExpanded.value; return }
+  savedCollapsed.value = !savedCollapsed.value; saveCollapsed(savedCollapsed.value)
+}
 const frameStyle = computed(() => ({ '--sidebar-w': `${sidebarWidth(collapsed.value)}px` }))
 // 注册后问询 /welcome 也是全屏页，但需要已登录（路由守卫负责）。
 const isLogin = computed(() => ['/login', '/register'].includes(route.path) || route.path === '/welcome' && closet.isSignedIn)
 const isOutfitEditor = computed(() => route.path.startsWith('/outfits/'))
-const tryonRoute = computed(() => route.path === '/try-on')
 const tryonMediaQuery = window.matchMedia(CAMERA_LAYOUT_QUERY)
 const tryonNarrow = ref(tryonMediaQuery.matches)
 const updateTryonNarrow = () => { tryonNarrow.value = tryonMediaQuery.matches }

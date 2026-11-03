@@ -15,7 +15,7 @@ import { stageLabel, type StartupStage } from '../tryon/diagnostic'
 import TryOnShutter from '../tryon/TryOnShutter.vue'
 import TryOnFilmstrip from '../tryon/TryOnFilmstrip.vue'
 import { playSound } from '../services/sound'
-import { ASPECTS, CAMERA_LAYOUT_QUERY, CONNECT_STEPS, aspectOf, autoFit, connectStep, cornerPosition, defaultAspect, fitBox, nearestCorner, pipSize, presetOf, shutterIntent, swipeDirection, tryOnPhase, type AspectValue, type Box, type CaptureMode, type Corner, type Fit, type Insets } from '../tryon/stage'
+import { ASPECTS, CAMERA_LAYOUT_QUERY, CONNECT_STEPS, aspectOf, autoFit, connectStep, cornerPosition, defaultAspect, nearestCorner, pipSize, presetOf, shutterIntent, swipeDirection, tryOnPhase, type AspectValue, type Box, type CaptureMode, type Corner, type Fit, type Insets } from '../tryon/stage'
 import OutfitThumbnail from '../components/OutfitThumbnail.vue'
 import type { Outfit } from '../domain/outfit'
 
@@ -96,15 +96,19 @@ const revealing = ref(false), flipping = ref(false), freezing = ref(false), flas
 const showsResult = computed(() => phase.value === 'live' || phase.value === 'recording')
 const mainRatio = computed(() => (showsResult.value ? sizes.value.remote : sizes.value.local) || sizes.value.local || aspectOf(aspect.value)!.ratio)
 const pipRatio = computed(() => (swapped.value ? sizes.value.remote : sizes.value.local) || mainRatio.value)
-const stageBox = computed(() => narrow.value ? area.value : fitBox(area.value, mainRatio.value))
+// 舞台始终顶满可用区域：画幅与舞台接近时铺满，差得多时完整显示，可随时切换。
+const stageBox = computed(() => area.value)
 const fit = computed<Fit>(() => fitChoice.value || autoFit(stageBox.value.width, stageBox.value.height, mainRatio.value))
+const railOpen = ref(readRail())
+const railShown = computed(() => !narrow.value && Boolean(cap.value?.enabled) && !loading.value)
 const pipBox = computed(() => pipSize(stageBox.value, pipRatio.value, narrow.value))
-const pipInsets = computed<Insets>(() => ({ top: dockBox.value.top, right: dockBox.value.right, bottom: dockBox.value.bottom, left: 12 }))
+const pipInsets = computed<Insets>(() => ({ top: dockBox.value.top, right: dockBox.value.right, bottom: dockBox.value.bottom, left: railShown.value && railOpen.value ? 200 : 12 }))
 const pipPoint = computed(() => dragPosition.value || cornerPosition(corner.value, stageBox.value, pipBox.value, pipInsets.value))
 const stageStyle = computed(() => ({
-  ...(!narrow.value && stageBox.value.width ? { width: `${stageBox.value.width}px`, height: `${stageBox.value.height}px` } : {}),
   '--pip-x': `${pipPoint.value.x}px`, '--pip-y': `${pipPoint.value.y}px`, '--pip-w': `${pipBox.value.width}px`, '--pip-h': `${pipBox.value.height}px`,
 }))
+function readRail() { try { return localStorage.getItem('yuda.tryon.rail') !== '0' } catch { return true } }
+function setRail(open: boolean) { railOpen.value = open; try { localStorage.setItem('yuda.tryon.rail', open ? '1' : '0') } catch { /* 只是偏好 */ } }
 const aspectOptions = ASPECTS.map(a => a.value)
 function readAspect(): AspectValue {
   try { const saved = localStorage.getItem(`yuda.tryon.aspect.${narrow.value ? 'camera' : 'wide'}`); if (saved && aspectOf(saved)) return saved as AspectValue } catch { /* 浏览器可能禁用存储 */ }
@@ -175,7 +179,7 @@ function gestureUp(event: PointerEvent) {
   if (swipe) { if (!recording.value && !recordingBusy.value) captureMode.value = swipe === 'left' ? '录像' : '拍照'; return }
   if (Math.hypot(dx, dy) > 12) return
   const at = performance.now()
-  if (at - lastTap < 300) { lastTap = 0; if (narrow.value) toggleFit() } else lastTap = at
+  if (at - lastTap < 300) { lastTap = 0; toggleFit() } else lastTap = at
 }
 function freezeLastFrame() {
   // 结束时把最后一帧留在画面上淡出，原画回到全屏时不闪黑。
@@ -428,7 +432,7 @@ onBeforeUnmount(() => { disposed = true; action++; layoutObserver?.disconnect();
   <section class="tryon-page" :class="`phase-${phase}`">
     <div ref="body" class="tryon-body">
       <div ref="stageArea" class="tryon-stage-area">
-        <div ref="stage" class="tryon-stage" :class="[`fit-${fit}`, { 'is-pip': showsResult, 'is-swapped': swapped, 'pip-off': !pipOpen, 'is-dragging': !!dragPosition, 'is-revealing': revealing, 'is-flipping': flipping, 'is-working': phase === 'connecting' || phase === 'queued', 'camera-on': cameraReady }]" :style="stageStyle">
+        <div ref="stage" class="tryon-stage" :class="[`fit-${fit}`, { 'is-pip': showsResult, 'is-swapped': swapped, 'pip-off': !pipOpen, 'is-dragging': !!dragPosition, 'is-revealing': revealing, 'is-flipping': flipping, 'is-working': phase === 'connecting' || phase === 'queued', 'camera-on': cameraReady, 'is-cover': !cameraReady }]" :style="stageStyle">
           <div ref="host" class="tryon-video-host" aria-label="摄像头与试穿画面"></div>
           <canvas v-show="freezing" ref="freezeCanvas" class="tryon-freeze" aria-hidden="true" @animationend="freezing = false"></canvas>
           <div v-if="cameraReady" class="tryon-gesture" aria-hidden="true" @pointerdown="gestureDown" @pointerup="gestureUp" @pointercancel="gesture = undefined"></div>
@@ -442,14 +446,22 @@ onBeforeUnmount(() => { disposed = true; action++; layoutObserver?.disconnect();
 
           <Transition name="tryon-iris">
             <div v-if="!cameraReady" class="tryon-stage-cover">
+              <span class="tryon-cover-frame" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
               <a-spin v-if="loading" size="large" />
-              <template v-else>
-                <CameraOutlined class="tryon-camera-symbol" />
+              <div v-else class="tryon-cover-body">
+                <span class="tryon-camera-symbol" aria-hidden="true"><CameraOutlined /></span>
                 <h2>{{ cap?.enabled ? '把衣柜穿在身上' : '实时试穿暂未开通' }}</h2>
-                <p>{{ cap?.enabled ? '先打开相机看本地预览，不消耗额度。\n选好衣物点开始，才连接实时服务。' : '由管理员开通，你仍可查看已保存的拍摄结果。' }}</p>
-                <a-button v-if="cap?.enabled" type="primary" size="large" :loading="busy" @click="openCamera">{{ busy ? '正在打开相机' : '打开相机' }}</a-button>
-                <a-button v-else @click="openHistory">查看拍摄历史</a-button>
-              </template>
+                <ol v-if="cap?.enabled" class="tryon-cover-steps">
+                  <li :class="{ done: selected.length > 0 }"><b>1</b>选衣物</li>
+                  <li><b>2</b>相机预览 · 免费</li>
+                  <li><b>3</b>开始试穿 · 计时</li>
+                </ol>
+                <p v-else>由管理员开通，你仍可查看已保存的拍摄结果。</p>
+                <div class="tryon-cover-actions">
+                  <a-button v-if="cap?.enabled" type="primary" size="large" :loading="busy" @click="openCamera"><template #icon><CameraOutlined /></template>{{ busy ? '正在打开相机' : '打开相机' }}</a-button>
+                  <a-button size="large" @click="openHistory"><template #icon><PictureOutlined /></template>拍摄历史</a-button>
+                </div>
+              </div>
             </div>
           </Transition>
 
@@ -459,11 +471,15 @@ onBeforeUnmount(() => { disposed = true; action++; layoutObserver?.disconnect();
             <div class="tryon-tools">
               <a-button v-if="showsResult" type="text" class="camera-tool" :aria-label="pipOpen ? '隐藏原画小窗' : '显示原画小窗'" :aria-pressed="pipOpen" @click="togglePip"><EyeOutlined v-if="pipOpen" /><EyeInvisibleOutlined v-else /></a-button>
               <a-popover v-else-if="phase === 'preview' || phase === 'cover'" trigger="click" placement="bottomRight" title="画面比例" :get-popup-container="popupHost"><template #content><a-segmented :value="aspect" :options="aspectOptions" @change="changeAspect" /><p class="tryon-info-copy">拍全身用 9:16 或 3:4。切换免费，开始后固定。</p></template><a-button type="text" class="camera-tool tryon-aspect" :aria-label="`画面比例 ${aspect}`">{{ aspect }}</a-button></a-popover>
-              <a-button v-if="narrow && cameraReady" type="text" class="camera-tool" :aria-label="fit === 'cover' ? '完整显示画面' : '铺满屏幕'" @click="toggleFit"><BorderOutlined v-if="fit === 'cover'" /><ColumnWidthOutlined v-else /></a-button>
+              <a-tooltip v-if="cameraReady" :title="fit === 'cover' ? '完整显示画面' : '铺满取景框'" placement="bottom" :get-popup-container="popupHost"><a-button type="text" class="camera-tool" :aria-label="fit === 'cover' ? '完整显示画面' : '铺满取景框'" @click="toggleFit"><BorderOutlined v-if="fit === 'cover'" /><ColumnWidthOutlined v-else /></a-button></a-tooltip>
               <a-button v-if="!narrow && cameraReady" type="text" class="camera-tool" :aria-label="fullscreen ? '退出全屏' : '全屏试穿'" @click="toggleFullscreen"><CompressOutlined v-if="fullscreen" /><ExpandOutlined v-else /></a-button>
               <a-popover title="试穿与拍摄说明" placement="bottomRight" :get-popup-container="popupHost"><template #content><p class="tryon-info-copy">打开相机只做本地预览。点击开始后，视频与服装参考图会发送至 XMax，连接后按时长消耗额度。录像声音仅用于本地混录。切后台会结束试穿，未上传的最后片段可能丢失。</p><p class="tryon-info-copy">点小窗互换主画面，拖动可换位置；左右滑动切换拍照和录像，手机上双击切换铺满。无论看哪个画面，保存的都是试穿效果。</p></template><a-button type="text" class="camera-tool" aria-label="查看试穿说明"><InfoCircleOutlined /></a-button></a-popover>
             </div>
           </header>
+
+          <div v-if="railShown" class="tryon-rail-slot">
+            <TryOnFilmstrip :open="railOpen" :garments="garments" :outfits="outfits" :selected="selected" :selected-outfit="selectedOutfit" :blocked="pickerProps.blocked" :busy-id="selectingOutfit" :title="selectionTitle" @update:open="setRail" @toggle="toggle" @outfit="selectOutfit" @more="stripMore" @all="picker = true" />
+          </div>
 
           <Transition name="tryon-fade"><div v-if="recording" class="tryon-recording-status" role="status"><i></i>REC {{ duration(recordingSeconds) }}<small>已上传 {{ (uploadedBytes / 1024).toFixed(0) }} KiB</small></div></Transition>
 
@@ -503,7 +519,6 @@ onBeforeUnmount(() => { disposed = true; action++; layoutObserver?.disconnect();
           </div>
         </div>
       </div>
-      <TryOnFilmstrip class="tryon-filmstrip" :garments="garments" :outfits="outfits" :selected="selected" :selected-outfit="selectedOutfit" :blocked="pickerProps.blocked" :busy-id="selectingOutfit" :title="selectionTitle" @toggle="toggle" @outfit="selectOutfit" @more="stripMore" @all="picker = true" />
     </div>
     <a-drawer v-model:open="picker" title="选择试穿衣物" :placement="narrow ? 'bottom' : 'right'" height="min(76dvh, 760px)" :width="420" :mask="narrow" :get-container="popupHost" root-class-name="tryon-material-drawer"><p v-if="generating" class="tryon-paid-notice">选衣期间仍在计时 · {{ duration(remaining) }} <a-button size="small" danger @click="stop()">停止试穿</a-button></p><TryOnPicker v-bind="pickerProps" v-model:search="search" v-model:tab="tab" :popup-host="popupHost" @toggle="toggle" @outfit="selectOutfit" @more="loadGarments(true)" @latest="latest" /><template #footer><div class="tryon-picker-footer"><span>{{ selected.length ? `已选 ${selected.length} 件衣物` : '尚未选择衣物' }}</span><a-button type="primary" :disabled="preparing" @click="picker=false">{{ selected.length ? '选好了，返回相机' : '返回相机' }}</a-button></div></template></a-drawer>
     <a-drawer v-model:open="historyOpen" title="拍摄历史" placement="right" :width="'min(100vw, 620px)'"><a-alert type="info" show-icon message="历史查看期间已停止实时连接。" /><a-segmented v-model:value="historyFilter" :options="['全部','照片','视频']" block /><a-spin :spinning="historyBusy"><a-empty v-if="!visibleMedia.length" description="主动拍摄的照片和录像会保存在这里" /><article v-for="item in visibleMedia" :key="item.id" class="tryon-history-item"><MediaPreview v-if="item.type==='VIDEO' && ['READY','PARTIAL'].includes(item.state)" :src="mediaUrl(item.url)" :duration-ms="item.durationMs" /><img v-else-if="item.type==='PHOTO'" :src="mediaUrl(item.url)" alt="AI试穿效果" /><div v-else class="tryon-pending-media">{{ item.state === 'UNRECOVERABLE' ? '片段不足以恢复录像，可删除释放空间' : '分段已上传，正在恢复可用片段' }}</div><div><strong>{{ item.type==='PHOTO' ? '试穿照片' : `${item.state==='PARTIAL'?'中断片段':'录像'} · ${duration(item.durationMs/1000)}` }}</strong><p>{{ new Date(item.createdAtMs).toLocaleString() }} <template v-if="item.type==='VIDEO'"> · {{ item.hasAudio?'有声':'无声' }} · {{ item.mimeType.split('/')[1]?.toUpperCase() }}</template></p><div class="tryon-history-actions"><a-button :href="mediaUrl(item.downloadUrl)" :disabled="!['READY','PARTIAL'].includes(item.state)"><DownloadOutlined /> 下载</a-button><a-button v-if="cap?.enabled" @click="repeat(item)">再次试穿</a-button><a-button type="text" danger aria-label="删除结果" @click="remove(item)"><DeleteOutlined /></a-button></div></div></article><a-button block :loading="historyBusy" @click="moreHistory">加载更多结果</a-button><a-collapse v-if="sessionHistory.length" ghost><a-collapse-panel key="sessions" header="查看会话与用量记录"><p v-for="s in sessionHistory" :key="s.id" class="tryon-session-history">{{ new Date(s.createdAtMs).toLocaleString() }} · {{ stateName(s.state) }} · {{ duration(s.userSeconds) }}</p></a-collapse-panel></a-collapse></a-spin></a-drawer>
@@ -513,29 +528,40 @@ onBeforeUnmount(() => { disposed = true; action++; layoutObserver?.disconnect();
 </template>
 
 <style scoped>
-/* 舞台：桌面按真实画幅收紧，手机全屏。控件都在舞台内，全屏时不丢。 */
+/* 舞台：顶满外壳留下的整块区域（外壳在试穿页收起侧栏、隐藏顶栏），控件和衣物栏都浮在舞台内，全屏时不丢。 */
 .tryon-page {
   --ease-out: cubic-bezier(.22, 1, .36, 1);
-  --cam-fg: #fff;
-  --tryon-reserve: 120px;
+  --tryon-reserve: 0px;
   height: calc(100dvh - var(--tryon-reserve));
   min-height: 460px;
-  max-width: 1600px;
-  margin: auto;
   touch-action: manipulation;
 }
-.tryon-body { display: flex; flex-direction: column; gap: 12px; height: 100%; min-height: 0; }
-.tryon-body:fullscreen { padding: 16px; background: #0b100e; }
-.tryon-stage-area { position: relative; display: flex; flex: 1; align-items: center; justify-content: center; min-width: 0; min-height: 0; }
+.tryon-body { height: 100%; min-height: 0; }
+.tryon-body:fullscreen { background: #000; }
+.tryon-stage-area { position: relative; height: 100%; min-width: 0; min-height: 0; }
+/* 画面上的控件用一组变量着色：相机画面上是白字与毛玻璃，未开相机的浅色封面上换成站点墨色。 */
 .tryon-stage {
+  --cam-fg: #fff;
+  --cam-soft: #ffffffd9;
+  --cam-glass: #ffffff26;
+  --cam-glass-hover: #ffffff40;
+  --cam-edge: #ffffffb3;
+  --cam-pill: #10171499;
   position: relative;
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: #0d1411;
-  border-radius: var(--radius-lg);
+  background: #000;
   isolation: isolate;
-  transition: width .45s var(--ease-out), height .45s var(--ease-out);
+}
+.tryon-stage.is-cover {
+  --cam-fg: var(--ink);
+  --cam-soft: var(--muted-strong);
+  --cam-glass: var(--surface-alt);
+  --cam-glass-hover: var(--selection-bg);
+  --cam-edge: var(--line);
+  --cam-pill: var(--surface-alt);
+  background: var(--paper);
 }
 .tryon-video-host { position: absolute; inset: 0; z-index: 0; isolation: isolate; }
 .camera-on .tryon-video-host { animation: tryon-lens-open .7s var(--ease-out); }
@@ -615,23 +641,41 @@ onBeforeUnmount(() => { disposed = true; action++; layoutObserver?.disconnect();
 .tryon-flash { position: absolute; inset: 0; z-index: 7; pointer-events: none; background: #fff; opacity: 0; animation: tryon-flash .32s ease-out; }
 .tryon-fly { position: absolute; left: 50%; top: 50%; z-index: 8; width: 46%; max-height: 60%; object-fit: contain; pointer-events: none; border: 3px solid #fff; border-radius: 10px; transform: translate(-50%, -50%); animation: tryon-fly .68s var(--ease-out) .1s forwards; }
 
-/* 封面 */
-.tryon-stage-cover { position: absolute; inset: 0; z-index: 9; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 88px 28px 220px; color: #fff; text-align: center; background: radial-gradient(90% 70% at 50% 42%, #24382e, #0d1411 75%); }
-.tryon-camera-symbol { font-size: 40px; color: #b5cec0; }
-.tryon-stage-cover h2 { font-size: 22px; font-weight: 500; }
-.tryon-stage-cover p { max-width: 32ch; line-height: 1.8; color: #d1e0d7; white-space: pre-line; }
-.tryon-stage-cover > .ant-btn-primary { min-height: 48px; padding-inline: 28px; color: #163e2e; background: #d7eee1; border-color: #d7eee1; }
+/* 封面：未开相机时用站点浅色底与细取景角，不再铺深绿渐变。 */
+.tryon-stage-cover { position: absolute; inset: 0; z-index: 9; display: grid; place-items: center; padding: 72px 28px 132px; color: var(--ink); text-align: center; background: var(--paper); }
+.tryon-cover-frame { position: absolute; inset: 72px max(24px, 6%) 112px; pointer-events: none; }
+.tryon-cover-frame i { position: absolute; width: 28px; height: 28px; border: 1.5px solid var(--line); }
+.tryon-cover-frame i:nth-child(1) { left: 0; top: 0; border-right: 0; border-bottom: 0; border-radius: 10px 0 0; }
+.tryon-cover-frame i:nth-child(2) { right: 0; top: 0; border-left: 0; border-bottom: 0; border-radius: 0 10px 0 0; }
+.tryon-cover-frame i:nth-child(3) { left: 0; bottom: 0; border-right: 0; border-top: 0; border-radius: 0 0 0 10px; }
+.tryon-cover-frame i:nth-child(4) { right: 0; bottom: 0; border-left: 0; border-top: 0; border-radius: 0 0 10px; }
+.tryon-cover-body { position: relative; display: flex; flex-direction: column; align-items: center; gap: 14px; max-width: 420px; }
+.tryon-camera-symbol { display: grid; place-items: center; width: 64px; height: 64px; font-size: 26px; color: var(--accent); background: var(--accent-soft); border-radius: 50%; }
+.tryon-stage-cover h2 { margin: 6px 0 0; font-size: 22px; font-weight: 600; letter-spacing: .02em; }
+.tryon-stage-cover p { max-width: 32ch; margin: 0; line-height: 1.8; color: var(--muted-strong); }
+.tryon-cover-steps { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 18px; margin: 0; padding: 0; font-size: 13px; color: var(--muted-strong); list-style: none; }
+.tryon-cover-steps li { display: flex; align-items: center; gap: 6px; }
+.tryon-cover-steps b { display: grid; place-items: center; width: 18px; height: 18px; font-size: 11px; font-weight: 600; color: var(--muted-strong); background: var(--surface-alt); border: 1px solid var(--line); border-radius: 50%; }
+.tryon-cover-steps .done { color: var(--accent); }
+.tryon-cover-steps .done b { color: #fff; background: var(--accent); border-color: var(--accent); }
+.tryon-cover-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 10px; }
+.tryon-cover-actions .ant-btn { min-height: 44px; padding-inline: 22px; }
+.is-cover .tryon-slot-history { visibility: hidden; }
+
+/* 桌面衣物栏：贴舞台左侧，避开顶栏与底部快门。 */
+.tryon-rail-slot { position: absolute; left: 16px; top: 68px; bottom: 116px; z-index: 11; display: flex; align-items: flex-start; pointer-events: none; }
+.tryon-rail-slot > * { pointer-events: auto; }
 
 /* 顶栏 */
 .tryon-topbar { position: absolute; left: 0; right: 0; top: 0; z-index: 10; display: flex; align-items: center; gap: 6px; padding: 10px 10px 24px; pointer-events: none; background: linear-gradient(180deg, #0009, #0000); }
 .tryon-topbar > *, .tryon-tools > * { pointer-events: auto; }
 .tryon-tools { display: flex; align-items: center; margin-left: auto; }
 .camera-tool.ant-btn { flex: none; width: 44px; height: 44px; padding: 0; font-size: 19px; color: var(--cam-fg); }
-.camera-tool.ant-btn:hover, .camera-tool.ant-btn:focus-visible { color: var(--cam-fg); background: #ffffff26; }
+.camera-tool.ant-btn:hover, .camera-tool.ant-btn:focus-visible { color: var(--cam-fg); background: var(--cam-glass); }
 .tryon-aspect.ant-btn { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
-.tryon-status { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 7px 12px; font-size: 12px; line-height: 1.5; color: #fff; font-variant-numeric: tabular-nums; white-space: nowrap; background: #10171499; border-radius: 20px; backdrop-filter: blur(10px); }
+.tryon-status { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 7px 12px; font-size: 12px; line-height: 1.5; color: var(--cam-fg); font-variant-numeric: tabular-nums; white-space: nowrap; background: var(--cam-pill); border-radius: 20px; backdrop-filter: blur(10px); }
 .tryon-status span { overflow: hidden; text-overflow: ellipsis; }
-.tryon-status i { flex: none; width: 7px; height: 7px; background: #c9d4cd; border-radius: 50%; transition: background .3s ease; }
+.tryon-status i { flex: none; width: 7px; height: 7px; background: var(--muted-subtle); border-radius: 50%; transition: background .3s ease; }
 .tryon-status.live i { background: #7fe3a6; animation: tryon-pulse 1.6s ease-in-out infinite; }
 .tryon-status.waiting i { background: #f2d28b; animation: tryon-pulse 1s ease-in-out infinite; }
 .tryon-recording-status { position: absolute; left: 12px; top: 66px; z-index: 10; padding: 6px 10px; font-size: 12px; color: #ffd9d2; font-variant-numeric: tabular-nums; background: #261511cc; border-radius: 8px; }
@@ -656,7 +700,9 @@ onBeforeUnmount(() => { disposed = true; action++; layoutObserver?.disconnect();
 .tryon-steps .done i { background: #9fe8c3; }
 .tryon-steps .current { color: #fff; }
 .tryon-steps .current i { background: #fff; transform: scale(1.35); animation: tryon-pulse 1s ease-in-out infinite; }
-.tryon-start-hint { max-width: 56ch; margin: 0; font-size: 12px; line-height: 1.6; color: #ffffffd9; text-align: center; text-shadow: 0 1px 4px #0009; }
+.tryon-start-hint { max-width: 56ch; margin: 0; font-size: 12px; line-height: 1.6; color: var(--cam-soft); text-align: center; text-shadow: 0 1px 4px #0009; }
+.is-cover .tryon-start-hint { text-shadow: none; }
+.is-cover .tryon-topbar, .is-cover .tryon-dock { background: none; }
 .tryon-start-hint.active { color: #bff0d5; }
 
 .tryon-controls { pointer-events: auto; display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto minmax(0, 1fr) auto; grid-template-areas: "hist mode . shut . flip"; align-items: center; gap: 14px; }
@@ -672,8 +718,8 @@ onBeforeUnmount(() => { disposed = true; action++; layoutObserver?.disconnect();
 .tryon-mode :deep(.ant-segmented-item:hover:not(.ant-segmented-item-selected)) { color: #fff; }
 .tryon-mode :deep(.ant-segmented-item-label) { min-height: 30px; padding-inline: 14px; font-size: 13px; line-height: 30px; }
 .tryon-mode :deep(.ant-segmented-item-disabled) { color: #ffffff66; }
-.tryon-history-thumb.ant-btn { display: grid; place-items: center; width: 52px; height: 52px; padding: 0; overflow: hidden; font-size: 20px; color: #fff; background: #ffffff26; border: 2px solid #ffffffb3; border-radius: 12px; }
-.tryon-history-thumb.ant-btn:hover { color: #fff; background: #ffffff40; border-color: #fff; }
+.tryon-history-thumb.ant-btn { display: grid; place-items: center; width: 52px; height: 52px; padding: 0; overflow: hidden; font-size: 20px; color: var(--cam-fg); background: var(--cam-glass); border: 2px solid var(--cam-edge); border-radius: 12px; }
+.tryon-history-thumb.ant-btn:hover { color: var(--cam-fg); background: var(--cam-glass-hover); border-color: var(--cam-fg); }
 .tryon-history-thumb.bump { animation: tryon-bump .38s var(--ease-out); }
 .tryon-history-thumb img { width: 100%; height: 100%; object-fit: cover; }
 .tryon-flip.ant-btn { width: 52px; height: 52px; font-size: 20px; color: #fff; background: #ffffff26; border: 0; transition: transform .35s var(--ease-out), background .2s ease; }
@@ -697,37 +743,37 @@ onBeforeUnmount(() => { disposed = true; action++; layoutObserver?.disconnect();
 .tryon-modal-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 12px; margin-top: 24px; }
 .tryon-session-history { padding: 8px 0; font-size: 12px; color: var(--muted-strong); }
 
-@media (max-width: 1023px) { .tryon-page { --tryon-reserve: 176px; } }
+/* 平板：侧栏隐藏、底部导航仍在，舞台让出导航高度。 */
+@media (max-width: 1023px) { .tryon-page { --tryon-reserve: calc(72px + env(safe-area-inset-bottom)); } }
 
 /* 手机相机模式：选衣收进底部抽屉，控件分行。 */
 @media (max-width: 767px), (max-height: 500px) and (pointer: coarse) {
-  .tryon-filmstrip { display: none; }
   .tryon-controls { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); grid-template-areas: "sel sel sel" "mode mode mode" "hist shut flip"; gap: 8px 12px; }
   .tryon-selection-row { display: flex; grid-area: sel; align-items: center; gap: 8px; min-width: 0; }
   .tryon-end.ant-btn { flex: none; min-height: 44px; background: #ffffffeb; }
-  .tryon-current.ant-btn { display: flex; flex: 1; align-items: center; gap: 10px; min-width: 0; height: 52px; padding: 5px 12px 5px 6px; color: #fff; text-align: left; white-space: normal; background: #ffffff24; border: 0; border-radius: 26px; backdrop-filter: blur(10px); }
-  .tryon-current.ant-btn:hover { color: #fff; background: #ffffff38; }
+  .tryon-current.ant-btn { display: flex; flex: 1; align-items: center; gap: 10px; min-width: 0; height: 52px; padding: 5px 12px 5px 6px; color: var(--cam-fg); text-align: left; white-space: normal; background: var(--cam-glass); border: 0; border-radius: 26px; backdrop-filter: blur(10px); }
+  .tryon-current.ant-btn:hover { color: var(--cam-fg); background: var(--cam-glass-hover); }
   .tryon-current-image, .tryon-current-placeholder { flex: none; width: 42px; height: 42px; overflow: hidden; object-fit: contain; background: #ffffffe6; border-radius: 50%; }
   .tryon-current-placeholder { display: grid; place-items: center; font-size: 18px; color: #1f5c45; }
   .tryon-current-image :deep(canvas) { width: 100%; height: 100%; object-fit: contain; }
   .tryon-current-copy { display: flex; flex: 1; flex-direction: column; gap: 1px; min-width: 0; }
   .tryon-current-copy strong, .tryon-current-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .tryon-current-copy strong { font-size: 13px; font-weight: 500; }
-  .tryon-current-copy small { font-size: 11px; color: #ffffffb8; }
-  .tryon-current-arrow { flex: none; font-size: 11px; color: #ffffffb3; }
+  .tryon-current-copy small { font-size: 11px; color: var(--cam-soft); }
+  .tryon-current-arrow { flex: none; font-size: 11px; color: var(--cam-soft); }
 }
 
 /* 手机：系统相机式全屏。 */
 @media (max-width: 767px), (max-height: 500px) and (pointer: coarse) {
   .tryon-page { position: fixed; inset: 0; z-index: 40; width: 100vw; height: 100dvh; min-height: 0; max-width: none; background: #000; overscroll-behavior: none; }
   .tryon-body, .tryon-stage-area { display: block; height: 100%; }
-  .tryon-stage { border-radius: 0; background: #000; transition: none; }
   .tryon-topbar { padding: calc(env(safe-area-inset-top) + 4px) 6px 22px; }
   .tryon-topbar .tryon-status { position: absolute; left: 50%; top: calc(env(safe-area-inset-top) + 10px); max-width: calc(100% - 200px); transform: translateX(-50%); }
   .tryon-recording-status { top: calc(env(safe-area-inset-top) + 56px); }
   .tryon-dock { padding: 44px 16px calc(env(safe-area-inset-bottom) + 12px); }
   .tryon-viewfinder { inset: 14% 8% 38%; }
-  .tryon-stage-cover { padding-bottom: 240px; }
+  .tryon-stage-cover { padding: calc(env(safe-area-inset-top) + 64px) 24px 200px; }
+  .tryon-cover-frame { inset: calc(env(safe-area-inset-top) + 64px) 20px 196px; }
   .tryon-stage-cover h2 { font-size: 20px; }
   .tryon-stage-cover p { font-size: 13px; }
   .tryon-start-hint { font-size: 11px; }
