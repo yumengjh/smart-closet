@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { AppstoreOutlined, CheckOutlined, LeftOutlined, SkinOutlined } from '@ant-design/icons-vue'
+import { AppstoreOutlined, CheckOutlined, LeftOutlined, PlusOutlined, SkinOutlined } from '@ant-design/icons-vue'
 import type { Outfit } from '../domain/outfit'
 import OutfitThumbnail from '../components/OutfitThumbnail.vue'
 import { thumbUrl } from '../services/urls'
@@ -11,7 +11,7 @@ const props = defineProps<{
   garments: Candidate[]; outfits: Outfit[]; selected: Selection[]; selectedOutfit: string | null
   blocked: boolean; busyId: string | null; title: string; open: boolean
 }>()
-const emit = defineEmits<{ toggle: [item: Selection]; outfit: [id: string]; more: []; all: []; 'update:open': [value: boolean] }>()
+const emit = defineEmits<{ toggle: [item: Selection]; outfit: [id: string]; more: []; all: []; upload: []; 'update:open': [value: boolean] }>()
 const tab = ref('单品'), scroller = ref<HTMLElement>()
 const ready = computed(() => props.garments.filter(g => g.ready))
 const usable = computed(() => props.outfits.filter(o => o.scene.elements.some(e => e.garmentId)))
@@ -32,11 +32,12 @@ function scrolled() {
       <a-segmented v-model:value="tab" size="small" block :options="['单品', '搭配']" />
       <div ref="scroller" class="rail-scroller" @scroll.passive="scrolled">
         <template v-if="tab === '单品'">
+          <a-button class="rail-item rail-upload" :disabled="blocked" aria-label="上传自定义衣物" title="上传自定义衣物" @click="emit('upload')"><PlusOutlined /><small>上传</small></a-button>
           <a-button v-for="g in ready" :key="g.id" class="rail-item" :class="{ selected: has(g.id) }" :disabled="blocked || !!busyId" :aria-pressed="has(g.id)" :aria-label="g.name || '衣物'" :title="g.name || '衣物'" @click="emit('toggle', { type: 'GARMENT', id: g.id, revision: g.revision, assetId: g.assetId })">
             <img :src="thumbUrl(g.imageUrl, 160)" alt="" loading="lazy" decoding="async" />
             <CheckOutlined v-if="has(g.id)" class="rail-check" />
           </a-button>
-          <p v-if="!ready.length" class="rail-empty">还没有可试穿的成品，可在全部衣物里临时上传。</p>
+          <p v-if="!ready.length" class="rail-empty">还没有可试穿的成品，可以先上传一件试试。</p>
         </template>
         <template v-else>
           <a-button v-for="o in usable" :key="o.id" class="rail-item" :class="{ selected: selectedOutfit === o.id }" :disabled="blocked || !!busyId && busyId !== o.id" :loading="busyId === o.id" :aria-pressed="selectedOutfit === o.id" :aria-label="`选择搭配：${o.name}`" :title="o.name" @click="emit('outfit', o.id)">
@@ -48,11 +49,14 @@ function scrolled() {
       </div>
       <a-button block class="rail-all" @click="emit('all')"><AppstoreOutlined /> 全部衣物</a-button>
     </section>
-    <a-tooltip v-else key="closed" title="展开衣物栏" placement="right">
-      <a-button class="tryon-rail-tab" :aria-label="`展开衣物栏，已选 ${selected.length} 件`" @click="emit('update:open', true)">
-        <SkinOutlined /><span v-if="selected.length" class="rail-count">{{ selected.length }}</span>
-      </a-button>
-    </a-tooltip>
+    <!-- Transition 只能处理单个元素根；a-tooltip 渲染的不是单元素，直接放进来离场永远完成不了，衣物栏就再也展不开。 -->
+    <div v-else key="closed" class="rail-tab-wrap">
+      <a-tooltip title="展开衣物栏" placement="right">
+        <a-button class="tryon-rail-tab" :aria-label="`展开衣物栏，已选 ${selected.length} 件`" @click="emit('update:open', true)">
+          <SkinOutlined /><span v-if="selected.length" class="rail-count">{{ selected.length }}</span>
+        </a-button>
+      </a-tooltip>
+    </div>
   </Transition>
 </template>
 
@@ -68,6 +72,9 @@ function scrolled() {
 .rail-item.selected.ant-btn { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 .rail-item img, .rail-item :deep(canvas) { display: block; width: 100%; height: 100%; object-fit: contain; }
 .rail-item :deep(.outfit-thumbnail) { width: 100%; height: 100%; overflow: hidden; }
+.rail-upload.ant-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 18px; color: var(--muted-strong); background: transparent; border: 1px dashed var(--line); }
+.rail-upload.ant-btn:not(:disabled):hover { color: var(--accent); background: transparent; border-color: var(--accent); }
+.rail-upload small { font-size: 11px; }
 .rail-check { position: absolute; right: 4px; top: 4px; padding: 2px; font-size: 9px; color: #fff; background: var(--accent); border-radius: 50%; }
 .rail-empty { grid-column: 1 / -1; margin: 4px 0; font-size: 12px; line-height: 1.7; color: var(--muted-strong); }
 .rail-all.ant-btn { flex: none; min-height: 36px; }

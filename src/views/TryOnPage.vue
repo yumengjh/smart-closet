@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { App } from 'ant-design-vue'
-import { CameraOutlined, SwapOutlined, LeftOutlined, PictureOutlined, DownloadOutlined, DeleteOutlined, PlusOutlined, ExpandOutlined, CompressOutlined, InfoCircleOutlined, LoadingOutlined, BorderOutlined, ColumnWidthOutlined, EyeOutlined, EyeInvisibleOutlined, RightOutlined } from '@ant-design/icons-vue'
+import { CameraOutlined, SwapOutlined, LeftOutlined, PictureOutlined, DownloadOutlined, DeleteOutlined, PlusOutlined, ExpandOutlined, CompressOutlined, InfoCircleOutlined, LoadingOutlined, BorderOutlined, ColumnWidthOutlined, EyeOutlined, EyeInvisibleOutlined, RightOutlined, PoweroffOutlined } from '@ant-design/icons-vue'
 import { tryOnApi, emergencyStop, duration, finished, mediaUrl, type Candidate, type Capabilities, type Media, type Prepared, type Selection, type Session } from '../tryon/api'
 import { TryOnCamera } from '../tryon/camera'
 import { frameCanvas, photo, startRecording, type Recorder } from '../tryon/recording'
@@ -10,7 +10,7 @@ import { refreshTryOnAccess } from '../tryon/access'
 import { onAccountChange, accountIsStale } from '../domain/accountSession'
 import MediaPreview from '../tryon/MediaPreview.vue'
 import TryOnPicker from '../tryon/TryOnPicker.vue'
-import { framingHint } from '../tryon/context'
+import { framingHint, WEAR_GROUPS } from '../tryon/context'
 import { stageLabel, type StartupStage } from '../tryon/diagnostic'
 import TryOnShutter from '../tryon/TryOnShutter.vue'
 import TryOnFilmstrip from '../tryon/TryOnFilmstrip.vue'
@@ -25,7 +25,7 @@ const loading = ref(true), cameraReady = ref(false), busy = ref(false), error = 
 const garments = ref<Candidate[]>([]), outfits = ref<Outfit[]>([]), selected = ref<Selection[]>([])
 const prepared = ref<Prepared | null>(null), lease = ref<Session | null>(null), picker = ref(false), tab = ref('衣柜'), historyOpen = ref(false)
 const media = ref<Media[]>([]), sessionHistory = ref<Session[]>([]), historyPage = ref(1), garmentPage = ref(1), historyBusy = ref(false), search = ref('')
-const temporary = ref<{ id: string; imageUrl: string; expiresAtMs: number }[]>([]), uploading = ref(false), importChoice = ref<File | null>(null)
+const temporary = ref<{ id: string; imageUrl: string; expiresAtMs: number; role?: string }[]>([]), uploading = ref(false), importChoice = ref<File | null>(null), importRole = ref<string>()
 const recording = ref(false), recordingBusy = ref(false), recordingSeconds = ref(0), uploadedBytes = ref(0), recordingError = ref('')
 const selectedOutfit = ref<string | null>(null), selectingOutfit = ref<string | null>(null), pendingOutfit = ref<string | null>(null), preparing = ref(false)
 const captureMode = ref<CaptureMode>('拍照'), busyPhase = ref(''), latestBusy = ref(false), startupStage = ref<StartupStage | undefined>()
@@ -61,6 +61,8 @@ const canUseLatest = computed(() => /确认使用最新|成品.*改变|衣物已
 const selectionTitle = computed(() => chosenOutfit.value?.name || (selected.value.length ? `${selected.value.length} 件试穿衣物` : '选择衣物或搭配'))
 const selectionSummary = computed(() => selected.value.map(selectionName).join('、'))
 const captureImage = computed(() => media.value.find(m => m.type === 'PHOTO' && m.state === 'READY'))
+// 拍摄引导按已选衣物算：选了位置用选的，否则用上次准备时的分类；不必等到开始。
+const selectedRoles = computed(() => selected.value.map(s => ({ wearingRole: s.role || prepared.value?.items.find(i => i.id === s.id)?.wearingRole })))
 const startHint = computed(() => {
   if (!cap.value?.enabled) return '由管理员开通实时试穿，已有结果仍可在历史中查看。'
   if (preparing.value) return '正在核对这套搭配的成品图片，选好后不会自动开始计费。'
@@ -71,7 +73,7 @@ const startHint = computed(() => {
   if (live.value) return '连接成功后开始计时，首帧仍在生成，请保持人在画面中。'
   if (!selected.value.length) return '先选一套搭配或几件衣物，再打开相机。'
   if (!cameraReady.value) return '衣物已选好。打开相机先看本地预览，不消耗额度。'
-  return `${framingHint(prepared.value?.items || [])} 点击开始后连接计时。`
+  return `${framingHint(selectedRoles.value)} 点击开始后连接计时。`
 })
 const intent = computed(() => shutterIntent(phase.value, captureMode.value, selected.value.length > 0, Boolean(cap.value?.ready) && !preparing.value))
 const shutterLabel = computed(() => ({ disabled: cap.value?.reason || '暂不可开始', open: '打开相机预览', pick: '选择试穿衣物', start: '开始试穿', accept: `开始试穿，还剩 ${waitSeconds.value} 秒`, cancel: queued.value ? '取消排队' : '取消连接', wait: '正在结束', photo: '拍下试穿效果', record: '开始录像', 'stop-record': '结束录像' }[intent.value]))
@@ -195,8 +197,13 @@ function flyToHistory(blob: Blob) {
 function flyDone() { if (fly.value) URL.revokeObjectURL(fly.value.url); fly.value = null; bumpKey.value++ }
 const pickerProps = computed(() => ({ garments: garments.value, outfits: outfits.value, selected: selected.value, temporary: temporary.value,
   blocked: queued.value || offered.value || reclaiming.value || busy.value, busyId: selectingOutfit.value, selectedOutfit: selectedOutfit.value,
-  uploading: uploading.value, error: error.value, canUseLatest: canUseLatest.value, chooseUpload }))
-function applyPrepared(p: Prepared) { prepared.value = p; selected.value = p.items.map(i => ({ type: i.type, id: i.id, revision: i.revision, assetId: i.assetId })) }
+  uploading: uploading.value, error: error.value, canUseLatest: canUseLatest.value, chooseUpload,
+  autoRoles: Object.fromEntries((prepared.value?.items || []).map(i => [i.id, i.wearingRole])) }))
+function applyPrepared(p: Prepared) {
+  const chosen = new Map(selected.value.map(s => [s.id, s.role]))
+  // 用户选过的位置跟着组合走；临时衣物没有分类可推，沿用服务端记下的位置（例如从历史再次试穿）。
+  prepared.value = p; selected.value = p.items.map(i => ({ type: i.type, id: i.id, revision: i.revision, assetId: i.assetId, role: chosen.get(i.id) ?? (i.type === 'TEMPORARY' && i.wearingRole !== 'OTHER' ? i.wearingRole || undefined : undefined) }))
+}
 const selectionName = (s: Selection) => s.type === 'TEMPORARY' ? '自定义衣物' : garments.value.find(g => g.id === s.id)?.name || prepared.value?.items.find(g => g.id === s.id)?.name || '衣物'
 const isSelected = (id: string) => selected.value.some(s => s.id === id)
 function fail(cause: unknown) { if (!disposed) error.value = cause instanceof Error ? cause.message : '操作暂时未完成，请稍后再试。' }
@@ -311,6 +318,20 @@ function toggle(item: Selection) {
     rebuildTimer = window.setTimeout(() => { void rebuild() }, 300)
   } else prepared.value = null
 }
+function setRole(id: string, role: string | undefined) {
+  if (busy.value || preparing.value || reclaiming.value || queued.value || offered.value) return
+  selected.value = selected.value.map(s => s.id === id ? { ...s, role } : s)
+  temporary.value = temporary.value.map(t => t.id === id ? { ...t, role } : t)
+  clearTimeout(rebuildTimer)
+  if (generating.value) rebuildTimer = window.setTimeout(() => { void rebuild() }, 300)
+  else prepared.value = null
+}
+async function closeCamera() {
+  // 关相机先结束付费连接，再释放摄像头；已选衣物保留，可随时重新打开。
+  if (busy.value || recordingBusy.value) return
+  if (live.value) await stop()
+  await camera?.release(); cameraReady.value = false; frameReady.value = false; fitChoice.value = null; sizes.value = {}
+}
 async function selectOutfit(id: string, allowLatest = false) {
   if (busy.value || preparing.value || queued.value || offered.value || reclaiming.value) return
   preparing.value = true; selectingOutfit.value = id; pendingOutfit.value = id; error.value = ''
@@ -327,11 +348,12 @@ async function selectOutfit(id: string, allowLatest = false) {
     message.success(`已选择「${outfits.value.find(o => o.id === id)?.name || '搭配'}」，共 ${p.items.length} 件。`)
   } catch (e) { fail(e) } finally { preparing.value = false; selectingOutfit.value = null }
 }
-async function chooseUpload(file: File) { leaveFullscreen(); await stop(); importChoice.value = file; return false }
+async function chooseUpload(file: File) { leaveFullscreen(); await stop(); importRole.value = undefined; importChoice.value = file; return false }
 async function uploadTemporary() {
   const file = importChoice.value; if (!file) return
   uploading.value = true; error.value = ''
-  try { const item = await tryOnApi.upload(file); temporary.value.push(item); selected.value.push({ type: 'TEMPORARY', id: item.id }); prepared.value = null; importChoice.value = null; message.success('已加入当前页面，七天后删除。') }
+  const role = importRole.value; if (!role) return
+  try { const item = await tryOnApi.upload(file); temporary.value.push({ ...item, role }); selected.value.push({ type: 'TEMPORARY', id: item.id, role }); prepared.value = null; importChoice.value = null; message.success('已加入当前页面，七天后删除。') }
   catch (e) { fail(e) } finally { uploading.value = false }
 }
 async function importGarment() {
@@ -479,6 +501,7 @@ onBeforeUnmount(() => { disposed = true; action++; layoutObserver?.disconnect();
             <div class="tryon-tools">
               <a-button v-if="showsResult" type="text" class="camera-tool" :aria-label="pipOpen ? '隐藏原画小窗' : '显示原画小窗'" :aria-pressed="pipOpen" @click="togglePip"><EyeOutlined v-if="pipOpen" /><EyeInvisibleOutlined v-else /></a-button>
               <a-popover v-else-if="phase === 'preview' || phase === 'cover'" trigger="click" placement="bottomRight" title="画面比例" :get-popup-container="popupHost"><template #content><a-segmented :value="aspect" :options="aspectOptions" @change="changeAspect" /><p class="tryon-info-copy">拍全身用 9:16 或 3:4。切换免费，开始后固定。</p></template><a-button type="text" class="camera-tool tryon-aspect" :aria-label="`画面比例 ${aspect}`">{{ aspect }}</a-button></a-popover>
+              <a-tooltip v-if="cameraReady" :title="live ? '结束试穿并关闭相机' : '关闭相机'" placement="bottom" :get-popup-container="popupHost"><a-button type="text" class="camera-tool" :aria-label="live ? '结束试穿并关闭相机' : '关闭相机'" :disabled="busy || recordingBusy" @click="closeCamera"><PoweroffOutlined /></a-button></a-tooltip>
               <a-tooltip v-if="cameraReady" :title="fit === 'cover' ? '完整显示画面' : '铺满取景框'" placement="bottom" :get-popup-container="popupHost"><a-button type="text" class="camera-tool" :aria-label="fit === 'cover' ? '完整显示画面' : '铺满取景框'" @click="toggleFit"><BorderOutlined v-if="fit === 'cover'" /><ColumnWidthOutlined v-else /></a-button></a-tooltip>
               <a-button v-if="!narrow && cameraReady" type="text" class="camera-tool" :aria-label="fullscreen ? '退出全屏' : '全屏试穿'" @click="toggleFullscreen"><CompressOutlined v-if="fullscreen" /><ExpandOutlined v-else /></a-button>
               <a-popover title="试穿与拍摄说明" placement="bottomRight" :get-popup-container="popupHost"><template #content><p class="tryon-info-copy">打开相机只做本地预览。点击开始后，视频与服装参考图会发送至 XMax，连接后按时长消耗额度。录像声音仅用于本地混录。切后台会结束试穿，未上传的最后片段可能丢失。</p><p class="tryon-info-copy">点小窗互换主画面，拖动可换位置；左右滑动切换拍照和录像，手机上双击切换铺满。无论看哪个画面，保存的都是试穿效果。</p></template><a-button type="text" class="camera-tool" aria-label="查看试穿说明"><InfoCircleOutlined /></a-button></a-popover>
@@ -486,7 +509,7 @@ onBeforeUnmount(() => { disposed = true; action++; layoutObserver?.disconnect();
           </header>
 
           <div v-if="railShown" class="tryon-rail-slot">
-            <TryOnFilmstrip :open="railOpen" :garments="garments" :outfits="outfits" :selected="selected" :selected-outfit="selectedOutfit" :blocked="pickerProps.blocked" :busy-id="selectingOutfit" :title="selectionTitle" @update:open="setRail" @toggle="toggle" @outfit="selectOutfit" @more="stripMore" @all="picker = true" />
+            <TryOnFilmstrip :open="railOpen" :garments="garments" :outfits="outfits" :selected="selected" :selected-outfit="selectedOutfit" :blocked="pickerProps.blocked" :busy-id="selectingOutfit" :title="selectionTitle" @update:open="setRail" @toggle="toggle" @outfit="selectOutfit" @more="stripMore" @all="picker = true" @upload="tab = '临时上传'; picker = true" />
           </div>
 
           <Transition name="tryon-fade"><div v-if="recording" class="tryon-recording-status" role="status"><i></i>REC {{ duration(recordingSeconds) }}<small>已上传 {{ (uploadedBytes / 1024).toFixed(0) }} KiB</small></div></Transition>
@@ -528,9 +551,9 @@ onBeforeUnmount(() => { disposed = true; action++; layoutObserver?.disconnect();
         </div>
       </div>
     </div>
-    <a-drawer v-model:open="picker" title="选择试穿衣物" :placement="narrow ? 'bottom' : 'right'" height="min(76dvh, 760px)" :width="420" :mask="narrow" :get-container="popupHost" root-class-name="tryon-material-drawer"><p v-if="generating" class="tryon-paid-notice">选衣期间仍在计时 · {{ duration(remaining) }} <a-button size="small" danger @click="stop()">停止试穿</a-button></p><TryOnPicker v-bind="pickerProps" v-model:search="search" v-model:tab="tab" :popup-host="popupHost" @toggle="toggle" @outfit="selectOutfit" @more="loadGarments(true)" @latest="latest" /><template #footer><div class="tryon-picker-footer"><span>{{ selected.length ? `已选 ${selected.length} 件衣物` : '尚未选择衣物' }}</span><a-button type="primary" :disabled="preparing" @click="picker=false">{{ selected.length ? '选好了，返回相机' : '返回相机' }}</a-button></div></template></a-drawer>
+    <a-drawer v-model:open="picker" title="选择试穿衣物" :placement="narrow ? 'bottom' : 'right'" height="min(76dvh, 760px)" :width="420" :mask="narrow" :get-container="popupHost" root-class-name="tryon-material-drawer"><p v-if="generating" class="tryon-paid-notice">选衣期间仍在计时 · {{ duration(remaining) }} <a-button size="small" danger @click="stop()">停止试穿</a-button></p><TryOnPicker v-bind="pickerProps" v-model:search="search" v-model:tab="tab" :popup-host="popupHost" @toggle="toggle" @outfit="selectOutfit" @more="loadGarments(true)" @latest="latest" @role="setRole" /><template #footer><div class="tryon-picker-footer"><span>{{ selected.length ? `已选 ${selected.length} 件衣物` : '尚未选择衣物' }}</span><a-button type="primary" :disabled="preparing" @click="picker=false">{{ selected.length ? '选好了，返回相机' : '返回相机' }}</a-button></div></template></a-drawer>
     <a-drawer v-model:open="historyOpen" title="拍摄历史" placement="right" :width="'min(100vw, 620px)'"><a-alert type="info" show-icon message="历史查看期间已停止实时连接。" /><a-segmented v-model:value="historyFilter" :options="['全部','照片','视频']" block /><a-spin :spinning="historyBusy"><a-empty v-if="!visibleMedia.length" description="主动拍摄的照片和录像会保存在这里" /><article v-for="item in visibleMedia" :key="item.id" class="tryon-history-item"><MediaPreview v-if="item.type==='VIDEO' && ['READY','PARTIAL'].includes(item.state)" :src="mediaUrl(item.url)" :duration-ms="item.durationMs" /><img v-else-if="item.type==='PHOTO'" :src="mediaUrl(item.url)" alt="AI试穿效果" /><div v-else class="tryon-pending-media">{{ item.state === 'UNRECOVERABLE' ? '片段不足以恢复录像，可删除释放空间' : '分段已上传，正在恢复可用片段' }}</div><div><strong>{{ item.type==='PHOTO' ? '试穿照片' : `${item.state==='PARTIAL'?'中断片段':'录像'} · ${duration(item.durationMs/1000)}` }}</strong><p>{{ new Date(item.createdAtMs).toLocaleString() }} <template v-if="item.type==='VIDEO'"> · {{ item.hasAudio?'有声':'无声' }} · {{ item.mimeType.split('/')[1]?.toUpperCase() }}</template></p><div class="tryon-history-actions"><a-button :href="mediaUrl(item.downloadUrl)" :disabled="!['READY','PARTIAL'].includes(item.state)"><DownloadOutlined /> 下载</a-button><a-button v-if="cap?.enabled" @click="repeat(item)">再次试穿</a-button><a-button type="text" danger aria-label="删除结果" @click="remove(item)"><DeleteOutlined /></a-button></div></div></article><a-button block :loading="historyBusy" @click="moreHistory">加载更多结果</a-button><a-collapse v-if="sessionHistory.length" ghost><a-collapse-panel key="sessions" header="查看会话与用量记录"><p v-for="s in sessionHistory" :key="s.id" class="tryon-session-history">{{ new Date(s.createdAtMs).toLocaleString() }} · {{ stateName(s.state) }} · {{ duration(s.userSeconds) }}</p></a-collapse-panel></a-collapse></a-spin></a-drawer>
-    <a-modal :open="!!importChoice" title="这件衣物是否入柜？" :footer="null" @cancel="importChoice=null"><p>入柜会进入现有衣物处理流程。仅试穿不会自动识图或生图，离开页面后不恢复。</p><div class="tryon-modal-actions"><a-button :loading="uploading" @click="uploadTemporary">仅当前页面试穿</a-button><a-button type="primary" @click="importGarment">进入入柜流程</a-button></div></a-modal>
+    <a-modal :open="!!importChoice" title="这件衣物是否入柜？" :footer="null" @cancel="importChoice=null"><p>入柜会进入现有衣物处理流程。仅试穿不会自动识图或生图，离开页面后不恢复。</p><p class="tryon-import-label">仅试穿时，这件衣物戴在或穿在哪里？</p><a-select v-model:value="importRole" class="tryon-import-role" show-search option-filter-prop="label" :options="WEAR_GROUPS" placeholder="选择穿戴位置，例如头饰、手表、手持物" /><div class="tryon-modal-actions"><a-button :loading="uploading" :disabled="!importRole" @click="uploadTemporary">仅当前页面试穿</a-button><a-button type="primary" @click="importGarment">进入入柜流程</a-button></div></a-modal>
     <a-modal v-model:open="silentChoice" title="麦克风暂不可用" :footer="null"><p>{{ microphoneError }}</p><div class="tryon-modal-actions"><a-button @click="silentChoice=false; record(true)">继续无声录像</a-button><a-button type="primary" @click="silentChoice=false; record()">重新申请麦克风</a-button></div></a-modal>
   </section>
 </template>
@@ -693,6 +716,8 @@ onBeforeUnmount(() => { disposed = true; action++; layoutObserver?.disconnect();
 /* 底部控件 */
 .tryon-dock { position: absolute; left: 0; right: 0; bottom: 0; z-index: 10; display: flex; flex-direction: column; gap: 8px; padding: 36px 20px 14px; background: linear-gradient(0deg, #000a, #0000); pointer-events: none; }
 .tryon-dock.is-loading { visibility: hidden; }
+/* 桌面右下角是助手表情球，切镜头按钮让开它。 */
+@media (min-width: 768px) { .tryon-dock { padding-right: 92px; } }
 .tryon-dock :is(.ant-btn, .ant-segmented, .ant-alert) { pointer-events: auto; }
 .tryon-notice-area { display: flex; flex-direction: column; align-items: center; gap: 8px; min-height: 20px; }
 .tryon-notice { display: flex; flex-direction: column; align-items: center; gap: 6px; max-width: min(100%, 420px); padding: 10px 14px; color: #fff; text-align: center; background: #101714c7; border-radius: 12px; backdrop-filter: blur(12px); pointer-events: auto; }
@@ -748,6 +773,8 @@ onBeforeUnmount(() => { disposed = true; action++; layoutObserver?.disconnect();
 .tryon-history-item p { margin: 8px 0; font-size: 12px; line-height: 1.7; color: var(--muted-strong); }
 .tryon-history-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .tryon-pending-media { padding: 16px; font-size: 12px; color: var(--muted-strong); background: var(--surface-alt); }
+.tryon-import-label { margin: 16px 0 8px; font-size: 13px; color: var(--muted-strong); }
+.tryon-import-role { width: 100%; }
 .tryon-modal-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 12px; margin-top: 24px; }
 .tryon-session-history { padding: 8px 0; font-size: 12px; color: var(--muted-strong); }
 
