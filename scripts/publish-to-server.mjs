@@ -1,4 +1,4 @@
-import { cpSync, mkdirSync, readdirSync, rmSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -12,6 +12,8 @@ for (const name of ['index.html', 'favicon.svg', 'yuda-logo.png', 'yuda-logo-192
 cpSync(resolve(output, 'icons'), resolve(serverStatic, 'icons'), { recursive: true })
 cpSync(resolve(output, 'illustrations'), resolve(serverStatic, 'illustrations'), { recursive: true })
 cpSync(resolve(output, 'licenses'), resolve(serverStatic, 'licenses'), { recursive: true })
+// Pose-check runtime and model, prepared by the prebuild:server hook (npm run setup:pose).
+if (existsSync(resolve(output, 'tryon-pose'))) cpSync(resolve(output, 'tryon-pose'), resolve(serverStatic, 'tryon-pose'), { recursive: true })
 const stickerResources = resolve(serverStatic, '../person-stickers')
 mkdirSync(stickerResources, { recursive: true })
 cpSync(resolve(root, 'public/person-stickers'), stickerResources, { recursive: true })

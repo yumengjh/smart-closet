@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { App } from 'ant-design-vue'
-import { CameraOutlined, SwapOutlined, LeftOutlined, PictureOutlined, DownloadOutlined, DeleteOutlined, PlusOutlined, ExpandOutlined, CompressOutlined, InfoCircleOutlined, LoadingOutlined, BorderOutlined, ColumnWidthOutlined, EyeOutlined, EyeInvisibleOutlined, RightOutlined, PoweroffOutlined } from '@ant-design/icons-vue'
+import { CameraOutlined, SwapOutlined, LeftOutlined, PictureOutlined, DownloadOutlined, DeleteOutlined, PlusOutlined, ExpandOutlined, CompressOutlined, InfoCircleOutlined, LoadingOutlined, BorderOutlined, ColumnWidthOutlined, EyeOutlined, EyeInvisibleOutlined, RightOutlined, PoweroffOutlined, CheckCircleFilled, ExclamationCircleFilled } from '@ant-design/icons-vue'
 import { tryOnApi, emergencyStop, duration, finished, mediaUrl, type Candidate, type Capabilities, type Media, type Prepared, type Selection, type Session } from '../tryon/api'
 import { TryOnCamera } from '../tryon/camera'
 import { frameCanvas, photo, startRecording, type Recorder } from '../tryon/recording'
@@ -17,6 +17,8 @@ import TryOnFilmstrip from '../tryon/TryOnFilmstrip.vue'
 import { playSound } from '../services/sound'
 import { ASPECTS, CAMERA_LAYOUT_QUERY, CONNECT_STEPS, aspectOf, autoFit, connectStep, cornerPosition, defaultAspect, nearestCorner, pipSize, presetOf, shutterIntent, swipeDirection, tryOnPhase, type AspectValue, type Box, type CaptureMode, type Corner, type Fit, type Insets } from '../tryon/stage'
 import OutfitThumbnail from '../components/OutfitThumbnail.vue'
+import { AbsenceWatch, SteadyCheck, checkFrame, present, type Absence, type FrameCheck } from '../tryon/pose/checks'
+import { PoseSampler } from '../tryon/pose/sampler'
 import type { Outfit } from '../domain/outfit'
 
 const route = useRoute(), router = useRouter(), { message, modal } = App.useApp()
@@ -62,7 +64,30 @@ const selectionTitle = computed(() => chosenOutfit.value?.name || (selected.valu
 const selectionSummary = computed(() => selected.value.map(selectionName).join('、'))
 const captureImage = computed(() => media.value.find(m => m.type === 'PHOTO' && m.state === 'READY'))
 // 拍摄引导按已选衣物算：选了位置用选的，否则用上次准备时的分类；不必等到开始。
-const selectedRoles = computed(() => selected.value.map(s => ({ wearingRole: s.role || prepared.value?.items.find(i => i.id === s.id)?.wearingRole })))
+const autoRole = (id: string) => prepared.value?.items.find(i => i.id === id)?.wearingRole || garments.value.find(g => g.id === id)?.wearingRole
+const selectedRoles = computed(() => selected.value.map(s => ({ wearingRole: s.role || autoRole(s.id) })))
+// 本地姿态检查（docs/design/2026-11-03-实时试穿本地姿态检查设计.md）：关键点只在本页使用，不上传、不保存。
+const poseCheck = ref<FrameCheck | null>(null), absence = ref<Absence>({ state: 'ok' })
+const steady = new SteadyCheck(), away = new AbsenceWatch()
+let sampler: PoseSampler | undefined
+const showPoseCheck = computed(() => phase.value === 'preview' && selected.value.length > 0 && poseCheck.value !== null && !error.value)
+function startPose() {
+  if (sampler || disposed) return
+  sampler = new PoseSampler(() => camera?.localVideo)
+  sampler.onUnavailable = () => { sampler = undefined; poseCheck.value = null }
+  sampler.onPoints = (points, at) => {
+    if (phase.value === 'preview') { poseCheck.value = steady.update(checkFrame(points, selectedRoles.value.map(r => r.wearingRole)), at); return }
+    if (!generating.value) return
+    absence.value = away.update(present(points), at)
+    if (absence.value.state === 'stop') {
+      away.reset(); absence.value = { state: 'ok' }
+      void stop().then(() => { if (!disposed) error.value = '画面里一直没有人，已自动结束试穿，以免继续计时。' })
+    }
+  }
+  sampler.start()
+}
+function stopPose() { sampler?.close(); sampler = undefined; steady.reset(); away.reset(); poseCheck.value = null; absence.value = { state: 'ok' } }
+function stillHere() { away.snooze(performance.now()); absence.value = { state: 'ok' } }
 const startHint = computed(() => {
   if (!cap.value?.enabled) return '由管理员开通实时试穿，已有结果仍可在历史中查看。'
   if (preparing.value) return '正在核对这套搭配的成品图片，选好后不会自动开始计费。'
@@ -198,7 +223,7 @@ function flyDone() { if (fly.value) URL.revokeObjectURL(fly.value.url); fly.valu
 const pickerProps = computed(() => ({ garments: garments.value, outfits: outfits.value, selected: selected.value, temporary: temporary.value,
   blocked: queued.value || offered.value || reclaiming.value || busy.value, busyId: selectingOutfit.value, selectedOutfit: selectedOutfit.value,
   uploading: uploading.value, error: error.value, canUseLatest: canUseLatest.value, chooseUpload,
-  autoRoles: Object.fromEntries((prepared.value?.items || []).map(i => [i.id, i.wearingRole])) }))
+  autoRoles: Object.fromEntries(selected.value.map(s => [s.id, autoRole(s.id)])) }))
 function applyPrepared(p: Prepared) {
   const chosen = new Map(selected.value.map(s => [s.id, s.role]))
   // 用户选过的位置跟着组合走；临时衣物没有分类可推，沿用服务端记下的位置（例如从历史再次试穿）。
@@ -228,6 +253,7 @@ async function openCamera() {
     camera.onSize = (source, width, height) => { sizes.value = { ...sizes.value, [source]: width / height } }
     await camera.setAspect(presetOf(aspect.value))
     await camera.open(); cameraReady.value = camera.ready
+    if (cameraReady.value) startPose()
   } catch (e) { fail(e) } finally { busy.value = false; busyPhase.value = '' }
 }
 async function build(allowLatest = false) {
@@ -296,7 +322,7 @@ async function stop(interrupted = false) {
 function background(event?: Event) {
   if (!document.hidden && event?.type !== 'pagehide') return
   if (lease.value && !finished(lease.value)) emergencyStop(lease.value.id)
-  void stop(true); void camera?.release(); cameraReady.value = false
+  void stop(true); stopPose(); void camera?.release(); cameraReady.value = false
 }
 async function rebuild(allowLatest = false) {
   if (!generating.value || !camera || !lease.value) { prepared.value = null; return }
@@ -330,7 +356,7 @@ async function closeCamera() {
   // 关相机先结束付费连接，再释放摄像头；已选衣物保留，可随时重新打开。
   if (busy.value || recordingBusy.value) return
   if (live.value) await stop()
-  await camera?.release(); cameraReady.value = false; frameReady.value = false; fitChoice.value = null; sizes.value = {}
+  stopPose(); await camera?.release(); cameraReady.value = false; frameReady.value = false; fitChoice.value = null; sizes.value = {}
 }
 async function selectOutfit(id: string, allowLatest = false) {
   if (busy.value || preparing.value || queued.value || offered.value || reclaiming.value) return
@@ -426,7 +452,8 @@ watch(phase, (next, before) => {
     revealing.value = true; playSound('success'); navigator.vibrate?.(18)
     window.setTimeout(() => { revealing.value = false }, calm() ? 0 : 1300)
   }
-  if (next !== 'live' && next !== 'recording') { swapped.value = false; pipOpen.value = true }
+  if (next !== 'live' && next !== 'recording') { swapped.value = false; pipOpen.value = true; away.reset(); absence.value = { state: 'ok' } }
+  if (next === 'preview') { steady.reset(); sampler?.resetRate(5) } else if (next === 'live' || next === 'recording') sampler?.setRate(2)
   void nextTick(measure)
 })
 watch(frameReady, ready => { if (!ready) freezeLastFrame() }, { flush: 'sync' })
@@ -455,7 +482,7 @@ onMounted(() => {
   for (const el of [stageArea.value, stage.value, dock.value, topbar.value]) if (el) layoutObserver.observe(el)
   measure(); layoutQuery.addEventListener('change', syncNarrow); document.addEventListener('fullscreenchange', syncFullscreen)
 })
-onBeforeUnmount(() => { disposed = true; action++; layoutObserver?.disconnect(); layoutQuery.removeEventListener('change', syncNarrow); document.removeEventListener('fullscreenchange', syncFullscreen); flyDone(); offAccount(); clearInterval(pulseTimer); clearInterval(clockTimer); clearTimeout(rebuildTimer); clearTimeout(searchTimer); document.removeEventListener('visibilitychange', background); window.removeEventListener('pagehide', background); if (lease.value && !finished(lease.value)) emergencyStop(lease.value.id); void finishRecording(true); void camera?.dispose() })
+onBeforeUnmount(() => { disposed = true; action++; stopPose(); layoutObserver?.disconnect(); layoutQuery.removeEventListener('change', syncNarrow); document.removeEventListener('fullscreenchange', syncFullscreen); flyDone(); offAccount(); clearInterval(pulseTimer); clearInterval(clockTimer); clearTimeout(rebuildTimer); clearTimeout(searchTimer); document.removeEventListener('visibilitychange', background); window.removeEventListener('pagehide', background); if (lease.value && !finished(lease.value)) emergencyStop(lease.value.id); void finishRecording(true); void camera?.dispose() })
 </script>
 
 <template>
@@ -516,6 +543,8 @@ onBeforeUnmount(() => { disposed = true; action++; layoutObserver?.disconnect();
 
           <div ref="dock" class="tryon-dock" :class="{ 'is-loading': loading }">
             <div class="tryon-notice-area" aria-live="polite">
+              <div v-if="absence.state === 'warn'" class="tryon-notice is-away" role="alert"><strong>画面里没有人</strong><small>{{ absence.secondsLeft }} 秒后自动结束试穿，以免继续计时。</small><a-button size="small" @click="stillHere">我还在，继续</a-button></div>
+              <span v-if="showPoseCheck && poseCheck" class="tryon-pose-check" :class="`is-${poseCheck.status}`" role="status"><CheckCircleFilled v-if="poseCheck.status === 'ready'" /><ExclamationCircleFilled v-else />{{ poseCheck.hint }}</span>
               <Transition name="tryon-rise" mode="out-in">
                 <div v-if="notice === 'error'" key="error" class="tryon-notice is-error" role="alert"><p>{{ error }}</p><a-button v-if="canUseLatest" size="small" :loading="latestBusy" @click="latest">使用最新成品</a-button><a-button v-else type="text" size="small" @click="error=''">收起</a-button></div>
                 <div v-else-if="notice === 'connecting'" key="connecting" class="tryon-notice is-progress" role="status">
@@ -737,6 +766,10 @@ onBeforeUnmount(() => { disposed = true; action++; layoutObserver?.disconnect();
 .is-cover .tryon-start-hint { text-shadow: none; }
 .is-cover .tryon-topbar, .is-cover .tryon-dock { background: none; }
 .tryon-start-hint.active { color: #bff0d5; }
+.tryon-pose-check { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; font-size: 13px; color: #fff; background: #101714b3; border-radius: 16px; backdrop-filter: blur(10px); }
+.tryon-pose-check.is-ready :deep(.anticon) { color: #7fe3a6; }
+.tryon-pose-check:not(.is-ready) :deep(.anticon) { color: #f2d28b; }
+.tryon-notice.is-away strong { color: #f2d28b; }
 
 .tryon-controls { pointer-events: auto; display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto minmax(0, 1fr) auto; grid-template-areas: "hist mode . shut . flip"; align-items: center; gap: 14px; }
 .tryon-selection-row { display: contents; }

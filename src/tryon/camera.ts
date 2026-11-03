@@ -27,6 +27,8 @@ export class TryOnCamera {
   private reportFrame() { if (!this.lease || this.reportedLease === this.lease) return; this.reportedLease = this.lease; this.host.classList.add('has-result'); this.trace.frame(); this.onFrame() }
   constructor(private host: HTMLElement, private onFrame: () => void, private onFailure: (error: Error) => void, private onProgress: (stage: StartupStage) => void = () => {}) {}
   get video() { return this.remoteView?.videoElement }
+  /** 摄像头原画（未经生成），只给本地姿态检查读帧。 */
+  get localVideo() { return this.localView?.videoElement }
   get ready() { return Boolean(this.local) }
   get isFront() { return this.front }
   private watchSize(video: HTMLVideoElement, source: 'local' | 'remote') {

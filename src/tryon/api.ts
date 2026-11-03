@@ -10,7 +10,7 @@ export type Capabilities = { enabled: boolean; ready: boolean; reason: string; q
 export type Selection = { type: 'GARMENT' | 'TEMPORARY'; id: string; revision?: number; assetId?: string; role?: string }
 export type Item = Selection & { assetId: string; hash: string; name: string; wearingRole?: string | null }
 export type Prepared = { id: string; revision: number; items: Item[]; previewUrl: string; referencePath?: string; expiresAtMs: number }
-export type Candidate = { id: string; revision: number; name: string; ready: boolean; reason: string; imageUrl: string; assetId?: string }
+export type Candidate = { id: string; revision: number; name: string; ready: boolean; reason: string; imageUrl: string; assetId?: string; wearingRole?: string | null }
 export type Session = { id: string; state: string; preparationId: string; reservedPoints: number; consumedPoints: number; userSeconds: number; firstFrame: boolean; createdAtMs: number; connectedAtMs: number | null; deadlineAtMs: number; remainingSeconds: number; reason: string | null; environment: 'china' | 'global'; rtcConnectedAtMs?: number | null; diagnostic?: ConnectionDiagnostic | null }
 export type Media = { id: string; type: 'PHOTO' | 'VIDEO'; state: string; mimeType: string; sessionId: string; hasAudio: boolean; durationMs: number; bytes: number; createdAtMs: number; url: string; downloadUrl: string }
 const post = <T>(path: string, body: unknown = {}, init: RequestInit = {}) => request<T>(path, { ...init, method: 'POST', body: JSON.stringify(body) })
