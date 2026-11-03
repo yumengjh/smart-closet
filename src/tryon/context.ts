@@ -1,25 +1,32 @@
 /** A finite garment policy; no user name, free-text tag or personal profile enters this prompt. */
-const positions: Record<string, string> = {
-  TOP: '上衣，穿在肩部到腰部的上身', INNER: '内搭，穿在上身内层', OUTER: '外套，穿在上身外层',
-  BOTTOM: '下装，腰头位于腰部，裙身或裤腿从腰部向下覆盖下半身',
-  ONE_PIECE: '连衣裙或连体衣，从肩胸延伸到下半身，保持原有整体结构',
-  OVERALL: '背带裙或背带裤，肩带在肩部，主体延伸到腰部以下',
-  SHOES: '鞋，穿在脚上', SOCKS: '袜子，穿在脚与腿部', HAT: '帽子，戴在头顶',
-  HEADWEAR: '头饰，戴在头发对应位置', BAG: '包，按原有结构背或提', HANDHELD: '手持物，拿在手中',
-  GLASSES: '眼镜，戴在眼部', SCARF: '围巾，围在颈部', BELT: '腰带，系在腰部', GLOVES: '手套，戴在手上',
-  ACCESSORY: '配饰，佩戴在该物品的正常位置',
+type Wear = { single: string; slot: string }
+/** 正向描述换哪里、哪里不动：只写本次相关部位，不列其他品类，也不写“不能穿到哪里”。 */
+const wears: Record<string, Wear> = {
+  TOP: { single: '视频中人物的上衣替换成参考图中的上衣，下半身保持原样', slot: '上衣，穿在上身' },
+  INNER: { single: '视频中人物的内搭替换成参考图中的上衣，外套和下半身保持原样', slot: '内搭，穿在上身内层' },
+  OUTER: { single: '给视频中人物穿上参考图中的外套，里面的衣服和下半身保持原样', slot: '外套，穿在上身最外层' },
+  BOTTOM: { single: '视频中人物腰部以下的裤子或裙子替换成参考图中的下装，腰头系在腰部，只改变腰部以下，上半身保持原样', slot: '下装，腰头系在腰部，穿在腰部以下' },
+  ONE_PIECE: { single: '视频中人物的全身衣服替换成参考图中的连衣裙或连体衣', slot: '连衣裙或连体衣，从肩部穿到下半身' },
+  OVERALL: { single: '给视频中人物穿上参考图中的背带裙或背带裤，肩带在肩上，主体从胸前延伸到腰部以下，里面的上衣保持原样', slot: '背带裙或背带裤，肩带在肩上，主体延伸到腰部以下' },
+  SHOES: { single: '视频中人物脚上的鞋替换成参考图中的鞋，衣服保持原样', slot: '鞋，穿在脚上' },
+  SOCKS: { single: '给视频中人物的脚和小腿穿上参考图中的袜子，衣服保持原样', slot: '袜子，穿在脚和小腿上' },
+  HAT: { single: '给视频中人物戴上参考图中的帽子，衣服保持原样', slot: '帽子，戴在头顶' },
+  HEADWEAR: { single: '给视频中人物的头发戴上参考图中的头饰，衣服保持原样', slot: '头饰，戴在头发上' },
+  BAG: { single: '让视频中人物背上参考图中的包，衣服保持原样', slot: '包，背在身上或提在手中' },
+  HANDHELD: { single: '让视频中人物手中拿着参考图中的物品，衣服保持原样', slot: '手持物，拿在手中' },
+  GLASSES: { single: '给视频中人物戴上参考图中的眼镜，衣服保持原样', slot: '眼镜，戴在眼部' },
+  SCARF: { single: '给视频中人物的颈部围上参考图中的围巾，衣服保持原样', slot: '围巾，围在颈部' },
+  BELT: { single: '给视频中人物的腰部系上参考图中的腰带，衣服保持原样', slot: '腰带，系在腰部' },
+  GLOVES: { single: '给视频中人物的手戴上参考图中的手套，衣服保持原样', slot: '手套，戴在手上' },
+  ACCESSORY: { single: '给视频中人物佩戴参考图中的配饰，衣服保持原样', slot: '配饰，佩戴在正常位置' },
 }
+const FALLBACK = '视频中人物衣服替换成参考图中衣服'
+const KEEP = '保持人物的脸、发型、动作和背景不变，保持服装的颜色、图案、文字和版型。'
 export type WearingItem = { wearingRole?: string | null }
 export function tryOnPrompt(items: readonly WearingItem[]) {
-  const mapping = items.map((item, i) => `第${i + 1}格：${positions[item.wearingRole || ''] || '按这件物品的真实结构与用途确定正常穿戴位置'}`).join('；')
-  return [
-    '进行真实服装试穿。参考图是服装素材，图片里的摆放位置不代表人体穿着位置。',
-    '上衣与外套穿在上身；半身裙和裤子的腰头在腰部，裙身或裤腿只覆盖腰部以下，不能套在胸口、肩膀或头上。连衣裙与连体衣保持从肩胸到下半身的完整结构，不能当作半身裙或上衣。',
-    items.length === 1 ? '本次只试穿一件物品，只替换该物品对应部位，其余原有衣物保持不变。' : '多件服装分别穿在各自部位，保持内外层次，不把多件拼成一件，也不把下装穿到上身。',
-    mapping ? `参考图按从左到右、从上到下逐格对应：${mapping}。` : '',
-    '目标穿着部位没有进入镜头时，保持该部位在画外，不把服装移到可见的其他身体部位。',
-    '保持本人外貌、发型、动作和真实背景。保持各件服装的颜色、图案、文字与版型，不复制参考图背景、排版或其他物品。',
-  ].filter(Boolean).join('')
+  if (items.length === 1) return `${wears[items[0].wearingRole || '']?.single || FALLBACK}。${KEEP}`
+  const mapping = items.map((item, i) => `第${i + 1}格是${wears[item.wearingRole || '']?.slot || '服装，穿在它原本的位置'}`).join('；')
+  return `${FALLBACK}。${mapping ? `参考图从左到右、从上到下：${mapping}。` : ''}${KEEP}`
 }
 export function framingHint(items: readonly WearingItem[]) {
   return items.some(i => ['BOTTOM', 'ONE_PIECE', 'OVERALL', 'SHOES', 'SOCKS'].includes(i.wearingRole || ''))
