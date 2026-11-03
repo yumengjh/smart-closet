@@ -1,22 +1,26 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { App } from 'ant-design-vue'
-import { CameraOutlined, VideoCameraOutlined, SwapOutlined, LeftOutlined, PictureOutlined, StopOutlined, DownloadOutlined, DeleteOutlined, PlusOutlined, ExpandOutlined, InfoCircleOutlined, LoadingOutlined, CheckOutlined } from '@ant-design/icons-vue'
+import { CameraOutlined, SwapOutlined, LeftOutlined, PictureOutlined, DownloadOutlined, DeleteOutlined, PlusOutlined, ExpandOutlined, CompressOutlined, InfoCircleOutlined, LoadingOutlined, BorderOutlined, ColumnWidthOutlined, EyeOutlined, EyeInvisibleOutlined, RightOutlined } from '@ant-design/icons-vue'
 import { tryOnApi, emergencyStop, duration, finished, mediaUrl, type Candidate, type Capabilities, type Media, type Prepared, type Selection, type Session } from '../tryon/api'
 import { TryOnCamera } from '../tryon/camera'
-import { photo, startRecording, type Recorder } from '../tryon/recording'
+import { frameCanvas, photo, startRecording, type Recorder } from '../tryon/recording'
 import { refreshTryOnAccess } from '../tryon/access'
 import { onAccountChange, accountIsStale } from '../domain/accountSession'
 import MediaPreview from '../tryon/MediaPreview.vue'
 import TryOnPicker from '../tryon/TryOnPicker.vue'
 import { framingHint } from '../tryon/context'
-import { stageLabel } from '../tryon/diagnostic'
+import { stageLabel, type StartupStage } from '../tryon/diagnostic'
+import TryOnShutter from '../tryon/TryOnShutter.vue'
+import TryOnFilmstrip from '../tryon/TryOnFilmstrip.vue'
+import { playSound } from '../services/sound'
+import { ASPECTS, CAMERA_LAYOUT_QUERY, CONNECT_STEPS, aspectOf, autoFit, connectStep, cornerPosition, defaultAspect, fitBox, nearestCorner, pipSize, presetOf, shutterIntent, swipeDirection, tryOnPhase, type AspectValue, type Box, type CaptureMode, type Corner, type Fit, type Insets } from '../tryon/stage'
 import OutfitThumbnail from '../components/OutfitThumbnail.vue'
 import type { Outfit } from '../domain/outfit'
 
 const route = useRoute(), router = useRouter(), { message, modal } = App.useApp()
-const host = ref<HTMLElement>(), stage = ref<HTMLElement>(), cap = ref<Capabilities | null>(null)
+const host = ref<HTMLElement>(), stage = ref<HTMLElement>(), stageArea = ref<HTMLElement>(), body = ref<HTMLElement>(), topbar = ref<HTMLElement>(), dock = ref<HTMLElement>(), historySlot = ref<HTMLElement>(), freezeCanvas = ref<HTMLCanvasElement>(), cap = ref<Capabilities | null>(null)
 const loading = ref(true), cameraReady = ref(false), busy = ref(false), error = ref(''), frameReady = ref(false)
 const garments = ref<Candidate[]>([]), outfits = ref<Outfit[]>([]), selected = ref<Selection[]>([])
 const prepared = ref<Prepared | null>(null), lease = ref<Session | null>(null), picker = ref(false), tab = ref('衣柜'), historyOpen = ref(false)
@@ -24,9 +28,9 @@ const media = ref<Media[]>([]), sessionHistory = ref<Session[]>([]), historyPage
 const temporary = ref<{ id: string; imageUrl: string; expiresAtMs: number }[]>([]), uploading = ref(false), importChoice = ref<File | null>(null)
 const recording = ref(false), recordingBusy = ref(false), recordingSeconds = ref(0), uploadedBytes = ref(0), recordingError = ref('')
 const selectedOutfit = ref<string | null>(null), selectingOutfit = ref<string | null>(null), pendingOutfit = ref<string | null>(null), preparing = ref(false)
-const captureMode = ref('拍照'), busyPhase = ref(''), latestBusy = ref(false)
+const captureMode = ref<CaptureMode>('拍照'), busyPhase = ref(''), latestBusy = ref(false), startupStage = ref<StartupStage | undefined>()
 const silentChoice = ref(false), microphoneError = ref(''), now = ref(Date.now()), historyFilter = ref('全部')
-let camera: TryOnCamera | undefined, recorder: Recorder | undefined, action = 0, pulseRunning = false, pulseTimer = 0, clockTimer = 0, rebuildTimer = 0, disposed = false, searchTimer = 0, garmentRequest = 0
+let camera: TryOnCamera | undefined, recorder: Recorder | undefined, action = 0, pulseRunning = false, pulseAgain = false, pulseTimer = 0, clockTimer = 0, rebuildTimer = 0, disposed = false, searchTimer = 0, garmentRequest = 0
 const live = computed(() => !finished(lease.value))
 const queued = computed(() => lease.value?.state === 'QUEUED')
 const offered = computed(() => lease.value?.state === 'OFFERED')
@@ -40,7 +44,18 @@ const remaining = computed(() => {
   return s.reservedPoints
 })
 const waitSeconds = computed(() => Math.max(0, Math.ceil(((lease.value?.deadlineAtMs || 0) - now.value) / 1000)))
-const status = computed(() => offered.value ? `轮到你了，请在 ${waitSeconds.value} 秒内开始` : queued.value ? `等待资源 · 最多再等 ${waitSeconds.value} 秒` : reclaiming.value ? '正在结束并核对消耗' : generating.value ? '正在试穿 · 正在消耗额度' : live.value ? '正在连接，等待生成画面' : '本地预览 · 不消耗试穿额度')
+const phase = computed(() => tryOnPhase({ enabled: Boolean(cap.value?.enabled), cameraReady: cameraReady.value, busy: busy.value, live: live.value, queued: queued.value, offered: offered.value, reclaiming: reclaiming.value, frameReady: frameReady.value, recording: recording.value }))
+const status = computed(() => {
+  switch (phase.value) {
+    case 'preview': return `本地预览 · 今日 ${duration(remaining.value)}`
+    case 'queued': return `排队中 · ${waitSeconds.value} 秒`
+    case 'offered': return `轮到你了 · ${waitSeconds.value} 秒`
+    case 'connecting': return lease.value ? `连接中 · ${waitSeconds.value} 秒` : '准备中'
+    case 'live': case 'recording': return `试穿中 · ${duration(remaining.value)}`
+    case 'stopping': return '正在结束'
+    default: return cap.value ? `今日剩余 ${duration(remaining.value)}` : '实时试穿'
+  }
+})
 const chosenOutfit = computed(() => outfits.value.find(o => o.id === selectedOutfit.value))
 const canUseLatest = computed(() => /确认使用最新|成品.*改变|衣物已经更新/.test(error.value))
 const selectionTitle = computed(() => chosenOutfit.value?.name || (selected.value.length ? `${selected.value.length} 件试穿衣物` : '选择衣物或搭配'))
@@ -58,16 +73,138 @@ const startHint = computed(() => {
   if (!cameraReady.value) return '衣物已选好。打开相机先看本地预览，不消耗额度。'
   return `${framingHint(prepared.value?.items || [])} 点击开始后连接计时。`
 })
-const mainLabel = computed(() => !selected.value.length ? '选择试穿衣物' : !cameraReady.value ? '打开相机预览' : offered.value ? `开始试穿 · ${waitSeconds.value}秒` : '开始试穿')
+const intent = computed(() => shutterIntent(phase.value, captureMode.value, selected.value.length > 0, Boolean(cap.value?.ready) && !preparing.value))
+const shutterLabel = computed(() => ({ disabled: cap.value?.reason || '暂不可开始', open: '打开相机预览', pick: '选择试穿衣物', start: '开始试穿', accept: `开始试穿，还剩 ${waitSeconds.value} 秒`, cancel: queued.value ? '取消排队' : '取消连接', wait: '正在结束', photo: '拍下试穿效果', record: '开始录像', 'stop-record': '结束录像' }[intent.value]))
+const shutterText = computed(() => intent.value === 'start' ? '开始' : intent.value === 'accept' ? String(waitSeconds.value) : undefined)
+const shutterProgress = computed(() => {
+  if (intent.value === 'stop-record') return recordingSeconds.value / (cap.value?.limits.recordingSeconds || 60)
+  if (intent.value === 'accept') return waitSeconds.value / (cap.value?.limits.offerSeconds || 10)
+  return undefined
+})
+const stepIndex = computed(() => connectStep(startupStage.value))
+const notice = computed(() => {
+  if (error.value && !picker.value) return 'error'
+  if (phase.value === 'connecting' || phase.value === 'queued' || phase.value === 'stopping' || phase.value === 'offered') return phase.value
+  return 'hint'
+})
+const narrow = ref(window.matchMedia(CAMERA_LAYOUT_QUERY).matches)
+const aspect = ref<AspectValue>(readAspect()), fitChoice = ref<Fit | null>(null), area = ref<Box>({ width: 0, height: 0 }), fullscreen = ref(false)
+const sizes = ref<{ local?: number; remote?: number }>({})
+const dockBox = ref({ top: 72, bottom: 16, right: 12 })
+const pipOpen = ref(true), swapped = ref(false), corner = ref<Corner>('top-right'), dragPosition = ref<{ x: number; y: number } | null>(null)
+const revealing = ref(false), flipping = ref(false), freezing = ref(false), flashKey = ref(0), bumpKey = ref(0), fly = ref<{ url: string; x: number; y: number } | null>(null)
+const showsResult = computed(() => phase.value === 'live' || phase.value === 'recording')
+const mainRatio = computed(() => (showsResult.value ? sizes.value.remote : sizes.value.local) || sizes.value.local || aspectOf(aspect.value)!.ratio)
+const pipRatio = computed(() => (swapped.value ? sizes.value.remote : sizes.value.local) || mainRatio.value)
+const stageBox = computed(() => narrow.value ? area.value : fitBox(area.value, mainRatio.value))
+const fit = computed<Fit>(() => fitChoice.value || autoFit(stageBox.value.width, stageBox.value.height, mainRatio.value))
+const pipBox = computed(() => pipSize(stageBox.value, pipRatio.value, narrow.value))
+const pipInsets = computed<Insets>(() => ({ top: dockBox.value.top, right: dockBox.value.right, bottom: dockBox.value.bottom, left: 12 }))
+const pipPoint = computed(() => dragPosition.value || cornerPosition(corner.value, stageBox.value, pipBox.value, pipInsets.value))
+const stageStyle = computed(() => ({
+  ...(!narrow.value && stageBox.value.width ? { width: `${stageBox.value.width}px`, height: `${stageBox.value.height}px` } : {}),
+  '--pip-x': `${pipPoint.value.x}px`, '--pip-y': `${pipPoint.value.y}px`, '--pip-w': `${pipBox.value.width}px`, '--pip-h': `${pipBox.value.height}px`,
+}))
+const aspectOptions = ASPECTS.map(a => a.value)
+function readAspect(): AspectValue {
+  try { const saved = localStorage.getItem(`yuda.tryon.aspect.${narrow.value ? 'camera' : 'wide'}`); if (saved && aspectOf(saved)) return saved as AspectValue } catch { /* 浏览器可能禁用存储 */ }
+  return defaultAspect(narrow.value)
+}
+function saveAspect(value: AspectValue) { try { localStorage.setItem(`yuda.tryon.aspect.${narrow.value ? 'camera' : 'wide'}`, value) } catch { /* 只是偏好 */ } }
+const calm = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches
+// 浏览器全屏只显示全屏元素内部，弹层必须挂在里面。
+const popupHost = () => body.value || document.body
+function pressShutter() {
+  switch (intent.value) {
+    case 'open': void openCamera(); break
+    case 'pick': picker.value = true; break
+    case 'start': case 'accept': void begin(); break
+    case 'cancel': void stop(); break
+    case 'photo': void takePhoto(); break
+    case 'record': void record(); break
+    case 'stop-record': void finishRecording(); break
+  }
+}
+async function changeAspect(value: string | number) {
+  const next = aspectOf(String(value))
+  if (!next || next.value === aspect.value || live.value || busy.value) return
+  const before = aspect.value
+  aspect.value = next.value; fitChoice.value = null; sizes.value = {}
+  try { await camera?.setAspect(presetOf(next.value)); saveAspect(next.value) }
+  catch (e) { aspect.value = before; fail(e) }
+}
+function toggleFit() { fitChoice.value = fit.value === 'cover' ? 'contain' : 'cover' }
+function togglePip() { pipOpen.value = !pipOpen.value; if (!pipOpen.value) swapped.value = false }
+async function toggleFullscreen() {
+  try { if (document.fullscreenElement) await document.exitFullscreen(); else await body.value?.requestFullscreen?.() } catch { /* 全屏只是增强 */ }
+}
+function leaveFullscreen() { if (document.fullscreenElement) void document.exitFullscreen().catch(() => {}) }
+function measure() {
+  if (stageArea.value) area.value = { width: stageArea.value.clientWidth, height: stageArea.value.clientHeight }
+  const box = stage.value?.getBoundingClientRect(), bar = topbar.value?.getBoundingClientRect(), controls = dock.value?.getBoundingClientRect()
+  if (!box || !bar || !controls) return
+  // 手机横屏时控件在右侧，小窗避开右栏而不是底部。
+  const beside = controls.height > box.height * 0.7
+  dockBox.value = { top: Math.round(bar.bottom - box.top) + 4, bottom: beside ? 12 : Math.round(box.bottom - controls.top) + 8, right: beside ? Math.round(box.right - controls.left) + 8 : 12 }
+}
+let drag: { id: number; offsetX: number; offsetY: number; startX: number; startY: number; moved: boolean } | undefined, skipClick = false
+function pipDown(event: PointerEvent) {
+  const point = pipPoint.value
+  drag = { id: event.pointerId, offsetX: event.clientX - point.x, offsetY: event.clientY - point.y, startX: event.clientX, startY: event.clientY, moved: false }
+  ;(event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId)
+}
+function pipMove(event: PointerEvent) {
+  if (!drag || event.pointerId !== drag.id) return
+  if (!drag.moved && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 8) return
+  drag.moved = true
+  const x = Math.min(stageBox.value.width - pipBox.value.width, Math.max(0, event.clientX - drag.offsetX))
+  const y = Math.min(stageBox.value.height - pipBox.value.height, Math.max(0, event.clientY - drag.offsetY))
+  dragPosition.value = { x, y }
+}
+function pipUp(event: PointerEvent) {
+  if (!drag || event.pointerId !== drag.id) return
+  if (drag.moved && dragPosition.value) { corner.value = nearestCorner(dragPosition.value.x, dragPosition.value.y, stageBox.value, pipBox.value); skipClick = true }
+  drag = undefined; dragPosition.value = null
+}
+function pipClick() { if (skipClick) { skipClick = false; return } swapped.value = !swapped.value }
+let gesture: { x: number; y: number } | undefined, lastTap = 0
+function gestureDown(event: PointerEvent) { gesture = { x: event.clientX, y: event.clientY } }
+function gestureUp(event: PointerEvent) {
+  if (!gesture) return
+  const dx = event.clientX - gesture.x, dy = event.clientY - gesture.y, swipe = swipeDirection(dx, dy); gesture = undefined
+  if (swipe) { if (!recording.value && !recordingBusy.value) captureMode.value = swipe === 'left' ? '录像' : '拍照'; return }
+  if (Math.hypot(dx, dy) > 12) return
+  const at = performance.now()
+  if (at - lastTap < 300) { lastTap = 0; if (narrow.value) toggleFit() } else lastTap = at
+}
+function freezeLastFrame() {
+  // 结束时把最后一帧留在画面上淡出，原画回到全屏时不闪黑。
+  const video = camera?.video, canvas = freezeCanvas.value
+  if (!video || !canvas || disposed || calm() || swapped.value) return
+  try { const size = frameCanvas(video); canvas.width = size.width; canvas.height = size.height; canvas.getContext('2d')?.drawImage(video, 0, 0, canvas.width, canvas.height); freezing.value = true } catch { /* 没有可冻结的画面时直接切回 */ }
+}
+function flyToHistory(blob: Blob) {
+  const box = stage.value?.getBoundingClientRect(), target = historySlot.value?.getBoundingClientRect()
+  if (!box || !target || calm()) return
+  fly.value = { url: URL.createObjectURL(blob), x: target.left + target.width / 2 - box.left - box.width / 2, y: target.top + target.height / 2 - box.top - box.height / 2 }
+}
+function flyDone() { if (fly.value) URL.revokeObjectURL(fly.value.url); fly.value = null; bumpKey.value++ }
 const pickerProps = computed(() => ({ garments: garments.value, outfits: outfits.value, selected: selected.value, temporary: temporary.value,
   blocked: queued.value || offered.value || reclaiming.value || busy.value, busyId: selectingOutfit.value, selectedOutfit: selectedOutfit.value,
   uploading: uploading.value, error: error.value, canUseLatest: canUseLatest.value, chooseUpload }))
 function applyPrepared(p: Prepared) { prepared.value = p; selected.value = p.items.map(i => ({ type: i.type, id: i.id, revision: i.revision, assetId: i.assetId })) }
-function mainAction() { if (!selected.value.length) picker.value = true; else if (!cameraReady.value) void openCamera(); else void begin() }
 const selectionName = (s: Selection) => s.type === 'TEMPORARY' ? '自定义衣物' : garments.value.find(g => g.id === s.id)?.name || prepared.value?.items.find(g => g.id === s.id)?.name || '衣物'
 const isSelected = (id: string) => selected.value.some(s => s.id === id)
 function fail(cause: unknown) { if (!disposed) error.value = cause instanceof Error ? cause.message : '操作暂时未完成，请稍后再试。' }
 async function refresh() { cap.value = await tryOnApi.capabilities(); void refreshTryOnAccess() }
+let stripDone = false, stripBusy = false
+async function stripMore() {
+  if (stripDone || stripBusy) return
+  stripBusy = true
+  const before = garments.value.length
+  await loadGarments(true)
+  stripDone = garments.value.length === before; stripBusy = false
+}
 async function loadGarments(more = false) {
   try { const page = more ? garmentPage.value + 1 : 1; const request = ++garmentRequest; const rows = await tryOnApi.garments(page, search.value); if (request !== garmentRequest || disposed) return; garments.value = more ? [...garments.value, ...rows] : rows; garmentPage.value = page }
   catch (e) { fail(e) }
@@ -76,7 +213,9 @@ async function openCamera() {
   if (!cap.value?.enabled || !host.value || busy.value) return
   busy.value = true; busyPhase.value = '正在打开摄像头，请在浏览器提示中允许访问。'; error.value = ''
   try {
-    camera ??= new TryOnCamera(host.value, () => { if (!finished(lease.value)) { frameReady.value = true; busyPhase.value = ''; void pulse() } }, cause => { fail(cause); if (live.value) void stop(true) }, stage => { if (live.value) { busyPhase.value = stageLabel[stage]; void pulse() } })
+    camera ??= new TryOnCamera(host.value, () => { if (!finished(lease.value)) { frameReady.value = true; busyPhase.value = ''; void pulse() } }, cause => { fail(cause); if (live.value) void stop(true) }, stage => { startupStage.value = stage; if (live.value) { busyPhase.value = stageLabel[stage]; void pulse() } })
+    camera.onSize = (source, width, height) => { sizes.value = { ...sizes.value, [source]: width / height } }
+    await camera.setAspect(presetOf(aspect.value))
     await camera.open(); cameraReady.value = camera.ready
   } catch (e) { fail(e) } finally { busy.value = false; busyPhase.value = '' }
 }
@@ -84,13 +223,18 @@ async function build(allowLatest = false) {
   if (!selected.value.length) throw new Error('请先选择至少一件成品衣物或临时衣物。')
   return tryOnApi.prepare(selected.value, undefined, allowLatest)
 }
+/** 上传发生在用户点击开始之后：选衣阶段图片不离开本站。 */
+async function uploaded(id: string, p: Prepared): Promise<Prepared> { return { ...p, referencePath: (await tryOnApi.upstreamReference(id, p)).referencePath } }
 async function connect(s: Session, p: Prepared) {
   if (!camera) throw new Error('请先打开摄像头。')
-  await camera.start(s.id, s.environment, p)
+  busyPhase.value = '正在上传衣服参考图…'
+  const ready = await uploaded(s.id, p)
+  applyPrepared(ready); busyPhase.value = '正在连接实时服务…'
+  await camera.start(s.id, s.environment, ready)
 }
 async function begin() {
   if (busy.value || preparing.value || live.value && !offered.value) return
-  const attempt = ++action; busy.value = true; busyPhase.value = '正在准备所选衣物…'; error.value = ''
+  const attempt = ++action; busy.value = true; busyPhase.value = '正在准备所选衣物…'; error.value = ''; startupStage.value = undefined
   try {
     if (!cameraReady.value) throw new Error('请先打开摄像头。')
     let p: Prepared, s: Session
@@ -98,13 +242,14 @@ async function begin() {
     else { p = await build(); applyPrepared(p); busyPhase.value = '正在申请试穿名额…'; s = await tryOnApi.start(p, crypto.randomUUID()) }
     if (attempt !== action || disposed) { emergencyStop(s.id); return }
     lease.value = s
-    if (s.state === 'RESERVED') { busyPhase.value = '正在连接实时服务…'; await connect(s, p) }
+    if (s.state === 'RESERVED') await connect(s, p)
   } catch (e) { fail(e); if (lease.value && !finished(lease.value) && !queued.value && !offered.value) await stop(true) }
   finally { if (attempt === action) { busy.value = false; if (!live.value) busyPhase.value = '' } }
 }
 async function pulse() {
   const current = lease.value
-  if (!current || finished(current) || pulseRunning || document.hidden || disposed) return
+  if (!current || finished(current) || document.hidden || disposed) return
+  if (pulseRunning) { pulseAgain = true; return }
   pulseRunning = true
   try {
     const state = reclaiming.value ? await tryOnApi.session(current.id) : await tryOnApi.pulse(current.id, frameReady.value, camera?.diagnostic)
@@ -118,10 +263,10 @@ async function pulse() {
       frameReady.value = false; void finishRecording(true); await camera?.stop(); await refresh()
     }
   } catch (e) { fail(e); if (live.value && !reclaiming.value) void stop(true) }
-  finally { pulseRunning = false }
+  finally { pulseRunning = false; if (pulseAgain) { pulseAgain = false; void pulse() } }
 }
 async function stop(interrupted = false) {
-  action++; busy.value = false; busyPhase.value = ''; frameReady.value = false
+  action++; busy.value = false; busyPhase.value = ''; frameReady.value = false; startupStage.value = undefined
   const current = lease.value
   if (current && !finished(current)) emergencyStop(current.id)
   const work = [finishRecording(interrupted), camera?.stop()]
@@ -138,7 +283,7 @@ async function rebuild(allowLatest = false) {
   if (!generating.value || !camera || !lease.value) { prepared.value = null; return }
   const before = prepared.value, id = lease.value.id
   try {
-    const p = await build(allowLatest)
+    const p = await uploaded(id, await build(allowLatest))
     await camera.change(p)
     try { await tryOnApi.reference(id, p); applyPrepared(p) }
     catch (e) { if (before) await camera.change(before); throw e }
@@ -159,9 +304,10 @@ async function selectOutfit(id: string, allowLatest = false) {
   preparing.value = true; selectingOutfit.value = id; pendingOutfit.value = id; error.value = ''
   const before = prepared.value
   try {
-    const p = await tryOnApi.prepare([], id, allowLatest)
+    let p = await tryOnApi.prepare([], id, allowLatest)
     if (disposed) return
     if (generating.value && camera && lease.value) {
+      p = await uploaded(lease.value.id, p)
       await camera.change(p)
       try { await tryOnApi.reference(lease.value.id, p) } catch (e) { if (before) await camera.change(before); throw e }
     }
@@ -169,7 +315,7 @@ async function selectOutfit(id: string, allowLatest = false) {
     message.success(`已选择「${outfits.value.find(o => o.id === id)?.name || '搭配'}」，共 ${p.items.length} 件。`)
   } catch (e) { fail(e) } finally { preparing.value = false; selectingOutfit.value = null }
 }
-async function chooseUpload(file: File) { await stop(); importChoice.value = file; return false }
+async function chooseUpload(file: File) { leaveFullscreen(); await stop(); importChoice.value = file; return false }
 async function uploadTemporary() {
   const file = importChoice.value; if (!file) return
   uploading.value = true; error.value = ''
@@ -184,7 +330,8 @@ async function importGarment() {
 }
 async function takePhoto() {
   if (!generating.value || !camera?.video || !lease.value) return
-  try { const item = await tryOnApi.photo(lease.value.id, await photo(camera.video)); media.value.unshift(item); message.success('照片已保存到当前账号。') } catch (e) { fail(e) }
+  flashKey.value++; playSound('tick'); navigator.vibrate?.(12)
+  try { const blob = await photo(camera.video); flyToHistory(blob); const item = await tryOnApi.photo(lease.value.id, blob); media.value.unshift(item); message.success('照片已保存到当前账号。') } catch (e) { fail(e) }
 }
 async function record(withoutAudio = false) {
   if (!generating.value || !camera?.video || !lease.value || !cap.value || recordingBusy.value || recording.value) return
@@ -213,9 +360,14 @@ async function finishRecording(interrupted = false) {
   catch (e) { if (!disposed) recordingError.value = `${e instanceof Error ? e.message : '保存未完成。'} 已上传片段会继续保留，请在历史查看。` }
   finally { if (!disposed) recordingBusy.value = false }
 }
-async function switchCamera() { if (recording.value || recordingBusy.value || busy.value) return; try { await camera?.switchCamera() } catch (e) { fail(e) } }
+async function switchCamera() {
+  if (recording.value || recordingBusy.value || busy.value || flipping.value) return
+  flipping.value = true
+  try { await camera?.switchCamera() } catch (e) { fail(e) }
+  finally { window.setTimeout(() => { flipping.value = false }, calm() ? 0 : 420) }
+}
 async function openHistory() {
-  await stop(); historyOpen.value = true; historyBusy.value = true
+  leaveFullscreen(); await stop(); historyOpen.value = true; historyBusy.value = true
   try { const result = await tryOnApi.history(); media.value = result.media; sessionHistory.value = result.sessions; historyPage.value = 1 }
   catch (e) { fail(e) } finally { historyBusy.value = false }
 }
@@ -235,7 +387,17 @@ async function latest() {
     else { const p = await build(true); applyPrepared(p); error.value = ''; message.success('已换成最新成品，所选衣物已保留。') }
   } catch (e) { fail(e) } finally { latestBusy.value = false }
 }
-watch(search, () => { clearTimeout(searchTimer); searchTimer = window.setTimeout(() => { void loadGarments() }, 250) })
+watch(phase, (next, before) => {
+  if ((next === 'live' && before !== 'recording') && !revealing.value) {
+    revealing.value = true; playSound('success'); navigator.vibrate?.(18)
+    window.setTimeout(() => { revealing.value = false }, calm() ? 0 : 1300)
+  }
+  if (next !== 'live' && next !== 'recording') { swapped.value = false; pipOpen.value = true }
+  void nextTick(measure)
+})
+watch(frameReady, ready => { if (!ready) freezeLastFrame() }, { flush: 'sync' })
+watch(silentChoice, open => { if (open) leaveFullscreen() })
+watch(search, () => { stripDone = false; clearTimeout(searchTimer); searchTimer = window.setTimeout(() => { void loadGarments() }, 250) })
 const stateName = (state: string) => ({ QUEUED:'排队中', OFFERED:'等待确认', RESERVED:'已授权', SIGNING:'申请连接', CONNECTING:'连接中', WAITING_FRAME:'等待画面', GENERATING:'试穿中', STOPPING:'结束中', UNKNOWN:'消耗待核对', CLOSED:'已结束', FAILED:'启动失败', CANCELLED:'已取消' }[state] || '待核对')
 const offAccount = onAccountChange(() => { if (accountIsStale()) { background(); void stop(true); void camera?.dispose() } })
 onMounted(async () => {
@@ -252,59 +414,98 @@ onMounted(async () => {
   pulseTimer = window.setInterval(() => { void pulse() }, 5000); clockTimer = window.setInterval(() => { now.value = Date.now() }, 500)
   document.addEventListener('visibilitychange', background); window.addEventListener('pagehide', background)
 })
-onBeforeUnmount(() => { disposed = true; action++; offAccount(); clearInterval(pulseTimer); clearInterval(clockTimer); clearTimeout(rebuildTimer); clearTimeout(searchTimer); document.removeEventListener('visibilitychange', background); window.removeEventListener('pagehide', background); if (lease.value && !finished(lease.value)) emergencyStop(lease.value.id); void finishRecording(true); void camera?.dispose() })
+const layoutQuery = window.matchMedia(CAMERA_LAYOUT_QUERY), syncNarrow = () => { narrow.value = layoutQuery.matches; void nextTick(measure) }, syncFullscreen = () => { fullscreen.value = Boolean(document.fullscreenElement) }
+let layoutObserver: ResizeObserver | undefined
+onMounted(() => {
+  layoutObserver = new ResizeObserver(measure)
+  for (const el of [stageArea.value, stage.value, dock.value, topbar.value]) if (el) layoutObserver.observe(el)
+  measure(); layoutQuery.addEventListener('change', syncNarrow); document.addEventListener('fullscreenchange', syncFullscreen)
+})
+onBeforeUnmount(() => { disposed = true; action++; layoutObserver?.disconnect(); layoutQuery.removeEventListener('change', syncNarrow); document.removeEventListener('fullscreenchange', syncFullscreen); flyDone(); offAccount(); clearInterval(pulseTimer); clearInterval(clockTimer); clearTimeout(rebuildTimer); clearTimeout(searchTimer); document.removeEventListener('visibilitychange', background); window.removeEventListener('pagehide', background); if (lease.value && !finished(lease.value)) emergencyStop(lease.value.id); void finishRecording(true); void camera?.dispose() })
 </script>
 
 <template>
-  <section class="tryon-page">
-    <header class="tryon-header">
-      <a-button type="text" class="camera-tool" aria-label="返回衣柜" @click="router.push('/wardrobe')"><LeftOutlined /></a-button>
-      <div class="tryon-heading"><h1>实时试穿</h1><span v-if="cap" class="tryon-remaining">{{ live ? '本次' : '今日' }}剩余 {{ duration(remaining) }}</span></div>
-      <a-popover title="试穿与拍摄说明" placement="bottomRight"><template #content><p class="tryon-info-copy">打开相机只做本地预览。点击开始后，视频与服装参考图会发送至 XMax，连接后按时长消耗额度。录像声音仅用于本地混录。切后台会结束试穿，未上传的最后片段可能丢失。</p></template><a-button type="text" class="camera-tool" aria-label="查看试穿说明"><InfoCircleOutlined /></a-button></a-popover>
-      <a-button type="text" class="camera-tool" :disabled="recording || recordingBusy || busy || !cameraReady" aria-label="切换前后摄像头" @click="switchCamera"><SwapOutlined /></a-button>
-    </header>
-    <a-skeleton v-if="loading" active class="tryon-loading" />
-    <template v-else>
-      <div class="tryon-body">
-        <div ref="stage" class="tryon-stage">
+  <section class="tryon-page" :class="`phase-${phase}`">
+    <div ref="body" class="tryon-body">
+      <div ref="stageArea" class="tryon-stage-area">
+        <div ref="stage" class="tryon-stage" :class="[`fit-${fit}`, { 'is-pip': showsResult, 'is-swapped': swapped, 'pip-off': !pipOpen, 'is-dragging': !!dragPosition, 'is-revealing': revealing, 'is-flipping': flipping, 'is-working': phase === 'connecting' || phase === 'queued', 'camera-on': cameraReady }]" :style="stageStyle">
           <div ref="host" class="tryon-video-host" aria-label="摄像头与试穿画面"></div>
-          <div v-if="!cameraReady" class="tryon-stage-cover">
-            <CameraOutlined class="tryon-camera-symbol" />
-            <h2>{{ cap?.enabled ? '把衣柜穿在身上' : '实时试穿暂未开通' }}</h2>
-            <p>{{ cap?.enabled ? '选好衣物，打开相机预览。\n点击开始试穿后才连接实时服务。' : '由管理员开通，你仍可查看已保存的拍摄结果。' }}</p>
-            <a-button v-if="cap?.enabled" type="primary" size="large" :loading="busy" @click="openCamera">{{ busy ? '正在打开相机' : '打开相机预览' }}</a-button>
-            <a-button v-else @click="openHistory">查看拍摄历史</a-button>
+          <canvas v-show="freezing" ref="freezeCanvas" class="tryon-freeze" aria-hidden="true" @animationend="freezing = false"></canvas>
+          <div v-if="cameraReady" class="tryon-gesture" aria-hidden="true" @pointerdown="gestureDown" @pointerup="gestureUp" @pointercancel="gesture = undefined"></div>
+
+          <div class="tryon-viewfinder" aria-hidden="true"><i></i><i></i><i></i><i></i><span class="tryon-scan"></span></div>
+          <span v-if="revealing" class="tryon-sweep" aria-hidden="true"></span>
+          <span v-if="flashKey" :key="flashKey" class="tryon-flash" aria-hidden="true"></span>
+          <img v-if="fly" class="tryon-fly" :src="fly.url" alt="" :style="{ '--fly-x': `${fly.x}px`, '--fly-y': `${fly.y}px` }" @animationend="flyDone" />
+
+          <a-button v-if="showsResult && pipOpen" class="tryon-pip-hit" type="text" :aria-label="swapped ? '切回试穿画面为主画面，可拖动' : '切换原画为主画面，可拖动'" @pointerdown="pipDown" @pointermove="pipMove" @pointerup="pipUp" @pointercancel="pipUp" @click="pipClick"><span class="tryon-pip-tag">{{ swapped ? '试穿效果' : '原画' }}</span></a-button>
+
+          <Transition name="tryon-iris">
+            <div v-if="!cameraReady" class="tryon-stage-cover">
+              <a-spin v-if="loading" size="large" />
+              <template v-else>
+                <CameraOutlined class="tryon-camera-symbol" />
+                <h2>{{ cap?.enabled ? '把衣柜穿在身上' : '实时试穿暂未开通' }}</h2>
+                <p>{{ cap?.enabled ? '先打开相机看本地预览，不消耗额度。\n选好衣物点开始，才连接实时服务。' : '由管理员开通，你仍可查看已保存的拍摄结果。' }}</p>
+                <a-button v-if="cap?.enabled" type="primary" size="large" :loading="busy" @click="openCamera">{{ busy ? '正在打开相机' : '打开相机' }}</a-button>
+                <a-button v-else @click="openHistory">查看拍摄历史</a-button>
+              </template>
+            </div>
+          </Transition>
+
+          <header ref="topbar" class="tryon-topbar">
+            <a-button type="text" class="camera-tool" aria-label="返回衣柜" @click="router.push('/wardrobe')"><LeftOutlined /></a-button>
+            <div class="tryon-status" :class="{ live: showsResult, waiting: phase === 'connecting' || phase === 'queued' || phase === 'offered' || phase === 'stopping' }"><i></i><span>{{ status }}</span></div>
+            <div class="tryon-tools">
+              <a-button v-if="showsResult" type="text" class="camera-tool" :aria-label="pipOpen ? '隐藏原画小窗' : '显示原画小窗'" :aria-pressed="pipOpen" @click="togglePip"><EyeOutlined v-if="pipOpen" /><EyeInvisibleOutlined v-else /></a-button>
+              <a-popover v-else-if="phase === 'preview' || phase === 'cover'" trigger="click" placement="bottomRight" title="画面比例" :get-popup-container="popupHost"><template #content><a-segmented :value="aspect" :options="aspectOptions" @change="changeAspect" /><p class="tryon-info-copy">拍全身用 9:16 或 3:4。切换免费，开始后固定。</p></template><a-button type="text" class="camera-tool tryon-aspect" :aria-label="`画面比例 ${aspect}`">{{ aspect }}</a-button></a-popover>
+              <a-button v-if="narrow && cameraReady" type="text" class="camera-tool" :aria-label="fit === 'cover' ? '完整显示画面' : '铺满屏幕'" @click="toggleFit"><BorderOutlined v-if="fit === 'cover'" /><ColumnWidthOutlined v-else /></a-button>
+              <a-button v-if="!narrow && cameraReady" type="text" class="camera-tool" :aria-label="fullscreen ? '退出全屏' : '全屏试穿'" @click="toggleFullscreen"><CompressOutlined v-if="fullscreen" /><ExpandOutlined v-else /></a-button>
+              <a-popover title="试穿与拍摄说明" placement="bottomRight" :get-popup-container="popupHost"><template #content><p class="tryon-info-copy">打开相机只做本地预览。点击开始后，视频与服装参考图会发送至 XMax，连接后按时长消耗额度。录像声音仅用于本地混录。切后台会结束试穿，未上传的最后片段可能丢失。</p><p class="tryon-info-copy">点小窗互换主画面，拖动可换位置；左右滑动切换拍照和录像，手机上双击切换铺满。无论看哪个画面，保存的都是试穿效果。</p></template><a-button type="text" class="camera-tool" aria-label="查看试穿说明"><InfoCircleOutlined /></a-button></a-popover>
+            </div>
+          </header>
+
+          <Transition name="tryon-fade"><div v-if="recording" class="tryon-recording-status" role="status"><i></i>REC {{ duration(recordingSeconds) }}<small>已上传 {{ (uploadedBytes / 1024).toFixed(0) }} KiB</small></div></Transition>
+
+          <div ref="dock" class="tryon-dock" :class="{ 'is-loading': loading }">
+            <div class="tryon-notice-area" aria-live="polite">
+              <Transition name="tryon-rise" mode="out-in">
+                <div v-if="notice === 'error'" key="error" class="tryon-notice is-error" role="alert"><p>{{ error }}</p><a-button v-if="canUseLatest" size="small" :loading="latestBusy" @click="latest">使用最新成品</a-button><a-button v-else type="text" size="small" @click="error=''">收起</a-button></div>
+                <div v-else-if="notice === 'connecting'" key="connecting" class="tryon-notice is-progress" role="status">
+                  <strong><LoadingOutlined spin /> {{ busyPhase || '等待第一帧试穿效果' }}</strong>
+                  <ol class="tryon-steps"><li v-for="(step, index) in CONNECT_STEPS" :key="step" :class="{ done: index < stepIndex, current: index === stepIndex }"><i></i><span>{{ step }}</span></li></ol>
+                  <small>{{ lease ? '请保持人在画面中，超时会自动结束。' : '选好的衣物正在核对，还未开始计时。' }}</small>
+                </div>
+                <div v-else-if="notice === 'queued'" key="queued" class="tryon-notice" role="status"><strong>正在排队</strong><small>排队不计费，轮到你时需要再点一次开始。</small></div>
+                <div v-else-if="notice === 'offered'" key="offered" class="tryon-notice is-offer" role="status"><strong>轮到你了</strong><small>名额保留 {{ waitSeconds }} 秒，点快门连接实时服务。</small></div>
+                <div v-else-if="notice === 'stopping'" key="stopping" class="tryon-notice" role="status"><strong><LoadingOutlined spin /> 正在结束并核对消耗</strong><small>核对完成后会释放未使用的预留额度。</small></div>
+                <p v-else :key="`hint-${swapped}`" class="tryon-start-hint" :class="{ active: showsResult }" role="status">{{ swapped ? '正在看原画，拍摄仍保存试穿效果。' : !cap?.ready && !live && cap?.enabled ? cap.reason : startHint }}</p>
+              </Transition>
+              <a-alert v-if="recordingError" class="tryon-recording-error" type="warning" show-icon :message="recordingError" closable @close="recordingError=''" />
+            </div>
+
+            <div class="tryon-controls">
+              <div class="tryon-selection-row">
+                <a-button v-if="cap?.enabled" class="tryon-current" :aria-label="`选择试穿衣物，${selected.length}件已选`" @click="picker=true">
+                  <img v-if="prepared" class="tryon-current-image" :src="mediaUrl(prepared.previewUrl)" alt="当前试穿衣物组合" />
+                  <OutfitThumbnail v-else-if="chosenOutfit" class="tryon-current-image" :scene="chosenOutfit.scene" :title="chosenOutfit.name" />
+                  <span v-else class="tryon-current-placeholder"><PlusOutlined /></span>
+                  <span class="tryon-current-copy"><strong>{{ selectionTitle }}</strong><small>{{ selected.length ? selectionSummary : '衣柜、搭配或临时上传' }}</small></span>
+                  <RightOutlined class="tryon-current-arrow" />
+                </a-button>
+                <Transition name="tryon-fade"><a-button v-if="showsResult || phase === 'offered'" class="tryon-end" danger @click="stop()">{{ phase === 'offered' ? '放弃' : '结束试穿' }}</a-button></Transition>
+              </div>
+              <div class="tryon-mode"><a-segmented v-model:value="captureMode" :options="['拍照','录像']" :disabled="recording || recordingBusy" /></div>
+              <div ref="historySlot" class="tryon-slot-history"><a-button :key="bumpKey" class="tryon-history-thumb" :class="{ bump: bumpKey }" aria-label="查看拍摄历史" @click="openHistory"><img v-if="captureImage" :src="mediaUrl(captureImage.url)" alt="最近拍摄的试穿照片" /><PictureOutlined v-else /></a-button></div>
+              <TryOnShutter class="tryon-slot-shutter" :intent="intent" :label="shutterLabel" :text="shutterText" :progress="shutterProgress" :busy="recordingBusy || busy && intent === 'open' || intent === 'start' && busy" @press="pressShutter" />
+              <div class="tryon-slot-flip"><a-button class="tryon-flip" shape="circle" :disabled="recording || recordingBusy || busy || !cameraReady" aria-label="切换前后摄像头" @click="switchCamera"><SwapOutlined /></a-button></div>
+            </div>
           </div>
-          <div v-if="cameraReady" class="tryon-status" :class="{ live: generating, waiting: live && !generating }" role="status"><i></i>{{ generating ? `正在试穿 · ${duration(remaining)}` : status }}</div>
-          <div v-if="busy && cameraReady || live && !generating && !queued && !offered" class="tryon-connection" role="status" aria-live="polite"><LoadingOutlined v-if="!reclaiming" spin /><StopOutlined v-else /><strong>{{ reclaiming ? '正在结束并核对消耗' : busyPhase || '等待第一帧试穿效果' }}</strong><span v-if="lease && !reclaiming">剩余等待 {{ waitSeconds }} 秒</span><p>{{ reclaiming ? '核对完成后会释放未使用的预留额度。' : '请保持人在画面中。连接后开始计时，超时会自动结束。' }}</p><a-button v-if="live && !reclaiming" size="small" @click="stop()">取消本次试穿</a-button></div>
-          <div v-if="recording" class="tryon-recording-status" role="status"><i></i> REC {{ duration(recordingSeconds) }}<small>已上传 {{ (uploadedBytes / 1024).toFixed(0) }} KiB</small></div>
-          <a-button v-if="cameraReady" type="text" class="tryon-enlarge" aria-label="放大相机预览" @click="stage?.requestFullscreen?.()"><ExpandOutlined /></a-button>
-          <a-button v-if="live" class="tryon-fullscreen-stop" danger @click="stop()">停止试穿</a-button>
-          <div v-if="offered" class="tryon-offer"><h2>轮到你了</h2><p>名额保留 {{ waitSeconds }} 秒，点击后连接实时服务。</p><a-button type="primary" size="large" :loading="busy" @click="begin">开始试穿</a-button></div>
-          <div v-if="error && !picker" class="tryon-stage-error" role="alert"><p>{{ error }}</p><a-button v-if="canUseLatest" size="small" :loading="latestBusy" @click="latest">使用最新成品</a-button><a-button v-else type="text" size="small" @click="error=''">收起提示</a-button></div>
         </div>
-        <aside class="tryon-picker-desktop"><TryOnPicker v-bind="pickerProps" v-model:search="search" v-model:tab="tab" @toggle="toggle" @outfit="selectOutfit" @more="loadGarments(true)" @latest="latest" /></aside>
       </div>
-      <div class="tryon-dock">
-        <a-button class="tryon-current" :aria-label="`选择试穿衣物，${selected.length}件已选`" @click="picker=true">
-          <img v-if="prepared" class="tryon-current-image" :src="mediaUrl(prepared.previewUrl)" alt="当前试穿衣物组合" />
-          <OutfitThumbnail v-else-if="chosenOutfit" class="tryon-current-image" :scene="chosenOutfit.scene" :title="chosenOutfit.name" />
-          <div v-else class="tryon-current-placeholder"><PlusOutlined /></div>
-          <span class="tryon-current-copy"><strong>{{ selectionTitle }}</strong><small>{{ selected.length ? `${selected.length} 件 · ${selectionSummary}` : '衣柜成品、已存搭配或临时上传' }}</small></span><span class="tryon-current-change">{{ selected.length ? '换一套' : '去选衣' }}</span>
-        </a-button>
-        <div class="tryon-mode"><a-segmented v-model:value="captureMode" :options="['拍照','录像']" :disabled="recording || recordingBusy" /></div>
-        <div class="tryon-controls">
-          <a-button class="tryon-history-thumb" aria-label="查看拍摄历史" @click="openHistory"><img v-if="captureImage" :src="mediaUrl(captureImage.url)" alt="最近拍摄的试穿照片" /><PictureOutlined v-else /><span>历史</span></a-button>
-          <a-button v-if="generating || recording" class="tryon-shutter" shape="circle" :danger="recording" :loading="recordingBusy" :aria-label="recording ? '结束录像' : captureMode === '录像' ? '开始录像' : '拍下试穿效果'" @click="recording ? finishRecording() : captureMode === '录像' ? record() : takePhoto()"><StopOutlined v-if="recording" /><VideoCameraOutlined v-else-if="captureMode==='录像'" /><CameraOutlined v-else /></a-button>
-          <a-button v-else-if="live && !offered" class="tryon-main-action" :loading="busy || reclaiming" :disabled="reclaiming" @click="stop()">{{ queued ? '取消排队' : reclaiming ? '正在结束' : '取消连接' }}</a-button>
-          <a-button v-else type="primary" class="tryon-main-action" :disabled="!cap?.enabled || preparing || selected.length > 0 && cameraReady && !cap?.ready && !offered" :loading="busy" @click="mainAction">{{ mainLabel }}</a-button>
-          <a-button v-if="generating || recording" class="tryon-end" type="text" danger aria-label="停止试穿" @click="stop()"><StopOutlined /><span>停止</span></a-button><span v-else class="tryon-control-spacer" aria-hidden="true"></span>
-        </div>
-        <p class="tryon-start-hint" :class="{active:generating}" role="status" aria-live="polite">{{ !cap?.ready && !live && cap?.enabled ? cap.reason : startHint }}</p>
-        <a-alert v-if="recordingError" class="tryon-recording-error" type="warning" show-icon :message="recordingError" closable @close="recordingError=''" />
-      </div>
-    </template>
-    <a-drawer v-model:open="picker" title="选择试穿衣物" placement="bottom" height="min(76dvh, 760px)" root-class-name="tryon-material-drawer"><p v-if="generating" class="tryon-paid-notice">选衣期间仍在计时 · {{ duration(remaining) }} <a-button size="small" danger @click="stop()">停止试穿</a-button></p><TryOnPicker v-bind="pickerProps" v-model:search="search" v-model:tab="tab" @toggle="toggle" @outfit="selectOutfit" @more="loadGarments(true)" @latest="latest" /><template #footer><div class="tryon-picker-footer"><span>{{ selected.length ? `已选 ${selected.length} 件衣物` : '尚未选择衣物' }}</span><a-button type="primary" :disabled="preparing" @click="picker=false">{{ selected.length ? '选好了，返回相机' : '返回相机' }}</a-button></div></template></a-drawer>
+      <TryOnFilmstrip class="tryon-filmstrip" :garments="garments" :outfits="outfits" :selected="selected" :selected-outfit="selectedOutfit" :blocked="pickerProps.blocked" :busy-id="selectingOutfit" :title="selectionTitle" @toggle="toggle" @outfit="selectOutfit" @more="stripMore" @all="picker = true" />
+    </div>
+    <a-drawer v-model:open="picker" title="选择试穿衣物" :placement="narrow ? 'bottom' : 'right'" height="min(76dvh, 760px)" :width="420" :mask="narrow" :get-container="popupHost" root-class-name="tryon-material-drawer"><p v-if="generating" class="tryon-paid-notice">选衣期间仍在计时 · {{ duration(remaining) }} <a-button size="small" danger @click="stop()">停止试穿</a-button></p><TryOnPicker v-bind="pickerProps" v-model:search="search" v-model:tab="tab" :popup-host="popupHost" @toggle="toggle" @outfit="selectOutfit" @more="loadGarments(true)" @latest="latest" /><template #footer><div class="tryon-picker-footer"><span>{{ selected.length ? `已选 ${selected.length} 件衣物` : '尚未选择衣物' }}</span><a-button type="primary" :disabled="preparing" @click="picker=false">{{ selected.length ? '选好了，返回相机' : '返回相机' }}</a-button></div></template></a-drawer>
     <a-drawer v-model:open="historyOpen" title="拍摄历史" placement="right" :width="'min(100vw, 620px)'"><a-alert type="info" show-icon message="历史查看期间已停止实时连接。" /><a-segmented v-model:value="historyFilter" :options="['全部','照片','视频']" block /><a-spin :spinning="historyBusy"><a-empty v-if="!visibleMedia.length" description="主动拍摄的照片和录像会保存在这里" /><article v-for="item in visibleMedia" :key="item.id" class="tryon-history-item"><MediaPreview v-if="item.type==='VIDEO' && ['READY','PARTIAL'].includes(item.state)" :src="mediaUrl(item.url)" :duration-ms="item.durationMs" /><img v-else-if="item.type==='PHOTO'" :src="mediaUrl(item.url)" alt="AI试穿效果" /><div v-else class="tryon-pending-media">{{ item.state === 'UNRECOVERABLE' ? '片段不足以恢复录像，可删除释放空间' : '分段已上传，正在恢复可用片段' }}</div><div><strong>{{ item.type==='PHOTO' ? '试穿照片' : `${item.state==='PARTIAL'?'中断片段':'录像'} · ${duration(item.durationMs/1000)}` }}</strong><p>{{ new Date(item.createdAtMs).toLocaleString() }} <template v-if="item.type==='VIDEO'"> · {{ item.hasAudio?'有声':'无声' }} · {{ item.mimeType.split('/')[1]?.toUpperCase() }}</template></p><div class="tryon-history-actions"><a-button :href="mediaUrl(item.downloadUrl)" :disabled="!['READY','PARTIAL'].includes(item.state)"><DownloadOutlined /> 下载</a-button><a-button v-if="cap?.enabled" @click="repeat(item)">再次试穿</a-button><a-button type="text" danger aria-label="删除结果" @click="remove(item)"><DeleteOutlined /></a-button></div></div></article><a-button block :loading="historyBusy" @click="moreHistory">加载更多结果</a-button><a-collapse v-if="sessionHistory.length" ghost><a-collapse-panel key="sessions" header="查看会话与用量记录"><p v-for="s in sessionHistory" :key="s.id" class="tryon-session-history">{{ new Date(s.createdAtMs).toLocaleString() }} · {{ stateName(s.state) }} · {{ duration(s.userSeconds) }}</p></a-collapse-panel></a-collapse></a-spin></a-drawer>
     <a-modal :open="!!importChoice" title="这件衣物是否入柜？" :footer="null" @cancel="importChoice=null"><p>入柜会进入现有衣物处理流程。仅试穿不会自动识图或生图，离开页面后不恢复。</p><div class="tryon-modal-actions"><a-button :loading="uploading" @click="uploadTemporary">仅当前页面试穿</a-button><a-button type="primary" @click="importGarment">进入入柜流程</a-button></div></a-modal>
     <a-modal v-model:open="silentChoice" title="麦克风暂不可用" :footer="null"><p>{{ microphoneError }}</p><div class="tryon-modal-actions"><a-button @click="silentChoice=false; record(true)">继续无声录像</a-button><a-button type="primary" @click="silentChoice=false; record()">重新申请麦克风</a-button></div></a-modal>
@@ -312,8 +513,266 @@ onBeforeUnmount(() => { disposed = true; action++; offAccount(); clearInterval(p
 </template>
 
 <style scoped>
-.tryon-page{max-width:1600px;margin:auto;display:flex;flex-direction:column;gap:16px}.tryon-header{display:flex;align-items:center;gap:12px;min-height:48px}.camera-tool.ant-btn{width:44px;height:44px;flex:none;font-size:19px}.tryon-heading{flex:1;display:flex;align-items:baseline;gap:16px;min-width:0}.tryon-heading h1{font-size:24px}.tryon-remaining{color:var(--accent);font-size:14px;font-variant-numeric:tabular-nums}.tryon-body{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:20px;min-height:400px}.tryon-stage{position:relative;height:min(65dvh,720px);min-height:400px;background:#111b17;overflow:hidden;border-radius:var(--radius-lg)}.tryon-video-host{position:absolute;inset:0}.tryon-video-host :deep(.tryon-local),.tryon-video-host :deep(.tryon-remote){position:absolute!important;inset:0!important;width:100%!important;height:100%!important}.tryon-video-host :deep(.tryon-remote){visibility:hidden}.tryon-video-host.has-result :deep(.tryon-local){visibility:hidden}.tryon-video-host.has-result :deep(.tryon-remote){visibility:visible}.tryon-video-host :deep(video){object-fit:contain!important}.tryon-stage-cover{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;text-align:center;gap:18px;color:#fff;padding:28px}.tryon-camera-symbol{font-size:42px;color:#b5cec0}.tryon-stage-cover h2{font-size:22px;font-weight:500}.tryon-stage-cover p{color:#d1e0d7;max-width:32ch;line-height:1.8;white-space:pre-line}.tryon-stage-cover>.ant-btn-primary{background:#d7eee1;border-color:#d7eee1;color:#163e2e;min-height:48px;padding-inline:24px}.tryon-status{position:absolute;top:16px;left:16px;right:64px;display:flex;align-items:center;gap:8px;width:fit-content;max-width:calc(100% - 80px);padding:8px 12px;border-radius:20px;background:#101714d9;color:#fff;font-size:12px;line-height:1.5}.tryon-status i{width:6px;height:6px;background:#c9d4cd;border-radius:50%;flex:none}.tryon-status.live i{background:#91e3af}.tryon-status.waiting i{background:#f2d28b}.tryon-recording-status{position:absolute;top:62px;left:16px;background:#261511e8;color:#ffcbbe;padding:8px 12px;border-radius:8px;font-variant-numeric:tabular-nums}.tryon-recording-status i{display:inline-block;width:8px;height:8px;border-radius:50%;background:#ff806e;margin-right:8px}.tryon-recording-status small{display:block;margin-top:4px;font-size:11px;color:#f6d9d1}.tryon-enlarge.ant-btn{position:absolute;right:12px;top:12px;width:40px;height:40px;color:#fff;background:#101714bb}.tryon-enlarge.ant-btn:hover{color:white;background:#263c30}.tryon-connection{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(300px,85%);display:flex;align-items:center;flex-direction:column;gap:12px;color:#fff;text-align:center;background:#101714ed;padding:24px 18px;border-radius:16px}.tryon-connection>.anticon{font-size:26px;color:#c8e8d7}.tryon-connection strong{font-size:16px;font-weight:500}.tryon-connection span,.tryon-connection p{font-size:12px;line-height:1.7;color:#d7e3dc}.tryon-connection .ant-btn{margin-top:4px}.tryon-offer{position:absolute;inset:30% 10% auto;background:var(--surface);color:var(--ink);padding:24px;display:grid;gap:14px;text-align:center;border-radius:14px}.tryon-stage-error{position:absolute;left:12px;right:12px;bottom:12px;background:#fff7e8;color:#5e3a0c;padding:12px 14px;border-radius:10px;font-size:13px;line-height:1.7}.tryon-stage-error .ant-btn{margin-top:8px}.tryon-picker-desktop{border:1px solid var(--line);border-radius:var(--radius-lg);padding:16px;max-height:min(65dvh,720px);overflow:auto}.tryon-dock{display:flex;flex-direction:column;gap:10px}.tryon-current.ant-btn{width:100%;height:72px;display:flex;align-items:center;gap:12px;padding:8px 12px;text-align:left;white-space:normal;border-color:var(--line);background:var(--surface)}.tryon-current-image{width:54px;height:54px;flex:none;object-fit:contain;background:var(--surface-alt);overflow:hidden;border-radius:7px}.tryon-current-image :deep(canvas){width:100%;height:100%;object-fit:contain}.tryon-current-placeholder{width:54px;height:54px;flex:none;display:grid;place-items:center;border:1px dashed var(--line);border-radius:7px;color:var(--accent);font-size:20px}.tryon-current-copy{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px}.tryon-current-copy strong{font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.tryon-current-copy small{font-size:12px;color:var(--muted-strong);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.tryon-current-change{font-size:12px;color:var(--accent);flex:none}.tryon-mode{align-self:center}.tryon-controls{display:grid;grid-template-columns:64px minmax(0,1fr) 64px;align-items:center;gap:16px;max-width:420px;width:100%;align-self:center;min-height:78px}.tryon-history-thumb.ant-btn,.tryon-end.ant-btn{width:56px;height:56px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:20px;padding:4px;border:0;background:transparent;position:relative}.tryon-history-thumb>span:last-child,.tryon-end>span:last-child{font-size:11px}.tryon-history-thumb img{height:38px;width:38px;object-fit:cover;border-radius:6px}.tryon-shutter.ant-btn{justify-self:center;width:76px;height:76px;border:4px solid var(--surface);outline:2px solid var(--ink);background:var(--ink);color:var(--surface);font-size:26px;display:grid;place-items:center}.tryon-shutter.ant-btn-dangerous{outline-color:var(--danger);background:var(--danger);color:#fff}.tryon-main-action.ant-btn{justify-self:center;min-height:52px;width:min(100%,230px);font-size:15px;font-weight:500;border-radius:26px}.tryon-start-hint{align-self:center;text-align:center;max-width:70ch;font-size:12px;line-height:1.7;color:var(--muted-strong);margin:0;min-height:21px}.tryon-start-hint.active{color:var(--accent)}.tryon-info-copy{max-width:30ch;font-size:13px;line-height:1.8}.tryon-fullscreen-stop{display:none}.tryon-stage:fullscreen{height:100dvh;border-radius:0}.tryon-stage:fullscreen .tryon-fullscreen-stop{display:block;position:absolute;bottom:24px;right:24px}.tryon-picker-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px;font-size:13px;color:var(--muted-strong);padding-bottom:env(safe-area-inset-bottom)}.tryon-paid-notice{display:flex;align-items:center;justify-content:space-between;gap:12px;color:var(--accent);font-size:13px;margin-bottom:16px}.tryon-history-item{padding:20px 0;border-bottom:1px solid var(--line);display:grid;grid-template-columns:140px minmax(0,1fr);gap:16px}.tryon-history-item>img{width:140px;max-height:200px;object-fit:contain;border-radius:8px;background:var(--surface-alt)}.tryon-history-item p{font-size:12px;color:var(--muted-strong);line-height:1.7;margin:8px 0}.tryon-history-actions{display:flex;gap:6px;flex-wrap:wrap}.tryon-pending-media{font-size:12px;color:var(--muted-strong);background:var(--surface-alt);padding:16px}.tryon-modal-actions{display:flex;justify-content:flex-end;gap:12px;margin-top:24px;flex-wrap:wrap}.tryon-session-history{font-size:12px;color:var(--muted-strong);padding:8px 0}
-@media(max-width:767px){.tryon-page{height:100dvh;min-height:0;gap:0;overflow:hidden;background:var(--surface);padding:0}.tryon-header{flex:none;background:#111b17;color:#fff;min-height:54px;padding:calc(env(safe-area-inset-top) + 4px) 8px 4px;gap:4px}.tryon-header .camera-tool.ant-btn{color:#fff}.tryon-header .camera-tool.ant-btn:disabled{color:#869a8e}.tryon-heading{display:flex;flex-direction:column;align-items:center;gap:3px}.tryon-heading h1{font-size:16px;font-weight:500}.tryon-remaining{font-size:11px;color:#b8ddc7}.tryon-body{display:block;flex:1;min-height:0}.tryon-stage{height:100%;min-height:0;border-radius:0}.tryon-stage-cover{padding:20px;gap:16px}.tryon-stage-cover h2{font-size:20px}.tryon-stage-cover p{font-size:13px}.tryon-camera-symbol{font-size:34px}.tryon-picker-desktop{display:none}.tryon-dock{flex:none;padding:10px 16px calc(env(safe-area-inset-bottom) + 8px);gap:7px}.tryon-current.ant-btn{height:62px;padding:6px 10px;gap:10px}.tryon-current-image,.tryon-current-placeholder{height:46px;width:46px}.tryon-current-copy strong{font-size:13px}.tryon-current-copy small{font-size:11px}.tryon-mode{height:30px}.tryon-mode :deep(.ant-segmented-item-label){min-height:26px;line-height:26px;font-size:12px;padding-inline:20px}.tryon-controls{min-height:76px;max-width:340px}.tryon-shutter.ant-btn{width:70px;height:70px;font-size:25px}.tryon-start-hint{font-size:11px;line-height:1.6;min-height:18px;width:100%;max-width:44ch}.tryon-history-item{grid-template-columns:100px minmax(0,1fr);gap:12px}.tryon-history-item>img{width:100px;max-height:150px}.tryon-history-actions .ant-btn{padding-inline:8px;font-size:12px}.tryon-stage-error{font-size:12px}.tryon-loading{padding:20px}.tryon-recording-error{position:fixed;left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom) + 12px);z-index:35}}
-@media(max-height:650px) and (max-width:767px){.tryon-dock{gap:4px;padding-top:6px}.tryon-current.ant-btn{height:54px}.tryon-current-image,.tryon-current-placeholder{width:40px;height:40px}.tryon-controls{min-height:64px}.tryon-shutter.ant-btn{height:60px;width:60px}.tryon-stage-cover{gap:10px}.tryon-stage-cover p{font-size:12px}}
-@media(prefers-reduced-motion:reduce){.tryon-page *{transition:none!important;scroll-behavior:auto!important}}
+/* 舞台：桌面按真实画幅收紧，手机全屏。控件都在舞台内，全屏时不丢。 */
+.tryon-page {
+  --ease-out: cubic-bezier(.22, 1, .36, 1);
+  --cam-fg: #fff;
+  --tryon-reserve: 120px;
+  height: calc(100dvh - var(--tryon-reserve));
+  min-height: 460px;
+  max-width: 1600px;
+  margin: auto;
+  touch-action: manipulation;
+}
+.tryon-body { display: flex; flex-direction: column; gap: 12px; height: 100%; min-height: 0; }
+.tryon-body:fullscreen { padding: 16px; background: #0b100e; }
+.tryon-stage-area { position: relative; display: flex; flex: 1; align-items: center; justify-content: center; min-width: 0; min-height: 0; }
+.tryon-stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #0d1411;
+  border-radius: var(--radius-lg);
+  isolation: isolate;
+  transition: width .45s var(--ease-out), height .45s var(--ease-out);
+}
+.tryon-video-host { position: absolute; inset: 0; z-index: 0; isolation: isolate; }
+.camera-on .tryon-video-host { animation: tryon-lens-open .7s var(--ease-out); }
+.is-flipping .tryon-video-host { animation: tryon-flip .42s ease-in-out; }
+.tryon-gesture { position: absolute; inset: 0; z-index: 4; touch-action: none; }
+.tryon-freeze { position: absolute; inset: 0; z-index: 2; width: 100%; height: 100%; object-fit: contain; animation: tryon-fade-out .55s ease forwards; }
+.fit-cover .tryon-freeze { object-fit: cover; }
+
+/* 两路画面：原画先占满，首帧到达后飞进小窗，露出下方的试穿画面。 */
+.tryon-video-host :deep(.tryon-local),
+.tryon-video-host :deep(.tryon-remote) {
+  position: absolute !important;
+  inset: auto !important;
+  left: 0 !important;
+  top: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  overflow: hidden;
+  transition: left .72s var(--ease-out), top .72s var(--ease-out), width .72s var(--ease-out), height .72s var(--ease-out), border-radius .72s var(--ease-out), box-shadow .72s ease, opacity .3s ease, transform .3s ease, filter .5s ease;
+}
+.tryon-video-host :deep(.tryon-local) { z-index: 3; }
+.tryon-video-host :deep(.tryon-remote) { z-index: 1; visibility: hidden; }
+.tryon-video-host.has-result :deep(.tryon-remote) { visibility: visible; }
+.tryon-video-host :deep(video) { object-fit: contain !important; }
+.fit-cover .tryon-video-host :deep(video) { object-fit: cover !important; }
+
+.is-working .tryon-video-host :deep(.tryon-local) { filter: saturate(.7) brightness(.82); }
+.is-revealing .tryon-video-host :deep(.tryon-remote) { animation: tryon-develop 1.1s var(--ease-out); }
+
+.is-pip:not(.is-swapped) .tryon-video-host :deep(.tryon-local),
+.is-pip.is-swapped .tryon-video-host :deep(.tryon-remote) {
+  left: var(--pip-x) !important;
+  top: var(--pip-y) !important;
+  width: var(--pip-w) !important;
+  height: var(--pip-h) !important;
+  z-index: 5;
+  border-radius: 14px;
+  box-shadow: 0 0 0 2px #ffffffd9, 0 10px 28px #0007;
+}
+.is-pip:not(.is-swapped) .tryon-video-host :deep(.tryon-local video),
+.is-pip.is-swapped .tryon-video-host :deep(.tryon-remote video) { object-fit: cover !important; }
+.is-pip.is-swapped .tryon-video-host :deep(.tryon-local) { z-index: 1; }
+.is-pip.pip-off .tryon-video-host :deep(.tryon-local) { opacity: 0; transform: scale(.6); }
+.is-dragging .tryon-video-host :deep(.tryon-local),
+.is-dragging .tryon-video-host :deep(.tryon-remote) { transition: none; }
+
+.tryon-pip-hit.ant-btn {
+  position: absolute;
+  left: var(--pip-x);
+  top: var(--pip-y);
+  z-index: 6;
+  width: var(--pip-w);
+  height: var(--pip-h);
+  padding: 0;
+  background: transparent;
+  border-radius: 14px;
+  cursor: grab;
+  touch-action: none;
+  animation: tryon-fade-in .4s ease .45s backwards;
+  transition: left .72s var(--ease-out), top .72s var(--ease-out), width .72s var(--ease-out), height .72s var(--ease-out);
+}
+.tryon-pip-hit.ant-btn:hover { background: transparent; }
+.tryon-pip-hit.ant-btn:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.is-dragging .tryon-pip-hit.ant-btn { transition: none; cursor: grabbing; }
+.tryon-pip-tag { position: absolute; left: 6px; bottom: 6px; padding: 2px 6px; font-size: 11px; line-height: 1.4; color: #fff; background: #0009; border-radius: 6px; }
+
+/* 取景框与连接扫描：只在连接和排队时出现。 */
+.tryon-viewfinder { position: absolute; inset: 12% 9% 30%; z-index: 4; pointer-events: none; opacity: 0; transition: opacity .4s ease; }
+.is-working .tryon-viewfinder { opacity: 1; }
+.tryon-viewfinder i { position: absolute; width: 26px; height: 26px; border: 2px solid #ffffffd9; }
+.tryon-viewfinder i:nth-child(1) { left: 0; top: 0; border-right: 0; border-bottom: 0; border-radius: 8px 0 0; }
+.tryon-viewfinder i:nth-child(2) { right: 0; top: 0; border-left: 0; border-bottom: 0; border-radius: 0 8px 0 0; }
+.tryon-viewfinder i:nth-child(3) { left: 0; bottom: 0; border-right: 0; border-top: 0; border-radius: 0 0 0 8px; }
+.tryon-viewfinder i:nth-child(4) { right: 0; bottom: 0; border-left: 0; border-top: 0; border-radius: 0 0 8px; }
+.tryon-scan { position: absolute; left: 0; right: 0; top: 0; height: 2px; background: linear-gradient(90deg, #9fe8c300, #9fe8c3, #9fe8c300); box-shadow: 0 0 18px 4px #9fe8c366; animation: tryon-scan 2.2s ease-in-out infinite alternate; }
+.tryon-sweep { position: absolute; inset: 0; z-index: 4; pointer-events: none; background: linear-gradient(180deg, #9fe8c300 0, #9fe8c344 46%, #ffffffcc 50%, #9fe8c344 54%, #9fe8c300 100%); background-size: 100% 240%; animation: tryon-sweep 1.1s var(--ease-out) forwards; }
+.tryon-flash { position: absolute; inset: 0; z-index: 7; pointer-events: none; background: #fff; opacity: 0; animation: tryon-flash .32s ease-out; }
+.tryon-fly { position: absolute; left: 50%; top: 50%; z-index: 8; width: 46%; max-height: 60%; object-fit: contain; pointer-events: none; border: 3px solid #fff; border-radius: 10px; transform: translate(-50%, -50%); animation: tryon-fly .68s var(--ease-out) .1s forwards; }
+
+/* 封面 */
+.tryon-stage-cover { position: absolute; inset: 0; z-index: 9; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 88px 28px 220px; color: #fff; text-align: center; background: radial-gradient(90% 70% at 50% 42%, #24382e, #0d1411 75%); }
+.tryon-camera-symbol { font-size: 40px; color: #b5cec0; }
+.tryon-stage-cover h2 { font-size: 22px; font-weight: 500; }
+.tryon-stage-cover p { max-width: 32ch; line-height: 1.8; color: #d1e0d7; white-space: pre-line; }
+.tryon-stage-cover > .ant-btn-primary { min-height: 48px; padding-inline: 28px; color: #163e2e; background: #d7eee1; border-color: #d7eee1; }
+
+/* 顶栏 */
+.tryon-topbar { position: absolute; left: 0; right: 0; top: 0; z-index: 10; display: flex; align-items: center; gap: 6px; padding: 10px 10px 24px; pointer-events: none; background: linear-gradient(180deg, #0009, #0000); }
+.tryon-topbar > *, .tryon-tools > * { pointer-events: auto; }
+.tryon-tools { display: flex; align-items: center; margin-left: auto; }
+.camera-tool.ant-btn { flex: none; width: 44px; height: 44px; padding: 0; font-size: 19px; color: var(--cam-fg); }
+.camera-tool.ant-btn:hover, .camera-tool.ant-btn:focus-visible { color: var(--cam-fg); background: #ffffff26; }
+.tryon-aspect.ant-btn { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.tryon-status { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 7px 12px; font-size: 12px; line-height: 1.5; color: #fff; font-variant-numeric: tabular-nums; white-space: nowrap; background: #10171499; border-radius: 20px; backdrop-filter: blur(10px); }
+.tryon-status span { overflow: hidden; text-overflow: ellipsis; }
+.tryon-status i { flex: none; width: 7px; height: 7px; background: #c9d4cd; border-radius: 50%; transition: background .3s ease; }
+.tryon-status.live i { background: #7fe3a6; animation: tryon-pulse 1.6s ease-in-out infinite; }
+.tryon-status.waiting i { background: #f2d28b; animation: tryon-pulse 1s ease-in-out infinite; }
+.tryon-recording-status { position: absolute; left: 12px; top: 66px; z-index: 10; padding: 6px 10px; font-size: 12px; color: #ffd9d2; font-variant-numeric: tabular-nums; background: #261511cc; border-radius: 8px; }
+.tryon-recording-status i { display: inline-block; width: 8px; height: 8px; margin-right: 7px; background: #ff5a4e; border-radius: 50%; animation: tryon-pulse 1s ease-in-out infinite; }
+.tryon-recording-status small { display: block; margin-top: 2px; font-size: 11px; color: #f6d9d1; }
+
+/* 底部控件 */
+.tryon-dock { position: absolute; left: 0; right: 0; bottom: 0; z-index: 10; display: flex; flex-direction: column; gap: 8px; padding: 36px 20px 14px; background: linear-gradient(0deg, #000a, #0000); pointer-events: none; }
+.tryon-dock.is-loading { visibility: hidden; }
+.tryon-dock :is(.ant-btn, .ant-segmented, .ant-alert) { pointer-events: auto; }
+.tryon-notice-area { display: flex; flex-direction: column; align-items: center; gap: 8px; min-height: 20px; }
+.tryon-notice { display: flex; flex-direction: column; align-items: center; gap: 6px; max-width: min(100%, 420px); padding: 10px 14px; color: #fff; text-align: center; background: #101714c7; border-radius: 12px; backdrop-filter: blur(12px); pointer-events: auto; }
+.tryon-notice strong { font-size: 14px; font-weight: 500; }
+.tryon-notice small { font-size: 12px; line-height: 1.6; color: #d7e3dc; }
+.tryon-notice p { margin: 0; font-size: 13px; line-height: 1.6; }
+.tryon-notice.is-error { color: #5e3a0c; background: #fff7e8; }
+.tryon-notice.is-offer strong { font-size: 16px; color: #9fe8c3; }
+.tryon-steps { display: flex; gap: 14px; margin: 2px 0; padding: 0; list-style: none; }
+.tryon-steps li { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11px; color: #ffffff80; transition: color .3s ease; }
+.tryon-steps i { width: 7px; height: 7px; background: #ffffff4d; border-radius: 50%; transition: background .3s ease, transform .3s var(--ease-out); }
+.tryon-steps .done { color: #d7e3dc; }
+.tryon-steps .done i { background: #9fe8c3; }
+.tryon-steps .current { color: #fff; }
+.tryon-steps .current i { background: #fff; transform: scale(1.35); animation: tryon-pulse 1s ease-in-out infinite; }
+.tryon-start-hint { max-width: 56ch; margin: 0; font-size: 12px; line-height: 1.6; color: #ffffffd9; text-align: center; text-shadow: 0 1px 4px #0009; }
+.tryon-start-hint.active { color: #bff0d5; }
+
+.tryon-controls { pointer-events: auto; display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto minmax(0, 1fr) auto; grid-template-areas: "hist mode . shut . flip"; align-items: center; gap: 14px; }
+.tryon-selection-row { display: contents; }
+.tryon-current.ant-btn { display: none; }
+.tryon-end.ant-btn { grid-column: 5; justify-self: end; min-height: 40px; border-radius: 20px; }
+.tryon-mode { grid-area: mode; justify-self: center; }
+.tryon-slot-history { grid-area: hist; }
+.tryon-slot-shutter { grid-area: shut; justify-self: center; }
+.tryon-slot-flip { grid-area: flip; justify-self: end; }
+.tryon-mode :deep(.ant-segmented) { padding: 0; color: #ffffffb3; background: transparent; }
+.tryon-mode :deep(.ant-segmented-thumb), .tryon-mode :deep(.ant-segmented-item-selected) { color: #17211c; background: #fffffff0; }
+.tryon-mode :deep(.ant-segmented-item:hover:not(.ant-segmented-item-selected)) { color: #fff; }
+.tryon-mode :deep(.ant-segmented-item-label) { min-height: 30px; padding-inline: 14px; font-size: 13px; line-height: 30px; }
+.tryon-mode :deep(.ant-segmented-item-disabled) { color: #ffffff66; }
+.tryon-history-thumb.ant-btn { display: grid; place-items: center; width: 52px; height: 52px; padding: 0; overflow: hidden; font-size: 20px; color: #fff; background: #ffffff26; border: 2px solid #ffffffb3; border-radius: 12px; }
+.tryon-history-thumb.ant-btn:hover { color: #fff; background: #ffffff40; border-color: #fff; }
+.tryon-history-thumb.bump { animation: tryon-bump .38s var(--ease-out); }
+.tryon-history-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.tryon-flip.ant-btn { width: 52px; height: 52px; font-size: 20px; color: #fff; background: #ffffff26; border: 0; transition: transform .35s var(--ease-out), background .2s ease; }
+.tryon-flip.ant-btn:not(:disabled):hover { color: #fff; background: #ffffff40; }
+.tryon-flip.ant-btn:not(:disabled):active { transform: rotate(180deg); }
+.tryon-flip.ant-btn:disabled { color: #ffffff59; background: #ffffff14; }
+.phase-cover .tryon-mode, .phase-cover .tryon-slot-shutter, .phase-cover .tryon-slot-flip,
+.phase-off .tryon-mode, .phase-off .tryon-slot-shutter, .phase-off .tryon-slot-flip { visibility: hidden; }
+.tryon-recording-error { width: min(100%, 420px); }
+
+.tryon-info-copy { max-width: 30ch; margin: 8px 0 0; font-size: 13px; line-height: 1.8; }
+
+/* 抽屉与历史（内容沿用） */
+.tryon-picker-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding-bottom: env(safe-area-inset-bottom); font-size: 13px; color: var(--muted-strong); }
+.tryon-paid-notice { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; font-size: 13px; color: var(--accent); }
+.tryon-history-item { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 16px; padding: 20px 0; border-bottom: 1px solid var(--line); }
+.tryon-history-item > img { width: 140px; max-height: 200px; object-fit: contain; background: var(--surface-alt); border-radius: 8px; }
+.tryon-history-item p { margin: 8px 0; font-size: 12px; line-height: 1.7; color: var(--muted-strong); }
+.tryon-history-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.tryon-pending-media { padding: 16px; font-size: 12px; color: var(--muted-strong); background: var(--surface-alt); }
+.tryon-modal-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 12px; margin-top: 24px; }
+.tryon-session-history { padding: 8px 0; font-size: 12px; color: var(--muted-strong); }
+
+@media (max-width: 1023px) { .tryon-page { --tryon-reserve: 176px; } }
+
+/* 手机相机模式：选衣收进底部抽屉，控件分行。 */
+@media (max-width: 767px), (max-height: 500px) and (pointer: coarse) {
+  .tryon-filmstrip { display: none; }
+  .tryon-controls { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); grid-template-areas: "sel sel sel" "mode mode mode" "hist shut flip"; gap: 8px 12px; }
+  .tryon-selection-row { display: flex; grid-area: sel; align-items: center; gap: 8px; min-width: 0; }
+  .tryon-end.ant-btn { flex: none; min-height: 44px; background: #ffffffeb; }
+  .tryon-current.ant-btn { display: flex; flex: 1; align-items: center; gap: 10px; min-width: 0; height: 52px; padding: 5px 12px 5px 6px; color: #fff; text-align: left; white-space: normal; background: #ffffff24; border: 0; border-radius: 26px; backdrop-filter: blur(10px); }
+  .tryon-current.ant-btn:hover { color: #fff; background: #ffffff38; }
+  .tryon-current-image, .tryon-current-placeholder { flex: none; width: 42px; height: 42px; overflow: hidden; object-fit: contain; background: #ffffffe6; border-radius: 50%; }
+  .tryon-current-placeholder { display: grid; place-items: center; font-size: 18px; color: #1f5c45; }
+  .tryon-current-image :deep(canvas) { width: 100%; height: 100%; object-fit: contain; }
+  .tryon-current-copy { display: flex; flex: 1; flex-direction: column; gap: 1px; min-width: 0; }
+  .tryon-current-copy strong, .tryon-current-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tryon-current-copy strong { font-size: 13px; font-weight: 500; }
+  .tryon-current-copy small { font-size: 11px; color: #ffffffb8; }
+  .tryon-current-arrow { flex: none; font-size: 11px; color: #ffffffb3; }
+}
+
+/* 手机：系统相机式全屏。 */
+@media (max-width: 767px), (max-height: 500px) and (pointer: coarse) {
+  .tryon-page { position: fixed; inset: 0; z-index: 40; width: 100vw; height: 100dvh; min-height: 0; max-width: none; background: #000; overscroll-behavior: none; }
+  .tryon-body, .tryon-stage-area { display: block; height: 100%; }
+  .tryon-stage { border-radius: 0; background: #000; transition: none; }
+  .tryon-topbar { padding: calc(env(safe-area-inset-top) + 4px) 6px 22px; }
+  .tryon-topbar .tryon-status { position: absolute; left: 50%; top: calc(env(safe-area-inset-top) + 10px); max-width: calc(100% - 200px); transform: translateX(-50%); }
+  .tryon-recording-status { top: calc(env(safe-area-inset-top) + 56px); }
+  .tryon-dock { padding: 44px 16px calc(env(safe-area-inset-bottom) + 12px); }
+  .tryon-viewfinder { inset: 14% 8% 38%; }
+  .tryon-stage-cover { padding-bottom: 240px; }
+  .tryon-stage-cover h2 { font-size: 20px; }
+  .tryon-stage-cover p { font-size: 13px; }
+  .tryon-start-hint { font-size: 11px; }
+  .tryon-steps { gap: 10px; }
+  .tryon-history-item { grid-template-columns: 100px minmax(0, 1fr); gap: 12px; }
+  .tryon-history-item > img { width: 100px; max-height: 150px; }
+  .tryon-history-actions .ant-btn { padding-inline: 8px; font-size: 12px; }
+}
+@media (max-width: 767px) and (max-height: 650px) {
+  .tryon-history-thumb.ant-btn, .tryon-flip.ant-btn { width: 46px; height: 46px; }
+  .tryon-dock { gap: 4px; padding-top: 24px; }
+  .tryon-controls { row-gap: 4px; }
+  .tryon-current.ant-btn { height: 46px; }
+  .tryon-current-image, .tryon-current-placeholder { width: 36px; height: 36px; }
+}
+/* 手机横屏：控件立到右侧，和系统相机一致。 */
+@media (max-height: 500px) and (pointer: coarse) {
+  .tryon-dock { left: auto; top: 0; width: 210px; padding: calc(env(safe-area-inset-top) + 8px) calc(env(safe-area-inset-right) + 10px) 8px 28px; justify-content: center; background: linear-gradient(270deg, #000a, #0000); }
+  .tryon-notice-area { position: fixed; left: 12px; bottom: 10px; width: calc(100vw - 240px); align-items: flex-start; }
+  .tryon-topbar { padding-right: 216px; }
+  .tryon-controls { grid-template-columns: 1fr auto 1fr; grid-template-areas: "sel sel sel" "mode mode mode" "hist shut flip"; }
+}
+
+@keyframes tryon-lens-open { from { opacity: 0; filter: blur(14px); transform: scale(1.07); } }
+@keyframes tryon-flip { 50% { opacity: .35; filter: blur(12px); transform: perspective(900px) rotateY(80deg); } }
+@keyframes tryon-develop { from { filter: blur(16px) brightness(1.3) saturate(.6); } }
+@keyframes tryon-scan { to { top: calc(100% - 2px); } }
+@keyframes tryon-sweep { from { background-position: 0 100%; } to { background-position: 0 0; opacity: .2; } }
+@keyframes tryon-flash { 0% { opacity: .85; } 100% { opacity: 0; } }
+@keyframes tryon-fly { to { transform: translate(calc(-50% + var(--fly-x)), calc(-50% + var(--fly-y))) scale(.12); opacity: .7; } }
+@keyframes tryon-fade-in { from { opacity: 0; } }
+@keyframes tryon-fade-out { to { opacity: 0; } }
+@keyframes tryon-pulse { 50% { opacity: .35; } }
+@keyframes tryon-bump { 40% { transform: scale(1.14); } }
+
+.tryon-iris-leave-active { transition: opacity .55s ease, transform .55s var(--ease-out); }
+.tryon-iris-leave-to { opacity: 0; transform: scale(1.12); }
+.tryon-fade-enter-active, .tryon-fade-leave-active { transition: opacity .25s ease; }
+.tryon-fade-enter-from, .tryon-fade-leave-to { opacity: 0; }
+.tryon-rise-enter-active, .tryon-rise-leave-active { transition: opacity .2s ease, transform .2s var(--ease-out); }
+.tryon-rise-enter-from { opacity: 0; transform: translateY(8px); }
+.tryon-rise-leave-to { opacity: 0; transform: translateY(-4px); }
+
+@media (prefers-reduced-motion: reduce) {
+  .tryon-page *, .tryon-page :deep(*) { animation: none !important; scroll-behavior: auto !important; transition: none !important; }
+  .tryon-flash, .tryon-sweep, .tryon-scan { display: none; }
+}
 </style>

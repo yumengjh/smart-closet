@@ -27,3 +27,32 @@ export function bindControlPlane(manager: unknown, lease: () => string, request:
   }
   if (!Reflect.set(session, 'apiService', bridge) || session.apiService !== bridge) throw new Error('实时 SDK 控制面绑定失败。')
 }
+
+const SENDER_RACE = 'did not retain WebRTC video sender parameters'
+const isSenderRace = (cause: unknown) => cause instanceof Error && cause.message.includes(SENDER_RACE)
+const pause = (ms: number) => new Promise<void>(resolve => { setTimeout(resolve, ms) })
+
+/**
+ * SDK 1.1.1 reads sender parameters straight back and treats any difference as fatal, while Agora's own adaptation
+ * writes the same sender on publish and on a timer. These limits only tune the encoder, so a lost race must not end a
+ * paid session: retry briefly, then keep Agora's values. Every other failure, including cancellation, still propagates.
+ */
+export function tolerateSenderRace(manager: unknown, onDegraded: () => void = () => {}, wait: (ms: number) => Promise<void> = pause) {
+  const rtc = object(object(object(object(manager).connectionManager).dependencies).streamController).rtcManager
+  const target = object(rtc)
+  for (const name of ['configureVideoEncoding', 'restoreCameraSender']) {
+    const original = target[name]
+    if (typeof original !== 'function') throw new Error('实时 SDK 版本不受支持。')
+    const guarded = async (...args: unknown[]) => {
+      for (let attempt = 0; ; attempt++) {
+        try { return await Reflect.apply(original, target, args) }
+        catch (cause) {
+          if (!isSenderRace(cause)) throw cause
+          if (attempt >= 2) { onDegraded(); return undefined }
+          await wait(150 * (attempt + 1))
+        }
+      }
+    }
+    if (!Reflect.set(target, name, guarded) || target[name] !== guarded) throw new Error('实时 SDK 控制面绑定失败。')
+  }
+}

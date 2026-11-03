@@ -10,6 +10,7 @@ const props = defineProps<{
   temporary: { id: string; imageUrl: string }[]; blocked: boolean; busyId: string | null
   selectedOutfit: string | null; uploading: boolean; error: string; canUseLatest: boolean
   chooseUpload: (file: File) => Promise<boolean>
+  popupHost?: () => HTMLElement
 }>()
 const emit = defineEmits<{ 'update:search': [value: string]; 'update:tab': [value: string]; toggle: [item: Selection]; outfit: [id: string]; more: []; latest: [] }>()
 const preview = ref<Outfit | null>(null)
@@ -43,7 +44,7 @@ function choose(o: Outfit) { preview.value = null; emit('outfit', o.id) }
       <p class="picker-note">仅本页使用的衣物从上传起七天删除，刷新或离开后不恢复。</p>
       <div class="picker-garments"><a-button v-for="t in temporary" :key="t.id" class="picker-garment" :class="{selected:has(t.id)}" :disabled="blocked || !!busyId" @click="emit('toggle',{type:'TEMPORARY',id:t.id})"><img :src="mediaUrl(t.imageUrl)" alt="临时衣物" /><span>自定义衣物</span><CheckOutlined v-if="has(t.id)" class="picker-check" /></a-button></div>
     </template>
-    <a-modal :open="!!preview" :title="preview?.name" :width="540" :footer="null" @cancel="preview=null"><template v-if="preview"><OutfitThumbnail class="picker-large-preview" :scene="preview.scene" :title="preview.name" :resolution="480" /><p class="picker-note">{{ garmentItems(preview).map(i=>i.garmentLabel).filter(Boolean).join('、') }}</p><p v-if="garmentItems(preview).some(i=>i.imageChanged)" class="picker-note">其中有衣物成品图已更新，选择后会请你确认。</p><a-button type="primary" block size="large" :disabled="blocked || !garmentItems(preview).length" @click="choose(preview)">使用这套搭配</a-button></template></a-modal>
+    <a-modal :open="!!preview" :title="preview?.name" :width="540" :footer="null" :get-container="popupHost" @cancel="preview=null"><template v-if="preview"><OutfitThumbnail class="picker-large-preview" :scene="preview.scene" :title="preview.name" :resolution="480" /><p class="picker-note">{{ garmentItems(preview).map(i=>i.garmentLabel).filter(Boolean).join('、') }}</p><p v-if="garmentItems(preview).some(i=>i.imageChanged)" class="picker-note">其中有衣物成品图已更新，选择后会请你确认。</p><a-button type="primary" block size="large" :disabled="blocked || !garmentItems(preview).length" @click="choose(preview)">使用这套搭配</a-button></template></a-modal>
   </div>
 </template>
 <style scoped>

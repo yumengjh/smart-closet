@@ -33,6 +33,7 @@ import { pendingPath, prefetchRoute, prefetchWhenIdle } from '../composables/use
 import { accountIsStale, markAccountStale, onAccountChange } from '../domain/accountSession'
 import { useNotificationStore } from '../stores/notifications'
 import { tryOnAccess, refreshTryOnAccess, resetTryOnAccess } from '../tryon/access'
+import { CAMERA_LAYOUT_QUERY } from '../tryon/stage'
 
 const route = useRoute()
 const router = useRouter()
@@ -56,8 +57,8 @@ const frameStyle = computed(() => ({ '--sidebar-w': `${sidebarWidth(collapsed.va
 const isLogin = computed(() => ['/login', '/register'].includes(route.path) || route.path === '/welcome' && closet.isSignedIn)
 const isOutfitEditor = computed(() => route.path.startsWith('/outfits/'))
 const tryonRoute = computed(() => route.path === '/try-on')
-const tryonNarrow = ref(window.matchMedia('(max-width: 767px)').matches)
-const tryonMediaQuery = window.matchMedia('(max-width: 767px)')
+const tryonMediaQuery = window.matchMedia(CAMERA_LAYOUT_QUERY)
+const tryonNarrow = ref(tryonMediaQuery.matches)
 const updateTryonNarrow = () => { tryonNarrow.value = tryonMediaQuery.matches }
 let tryonAccessTimer = 0
 watch(() => closet.user && !closet.user.mustChangePassword ? closet.user.username : '', name => { resetTryOnAccess(); if (name) void refreshTryOnAccess() }, { immediate: true })

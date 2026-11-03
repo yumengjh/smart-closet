@@ -421,4 +421,4 @@ html[data-density='minimal'] .settings-group { padding-top: 20px; padding-bottom
 
 /* Real-time camera focus retains assistant state while hiding mobile chrome. */
 .tryon-settings-links { display:flex;gap:12px;flex-wrap:wrap;grid-column:1/-1;margin-bottom:16px; }
-@media (max-width:767px) { .tryon-camera-mode .sidebar,.tryon-camera-mode .sidebar-edge-toggle,.tryon-camera-mode .mobile-nav,.tryon-camera-mode .topbar { display:none!important; } .tryon-camera-mode .main-area { margin:0!important;padding:0!important; } .tryon-camera-mode .route-content,.tryon-camera-mode .route-view { padding:0!important;margin:0!important; } }
+@media (max-width:767px), (max-height:500px) and (pointer:coarse) { .tryon-camera-mode .sidebar,.tryon-camera-mode .sidebar-edge-toggle,.tryon-camera-mode .mobile-nav,.tryon-camera-mode .topbar { display:none!important; } .tryon-camera-mode .main-area { margin:0!important;padding:0!important; } .tryon-camera-mode .route-content,.tryon-camera-mode .route-view { padding:0!important;margin:0!important; } }
