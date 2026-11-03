@@ -260,14 +260,22 @@ async function pulse() {
     if (lease.value?.id !== state.id || disposed) return
     lease.value = state
     if (finished(state) || ['STOPPING', 'UNKNOWN'].includes(state.state)) {
-      if (['STARTUP_TIMEOUT','FIRST_FRAME_TIMEOUT','LEASE_EXPIRED','CLIENT_HEARTBEAT_TIMEOUT'].includes(state.reason || '')) {
-        const stage = state.diagnostic?.stage || camera?.diagnostic.stage
-        error.value = `${stage ? stageLabel[stage] : '实时连接'}超时，连接已结束。请先排查连接或参考图访问，再重试。`
-      }
+      const ended = endedMessage(state)
+      if (ended) error.value = ended
       frameReady.value = false; void finishRecording(true); await camera?.stop(); await refresh()
     }
   } catch (e) { fail(e); if (live.value && !reclaiming.value) void stop(true) }
   finally { pulseRunning = false; if (pulseAgain) { pulseAgain = false; void pulse() } }
+}
+/** 服务端结束原因各说各的：时长用完不是连接故障，不能让人去排查网络。 */
+function endedMessage(state: Session) {
+  const stage = state.diagnostic?.stage || camera?.diagnostic.stage
+  switch (state.reason) {
+    case 'STARTUP_TIMEOUT': case 'FIRST_FRAME_TIMEOUT': return `${stage ? stageLabel[stage] : '实时连接'}超时，连接已结束。请先排查网络或稍后重试。`
+    case 'LEASE_EXPIRED': return state.firstFrame ? '本次预留的试穿时长已用完，连接已结束。今日剩余时长可在顶部查看。' : '试穿授权已过期，连接已结束，请重新开始。'
+    case 'CLIENT_HEARTBEAT_TIMEOUT': return '页面与服务器失联超过 20 秒，连接已结束。请检查网络后重新开始。'
+    default: return ''
+  }
 }
 async function stop(interrupted = false) {
   action++; busy.value = false; busyPhase.value = ''; frameReady.value = false; startupStage.value = undefined
