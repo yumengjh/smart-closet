@@ -1,7 +1,6 @@
 import { ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 
-const storageKey = 'yuda.minimal.v1'
 const navLabelsKey = 'yuda.nav-labels.v1'
 
 /** How the mobile bottom bar and its add menu label things: icon + text (default), icon only, or text only. */
@@ -11,31 +10,18 @@ function savedNavLabels(): NavLabels {
   catch { return 'both' }
 }
 
-function saved() {
-  try { return localStorage.getItem(storageKey) === '1' }
-  catch { return false }
-}
-
 /**
- * Minimal mode (front issue #19): hides subtitles, explanations and secondary actions, keeping the main flow.
- * Saved in this browser only, like the theme. Pages read `minimal` for structural changes; plain text hiding is done
- * by CSS on html[data-density='minimal'] (see style.css).
+ * Interface preferences kept in this browser only, like the theme. 极简模式 was removed in the fresh redesign
+ * (清新改版): the whole site is now plain by default; its old saved key 'yuda.minimal.v1' is cleared once.
  */
 export const usePreferencesStore = defineStore('preferences', () => {
-  const minimal = ref(saved())
-  watch(minimal, value => {
-    if (value) document.documentElement.dataset.density = 'minimal'
-    else delete document.documentElement.dataset.density
-    try { localStorage.setItem(storageKey, value ? '1' : '0') }
-    catch { /* Still applies for this visit. */ }
-  }, { immediate: true })
-  function toggle() { minimal.value = !minimal.value }
-  // Applied as html[data-nav-labels]. Independent of minimal mode, which only hides explanations and secondary actions.
+  try { localStorage.removeItem('yuda.minimal.v1') } catch { /* storage blocked */ }
+  // Applied as html[data-nav-labels].
   const navLabels = ref<NavLabels>(savedNavLabels())
   watch(navLabels, value => {
     document.documentElement.dataset.navLabels = value
     try { localStorage.setItem(navLabelsKey, value) }
     catch { /* Still applies for this visit. */ }
   }, { immediate: true })
-  return { minimal, toggle, navLabels }
+  return { navLabels }
 })

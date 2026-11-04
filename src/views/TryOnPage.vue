@@ -588,9 +588,10 @@ onBeforeUnmount(() => { disposed = true; action++; stopPose(); layoutObserver?.d
 </template>
 
 <style scoped>
-/* 舞台：顶满外壳留下的整块区域（外壳在试穿页收起侧栏、隐藏顶栏），控件和衣物栏都浮在舞台内，全屏时不丢。 */
+/* 舞台：顶满外壳留下的整块区域（外壳在试穿页隐藏顶栏和导航胶囊），控件和衣物栏都浮在舞台内，全屏时不丢。 */
 .tryon-page {
   --ease-out: cubic-bezier(.22, 1, .36, 1);
+  /* 清新改版：试穿页隐藏底部导航胶囊（shell/dock.css），取景框占满；左上角“返回衣柜”离开。 */
   --tryon-reserve: 0px;
   height: calc(100dvh - var(--tryon-reserve));
   min-height: 460px;
@@ -812,7 +813,7 @@ onBeforeUnmount(() => { disposed = true; action++; stopPose(); layoutObserver?.d
 .tryon-session-history { padding: 8px 0; font-size: 12px; color: var(--muted-strong); }
 
 /* 平板：侧栏隐藏、底部导航仍在，舞台让出导航高度。 */
-@media (max-width: 1023px) { .tryon-page { --tryon-reserve: calc(72px + env(safe-area-inset-bottom)); } }
+
 
 /* 手机相机模式：选衣收进底部抽屉，控件分行。 */
 @media (max-width: 767px), (max-height: 500px) and (pointer: coarse) {

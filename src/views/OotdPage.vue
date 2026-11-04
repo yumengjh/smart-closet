@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PageTitle from '../shell/PageTitle.vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { App, Empty } from 'ant-design-vue'
@@ -17,11 +18,10 @@ import RenderSource from '../ootd/RenderSource.vue'
 import { modelLabel } from '../ootd/labels'
 import { describeAdjustments } from '../ootd/body-adjust'
 import { adviceFor, failureReason, groupRecords, routeTarget } from '../ootd/jobStatus'
-import { usePreferencesStore } from '../stores/preferences'
 import { useProcessingStore } from '../stores/processing'
 import { useSendOffStore } from '../stores/sendOff'
 
-const route = useRoute(), router = useRouter(); const { message, modal } = App.useApp(); const preferences = usePreferencesStore(), processing = useProcessingStore(), sendOff = useSendOffStore()
+const route = useRoute(), router = useRouter(); const { message, modal } = App.useApp(); const processing = useProcessingStore(), sendOff = useSendOffStore()
 const outfits = ref<Outfit[]>([]); const baselines = ref<Baseline[]>([]); const capabilities = ref<Capability[]>([]); const jobs = ref<RenderJob[]>([]); const poseCatalog = ref<PoseCatalog | null>(null)
 const outfitId = ref(String(route.query.outfit || '')); const baselineId = ref(''); const model = ref(''); const selected = ref<string[]>([]); const pose = ref<PoseChoice>({ mode: 'AUTO' })
 const multiLayer = ref(false); const wearRoles = ref<Record<string, string>>({}); const showItems = ref(false)
@@ -180,8 +180,9 @@ onUnmounted(() => clearInterval(timer))
 </script>
 
 <template>
-  <div class="page-heading simple-heading ootd-heading">
-    <div><h1>OOTD 试穿</h1><p class="page-subtitle">选搭配、模特和动作，生成一张上身效果图。</p></div>
+  <PageTitle title="OOTD 试穿" hint="选搭配、模特和动作，生成一张上身效果图。" />
+  <div class="ootd-toolbar">
+    <p class="ootd-lead">三步生成一张上身效果图</p>
     <RouterLink v-slot="{ href, navigate }" to="/settings?section=personal" custom><a-button class="ootd-manage" :href="href" @click="navigate"><UserOutlined /> 管理模特</a-button></RouterLink>
   </div>
   <a-alert v-if="error && !confirmOpen" type="error" :message="error" show-icon closable style="margin-bottom:16px" @close="error=''" />
@@ -217,14 +218,14 @@ onUnmounted(() => clearInterval(timer))
 
       <section class="ootd-card">
         <header class="ootd-card-head"><span class="ootd-step">3</span><h2>动作</h2></header>
-        <PosePicker v-model="pose" :catalog="poseCatalog" :compact="preferences.minimal" @changed="loadPoses" />
+        <PosePicker v-model="pose" :catalog="poseCatalog"  @changed="loadPoses" />
       </section>
 
       <div class="ootd-actions">
         <a-select v-if="available.length > 1" v-model:value="model" class="ootd-model" aria-label="生成模型" :options="available.map(c => ({ value: c.provider + ':' + c.model, label: c.model }))" />
         <p v-else class="ootd-note">{{ hint || (capability ? '每张用 1 个图像额度' : '') }}</p>
         <a-space wrap>
-          <a-button v-if="!preferences.minimal" :loading="busy" :disabled="!current" @click="check()">只检查搭配</a-button>
+          <a-button :loading="busy" :disabled="!current" @click="check()">只检查搭配</a-button>
           <a-tooltip title="只播放生成过程的动画和完成提醒，不调用模型、不消耗额度"><a-button @click="rehearse()">模拟生成</a-button></a-tooltip>
           <a-button type="primary" :loading="busy" :disabled="!current || !person || !capability" @click="prepare()">生成 OOTD</a-button>
         </a-space>
@@ -238,7 +239,7 @@ onUnmounted(() => clearInterval(timer))
       <template v-if="review">
         <a-alert v-for="issue in review.blockers" :key="issue.message" type="error" :message="issue.message" :description="issue.action" show-icon style="margin-top:12px" />
         <a-alert v-for="issue in review.warnings" :key="issue.code" type="warning" :message="issue.message" show-icon style="margin-top:8px" />
-        <a-descriptions v-if="!preferences.minimal || review.blockers.length" :column="1" size="small" bordered style="margin-top:12px"><a-descriptions-item v-for="slot in filledSlots" :key="slot.role" :label="slot.label">{{ slot.items.map(i => i.label).join('、') || '未选择' }} <div v-for="i in slot.items.filter(i => i.role === 'ACCESSORY')" :key="i.garmentId" class="ootd-accessory"><span>{{ i.label }}</span> <a-select v-model:value="wearRoles[i.garmentId]" :options="accessoryOptions" placeholder="选择佩戴位置" /></div> <a-tag v-if="slot.state === 'CONFLICT' || slot.state === 'UNKNOWN'" color="error">{{ slot.state === 'UNKNOWN' ? '资料未确认' : '冲突' }}</a-tag></a-descriptions-item></a-descriptions>
+        <a-descriptions :column="1" size="small" bordered style="margin-top:12px"><a-descriptions-item v-for="slot in filledSlots" :key="slot.role" :label="slot.label">{{ slot.items.map(i => i.label).join('、') || '未选择' }} <div v-for="i in slot.items.filter(i => i.role === 'ACCESSORY')" :key="i.garmentId" class="ootd-accessory"><span>{{ i.label }}</span> <a-select v-model:value="wearRoles[i.garmentId]" :options="accessoryOptions" placeholder="选择佩戴位置" /></div> <a-tag v-if="slot.state === 'CONFLICT' || slot.state === 'UNKNOWN'" color="error">{{ slot.state === 'UNKNOWN' ? '资料未确认' : '冲突' }}</a-tag></a-descriptions-item></a-descriptions>
       </template>
     </aside>
   </div>
@@ -342,10 +343,12 @@ onUnmounted(() => clearInterval(timer))
 .ootd-manage { flex-shrink: 0; }
 .ootd-workspace { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr); gap: var(--space-6); align-items: start; }
 .ootd-steps { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
-.ootd-card { min-width: 0; padding: var(--space-5) var(--space-6); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
+.ootd-card { min-width: 0; padding: 22px 26px; border: 0; border-radius: 28px; background: var(--surface-alt); }
+.ootd-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 6px 0 22px; }
+.ootd-lead { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: .02em; }
 .ootd-card-head { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-4); }
 .ootd-card-head h2 { margin: 0; font-size: 16px; font-weight: 600; line-height: 1.5; }
-.ootd-step { display: grid; flex-shrink: 0; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--action-bg); color: var(--action-fg); font-size: 12px; font-weight: 600; }
+.ootd-step { display: grid; flex-shrink: 0; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--accent-soft); color: var(--accent-strong); font-size: 13px; font-weight: 600; }
 .ootd-full { width: 100%; }
 .ootd-items-toggle { padding: 0; margin-top: var(--space-2); }
 .ootd-items { display: flex; flex-direction: column; gap: var(--space-3); margin-top: var(--space-2); }
@@ -367,7 +370,7 @@ onUnmounted(() => clearInterval(timer))
 .ootd-records-head h2 { margin: 0; font-size: 20px; font-weight: 600; }
 .ootd-records-head small { margin-left: 6px; color: var(--muted-subtle); font-size: 14px; font-weight: 400; }
 .ootd-results { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: var(--space-4); }
-.ootd-result { display: flex; flex-direction: column; min-width: 0; overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
+.ootd-result { display: flex; flex-direction: column; min-width: 0; overflow: hidden; border: 0; border-radius: 24px; background: var(--surface-alt); }
 .ootd-result-media { position: relative; display: grid; place-items: center; aspect-ratio: 2 / 3; padding: 0; overflow: hidden; border: 0; background: var(--surface-alt); cursor: zoom-in; }
 .ootd-result-media img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: top; transition: transform .25s ease; }
 .ootd-result-media:hover img { transform: scale(1.02); }
@@ -419,6 +422,7 @@ onUnmounted(() => clearInterval(timer))
   .ootd-actions { position: sticky; bottom: calc(80px + env(safe-area-inset-bottom)); z-index: 4; box-shadow: 0 6px 24px rgb(0 0 0 / 8%); }
 }
 @media (max-width: 767px) {
+  .ootd-lead { font-size: 18px; }
   .ootd-heading { flex-wrap: wrap; }
   .ootd-card { padding: 16px; }
   .ootd-selections { grid-template-columns: 1fr; }

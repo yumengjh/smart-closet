@@ -7,8 +7,8 @@ import { playSound } from '../../services/sound'
 import NavGlyph from '../../shell/NavGlyph.vue'
 
 /**
- * 界面偏好, three independent choices, each shown as what it looks like: the bottom bar style, light or dark, and
- * minimal mode (explanations and secondary actions only; it does not change the bar). Kept in this browser.
+ * 界面偏好, two independent choices, each shown as what it looks like: the bottom bar style and light or dark.
+ * Kept in this browser.
  */
 const preferences = usePreferencesStore()
 const appearance = useThemeStore()
@@ -41,13 +41,6 @@ function pickTheme(value: ThemeMode) { if (appearance.mode !== value) { appearan
           <b class="look-caption">{{ theme.label }}</b>
           <i class="look-check" aria-hidden="true"><CheckOutlined /></i>
         </a-button>
-      </div>
-    </section>
-
-    <section class="settings-group">
-      <div class="look-row">
-        <div><strong>极简模式</strong><small class="muted">收起页面上的说明文字和次要按钮，熟悉以后更清爽。不影响底部导航栏。</small></div>
-        <a-switch :checked="preferences.minimal" aria-label="极简模式" @change="preferences.toggle()" />
       </div>
     </section>
   </div>
@@ -86,9 +79,6 @@ function pickTheme(value: ThemeMode) { if (appearance.mode !== value) { appearan
 .look-theme[data-theme-preview='dark'] em:nth-child(2) { background: #3b404b; }
 .look-theme[data-theme-preview='dark'] em:nth-child(3) { background: #5fcb9d; }
 
-.look-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-.look-row > div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.look-row small { font-size: 12px; line-height: 1.6; }
 
 @media (max-width: 767px) {
   .look-options { gap: 8px; }

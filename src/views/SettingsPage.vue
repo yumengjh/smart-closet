@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PageTitle from '../shell/PageTitle.vue'
 import { computed, defineAsyncComponent, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
@@ -64,8 +65,8 @@ const categories: SettingsCategory[] = [
   {
     key: 'appearance',
     label: '界面偏好',
-    eyebrow: '导航栏、颜色与极简',
-    description: '底部导航栏的样式、浅色或深色，以及极简模式。',
+    eyebrow: '导航栏与颜色',
+    description: '底部导航栏的样式，浅色或深色。',
     icon: BgColorsOutlined,
     hidden: () => firstLogin.value,
     component: defineAsyncComponent(() => import('./settings/SettingsAppearanceSection.vue')),
@@ -145,14 +146,7 @@ function goBack() {
 </script>
 
 <template>
-  <div class="page-heading simple-heading settings-heading" :class="{ 'mobile-hidden': mobileInSection }">
-    <div>
-      <p class="eyebrow">账户与设置</p>
-      <h1>{{ firstLogin ? '欢迎使用鱼搭' : '我的' }}</h1>
-      <p v-if="!firstLogin" class="page-subtitle">账户、助手和衣橱偏好。</p>
-    </div>
-    <div class="settings-avatar">{{ (closet.user?.displayName || closet.user?.username)?.slice(0, 1).toUpperCase() }}</div>
-  </div>
+  <PageTitle :title="firstLogin ? '欢迎使用鱼搭' : '我的'" :hint="firstLogin ? undefined : '账户、助手和衣橱偏好。'" />
 
   <!-- 首次登录提示 -->
   <div v-if="firstLogin" class="first-login-note">
@@ -176,6 +170,10 @@ function goBack() {
     <div v-if="!firstLogin && (tryOnAccess?.enabled || tryOnAccess?.hasHistory)" class="tryon-settings-links"><a-button v-if="tryOnAccess?.enabled" @click="router.push('/try-on')"><CameraOutlined /> 实时试穿</a-button><a-button @click="router.push('/try-on?history=1')"><PictureOutlined /> 试穿拍摄历史</a-button></div>
     <!-- 分类导航（PC 始终显示；移动端仅在列表页显示） -->
     <nav class="settings-nav" :class="{ 'mobile-hidden': mobileInSection }" aria-label="设置分类">
+      <div v-if="!firstLogin" class="settings-profile">
+        <span class="settings-avatar">{{ (closet.user?.displayName || closet.user?.username)?.slice(0, 1).toUpperCase() }}</span>
+        <span class="settings-profile-text"><strong>{{ closet.user?.displayName || closet.user?.username }}</strong><small>@{{ closet.user?.username }}<template v-if="closet.user?.role === 'ADMIN'"> · 管理员</template></small></span>
+      </div>
       <a-button
         type="text"
         v-for="cat in visibleCategories"

@@ -3,7 +3,7 @@ import { createUuid } from '../domain/id'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { App } from 'ant-design-vue'
-import { CloseOutlined, PlusOutlined, SendOutlined, StopOutlined, PushpinOutlined, PushpinFilled, MoreOutlined, HistoryOutlined, SettingOutlined, CheckOutlined, SkinOutlined, AppstoreOutlined, BlockOutlined, BulbOutlined } from '@ant-design/icons-vue'
+import { CloseOutlined, PlusOutlined, StopOutlined, MoreOutlined, HistoryOutlined, CheckOutlined, SkinOutlined, AppstoreOutlined, BlockOutlined, BulbOutlined, FormOutlined, EditOutlined, QuestionCircleOutlined, CopyOutlined, ProfileOutlined, SlidersOutlined, ArrowUpOutlined } from '@ant-design/icons-vue'
 import { usingMocks } from '../services/api'
 import { agentRequest, streamMessage, type AgentSession, type AgentMessage, type Models, type Memory, type Quota } from './api'
 import { pageContext } from './bridge'
@@ -24,12 +24,11 @@ import AgentWorkspaceResult from './AgentWorkspaceResult.vue'
 import AssistantOrb from './AssistantOrb.vue'
 import BloubAvatar from './BloubAvatar.vue'
 import { applyAvatarMode, validCue, type AvatarCue } from './avatar'
-import SoundToggle from '../components/SoundToggle.vue'
 import TaskNotice from '../components/TaskNotice.vue'
 import { playSound } from '../services/sound'
 import { useClosetStore } from '../stores/closet'
 import { useFloatingPosition } from './useFloatingPosition'
-import { clampHeight, clampSize, clampWidth, DEFAULT_FLOATING_HEIGHT, DEFAULT_WIDTH, heightBounds, keyboardSize, restoreLayout, widthBounds, type AssistantMode } from './assistantLayout'
+import { centerBounds, centerSize, CENTER_HEIGHT, CENTER_WIDTH, clampHeight, clampSize, clampWidth, DEFAULT_FLOATING_HEIGHT, DEFAULT_WIDTH, heightBounds, keyboardSize, LAYOUT_VERSION, restoreLayout, widthBounds, type AssistantMode } from './assistantLayout'
 const props = defineProps<{ suspended?: boolean }>()
 const route = useRoute(); const router = useRouter(); const { modal, message } = App.useApp()
 const open = ref(false); const busy = ref(false); const loading = ref(false); const status = ref(''); const error = ref(''); const input = ref('')
@@ -53,8 +52,8 @@ function showFailure(e: unknown, fallback: string) {
 }
 const closet = useClosetStore()
 const debugOpen = ref(false), debugRequest = ref<string | null>(null), debugUpdates = ref(0)
-const historyOpen = ref(false); const renameOpen = ref(false); const renameTitle = ref(''); const renaming = ref(false)
-const optionsOpen = ref(false); const layoutMenuOpen = ref(false); const delighted = ref(false)
+const railOpen = ref(false); const renameOpen = ref(false); const renameTitle = ref(''); const renaming = ref(false)
+const optionsOpen = ref(false); const delighted = ref(false)
 const waitingTopics = ref(false)
 const topics = [
   { label: '聊聊穿搭', prompt: '给我一些日常通勤的穿搭灵感吧。' },
@@ -94,23 +93,26 @@ async function openFromWaiting(event: Event) {
   if (!open.value) await toggle()
   else { await nextTick(); textarea.value?.focus() }
 }
-const mode = ref<AssistantMode>('overlay'); const preferredWidth = ref(DEFAULT_WIDTH); const floatingHeight = ref(DEFAULT_FLOATING_HEIGHT); const viewport = ref({ width: window.innerWidth, height: window.innerHeight })
+const mode = ref<AssistantMode>('center'); const preferredWidth = ref(DEFAULT_WIDTH); const floatingHeight = ref(DEFAULT_FLOATING_HEIGHT); const viewport = ref({ width: window.innerWidth, height: window.innerHeight })
 const pinKey = computed(() => `yixu.assistant-pin.v1:${closet.user?.username || 'local'}`)
 const layoutKey = computed(() => `yixu.assistant-layout.v1:${closet.user?.username || 'local'}`)
 const panelKey = computed(() => `yixu.assistant-panel.v1:${closet.user?.username || 'local'}`)
-const dimensions = computed(() => ({ width: clampWidth(preferredWidth.value, viewport.value.width, mode.value), height: clampHeight(floatingHeight.value, viewport.value.height) }))
+// The centre window takes the dock's place at the bottom (the dock steps away while it is open; 清新改版 §3.4).
+const CENTER_BOTTOM = 20
+const centerPreferred = ref({ width: CENTER_WIDTH, height: CENTER_HEIGHT })
+const centerDockSpace = computed(() => CENTER_BOTTOM)
+const dimensions = computed(() => mode.value === 'center' ? centerSize(viewport.value, centerDockSpace.value, centerPreferred.value) : { width: clampWidth(preferredWidth.value, viewport.value.width, mode.value), height: clampHeight(floatingHeight.value, viewport.value.height) })
 const floating = useFloatingPosition(panelKey, dimensions, () => 16)
 const mobileViewport = ref({ height: window.visualViewport?.height ?? window.innerHeight, top: window.visualViewport?.offsetTop ?? 0 })
 const sheetDrag = ref(0)
-const panelStyle = computed(() => compact.value ? { '--vvt': `${mobileViewport.value.top}px`, '--vvh': `${mobileViewport.value.height}px`, transform: sheetDrag.value ? `translateY(${sheetDrag.value}px)` : undefined } : { width: `${dimensions.value.width}px`, ...(mode.value === 'floating' ? { ...floating.style.value, height: `${dimensions.value.height}px` } : {}) })
-const modes: { key: AssistantMode; label: string }[] = [{ key: 'overlay', label: '浮在页面上' }, { key: 'docked', label: '停靠在右侧，挤开页面' }, { key: 'floating', label: '自由窗口' }]
-const modeLabel = computed(() => modes.find(item => item.key === mode.value)!.label)
-function persistLayout() { try { localStorage.setItem(layoutKey.value, JSON.stringify({ mode: mode.value, width: preferredWidth.value, floatingHeight: floatingHeight.value })) } catch {} }
+const panelStyle = computed(() => compact.value ? { '--vvt': `${mobileViewport.value.top}px`, '--vvh': `${mobileViewport.value.height}px`, transform: sheetDrag.value ? `translateY(${sheetDrag.value}px)` : undefined } : { width: `${dimensions.value.width}px`, ...(mode.value === 'floating' ? { ...floating.style.value, height: `${dimensions.value.height}px` } : mode.value === 'center' ? { height: `${dimensions.value.height}px`, left: `calc(50% - ${dimensions.value.width / 2}px)`, bottom: `${CENTER_BOTTOM}px` } : {}) })
+const modes: { key: AssistantMode; label: string }[] = [{ key: 'center', label: '下方居中' }, { key: 'overlay', label: '浮在右侧' }, { key: 'docked', label: '停靠右侧（挤开页面）' }, { key: 'floating', label: '自由窗口' }]
+function persistLayout() { try { localStorage.setItem(layoutKey.value, JSON.stringify({ version: LAYOUT_VERSION, mode: mode.value, centerWidth: centerPreferred.value.width, centerHeight: centerPreferred.value.height, width: preferredWidth.value, floatingHeight: floatingHeight.value })) } catch {} }
 function restorePreferences() {
   let raw: string | null = null, pin: string | null = null
   try { raw = localStorage.getItem(layoutKey.value) } catch {}
   try { pin = localStorage.getItem(pinKey.value) } catch {}
-  const saved = restoreLayout(raw, pin); mode.value = saved.mode; preferredWidth.value = saved.width; floatingHeight.value = saved.floatingHeight
+  const saved = restoreLayout(raw, pin); mode.value = saved.mode; preferredWidth.value = saved.width; floatingHeight.value = saved.floatingHeight; centerPreferred.value = { width: saved.centerWidth, height: saved.centerHeight }
   persistLayout()
 }
 function syncDock() {
@@ -129,7 +131,7 @@ function handleBounds(edge: ResizeEdge) {
   if (mode.value !== 'floating') return bounds
   return { ...bounds, max: Math.min(bounds.max, edge === 'left' ? floating.coordinates.value.x + dimensions.value.width - 8 : viewport.value.width - floating.coordinates.value.x - 8) }
 }
-const resizeHandles = computed(() => (mode.value === 'floating' ? ['left', 'right', 'bottom', 'corner'] as const : ['left'] as const).map(edge => ({ edge, label: edge === 'bottom' ? '调整助手高度' : edge === 'corner' ? '调整助手宽度和高度' : '调整助手宽度', bounds: handleBounds(edge), value: edge === 'bottom' ? dimensions.value.height : dimensions.value.width })))
+const resizeHandles = computed(() => (mode.value === 'floating' ? ['left', 'right', 'bottom', 'corner'] as const : mode.value === 'center' ? [] as const : ['left'] as const).map(edge => ({ edge, label: edge === 'bottom' ? '调整助手高度' : edge === 'corner' ? '调整助手宽度和高度' : '调整助手宽度', bounds: handleBounds(edge), value: edge === 'bottom' ? dimensions.value.height : dimensions.value.width })))
 function applyResize() {
   resizeFrame = 0
   const origin = resizeOrigin
@@ -177,6 +179,16 @@ function resetSize(edge: ResizeEdge) {
 function changeMode({ key }: { key: string | number }) { const next = modes.find(item => item.key === key); if (!next || next.key === mode.value) return; endResize(); floating.end(); mode.value = next.key; persistLayout(); playSound('latch') }
 watch(layoutKey, restorePreferences, { immediate: true })
 watch([open, compact, mode, () => dimensions.value.width, () => props.suspended], syncDock, { flush: 'sync' })
+// Centre window: the dock steps away while it is open (html.assistant-center-open, dock.css) and comes back a little after
+// the window starts folding into the 问鱼搭 pill, as in the L mockup. Leaving the page from the chat closes the window.
+let dockReturn = 0
+watch([open, compact, mode, () => props.suspended], ([visible, mobile, current, suspended]) => {
+  const on = Boolean(visible && !mobile && current === 'center' && !suspended), root = document.documentElement
+  clearTimeout(dockReturn)
+  if (on) root.classList.add('assistant-center-open')
+  else if (root.classList.contains('assistant-center-open')) dockReturn = window.setTimeout(() => root.classList.remove('assistant-center-open'), reducedMotion.matches || !visible && current !== 'center' ? 0 : 260)
+}, { flush: 'sync', immediate: true })
+watch(() => route.fullPath, () => { if (open.value && !compact.value && mode.value === 'center') close() })
 // Phones get a bottom sheet: pull the handle or header down far or fast enough to dismiss it.
 let sheetOrigin: { pointer: number; y: number; last: number; time: number; speed: number } | undefined
 function startSheetDrag(event: PointerEvent) {
@@ -208,6 +220,12 @@ const morphEasing = 'cubic-bezier(.2,.8,.2,1)'
 function morphGeometry(el: Element) {
   const from = launcher.value?.rect(); const avatar = el.querySelector('.assistant-header-avatar')?.getBoundingClientRect(); const box = el.getBoundingClientRect()
   if (!from?.width || !avatar) return null
+  // The dock's 问鱼搭 pill: the window unfolds from the whole pill's outline (rounded inset), the face flies to the header.
+  const pill = launcher.value?.pillRect()
+  if (pill?.width) {
+    const small = `inset(${pill.top - box.top}px ${box.right - pill.right}px ${box.bottom - pill.bottom}px ${pill.left - box.left}px round ${pill.height / 2}px)`
+    return { from, avatar, small, large: 'inset(0px 0px 0px 0px round 20px)' }
+  }
   const cx = from.left + from.width / 2 - box.left, cy = from.top + from.height / 2 - box.top
   const radius = Math.hypot(Math.max(cx, box.width - cx), Math.max(cy, box.height - cy))
   return { from, avatar, small: `circle(${from.width / 2}px at ${cx}px ${cy}px)`, large: `circle(${radius}px at ${cx}px ${cy}px)` }
@@ -220,10 +238,71 @@ async function flyGhost(from: DOMRect, to: DOMRect, duration: number) {
   await ghost.animate([{ transform: at(from) }, { transform: at(to) }], { duration, easing: morphEasing, fill: 'forwards' }).finished.catch(() => {})
   morph.value = null
 }
+// 从 问鱼搭 胶囊展开（清新改版 §3.4，同 l-closet.html 样稿）：窗口的裁剪框从胶囊的轮廓（圆角 inset）长成整窗，
+// 内容随后依次浮现；收起时内容先淡出，再缩回胶囊。表情从胶囊飞进窗口标题。
+function fromPill(box: DOMRect) {
+  const pill = launcher.value?.pillRect()
+  if (!pill?.width) return null
+  return `inset(${pill.top - box.top}px ${box.right - pill.right}px ${box.bottom - pill.bottom}px ${pill.left - box.left}px round ${pill.height / 2}px)`
+}
+function riseParts(panelEl: HTMLElement) {
+  const transcriptItems = [...panelEl.querySelectorAll<HTMLElement>('.assistant-transcript > *')].slice(-4)
+  return [panelEl.querySelector<HTMLElement>('.assistant-header'), ...transcriptItems, panelEl.querySelector<HTMLElement>('.assistant-composer')].filter((part): part is HTMLElement => Boolean(part))
+}
+function centerEnter(panelEl: HTMLElement, done: () => void) {
+  const start = fromPill(panelEl.getBoundingClientRect())
+  if (!start) { panelEl.animate([{ opacity: 0, transform: 'translateY(12px) scale(.98)' }, { opacity: 1, transform: 'none' }], { duration: 260, easing: morphEasing }).finished.then(done, done); return }
+  const geometry = morphGeometry(panelEl)
+  if (geometry) { panelEl.classList.add('morphing'); void flyGhost(geometry.from, geometry.avatar, 480).then(() => panelEl.classList.remove('morphing')) }
+  riseParts(panelEl).forEach((part, index) => part.animate([{ opacity: 0, transform: 'translateY(14px)' }, { opacity: 1, transform: 'none' }], { duration: 360, delay: 200 + index * 55, easing: 'cubic-bezier(.2,.8,.2,1)', fill: 'backwards' }))
+  panelEl.animate([{ clipPath: start }, { clipPath: 'inset(0px 0px 0px 0px round 24px)' }], { duration: 520, easing: 'cubic-bezier(.2,.9,.15,1)' }).finished.then(done, done)
+}
+function centerLeave(panelEl: HTMLElement, done: () => void) {
+  const end = fromPill(panelEl.getBoundingClientRect())
+  if (!end) { panelEl.animate([{ opacity: 1 }, { opacity: 0, transform: 'translateY(12px) scale(.98)' }], { duration: 180, fill: 'forwards' }).finished.then(done, done); return }
+  const geometry = morphGeometry(panelEl)
+  if (geometry) { landing.value = true; panelEl.classList.add('morphing'); void flyGhost(geometry.avatar, geometry.from, 400).then(() => { landing.value = false }) }
+  riseParts(panelEl).forEach(part => part.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 140, fill: 'forwards' }))
+  panelEl.animate([{ clipPath: 'inset(0px 0px 0px 0px round 24px)' }, { clipPath: end }], { duration: 420, easing: 'cubic-bezier(.5,0,.2,1)', fill: 'forwards' }).finished.then(done, done)
+}
+
+// 下方居中窗口的边缘拖拽：左右边改宽度（保持居中，所以宽度变化是拖动距离的两倍），上边改高度，两个上角同时改；
+// 双击恢复默认，方向键微调；尺寸按账号记在本机（assistantLayout centerWidth/centerHeight）。
+type CenterEdge = 'left' | 'right' | 'top' | 'top-left' | 'top-right'
+const centerEdges: { edge: CenterEdge; label: string }[] = [{ edge: 'left', label: '拖动调整宽度' }, { edge: 'right', label: '拖动调整宽度' }, { edge: 'top', label: '拖动调整高度' }, { edge: 'top-left', label: '拖动调整大小' }, { edge: 'top-right', label: '拖动调整大小' }]
+let centerDrag: { edge: CenterEdge; x: number; y: number; width: number; height: number } | undefined
+function setCenterSize(width: number, height: number) { centerPreferred.value = centerSize(viewport.value, centerDockSpace.value, { width, height }) }
+function startCenterResize(event: PointerEvent, edge: CenterEdge) {
+  if (event.button !== 0) return
+  event.preventDefault(); (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
+  centerDrag = { edge, x: event.clientX, y: event.clientY, ...dimensions.value }
+  resizing.value = true; document.documentElement.classList.add('assistant-resizing')
+}
+function moveCenterResize(event: PointerEvent) {
+  const drag = centerDrag
+  if (!drag) return
+  const dx = event.clientX - drag.x, dy = event.clientY - drag.y
+  const width = drag.edge.includes('left') ? drag.width - dx * 2 : drag.edge.includes('right') ? drag.width + dx * 2 : drag.width
+  setCenterSize(width, drag.edge.startsWith('top') ? drag.height - dy : drag.height)
+}
+function endCenterResize() {
+  if (!centerDrag) return
+  centerDrag = undefined; resizing.value = false; document.documentElement.classList.remove('assistant-resizing'); persistLayout()
+}
+function resetCenterSize() { setCenterSize(CENTER_WIDTH, CENTER_HEIGHT); persistLayout() }
+function centerResizeKey(event: KeyboardEvent, edge: CenterEdge) {
+  const step = 24, { width, height } = dimensions.value
+  const delta = { ArrowLeft: [-step * 2, 0], ArrowRight: [step * 2, 0], ArrowUp: [0, step], ArrowDown: [0, -step] }[event.key]
+  if (!delta) return
+  event.preventDefault()
+  setCenterSize(edge === 'top' ? width : width + delta[0], edge === 'left' || edge === 'right' ? height : height + delta[1]); persistLayout()
+}
+const centerLimits = computed(() => centerBounds(viewport.value, centerDockSpace.value))
 function enterPanel(el: Element, done: () => void) {
   const panelEl = el as HTMLElement
   if (reducedMotion.matches) { done(); return }
   if (compact.value) { panelEl.animate([{ transform: 'translateY(100%)' }, { transform: 'none' }], { duration: 340, easing: morphEasing }).finished.then(done, done); return }
+  if (mode.value === 'center') { centerEnter(panelEl, done); return }
   const geometry = morphGeometry(el)
   if (mode.value === 'docked' || !geometry) { panelEl.animate([{ opacity: 0, transform: 'translateY(12px) scale(.98)' }, { opacity: 1, transform: 'none' }], { duration: 240, easing: morphEasing }).finished.then(done, done); return }
   panelEl.classList.add('morphing')
@@ -234,6 +313,7 @@ function leavePanel(el: Element, done: () => void) {
   const panelEl = el as HTMLElement
   if (reducedMotion.matches) { done(); return }
   if (compact.value) { panelEl.animate([{ transform: panelEl.style.transform || 'none' }, { transform: 'translateY(100%)' }], { duration: 260, easing: 'cubic-bezier(.4,0,1,1)', fill: 'forwards' }).finished.then(() => { sheetDrag.value = 0; done() }, done); return }
+  if (mode.value === 'center') { centerLeave(panelEl, done); return }
   const geometry = morphGeometry(el)
   if (mode.value === 'docked' || !geometry) { panelEl.animate([{ opacity: 1 }, { opacity: 0, transform: 'translateY(12px) scale(.98)' }], { duration: 180, fill: 'forwards' }).finished.then(done, done); return }
   landing.value = true; panelEl.classList.add('morphing')
@@ -265,6 +345,24 @@ async function load() {
 }
 async function createSession() { const created = await agentRequest<AgentSession>('/sessions', 'POST'); sessions.value.unshift(created); selected.value = created.id; messages.value = []; return created }
 async function selectSession() { if (busy.value) return; error.value = ''; const id = selected.value; try { const history = id ? await agentRequest<AgentMessage[]>(`/sessions/${id}/messages`) : []; if (selected.value === id) messages.value = history } catch (e) { error.value = String(e) } }
+// 清新改版 §3.1: chat history is a rail inside the window (side by side in the wide centre window), greeting on an empty chat,
+// copy on each reply. Groups: 今天 / 最近 7 天 / 更早, by the session's last update.
+const wideRail = computed(() => !compact.value && mode.value === 'center' && dimensions.value.width >= 640)
+const sessionGroups = computed(() => {
+  const day = new Date(); day.setHours(0, 0, 0, 0)
+  const today = day.getTime(), week = today - 6 * 86400000
+  const groups = [{ label: '今天', items: [] as AgentSession[] }, { label: '最近 7 天', items: [] as AgentSession[] }, { label: '更早', items: [] as AgentSession[] }]
+  for (const item of [...sessions.value].sort((a, b) => b.updatedAt - a.updatedAt)) groups[item.updatedAt >= today ? 0 : item.updatedAt >= week ? 1 : 2].items.push(item)
+  return groups.filter(group => group.items.length)
+})
+const greeting = computed(() => {
+  const hour = new Date().getHours(), name = closet.user?.displayName || closet.user?.username || ''
+  return `${hour < 5 ? '夜深了' : hour < 11 ? '早上好' : hour < 14 ? '中午好' : hour < 18 ? '下午好' : '晚上好'}${name ? `，${name}` : ''}`
+})
+async function copyMessage(text: string) {
+  try { await navigator.clipboard.writeText(text); message.success('已复制') } catch { message.error('复制失败，请手动选择文字。') }
+}
+function startFresh() { if (!wideRail.value) railOpen.value = false; void newSession() }
 async function newSession() { try { await createSession(); input.value = ''; await nextTick(); textarea.value?.focus() } catch (e) { error.value = String(e) } }
 async function setModel(value: string) { if (!session.value) return; const target = session.value; const model = value || null; try { const updated = await agentRequest<AgentSession>(`/sessions/${selected.value}`, 'PUT', { title: target.title, model }); Object.assign(target, updated) } catch (e) { error.value = String(e) } }
 function rename() { if (session.value) { renameTitle.value = session.value.title; renameOpen.value = true } }
@@ -274,8 +372,9 @@ async function saveTitle() {
   try { const target = session.value; const updated = await agentRequest<AgentSession>(`/sessions/${target.id}`, 'PUT', { title: renameTitle.value.trim(), model: target.model }); Object.assign(target, updated); renameOpen.value = false; playSound('success') }
   catch (e) { message.error(String(e)) } finally { renaming.value = false }
 }
-async function chooseSession(id: string) { selected.value = id; historyOpen.value = false; await selectSession(); await scrollBottom() }
+async function chooseSession(id: string) { selected.value = id; if (!wideRail.value) railOpen.value = false; await selectSession(); await scrollBottom() }
 function menuAction({ key }: { key: string | number }) {
+  if (typeof key === 'string' && key.startsWith('layout:')) { changeMode({ key: key.slice(7) }); return }
   if (key === 'rename') rename()
   else if (key === 'delete') deleteChats()
   else if (key === 'clear') deleteChats(true)
@@ -377,65 +476,115 @@ function lockBackground(lock: boolean) {
 watch([open, compact, () => props.suspended], ([visible, mobile, suspended]) => lockBackground(visible && mobile && !suspended), { flush: 'post' })
 onMounted(() => { window.addEventListener('closet-assistant-open', openFromWaiting); window.addEventListener(ASSISTANT_SEND_EVENT, sendFromCard); window.addEventListener(ASSISTANT_PREFILL_EVENT, prefillFromCard); window.addEventListener('resize', resize); window.addEventListener('keydown', keyboard); window.addEventListener('blur', cancelResize); window.visualViewport?.addEventListener('resize', resizeMobileViewport); window.visualViewport?.addEventListener('scroll', resizeMobileViewport) })
 function cancelResize() { endResize() }
-onUnmounted(() => { abort?.abort(); endResize(); floating.end(); document.documentElement.classList.remove('assistant-docked'); document.documentElement.style.removeProperty('--assistant-dock-width'); window.removeEventListener('closet-assistant-open', openFromWaiting); window.removeEventListener(ASSISTANT_SEND_EVENT, sendFromCard); window.removeEventListener(ASSISTANT_PREFILL_EVENT, prefillFromCard); abort?.abort(); clearTimeout(delightTimer); window.removeEventListener('resize', resize); window.removeEventListener('keydown', keyboard); window.removeEventListener('blur', cancelResize); window.visualViewport?.removeEventListener('resize', resizeMobileViewport); window.visualViewport?.removeEventListener('scroll', resizeMobileViewport); lockBackground(false) })
+onUnmounted(() => { abort?.abort(); endResize(); floating.end(); document.documentElement.classList.remove('assistant-docked', 'assistant-center-open'); document.documentElement.style.removeProperty('--assistant-dock-width'); window.removeEventListener('closet-assistant-open', openFromWaiting); window.removeEventListener(ASSISTANT_SEND_EVENT, sendFromCard); window.removeEventListener(ASSISTANT_PREFILL_EVENT, prefillFromCard); abort?.abort(); clearTimeout(delightTimer); window.removeEventListener('resize', resize); window.removeEventListener('keydown', keyboard); window.removeEventListener('blur', cancelResize); window.visualViewport?.removeEventListener('resize', resizeMobileViewport); window.visualViewport?.removeEventListener('scroll', resizeMobileViewport); lockBackground(false) })
 </script>
 <template>
   <AgentTraceModal v-model:open="debugOpen" :session-id="selected" :request-id="debugRequest" :updates="debugUpdates" />
-  <AssistantOrb ref="launcher" :open="open || landing" :suppressed="editorRoute || props.suspended" :mood="mood" :busy="busy" :phase="isOperating?'operating':activityPhase" :tool="activityTool" :cue="avatarCue" @toggle="toggle" />
+  <AssistantOrb ref="launcher" dock :open="open || landing" :suppressed="editorRoute || props.suspended" :mood="mood" :busy="busy" :phase="isOperating?'operating':activityPhase" :tool="activityTool" :cue="avatarCue" @toggle="toggle" />
   <Teleport to="body">
     <Transition name="assistant-scrim"><div v-if="open && compact" v-show="!props.suspended" class="assistant-scrim" @click="close" /></Transition>
+    <!-- 下方居中窗口打开时页面轻微模糊（导航胶囊保持清晰可点），点模糊处收起。 -->
+    <Transition name="assistant-veil"><div v-if="open && !compact && mode === 'center'" v-show="!props.suspended" class="assistant-veil" aria-hidden="true" @click="close" /></Transition>
     <span v-if="morph" v-show="!props.suspended" ref="morphGhost" class="bloub-orb-shape assistant-morph" :style="{ '--orb-size': `${morph.size}px` }" aria-hidden="true"><BloubAvatar v-bind="launcher?.appearance" :size="morph.size * 1.25" /></span>
     <Transition :css="false" @enter="enterPanel" @leave="leavePanel">
-      <aside v-if="open" v-show="!props.suspended" id="closet-assistant" ref="panel" tabindex="-1" class="assistant-panel" :class="[compact ? 'sheet' : mode, { pinned: mode === 'overlay' && !compact, dragging: floating.dragging.value || !!sheetDrag, resizing }]" :style="panelStyle" :role="compact ? 'dialog' : 'complementary'" :aria-modal="compact || undefined" aria-label="个人助手">
+      <aside v-if="open" v-show="!props.suspended" id="closet-assistant" ref="panel" tabindex="-1" class="assistant-panel" :class="[compact ? 'sheet' : mode, { 'wide-rail': wideRail && railOpen, pinned: mode === 'overlay' && !compact, dragging: floating.dragging.value || !!sheetDrag, resizing }]" :style="panelStyle" :role="compact ? 'dialog' : 'complementary'" :aria-modal="compact || undefined" aria-label="个人助手">
+        <template v-if="!compact && mode === 'center'"><a-button v-for="item in centerEdges" :key="item.edge" type="text" class="assistant-center-handle" :class="`edge-${item.edge}`" role="separator" :aria-label="item.label" :aria-orientation="item.edge === 'top' ? 'horizontal' : 'vertical'" :aria-valuenow="Math.round(item.edge === 'top' ? dimensions.height : dimensions.width)" :aria-valuemin="item.edge === 'top' ? centerLimits.height.min : centerLimits.width.min" :aria-valuemax="item.edge === 'top' ? centerLimits.height.max : centerLimits.width.max" aria-controls="closet-assistant" tabindex="0" data-no-drag data-sound="off" @pointerdown="startCenterResize($event, item.edge)" @pointermove="moveCenterResize" @pointerup="endCenterResize" @pointercancel="endCenterResize" @lostpointercapture="endCenterResize" @dblclick="resetCenterSize" @keydown="centerResizeKey($event, item.edge)" /></template>
         <template v-if="!compact"><a-button v-for="handle in resizeHandles" :key="handle.edge" type="text" class="assistant-resize-handle" :class="`resize-${handle.edge}`" role="separator" :aria-label="handle.label" :aria-orientation="handle.edge === 'bottom' ? 'horizontal' : 'vertical'" :aria-valuenow="Math.round(handle.value)" :aria-valuemin="handle.bounds.min" :aria-valuemax="handle.bounds.max" :aria-valuetext="handle.edge === 'corner' ? `宽 ${Math.round(dimensions.width)} 像素，高 ${Math.round(dimensions.height)} 像素` : undefined" aria-controls="closet-assistant" tabindex="0" data-no-drag data-sound="off" @pointerdown="startResize($event, handle.edge)" @pointermove="moveResize" @pointerup="endResize()" @pointercancel="endResize()" @lostpointercapture="endResize()" @keydown="resizeKey($event, handle.edge)" @dblclick="resetSize(handle.edge)" /></template>
         <header class="assistant-header" @pointerdown="startHeaderDrag" @pointermove="moveHeader" @pointerup="endHeaderDrag" @pointercancel="endHeaderDrag" @lostpointercapture="endHeaderDrag">
           <span v-if="compact" class="assistant-sheet-handle" aria-hidden="true" />
-          <div class="assistant-identity"><span class="assistant-face assistant-header-avatar" :class="{'bloub-responding':launcher?.responding}"><BloubAvatar v-bind="launcher?.appearance" :size="48" /></span><div><strong>鱼搭助手</strong><small :title="session?.title">{{ session?.title || '今天也一起好好穿衣' }}</small></div></div>
+          <a-tooltip :title="railOpen ? '收起聊天记录' : '聊天记录'"><a-button type="text" class="assistant-rail-toggle" :class="{ on: railOpen }" data-no-drag :aria-label="railOpen ? '收起聊天记录' : '聊天记录'" :aria-expanded="railOpen" :disabled="loading" @click="railOpen = !railOpen"><HistoryOutlined /></a-button></a-tooltip>
+          <div class="assistant-identity"><span class="assistant-face assistant-header-avatar" :class="{'bloub-responding':launcher?.responding}"><BloubAvatar v-bind="launcher?.appearance" :size="40" /></span><div><strong>鱼搭</strong><small :title="session?.title">{{ session?.title || '新对话' }}</small></div></div>
           <div class="assistant-header-actions" data-no-drag>
-            <a-tooltip title="新建对话"><a-button type="text" aria-label="新建对话" :disabled="busy || usingMocks" @click="newSession"><PlusOutlined /></a-button></a-tooltip>
-            <a-tooltip title="聊天记录"><a-button type="text" aria-label="聊天记录" :disabled="busy || loading" @click="historyOpen = true"><HistoryOutlined /></a-button></a-tooltip>
-            <a-dropdown v-if="!compact" v-model:open="layoutMenuOpen" :trigger="['click']"><a-tooltip :title="layoutMenuOpen ? '' : `助手布局：${modeLabel}`"><a-button type="text" :aria-label="`助手布局：${modeLabel}，切换布局`" aria-haspopup="menu" data-sound="off"><component :is="mode === 'floating' ? PushpinOutlined : PushpinFilled" /></a-button></a-tooltip><template #overlay><a-menu :selected-keys="[mode]" aria-label="助手布局模式" @click="changeMode"><a-menu-item v-for="item in modes" :key="item.key" :aria-label="`${item.label}${mode === item.key ? '，当前模式' : ''}`"><CheckOutlined v-if="mode === item.key" />{{ item.label }}</a-menu-item></a-menu></template></a-dropdown>
-            <a-dropdown :trigger="['click']"><a-button type="text" aria-label="更多助手操作"><MoreOutlined /></a-button><template #overlay><a-menu @click="menuAction"><a-menu-item key="rename" :disabled="!selected || busy">重命名当前对话</a-menu-item><a-menu-item key="memory">管理长期记忆</a-menu-item><a-menu-item key="help">助手使用说明</a-menu-item><a-menu-divider /><a-menu-item key="delete" :disabled="!selected || busy" danger>删除当前对话</a-menu-item><a-menu-item key="clear" :disabled="!sessions.length || busy" danger>清空聊天记录</a-menu-item></a-menu></template></a-dropdown>
-            <a-button type="text" aria-label="关闭个人助手" @click="close"><CloseOutlined /></a-button>
+            <a-tooltip title="新对话"><a-button type="text" aria-label="新对话" :disabled="busy || usingMocks" @click="startFresh"><FormOutlined /></a-button></a-tooltip>
+            <a-dropdown :trigger="['click']" placement="bottomRight" overlay-class-name="assistant-menu">
+              <a-button type="text" aria-label="更多助手操作"><MoreOutlined /></a-button>
+              <template #overlay><a-menu :selected-keys="compact ? [] : [`layout:${mode}`]" @click="menuAction">
+                <a-menu-item key="rename" :disabled="!selected || busy"><EditOutlined /> 重命名对话</a-menu-item>
+                <a-menu-item key="memory"><BulbOutlined /> 长期记忆</a-menu-item>
+                <a-menu-item key="help"><QuestionCircleOutlined /> 使用说明</a-menu-item>
+                <template v-if="!compact">
+                  <a-menu-divider />
+                  <a-menu-item key="layout-caption" disabled class="assistant-menu-caption">窗口位置</a-menu-item>
+                  <a-menu-item v-for="item in modes" :key="`layout:${item.key}`" :aria-label="`${item.label}${mode === item.key ? '，当前' : ''}`"><span class="assistant-menu-check"><CheckOutlined v-if="mode === item.key" /></span>{{ item.label }}</a-menu-item>
+                </template>
+                <a-menu-divider />
+                <a-menu-item key="delete" :disabled="!selected || busy" danger>删除这个对话</a-menu-item>
+                <a-menu-item key="clear" :disabled="!sessions.length || busy" danger>清空全部聊天</a-menu-item>
+              </a-menu></template>
+            </a-dropdown>
+            <a-tooltip title="收起"><a-button type="text" aria-label="关闭个人助手" @click="close"><CloseOutlined /></a-button></a-tooltip>
           </div>
         </header>
-        <div class="assistant-context"><span class="assistant-context-dot" /><span :title="contextName">{{ contextName }}</span><small>随页面更新</small></div>
-        <div v-if="compact" class="assistant-task-notice"><TaskNotice @opened="close" /></div>
-        <div v-if="waitingTopics" class="assistant-waiting-topics"><small>等衣物的这会儿，想聊点什么？选话题后由你发送。</small><div><a-button v-for="topic in topics" :key="topic.label" size="small" :disabled="busy || loading || !models.configured" @click="pickTopic(topic.prompt)">{{ topic.label }}</a-button></div></div>
-        <div ref="transcript" class="assistant-transcript" aria-label="聊天记录" aria-live="polite" :aria-busy="busy">
-          <div v-if="!messages.length" class="assistant-welcome"><BloubAvatar class="assistant-face" :size="74" expression="happy" /><p class="eyebrow">你的鱼搭助手</p><h2>今天我能帮你做什么？</h2><p>按衣柜搭配、翻看保存的搭配、找出重复衣物，<br />也能记住你的穿衣偏好。</p><div class="assistant-welcome-suggestions"><a-button v-for="item in suggestions" :key="item.text" block @click="suggest(item.text)"><component :is="item.icon" /><span>{{ item.text }}</span></a-button></div></div>
-          <article v-for="item in messages" :key="item.id" class="assistant-message" :class="item.role"><small>{{ item.role === 'user' ? '你' : '鱼搭助手' }}</small><p v-if="item.content" class="assistant-text">{{ item.role === 'user' ? userMessageText(item.content) : item.content }}</p><span v-if="item.status === 'FAILED'" class="assistant-interrupted">回复未完成</span><span v-else-if="item.status === 'CANCELLED'" class="assistant-interrupted">已停止生成</span>
-            <a-button v-if="item.role === 'assistant'" type="link" size="small" @click="debugRequest = item.requestId || null; debugOpen = true">查看决策与执行记录</a-button>
-            <a-collapse v-if="item.events.some(e => e.event === 'operation_result')" ghost class="assistant-operation-record"><a-collapse-panel key="steps" header="查看搭台操作记录"><ol><li v-for="event in item.events.filter(e => e.event === 'operation_result')" :key="event.data.operationId">{{ event.data.success ? '✓' : '!' }} {{ event.data.label }}<small v-if="event.data.message"> · {{ event.data.message }}</small></li></ol></a-collapse-panel></a-collapse>
-            <template v-for="(event, index) in item.events" :key="index">
-              <AgentWorkspaceResult v-if="event.event === 'workspace_result'" :result="event.data" @open="showPage" />
-              <AgentCommandCard v-else-if="event.event === 'command'" :command="event.data" />
-              <AgentProposal v-else-if="event.event === 'proposal'" :proposal="event.data" @applied="showPage" />
-              <RecommendationGroup v-else-if="event.event === 'local_recommendation'" :view="event.data" dense />
-              <div v-else-if="event.event === 'memory'" class="assistant-memory-notice"><span>{{ event.data.revoked ? '已撤销' : '已记住' }}：{{ event.data.content }}</span><a-button v-if="!event.data.revoked" type="link" size="small" @click="undoMemory(event.data)">撤销记忆</a-button></div>
-              <div v-else-if="event.event === 'sources' && event.data.articles?.length" class="assistant-sources"><RouterLink v-for="article in event.data.articles" :key="article.id" :to="article.href" @click="showPage">{{ article.title }} ↗</RouterLink></div>
-            </template>
-          </article>
-          <div v-if="busy && (isOperating || activityPhase !== 'responding')" class="assistant-activity"><ThoughtLine v-if="isOperating" :label="canvasExecution.runId ? canvasExecution.label || status : status || '正在操作'" :steps="operationSteps" /><LatticeLoader v-else :label="status || '正在思考'" /></div>
-        </div>
-        <footer class="assistant-composer">
-          <a-alert v-if="error" type="error" :message="error" :description="errorHint || undefined" show-icon closable @close="error = ''"><template v-if="errorNewSession" #action><a-button size="small" type="primary" @click="error = ''; newSession()">新建对话</a-button></template></a-alert>
-          <p v-if="!models.configured && !loading" class="assistant-not-configured">{{ usingMocks ? '演示模式不调用助手' : '助手尚未配置，请联系平台维护者。' }}</p>
-          <QuickRecommend v-if="showQuick" :disabled="busy" @result="quickResult" />
-          <form class="assistant-input-box" @submit.prevent="send">
-            <a-textarea ref="textarea" v-model:value="input" aria-label="发送给助手的消息" :maxlength="4000" :auto-size="{ minRows: 1, maxRows: 4 }" placeholder="想怎么搭？或者问问平台用法…" :bordered="false" :disabled="busy || !models.configured" @keydown.enter.exact="enter" />
-            <a-tooltip v-if="busy" title="停止生成"><a-button type="primary" danger shape="circle" aria-label="停止生成" data-sound="off" @click="stop"><template #icon><StopOutlined /></template></a-button></a-tooltip>
-            <a-button v-else type="primary" html-type="submit" shape="circle" aria-label="发送消息" data-sound="off" :disabled="!input.trim() || !models.configured"><template #icon><SendOutlined /></template></a-button>
-          </form>
-          <div class="assistant-composer-tools">
-            <div><SoundToggle /><a-popover v-model:open="optionsOpen" title="本次对话选项" trigger="click" placement="topLeft" overlay-class-name="assistant-options-popover"><a-button type="text" aria-label="助手对话选项" :aria-expanded="optionsOpen"><SettingOutlined /></a-button><template #content><div class="assistant-options"><label>本会话模型</label><a-select :value="session?.model || ''" aria-label="本会话模型" :options="modelOptions" :disabled="!selected || busy" @change="setModel" /><small v-if="!selected">发送消息或新建对话后可设置会话模型。</small><a-checkbox v-if="context.garmentId" v-model:checked="imageConsent" :disabled="busy">发送当前衣物图片到模型（仅本条）</a-checkbox><RouterLink to="/settings" @click="optionsOpen=false;showPage()">设置角色动效与预览 ↗</RouterLink></div></template></a-popover><span v-if="imageConsent" class="assistant-consent-badge">本条已授权</span></div>
-            <small>{{ quota ? `今日剩余 ${Math.max(0, quota.limit - quota.used)} 条` : '正在读取额度' }}</small>
+        <div class="assistant-body">
+          <!-- 聊天记录（清新改版 §3.1）：窗口内的侧栏，代替原来的弹窗。下方居中窗口里并排显示，窄的布局里盖在聊天上。 -->
+          <Transition name="assistant-rail">
+            <nav v-if="railOpen" class="assistant-rail" aria-label="聊天记录">
+              <a-button class="assistant-rail-new" block :disabled="busy || usingMocks" @click="startFresh"><PlusOutlined /> 新对话</a-button>
+              <div class="assistant-rail-list">
+                <p v-if="!sessions.length" class="assistant-rail-empty">还没有聊天记录</p>
+                <template v-for="group in sessionGroups" :key="group.label">
+                  <small class="assistant-rail-group">{{ group.label }}</small>
+                  <a-button v-for="item in group.items" :key="item.id" type="text" block class="assistant-rail-item" :class="{ on: item.id === selected }" :title="item.title" :disabled="busy" @click="chooseSession(item.id)">{{ item.title }}</a-button>
+                </template>
+              </div>
+              <p class="assistant-rail-note">聊天和长期记忆分开保存</p>
+            </nav>
+          </Transition>
+          <Transition name="assistant-scrim"><div v-if="railOpen" class="assistant-rail-scrim" @click="railOpen = false" /></Transition>
+          <div class="assistant-main">
+            <div v-if="compact" class="assistant-task-notice"><TaskNotice @opened="close" /></div>
+            <div v-if="waitingTopics" class="assistant-waiting-topics"><small>等衣物的这会儿，想聊点什么？选话题后由你发送。</small><div><a-button v-for="topic in topics" :key="topic.label" size="small" shape="round" :disabled="busy || loading || !models.configured" @click="pickTopic(topic.prompt)">{{ topic.label }}</a-button></div></div>
+            <div ref="transcript" class="assistant-transcript" aria-label="聊天内容" aria-live="polite" :aria-busy="busy">
+              <div v-if="!messages.length" class="assistant-welcome">
+                <BloubAvatar class="assistant-face" :size="64" expression="happy" />
+                <h2>{{ greeting }}</h2>
+                <p>想怎么搭、找哪件衣服、记住你的穿衣偏好，直接告诉我就好。</p>
+                <div class="assistant-welcome-suggestions"><a-button v-for="item in suggestions" :key="item.text" shape="round" @click="suggest(item.text)"><component :is="item.icon" /><span>{{ item.text }}</span></a-button></div>
+              </div>
+              <article v-for="item in messages" :key="item.id" class="assistant-message" :class="item.role">
+                <span v-if="item.role === 'assistant'" class="assistant-message-mark" aria-hidden="true"></span>
+                <div class="assistant-message-body">
+                  <span class="assistant-sr">{{ item.role === 'user' ? '你说' : '鱼搭说' }}</span>
+                  <p v-if="item.content" class="assistant-text">{{ item.role === 'user' ? userMessageText(item.content) : item.content }}</p>
+                  <span v-if="item.status === 'FAILED'" class="assistant-interrupted">回复未完成</span><span v-else-if="item.status === 'CANCELLED'" class="assistant-interrupted">已停止生成</span>
+                  <a-collapse v-if="item.events.some(e => e.event === 'operation_result')" ghost class="assistant-operation-record"><a-collapse-panel key="steps" header="搭台操作记录"><ol><li v-for="event in item.events.filter(e => e.event === 'operation_result')" :key="event.data.operationId">{{ event.data.success ? '✓' : '!' }} {{ event.data.label }}<small v-if="event.data.message"> · {{ event.data.message }}</small></li></ol></a-collapse-panel></a-collapse>
+                  <template v-for="(event, index) in item.events" :key="index">
+                    <AgentWorkspaceResult v-if="event.event === 'workspace_result'" :result="event.data" @open="showPage" />
+                    <AgentCommandCard v-else-if="event.event === 'command'" :command="event.data" />
+                    <AgentProposal v-else-if="event.event === 'proposal'" :proposal="event.data" @applied="showPage" />
+                    <RecommendationGroup v-else-if="event.event === 'local_recommendation'" :view="event.data" dense />
+                    <div v-else-if="event.event === 'memory'" class="assistant-memory-notice"><BulbOutlined /><span>{{ event.data.revoked ? '已撤销' : '记住了' }}：{{ event.data.content }}</span><a-button v-if="!event.data.revoked" type="link" size="small" @click="undoMemory(event.data)">撤销</a-button></div>
+                    <div v-else-if="event.event === 'sources' && event.data.articles?.length" class="assistant-sources"><RouterLink v-for="article in event.data.articles" :key="article.id" :to="article.href" @click="showPage">{{ article.title }} ↗</RouterLink></div>
+                  </template>
+                  <div v-if="item.role === 'assistant' && !(busy && item === messages.at(-1))" class="assistant-message-tools">
+                    <a-tooltip title="复制"><a-button type="text" size="small" aria-label="复制这条回复" :disabled="!item.content" @click="copyMessage(item.content)"><CopyOutlined /></a-button></a-tooltip>
+                    <a-tooltip title="决策与执行记录"><a-button type="text" size="small" aria-label="查看决策与执行记录" @click="debugRequest = item.requestId || null; debugOpen = true"><ProfileOutlined /></a-button></a-tooltip>
+                  </div>
+                </div>
+              </article>
+              <div v-if="busy && (isOperating || activityPhase !== 'responding')" class="assistant-activity"><span class="assistant-message-mark" aria-hidden="true"></span><ThoughtLine v-if="isOperating" :label="canvasExecution.runId ? canvasExecution.label || status : status || '正在操作'" :steps="operationSteps" /><LatticeLoader v-else :label="status || '正在思考'" /></div>
+            </div>
+            <footer class="assistant-composer">
+              <a-alert v-if="error" type="error" :message="error" :description="errorHint || undefined" show-icon closable @close="error = ''"><template v-if="errorNewSession" #action><a-button size="small" type="primary" @click="error = ''; newSession()">新对话</a-button></template></a-alert>
+              <p v-if="!models.configured && !loading" class="assistant-not-configured">{{ usingMocks ? '演示模式不调用助手' : '助手尚未配置，请联系平台维护者。' }}</p>
+              <QuickRecommend v-if="showQuick" :disabled="busy" @result="quickResult" />
+              <form class="assistant-input-box" @submit.prevent="send">
+                <a-textarea ref="textarea" v-model:value="input" aria-label="发送给助手的消息" :maxlength="4000" :auto-size="{ minRows: 1, maxRows: 5 }" placeholder="想怎么搭？或者问问怎么用…" :bordered="false" :disabled="busy || !models.configured" @keydown.enter.exact="enter" />
+                <div class="assistant-input-row">
+                  <a-tooltip :title="`我能看到你正在看的：${contextName}`"><span class="assistant-context-chip"><i aria-hidden="true"></i><span>{{ contextName }}</span></span></a-tooltip>
+                  <a-popover v-model:open="optionsOpen" title="这次对话" trigger="click" placement="topLeft" overlay-class-name="assistant-options-popover"><a-button type="text" size="small" class="assistant-options-trigger" aria-label="助手对话选项" :aria-expanded="optionsOpen"><SlidersOutlined /></a-button><template #content><div class="assistant-options"><label>本会话模型</label><a-select :value="session?.model || ''" aria-label="本会话模型" :options="modelOptions" :disabled="!selected || busy" @change="setModel" /><small v-if="!selected">发送消息或新建对话后可设置会话模型。</small><a-checkbox v-if="context.garmentId" v-model:checked="imageConsent" :disabled="busy">发送当前衣物图片到模型（仅本条）</a-checkbox><RouterLink to="/settings" @click="optionsOpen=false;showPage()">设置角色动效与预览 ↗</RouterLink></div></template></a-popover>
+                  <span v-if="imageConsent" class="assistant-consent-badge">本条带图</span>
+                  <small class="assistant-quota">{{ quota ? `今日还能聊 ${Math.max(0, quota.limit - quota.used)} 条` : '' }}</small>
+                  <a-tooltip v-if="busy" title="停止生成"><a-button type="primary" danger shape="circle" class="assistant-send" aria-label="停止生成" data-sound="off" @click="stop"><template #icon><StopOutlined /></template></a-button></a-tooltip>
+                  <a-button v-else type="primary" html-type="submit" shape="circle" class="assistant-send" aria-label="发送消息" data-sound="off" :disabled="!input.trim() || !models.configured"><template #icon><ArrowUpOutlined /></template></a-button>
+                </div>
+              </form>
+              <p class="assistant-ai-note">内容由 AI 生成，请注意甄别</p>
+            </footer>
           </div>
-          <p class="assistant-ai-note">内容由 AI 生成，请注意甄别</p>
-        </footer>
+        </div>
       </aside>
     </Transition>
-    <a-modal v-model:open="historyOpen" title="聊天记录" :footer="null" :width="520"><div class="assistant-history"><a-empty v-if="!sessions.length" description="还没有聊天记录" /><a-button v-for="item in sessions" :key="item.id" block :type="item.id === selected ? 'primary' : 'default'" @click="chooseSession(item.id)">{{ item.title }}</a-button></div><p class="assistant-dialog-note">聊天与长期记忆独立保存。</p></a-modal>
     <a-modal v-model:open="renameOpen" title="重命名对话" ok-text="保存名称" cancel-text="取消" :confirm-loading="renaming" :ok-button-props="{ disabled: !renameTitle.trim() }" @ok="saveTitle"><a-input v-model:value="renameTitle" aria-label="对话名称" :maxlength="100" @press-enter="saveTitle" /></a-modal>
   </Teleport>
 </template>

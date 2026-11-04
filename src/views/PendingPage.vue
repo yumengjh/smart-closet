@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { App as AntApp } from 'ant-design-vue'
-import { CheckCircleOutlined, CheckSquareOutlined, PlusOutlined } from '@ant-design/icons-vue'
+import { CheckCircleOutlined, CheckSquareOutlined, PlusOutlined, CloseOutlined } from '@ant-design/icons-vue'
+import PageTitle from '../shell/PageTitle.vue'
 import { closetApi, type Garment } from '../services/api'
 import { isProcessing } from '../domain/workflow'
 import { useClosetStore } from '../stores/closet'
@@ -25,6 +26,9 @@ async function load() {
 // refusal (a sticker not finished, a newer revision) never stops the rest; the summary lists what did not go through.
 const { modal } = AntApp.useApp()
 const selecting = ref(false), selected = ref(new Set<string>()), batchBusy = ref<'' | BatchMode>(''), batchProgress = ref({ done: 0, total: 0 })
+// 批量时底部悬浮条接替导航胶囊（清新改版 §5）。
+watch(selecting, on => document.documentElement.classList.toggle('closet-selecting', on))
+onUnmounted(() => document.documentElement.classList.remove('closet-selecting'))
 const batchResult = ref<{ type: 'success' | 'warning' | 'error'; message: string; description: string } | null>(null)
 type BatchMode = 'confirm' | 'recognize' | 'trash'
 const batchLabels: Record<BatchMode, string> = { confirm: '确认入柜', recognize: '重新识别资料', trash: '移入回收站' }
@@ -65,18 +69,23 @@ async function turnPage(change: number) { page.value += change; loading.value = 
 onMounted(async () => { alive = true; void loadPictureChecks(); await load(); await closet.refreshCounts(); poll() }); onUnmounted(() => { alive = false; window.clearTimeout(timer) })
 </script>
 <template>
-  <header class="page-heading"><div><h1>未入柜</h1><p class="page-subtitle">处理中的照片和待核对结果都在这里。确认入柜后，它们会移到“我的衣柜”。</p></div><span class="heading-count">{{ total }} 件</span></header>
-  <div class="list-toolbar"><a-segmented v-model:value="filter" :options="['全部', '处理中', '待核对', '需处理']" /><span class="muted">状态筛选当前页</span><a-button v-if="items.length && !selecting" class="pending-batch" @click="selecting = true; batchResult = null"><CheckSquareOutlined /> 批量处理</a-button></div>
-  <section v-if="selecting" class="batch-bar" aria-label="批量处理">
-    <a-checkbox :checked="allSelected" :indeterminate="selected.size > 0 && !allSelected" :disabled="Boolean(batchBusy)" @change="toggleAll">全选</a-checkbox>
-    <span class="batch-count">已选 {{ selected.size }} 件<template v-if="batchBusy"> · 正在处理 {{ batchProgress.done }} / {{ batchProgress.total }}</template></span>
-    <a-space wrap class="batch-actions">
-      <a-button type="primary" :disabled="!selected.size || Boolean(batchBusy)" :loading="batchBusy === 'confirm'" @click="startBatch('confirm')">确认入柜</a-button>
-      <a-button :disabled="!selected.size || Boolean(batchBusy)" :loading="batchBusy === 'recognize'" @click="startBatch('recognize')">重新识别资料</a-button>
-      <a-button danger :disabled="!selected.size || Boolean(batchBusy)" :loading="batchBusy === 'trash'" @click="startBatch('trash')">移入回收站</a-button>
-      <a-button :disabled="Boolean(batchBusy)" @click="exitSelecting">完成</a-button>
-    </a-space>
-  </section>
+  <PageTitle title="未入柜" :count="total" unit="件" hint="处理中的照片和待核对结果都在这里。确认入柜后，它们会移到“我的衣柜”。" />
+  <div class="list-toolbar pending-toolbar"><a-segmented v-model:value="filter" :options="['全部', '处理中', '待核对', '需处理']" aria-label="按状态筛选当前页" /><span class="pending-gap"></span><a-button v-if="items.length && !selecting" class="pending-batch" @click="selecting = true; batchResult = null"><CheckSquareOutlined /> 批量处理</a-button></div>
+  <p v-if="selecting" class="pending-hint">点衣物勾选；选好后在下方确认入柜、重新识别或移入回收站。</p>
+  <Teleport to="body">
+    <Transition name="batch-float">
+      <section v-if="selecting" class="batch-float" aria-label="批量处理">
+        <div class="batch-float-count"><b>{{ selected.size }}</b><span>件已选<small v-if="batchBusy">正在处理 {{ batchProgress.done }} / {{ batchProgress.total }}</small></span></div>
+        <div class="batch-float-pick"><a-checkbox :checked="allSelected" :indeterminate="selected.size > 0 && !allSelected" :disabled="Boolean(batchBusy)" @change="toggleAll">全选</a-checkbox></div>
+        <div class="batch-float-actions">
+          <a-button type="primary" :disabled="!selected.size || Boolean(batchBusy)" :loading="batchBusy === 'confirm'" @click="startBatch('confirm')">确认入柜</a-button>
+          <a-button :disabled="!selected.size || Boolean(batchBusy)" :loading="batchBusy === 'recognize'" @click="startBatch('recognize')">重新识别</a-button>
+          <a-button danger :disabled="!selected.size || Boolean(batchBusy)" :loading="batchBusy === 'trash'" @click="startBatch('trash')">移入回收站</a-button>
+        </div>
+        <a-tooltip title="退出批量处理"><a-button class="batch-float-close" type="text" shape="circle" aria-label="退出批量处理" :disabled="Boolean(batchBusy)" @click="exitSelecting"><CloseOutlined /></a-button></a-tooltip>
+      </section>
+    </Transition>
+  </Teleport>
   <a-alert v-if="batchResult" :type="batchResult.type" :message="batchResult.message" :description="batchResult.description || undefined" show-icon closable class="page-alert batch-result" @close="batchResult = null" />
   <a-alert v-if="error" type="error" :message="error" show-icon class="page-alert" />
   <GarmentCardSkeleton v-if="loading" label="正在加载未入柜衣物…" />
@@ -87,10 +96,8 @@ onMounted(async () => { alive = true; void loadPictureChecks(); await load(); aw
 <style scoped>
 .pending-card { display: grid; gap: 6px; align-content: start; }
 .pending-duplicate { justify-self: start; }
-.pending-batch { margin-left: auto; }
-.batch-bar { position: sticky; top: 8px; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; margin-bottom: 18px; padding: 12px 16px; border: 1px solid var(--line); border-radius: var(--radius-lg, 14px); background: var(--surface); }
-.batch-count { color: var(--muted); }
-.batch-actions { margin-left: auto; }
+.pending-toolbar { flex-direction: row; align-items: center; justify-content: flex-start; flex-wrap: wrap; }
+.pending-gap { flex: 1; }
+.pending-hint { margin: -10px 0 18px; font-size: 13px; color: var(--muted); }
 .batch-result :deep(.ant-alert-description) { white-space: pre-line; }
-@media (max-width: 767px) { .batch-actions { margin-left: 0; } }
 </style>

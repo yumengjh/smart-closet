@@ -5,18 +5,15 @@ import { theme as antTheme } from 'ant-design-vue'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import {
   AppstoreOutlined, CheckCircleOutlined, PictureOutlined, PlusOutlined,
-  SettingOutlined, LogoutOutlined, SkinOutlined, LeftOutlined, RightOutlined,
+  SettingOutlined, LogoutOutlined, SkinOutlined, VideoCameraOutlined, BgColorsOutlined, SoundOutlined, AudioMutedOutlined,
 } from '@ant-design/icons-vue'
-import { readCollapsed, saveCollapsed, sidebarWidth } from '../shell/sidebarPreference'
 import { useClosetStore } from '../stores/closet'
 import { useThemeStore } from '../stores/theme'
 import { antTokens, antComponentTokens } from '../theme/tokens'
 import { usingMocks } from '../services/api'
 import SoundToggle from './SoundToggle.vue'
 import ThemeToggle from './ThemeToggle.vue'
-import MinimalToggle from './MinimalToggle.vue'
 import { usePreferencesStore } from '../stores/preferences'
-import BloubAvatar from '../agent/BloubAvatar.vue'
 import AssistantPanel from '../agent/AssistantPanel.vue'
 import TaskInbox from './TaskInbox.vue'
 import NavGlyph from '../shell/NavGlyph.vue'
@@ -28,7 +25,7 @@ import WaitingGame from './WaitingGame.vue'
 import WaitingStarted from './WaitingStarted.vue'
 import RenderSendOff from './RenderSendOff.vue'
 import { useProcessingStore } from '../stores/processing'
-import { installInteractionSounds, unlockSound } from '../services/sound'
+import { installInteractionSounds, soundEnabled, toggleSound, unlockSound } from '../services/sound'
 import { pendingPath, prefetchRoute, prefetchWhenIdle } from '../composables/useRouteProgress'
 import { accountIsStale, markAccountStale, onAccountChange } from '../domain/accountSession'
 import { useNotificationStore } from '../stores/notifications'
@@ -50,17 +47,9 @@ const closetTheme = computed(() => ({
   components: antComponentTokens(appearance.isDark ? 'dark' : 'light'),
 }))
 const tryonRoute = computed(() => route.path === '/try-on')
-watch(tryonRoute, on => { if (on) tryonExpanded.value = false })
-// Desktop sidebar: expanded (icons + names) or collapsed (icons only); remembered on this browser.
-const savedCollapsed = ref(readCollapsed())
-// 实时试穿要尽量大的取景框：进入时侧栏临时收起成图标，展开只在本次停留有效，不改写保存的偏好。
-const tryonExpanded = ref(false)
-const collapsed = computed(() => tryonRoute.value ? !tryonExpanded.value : savedCollapsed.value)
-function toggleSidebar() {
-  if (tryonRoute.value) { tryonExpanded.value = !tryonExpanded.value; return }
-  savedCollapsed.value = !savedCollapsed.value; saveCollapsed(savedCollapsed.value)
-}
-const frameStyle = computed(() => ({ '--sidebar-w': `${sidebarWidth(collapsed.value)}px` }))
+// 清新改版（docs/design/2026-11-04-清新改版：胶囊导航与衣架衣柜设计.md）：没有侧栏了，导航是底部悬浮胶囊，
+// 页面内容不再让出左侧宽度；--sidebar-w 置 0 让沿用它的浮层（翻页条等）回到正中。
+const frameStyle = { '--sidebar-w': '0px' }
 // 注册后问询 /welcome 也是全屏页，但需要已登录（路由守卫负责）。
 const isLogin = computed(() => ['/login', '/register'].includes(route.path) || route.path === '/welcome' && closet.isSignedIn)
 const isOutfitEditor = computed(() => route.path.startsWith('/outfits/'))
@@ -71,34 +60,50 @@ let tryonAccessTimer = 0
 watch(() => closet.user && !closet.user.mustChangePassword ? closet.user.username : '', name => { resetTryOnAccess(); if (name) void refreshTryOnAccess() }, { immediate: true })
 onMounted(() => { tryonMediaQuery.addEventListener('change', updateTryonNarrow); tryonAccessTimer = window.setInterval(() => { if (closet.user && !closet.user.mustChangePassword && !document.hidden) void refreshTryOnAccess() }, 60000) })
 onUnmounted(() => { tryonMediaQuery.removeEventListener('change', updateTryonNarrow); clearInterval(tryonAccessTimer) })
-const navItems = [
-  { path: '/wardrobe', label: '我的衣柜', icon: AppstoreOutlined, glyph: 'wardrobe' as const },
-  { path: '/pending', label: '未入柜', icon: CheckCircleOutlined, glyph: 'pending' as const },
-  { path: '/outfits', label: '组合台', icon: PictureOutlined, glyph: 'outfits' as const },
-  // OOTD was only reachable from settings and the editor; the bottom bar keeps its five slots, so it is desktop-only there.
-  { path: '/ootd', label: 'OOTD 试穿', icon: SkinOutlined, desktopOnly: true },
-  { path: '/try-on', label: '实时试穿', icon: SkinOutlined, desktopOnly: true },
-  { path: '/settings', label: '我的', icon: SettingOutlined, glyph: 'me' as const },
+// 清新改版 §2.1：桌面胶囊放全部入口；手机只常驻 衣柜、搭配、＋、试穿、问鱼搭 五项（mobile = 手机上的排列位置），
+// 未入柜、OOTD、常见单品、新建搭配收进 ＋ 弹出的卡片，“我的”在顶栏头像菜单。试穿优先实时试穿，没有权限时用 OOTD。
+type NavItem = { path: string; label: string; short?: string; icon: unknown; glyph?: 'wardrobe' | 'pending' | 'outfits' | 'me'; mobile?: number }
+const navItems: NavItem[] = [
+  { path: '/wardrobe', label: '我的衣柜', short: '衣柜', icon: AppstoreOutlined, glyph: 'wardrobe', mobile: 0 },
+  { path: '/pending', label: '未入柜', icon: CheckCircleOutlined, glyph: 'pending' },
+  { path: '/outfits', label: '组合台', short: '搭配', icon: PictureOutlined, glyph: 'outfits', mobile: 10 },
+  { path: '/ootd', label: 'OOTD 试穿', short: '试穿', icon: SkinOutlined },
+  { path: '/try-on', label: '实时试穿', short: '试穿', icon: VideoCameraOutlined, mobile: 30 },
+  { path: '/settings', label: '我的', icon: SettingOutlined, glyph: 'me' },
 ]
+/** Where the item sits in the phone bar, or undefined when it lives elsewhere on phones. */
+function mobileSlot(item: NavItem) {
+  if (closet.user?.mustChangePassword) return item.path === '/settings' ? 0 : undefined
+  if (item.path === '/ootd') return tryOnAccess.value?.enabled ? undefined : 30
+  return item.mobile
+}
+const narrowNav = ref(!window.matchMedia('(min-width: 1024px)').matches)
 // Highlight the clicked destination immediately; on slow networks the route itself resolves later.
 const navPath = computed(() => pendingPath.value ?? route.path)
 function isNavActive(path: string) {
   const current = navPath.value
   return current === path || (path === '/wardrobe' && current.startsWith('/garment')) || (path === '/outfits' && current.startsWith('/outfits'))
 }
-const assistantShortcut = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘K' : 'Ctrl K'
-function openAssistant() { window.dispatchEvent(new CustomEvent('closet-assistant-open')) }
 const visibleNavItems = computed(() => (closet.user?.mustChangePassword ? navItems.filter(item => item.path === '/settings') : navItems).filter(item => item.path !== '/try-on' || tryOnAccess.value?.enabled))
-const mobileNavItems = computed(() => visibleNavItems.value.filter(item => !item.desktopOnly))
 const preferences = usePreferencesStore()
 const prefetch = (path: string) => prefetchRoute(router, path)
-// Mobile bar: a pill behind the active tab's icon (or its label in text-only style) that springs from tab to tab.
-// Measured from the DOM so it follows every 导航栏样式 and screen width; the first placement does not animate.
+// Dock: a pill behind the active tab that springs from tab to tab. On desktop it covers the whole tab (dark pill, light
+// text); on phones it sits behind the icon (or the label in text-only style). Measured from the DOM so it follows every
+// 导航栏样式 and screen width; the first placement does not animate.
 const mobileNav = ref<HTMLElement | null>(null)
 const indicator = ref<{ x: number; y: number; w: number; h: number; instant: boolean } | null>(null)
+const wideQuery = window.matchMedia('(min-width: 1024px)')
+const updateNarrowNav = () => { narrowNav.value = !wideQuery.matches }
+onMounted(() => wideQuery.addEventListener('change', updateNarrowNav))
+onUnmounted(() => wideQuery.removeEventListener('change', updateNarrowNav))
 function placeIndicator() {
   const nav = mobileNav.value, link = nav?.querySelector<HTMLElement>(':scope > a.active')
-  if (!nav || !link) { indicator.value = null; return }
+  if (!nav || !link || !link.getBoundingClientRect().width) { indicator.value = null; return }
+  if (wideQuery.matches) {
+    const box = link.getBoundingClientRect(), base = nav.getBoundingClientRect()
+    indicator.value = { x: box.left - base.left, y: box.top - base.top, w: box.width, h: box.height, instant: !indicator.value }
+    return
+  }
   const glyph = link.querySelector<HTMLElement>('.nav-glyph-box'), label = link.querySelector<HTMLElement>(':scope > span')
   const target = glyph && glyph.getBoundingClientRect().width ? glyph : label
   if (!target) return
@@ -112,6 +117,19 @@ const navResize = typeof ResizeObserver === 'undefined' ? null : new ResizeObser
 watch(mobileNav, (el, old) => { if (old) navResize?.unobserve(old); if (el) navResize?.observe(el) })
 onMounted(() => window.addEventListener('resize', placeIndicator))
 onUnmounted(() => { window.removeEventListener('resize', placeIndicator); navResize?.disconnect() })
+// The dock steps aside while reading down a long page and comes back on the way up (or near the top / bottom).
+const dockAway = ref(false)
+let lastScroll = window.scrollY
+function dockScroll() {
+  const y = window.scrollY, delta = y - lastScroll
+  lastScroll = y
+  const nearEnd = window.innerHeight + y > document.documentElement.scrollHeight - 80
+  if (y < 120 || nearEnd || delta < -8) dockAway.value = false
+  else if (delta > 12) dockAway.value = true
+}
+watch(() => route.path, () => { dockAway.value = false })
+onMounted(() => window.addEventListener('scroll', dockScroll, { passive: true }))
+onUnmounted(() => window.removeEventListener('scroll', dockScroll))
 // Route fade, in script rather than CSS classes: a reveal navigation (revealNavigate) swaps pages instantly inside a
 // View Transition, where no frame is rendered, so the fade must be skippable without touching the <Transition> itself.
 const calm = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -191,45 +209,55 @@ async function signOut() {
       </a-modal>
       <div class="route-progress" :class="{ active: showProgress }" role="progressbar" aria-label="页面加载中" :aria-hidden="!showProgress"><span></span></div>
       <div v-if="isLogin" class="login-frame"><RouterView /></div>
-      <div v-else-if="closet.isSignedIn && (!closet.user?.mustChangePassword || route.path === '/settings')" class="app-frame" :class="{ 'outfit-editing': isOutfitEditor, 'sidebar-collapsed': collapsed, 'tryon-camera-mode': tryonRoute }" :style="frameStyle">
-        <aside class="sidebar" :class="{ collapsed }">
-          <RouterLink :to="closet.user?.mustChangePassword ? '/settings' : '/wardrobe'" class="brand-lockup" aria-label="鱼搭首页">
-            <span class="brand-mark"><img src="/yuda-logo-192.png" alt="" /></span>
-            <span class="brand-text"><strong>鱼搭</strong><small>数字衣橱</small></span>
-          </RouterLink>
-          <a-tooltip placement="right" :title="collapsed ? '添加衣物' : ''"><RouterLink v-if="!closet.user?.mustChangePassword" to="/add" class="sidebar-add" aria-label="添加衣物" @pointerenter="prefetch('/add')"><PlusOutlined /><span class="side-text">添加衣物</span></RouterLink></a-tooltip>
-          <nav class="main-nav" aria-label="主导航">
-            <a-tooltip v-for="item in visibleNavItems" :key="item.path" placement="right" :title="collapsed ? item.label : ''">
-              <RouterLink :to="item.path" class="nav-link" :class="{ active: isNavActive(item.path), pending: pendingPath === item.path }" :aria-label="item.label" @pointerenter="prefetch(item.path)" @focus="prefetch(item.path)">
-                <component :is="item.icon" /><span class="side-text">{{ item.label }}</span>
-                <span v-if="item.path === '/pending' && closet.pendingCount" class="nav-count">{{ closet.pendingCount > 99 ? '99+' : closet.pendingCount }}</span>
-                <span v-if="item.path === '/tasks' && closet.taskCount" class="nav-count quiet">{{ closet.taskCount > 99 ? '99+' : closet.taskCount }}</span>
-              </RouterLink>
-            </a-tooltip>
-          </nav>
-          <div class="profile-row">
-            <a-tooltip placement="right" :title="collapsed ? (closet.user?.displayName || closet.user?.username || '') : ''"><span class="avatar">{{ (closet.user?.displayName || closet.user?.username)?.slice(0, 1).toUpperCase() }}</span></a-tooltip>
-            <span class="profile-name side-text"><strong>{{ closet.user?.displayName || closet.user?.username }}</strong><small>我的衣橱</small></span>
-            <a-tooltip title="退出登录">
-              <a-button type="text" shape="circle" danger class="sign-out" aria-label="退出登录" @click="signOut"><template #icon><LogoutOutlined /></template></a-button>
-            </a-tooltip>
-          </div>
-        </aside>
-        <a-tooltip placement="right" :title="collapsed ? '展开侧栏' : '收起侧栏'">
-          <a-button class="sidebar-edge-toggle" shape="circle" size="small" :aria-label="collapsed ? '展开侧栏' : '收起侧栏'" :aria-expanded="!collapsed" @click="toggleSidebar"><RightOutlined v-if="collapsed" /><LeftOutlined v-else /></a-button>
-        </a-tooltip>
+      <div v-else-if="closet.isSignedIn && (!closet.user?.mustChangePassword || route.path === '/settings')" class="app-frame" :class="{ 'outfit-editing': isOutfitEditor, 'tryon-camera-mode': tryonRoute }" :style="frameStyle">
         <main class="main-area">
           <div v-if="usingMocks" class="mock-banner"><span class="mock-pulse"></span><span>界面演示 · 示例数据不是 AI 结果，演示模式禁止提交模型任务</span><span class="mock-banner-end">{{ closet.user?.displayName || closet.user?.username }} 的衣橱</span></div>
-          <header class="topbar"><div class="topbar-actions"><a-button v-if="!closet.user?.mustChangePassword" class="topbar-assistant" :aria-label="`问鱼搭助手（${assistantShortcut}）`" @click="openAssistant"><BloubAvatar :size="28" expression="happy" /><span>问鱼搭</span><kbd>{{ assistantShortcut }}</kbd></a-button><MinimalToggle v-if="!closet.user?.mustChangePassword" /><ThemeToggle /><SoundToggle /><TaskInbox v-if="!closet.user?.mustChangePassword" /></div></header>
+          <header class="topbar">
+            <div class="topbar-lead">
+              <RouterLink :to="closet.user?.mustChangePassword ? '/settings' : '/wardrobe'" class="brand-lockup" aria-label="鱼搭首页">
+                <span class="brand-mark"><img src="/yuda-logo-192.png" alt="" /></span>
+                <span class="brand-text"><strong>鱼搭</strong></span>
+              </RouterLink>
+              <!-- 页面标题位：页面用 <Teleport defer to="#topbar-page"> 把自己的标题和计数放到 logo 旁边（清新改版 §2）。 -->
+              <div id="topbar-page" class="topbar-page"></div>
+            </div>
+            <div class="topbar-actions">
+              <span class="topbar-prefs"><ThemeToggle /><SoundToggle /></span><TaskInbox v-if="!closet.user?.mustChangePassword" />
+              <a-dropdown :trigger="['click']" placement="bottomRight">
+                <a-button type="text" shape="circle" class="topbar-profile" :aria-label="`账号：${closet.user?.displayName || closet.user?.username}`"><span class="avatar">{{ (closet.user?.displayName || closet.user?.username)?.slice(0, 1).toUpperCase() }}</span></a-button>
+                <template #overlay>
+                  <a-menu>
+                    <a-menu-item key="who" disabled class="topbar-profile-name">{{ closet.user?.displayName || closet.user?.username }}</a-menu-item>
+                    <a-menu-divider />
+                    <a-menu-item key="settings" @click="router.push('/settings')"><SettingOutlined /> 我的设置</a-menu-item>
+                    <!-- 手机顶栏放不下主题和音效按钮，收进头像菜单（桌面同样可用）。 -->
+                    <a-menu-item key="theme" @click="appearance.toggle()"><BgColorsOutlined /> {{ appearance.isDark ? '切换到浅色' : '切换到深色' }}</a-menu-item>
+                    <a-menu-item key="sound" data-sound="off" @click="toggleSound()"><SoundOutlined v-if="soundEnabled" /><AudioMutedOutlined v-else /> {{ soundEnabled ? '关闭音效' : '开启音效' }}</a-menu-item>
+                    <a-menu-divider />
+                    <a-menu-item key="signout" danger @click="signOut"><LogoutOutlined /> 退出登录</a-menu-item>
+                  </a-menu>
+                </template>
+              </a-dropdown>
+            </div>
+          </header>
           <section class="route-content" :aria-busy="!!pendingPath"><TaskToast /><RouterView v-slot="{ Component }"><Transition mode="out-in" :css="false" @enter="routeEnter" @leave="routeLeave"><div :key="viewKey(Component)" class="route-view"><component :is="Component" /></div></Transition></RouterView></section>
           <WaitingGame v-if="!closet.user?.mustChangePassword" />
           <WaitingStarted v-if="!closet.user?.mustChangePassword" /><RenderSendOff v-if="!closet.user?.mustChangePassword" />
           <AssistantPanel v-if="!closet.user?.mustChangePassword" :key="closet.user?.username" :suspended="tryonRoute && tryonNarrow" />
           <GuideTour v-if="!closet.user?.mustChangePassword" />
         </main>
-        <nav v-if="!closet.user?.mustChangePassword" ref="mobileNav" class="mobile-nav" aria-label="移动端主导航">
-          <RouterLink v-for="item in mobileNavItems" :key="item.path" :to="item.path" :class="{ active: isNavActive(item.path), pending: pendingPath === item.path }" :aria-current="isNavActive(item.path) ? 'page' : undefined" @touchstart.passive="prefetch(item.path)"><NavGlyph v-if="item.glyph" :name="item.glyph" :active="isNavActive(item.path)" /><span>{{ item.label }}</span><i v-if="item.path === '/pending' && closet.pendingCount"></i></RouterLink>
-          <AddLauncher />
+        <!-- 底部悬浮胶囊：所有宽度共用。桌面按 order 排，手机按 --mobile-order 排（＋ 在正中，问鱼搭在最右）。 -->
+        <nav ref="mobileNav" class="mobile-nav shell-dock" :class="{ away: dockAway }" aria-label="主导航">
+          <RouterLink v-for="(item, index) in visibleNavItems" :key="item.path" :to="item.path" :class="{ active: isNavActive(item.path), pending: pendingPath === item.path, 'desktop-only': mobileSlot(item) === undefined }" :style="{ order: index * 10, '--mobile-order': mobileSlot(item) ?? 99 }" :aria-current="isNavActive(item.path) ? 'page' : undefined" @pointerenter="prefetch(item.path)" @focus="prefetch(item.path)" @touchstart.passive="prefetch(item.path)">
+            <NavGlyph v-if="item.glyph" :name="item.glyph" :active="isNavActive(item.path)" /><component :is="item.icon" v-else class="dock-icon" /><span>{{ narrowNav ? item.short || item.label : item.label }}</span>
+            <i v-if="item.path === '/pending' && closet.pendingCount"></i><b v-if="item.path === '/pending' && closet.pendingCount" class="dock-count">{{ closet.pendingCount > 99 ? '99+' : closet.pendingCount }}</b>
+          </RouterLink>
+          <template v-if="!closet.user?.mustChangePassword">
+            <AddLauncher />
+            <span class="dock-sep" aria-hidden="true"></span>
+            <span id="assistant-dock-slot" class="dock-assistant-slot"></span>
+            <a-tooltip title="添加衣物"><RouterLink to="/add" class="dock-add" aria-label="添加衣物" @pointerenter="prefetch('/add')"><PlusOutlined /></RouterLink></a-tooltip>
+          </template>
           <span v-if="indicator" class="mobile-nav-indicator" :class="{ instant: indicator.instant }" :style="{ width: `${indicator.w}px`, height: `${indicator.h}px`, transform: `translate(${indicator.x}px, ${indicator.y}px)` }" aria-hidden="true"></span>
         </nav>
       </div>
@@ -240,48 +268,29 @@ async function signOut() {
 
 <style scoped>
 /* Brand: the wide graffiti mark sits on a soft tile so it reads as a logo, not a stray sticker. */
-.brand-lockup { display: flex; align-items: center; gap: 12px; padding: 0 6px; width: 100%; min-width: 0; }
-.brand-mark { display: grid; place-items: center; flex: none; width: 44px; height: 44px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-alt); }
-.brand-mark img { display: block; width: 34px; height: 28px; object-fit: contain; }
-.brand-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.2; }
-.brand-text strong { font-size: 20px; font-weight: 650; letter-spacing: .02em; }
-.brand-text small { margin-top: 3px; font-size: 11px; color: var(--muted); letter-spacing: .08em; }
-/* Collapse handle: a small round button on the sidebar's right border, shown while the pointer is over the sidebar. */
-.sidebar-edge-toggle.ant-btn { position: fixed; z-index: 16; top: 34px; left: calc(var(--sidebar-w, 224px) - 13px); display: none; align-items: center; justify-content: center; width: 26px; height: 26px; min-width: 26px; padding: 0; border: 1px solid var(--line); background: var(--surface); color: var(--muted-strong); font-size: 11px; box-shadow: 0 2px 8px #00000018; opacity: 0; transition: opacity .15s ease, left .2s ease, background .15s; }
-.sidebar-edge-toggle.ant-btn:hover { color: var(--ink); background: var(--surface-alt); }
-.sidebar { transition: width .2s ease, padding .2s ease; }
-.main-area { transition: margin-left .2s ease; }
-@media (min-width: 1024px) {
-  html.assistant-docked .app-frame { padding-right: var(--assistant-dock-width, 0px); }
-  .sidebar-edge-toggle.ant-btn { display: inline-flex; }
-  .sidebar:hover ~ .sidebar-edge-toggle.ant-btn, .sidebar-edge-toggle.ant-btn:hover, .sidebar-edge-toggle.ant-btn:focus-visible { opacity: 1; }
-  .app-frame .sidebar { width: var(--sidebar-w, 224px); }
-  /* The outfit editor hides the sidebar and fills the screen (styles/outfit.css), so it keeps no sidebar margin. */
-  .app-frame:not(.outfit-editing) .main-area { margin-left: var(--sidebar-w, 224px); }
-  .app-frame.outfit-editing .sidebar-edge-toggle.ant-btn { display: none; }
-  .sidebar.collapsed { padding: 22px 10px 14px; align-items: stretch; overflow-x: hidden; }
-  .sidebar.collapsed .side-text, .sidebar.collapsed .brand-text { display: none; }
-  .sidebar.collapsed .brand-lockup { justify-content: center; padding: 0; }
-  .sidebar.collapsed .sidebar-add { margin: 22px 0 18px; }
-  .sidebar.collapsed .nav-link { position: relative; justify-content: center; padding: 0; gap: 0; }
-  .sidebar.collapsed .nav-link .nav-count { position: absolute; top: 4px; right: 6px; min-width: 16px; height: 16px; padding: 0 4px; margin: 0; font-size: 10px; line-height: 16px; }
-  .sidebar.collapsed .profile-row { flex-direction: column; gap: 8px; padding: 14px 0 0; }
-}
-@media (prefers-reduced-motion: reduce) { .sidebar, .main-area, .sidebar-edge-toggle.ant-btn { transition: none; } }
+.topbar-lead { display: flex; flex: 1; align-items: center; gap: 14px; min-width: 0; margin-right: auto; }
+.topbar-prefs { display: contents; }
+.brand-lockup { display: flex; flex: none; align-items: center; gap: 10px; color: var(--ink); }
+.topbar-page { display: flex; align-items: center; gap: 14px; min-width: 0; overflow: hidden; }
+.topbar-page:not(:empty)::before { content: ''; flex: none; width: 1px; height: 18px; background: var(--line); }
+.brand-mark { display: grid; place-items: center; flex: none; width: 38px; height: 38px; border-radius: 12px; background: var(--accent-soft); }
+.brand-mark img { display: block; width: 30px; height: 24px; object-fit: contain; }
+.brand-text { display: flex; align-items: baseline; gap: 8px; min-width: 0; line-height: 1.2; }
+.brand-text strong { font-size: 19px; font-weight: 650; letter-spacing: .04em; }
+.topbar-profile.ant-btn { display: inline-flex; align-items: center; justify-content: center; width: 40px; min-width: 40px; height: 40px; padding: 0; }
+.topbar-profile .avatar { width: 32px; height: 32px; color: var(--accent-strong); background: var(--accent-soft); font-size: 13px; }
 .route-progress { position: fixed; z-index: 2000; inset: 0 0 auto; height: 2px; overflow: hidden; opacity: 0; pointer-events: none; transition: opacity .2s; }
 .route-progress.active { opacity: 1; }
-.route-progress span { position: absolute; inset: 0 auto 0 0; width: 40%; background: var(--accent); border-radius: 0 2px 2px 0; transform: translateX(-100%); }
+.route-progress span { position: absolute; inset: 0 auto 0 0; width: 40%; background: var(--brand); border-radius: 0 2px 2px 0; transform: translateX(-100%); }
 .route-progress.active span { animation: route-progress-slide 1.1s cubic-bezier(.4, 0, .2, 1) infinite; }
 @keyframes route-progress-slide { from { transform: translateX(-100%); } to { transform: translateX(260%); } }
-.nav-link.pending .anticon, .mobile-nav .pending .anticon { animation: nav-pending-pulse .9s ease-in-out infinite; }
+.mobile-nav .pending .anticon { animation: nav-pending-pulse .9s ease-in-out infinite; }
 @keyframes nav-pending-pulse { 50% { opacity: .45; } }
 /* The editor fills the viewport through a height chain and owns fixed controls, so keep the wrapper transparent there. */
 .outfit-editing .route-view { height: 100%; min-height: 0; }
+@media (max-width: 767px) { .topbar-prefs { display: none; } .topbar-lead { gap: 10px; } .topbar-page { gap: 10px; } .brand-text { display: none; } /* 手机只放 logo 图标：切页时标题位短暂为空也不会闪出文字 */ .topbar-page:not(:empty)::before { display: none; } .brand-mark { width: 34px; height: 34px; } }
 @media (prefers-reduced-motion: reduce) {
   .route-progress.active span { animation: none; width: 100%; transform: none; opacity: .6; }
-  .nav-link.pending .anticon, .mobile-nav .pending .anticon { animation: none; }
+  .mobile-nav .pending .anticon { animation: none; }
 }
-.topbar-assistant.ant-btn { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 6px 0 2px; border-radius: 999px; color: var(--muted-strong); }
-.topbar-assistant kbd { padding: 1px 6px; border: 1px solid var(--line); border-radius: 6px; font-size: 11px; line-height: 16px; font-family: inherit; color: var(--muted); background: var(--surface-alt); }
-@media(max-width:1023px){.topbar-assistant.ant-btn{display:none}}
 </style>

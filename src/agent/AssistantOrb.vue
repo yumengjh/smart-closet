@@ -5,10 +5,16 @@ import { useFloatingPosition } from './useFloatingPosition'
 import BloubAvatar from './BloubAvatar.vue'
 import { avatarPreferences, cueAllowed, duration, idleStates, type AvatarCue, type AvatarExpression } from './avatar'
 import type { StateId } from './bloub/states'
-const props = defineProps<{ open: boolean; mood: string; busy: boolean; phase: string; tool: string; cue: AvatarCue | null; suppressed?: boolean }>()
+// dock: 清新改版 §3 — the companion lives in the bottom dock as the 问鱼搭 pill (#assistant-dock-slot in ClosetShell)
+// instead of a draggable orb in the corner; the face animations stay the same.
+const props = defineProps<{ open: boolean; mood: string; busy: boolean; phase: string; tool: string; cue: AvatarCue | null; suppressed?: boolean; dock?: boolean }>()
 const emit = defineEmits<{ toggle: [] }>()
 const closet=useClosetStore(), hovered=ref(false), pressed=ref(false), nearby=ref(false)
-const control=ref<{ $el:HTMLButtonElement } | null>(null)
+const control=ref<{ $el:HTMLButtonElement } | null>(null), face=ref<HTMLElement|null>(null)
+const shortcut=/Mac|iPhone|iPad/.test(navigator.platform)?'⌘K':'Ctrl K'
+const hints=['今天穿什么？','帮我搭一套约会穿搭','哪些衣服很久没穿了','记住我更喜欢裙装']
+const hintIndex=ref(0)
+let hintTimer:ReturnType<typeof setInterval>|undefined
 const key=computed(()=>`yixu.assistant-orb.v1:${closet.user?.username||'local'}`)
 // Smaller on desktop so it reads as a quiet companion; the touch size stays comfortable on phones.
 const compact=ref(window.innerWidth<1024), orbSize=computed(()=>compact.value?46:52)
@@ -31,7 +37,7 @@ function resizeOrb(){compact.value=window.innerWidth<1024;if(!compact.value)scro
 const visible=ref(!document.hidden), reduced=ref(window.matchMedia('(prefers-reduced-motion: reduce)').matches)
 const media=window.matchMedia('(prefers-reduced-motion: reduce)')
 const enabled=computed(()=>avatarPreferences.mode!=='static' && !reduced.value && visible.value)
-const local=ref<StateId | null>(null), face=ref<AvatarExpression>('neutral'), look=ref({x:0,y:0})
+const local=ref<StateId | null>(null), mien=ref<AvatarExpression>('neutral'), look=ref({x:0,y:0})
 const stretch=ref({angle:0,amount:0})
 let actionSource='system'
 let previous:{x:number;y:number;t:number}|undefined, idleTimer:ReturnType<typeof setTimeout>|undefined, actionTimer:ReturnType<typeof setTimeout>|undefined, lastIdle:StateId|undefined
@@ -40,13 +46,13 @@ const state=computed<StateId>(()=>{
   if(props.busy)return props.phase==='responding' ? (local.value||'idle') : props.phase==='operating' ? (props.tool==='navigate'?'play':['search_help','search_wardrobe','get_garment','get_outfit'].includes(props.tool)?'comet':'orbit') : 'thinking'
   return local.value||'idle'
 })
-const expression=computed<AvatarExpression>(()=>props.mood==='concern'?'concern':props.busy?'attentive':hovered.value?'happy':face.value)
+const expression=computed<AvatarExpression>(()=>props.mood==='concern'?'concern':props.busy?'attentive':hovered.value?'happy':mien.value)
 const idleAllowed=computed(()=>enabled.value&&!props.open&&!props.busy&&props.mood!=='concern'&&!nearby.value&&!hovered.value&&!pressed.value&&!position.dragging.value)
-function clearAction(){clearTimeout(actionTimer);local.value=null;face.value='neutral'}
+function clearAction(){clearTimeout(actionTimer);local.value=null;mien.value='neutral'}
 function play(state:StateId,expression:AvatarExpression='neutral',source='system'){
   clearAction();if(!enabled.value)return
-  actionSource=source;local.value=state;face.value=expression
-  actionTimer=setTimeout(()=>{local.value=null;face.value='neutral';schedule()},duration(state))
+  actionSource=source;local.value=state;mien.value=expression
+  actionTimer=setTimeout(()=>{local.value=null;mien.value='neutral';schedule()},duration(state))
 }
 function schedule(){clearTimeout(idleTimer);if(!idleAllowed.value)return
   idleTimer=setTimeout(()=>{if(!idleAllowed.value)return;const pool=idleStates.filter(s=>s!==lastIdle);const next=pool[Math.floor(Math.random()*pool.length)]!;lastIdle=next;play(next,'neutral','idle')},10000+Math.random()*10000)
@@ -57,7 +63,7 @@ watch(()=>props.mood,mood=>{if(mood==='concern')play('alert','concern');else if(
 watch(()=>props.open,open=>{clearAction();if(open&&!props.busy)play('swirl','happy');schedule()})
 watch(()=>props.cue,cue=>{if(cue && avatarPreferences.mode==='personal' && cueAllowed(cue.state) && (!props.busy||props.phase==='responding') && props.mood!=='concern')play(cue.state,cue.expression,'chat')})
 watch(enabled,on=>{if(!on)clearAction();schedule()})
-function down(e:PointerEvent){if(e.button!==0)return;position.start(e);pressed.value=true;clearAction();previous={x:e.clientX,y:e.clientY,t:performance.now()}}
+function down(e:PointerEvent){if(e.button!==0||props.dock)return;position.start(e);pressed.value=true;clearAction();previous={x:e.clientX,y:e.clientY,t:performance.now()}}
 function move(e:PointerEvent){
   position.move(e)
   if(!pressed.value||!previous)return
@@ -66,11 +72,11 @@ function move(e:PointerEvent){
   previous={x:e.clientX,y:e.clientY,t:performance.now()}
 }
 function end(){position.end();pressed.value=false;previous=undefined;stretch.value={angle:stretch.value.angle,amount:0};look.value={x:0,y:0};schedule()}
-function activate(){if(position.clicked())emit('toggle')}
+function activate(){if(props.dock||position.clicked())emit('toggle')}
 const deformation=computed(()=>!enabled.value?'none':position.dragging.value?`rotate(${stretch.value.angle}deg) scale(${1+stretch.value.amount},${1-stretch.value.amount*.6}) rotate(${-stretch.value.angle}deg)`:pressed.value?'scale(.96,.9)':'none')
 function pointer(e:PointerEvent){
   if(e.pointerType==='touch'||pressed.value||!enabled.value)return
-  const box=control.value?.$el.getBoundingClientRect();if(!box)return
+  const box=(props.dock?face.value:control.value?.$el)?.getBoundingClientRect();if(!box)return
   const dx=e.clientX-box.left-box.width/2,dy=e.clientY-box.top-box.height/2
   nearby.value=Math.hypot(dx,dy)<120
   look.value={x:Math.tanh(dx/240),y:Math.tanh(dy/240)}
@@ -82,12 +88,22 @@ function preference(){reduced.value=media.matches}
 function saved(){if(!props.busy)play('burst','happy')}
 const appearance=computed(()=>({state:state.value,expression:expression.value,animate:enabled.value,repeat:props.busy&&props.phase!=='responding',look:state.value==='idle'?look.value:null}))
 const responding=computed(()=>enabled.value&&props.busy&&props.phase==='responding'&&!local.value)
-defineExpose({focus:()=>control.value?.$el.focus(),rect:()=>control.value?.$el.getBoundingClientRect(),appearance,responding})
-onMounted(()=>{schedule();document.addEventListener('visibilitychange',hide);window.addEventListener('pointermove',pointer);document.addEventListener('pointerout',leave);window.addEventListener('blur',resetGaze);media.addEventListener('change',preference);window.addEventListener('closet-outfit-saved',saved);document.addEventListener('scroll',scrolled,{capture:true,passive:true});window.addEventListener('resize',resizeOrb)})
-onUnmounted(()=>{clearTimeout(idleTimer);clearTimeout(actionTimer);document.removeEventListener('visibilitychange',hide);window.removeEventListener('pointermove',pointer);document.removeEventListener('pointerout',leave);window.removeEventListener('blur',resetGaze);media.removeEventListener('change',preference);window.removeEventListener('closet-outfit-saved',saved);document.removeEventListener('scroll',scrolled,{capture:true});window.removeEventListener('resize',resizeOrb)})
+// rect(): the face (square, where the flying ghost starts); pillRect(): the whole dock pill the window unfolds from.
+defineExpose({focus:()=>control.value?.$el.focus(),rect:()=>(props.dock?face.value:control.value?.$el)?.getBoundingClientRect(),pillRect:()=>props.dock?control.value?.$el.getBoundingClientRect():undefined,appearance,responding})
+onMounted(()=>{schedule();if(props.dock&&!reduced.value)hintTimer=setInterval(()=>{if(!props.open&&!document.hidden)hintIndex.value=(hintIndex.value+1)%hints.length},4200);document.addEventListener('visibilitychange',hide);window.addEventListener('pointermove',pointer);document.addEventListener('pointerout',leave);window.addEventListener('blur',resetGaze);media.addEventListener('change',preference);window.addEventListener('closet-outfit-saved',saved);document.addEventListener('scroll',scrolled,{capture:true,passive:true});window.addEventListener('resize',resizeOrb)})
+onUnmounted(()=>{clearTimeout(idleTimer);clearInterval(hintTimer);clearTimeout(actionTimer);document.removeEventListener('visibilitychange',hide);window.removeEventListener('pointermove',pointer);document.removeEventListener('pointerout',leave);window.removeEventListener('blur',resetGaze);media.removeEventListener('change',preference);window.removeEventListener('closet-outfit-saved',saved);document.removeEventListener('scroll',scrolled,{capture:true});window.removeEventListener('resize',resizeOrb)})
 </script>
 <template>
-<Teleport to="body">
+<Teleport v-if="dock" defer to="#assistant-dock-slot">
+<a-tooltip :title="open?'':`问鱼搭（${shortcut}）`" placement="top">
+<a-button v-show="!suppressed" ref="control" class="assistant-dock-entry" :class="{active:open}" :data-avatar-state="state" :data-avatar-mode="avatarPreferences.mode" data-sound="off" aria-label="问鱼搭助手" :aria-expanded="open" aria-controls="closet-assistant" @click="activate" @pointerenter="hovered=true" @pointerleave="hovered=false">
+<em ref="face" class="assistant-dock-face"><span class="bloub-orb-shape" :class="{'bloub-responding':responding}" style="--orb-size:34px"><BloubAvatar v-bind="appearance" :size="42.5" /></span></em>
+<b class="assistant-dock-text"><Transition name="dock-hint" mode="out-in"><i :key="hintIndex">{{ hints[hintIndex] }}</i></Transition><kbd>{{ shortcut }}</kbd></b>
+<b class="assistant-dock-short">问鱼搭</b>
+</a-button>
+</a-tooltip>
+</Teleport>
+<Teleport v-else to="body">
 <a-tooltip :title="position.dragging.value||open?'':'找我聊聊 · 拖动可以移动'" :placement="position.side.value==='left'?'right':'left'">
 <a-button v-show="!suppressed" ref="control" class="assistant-orb bloub-orb" shape="circle" :class="[`edge-${position.side.value}`,{dragging:position.dragging.value,settling:position.settling.value,active:open,tucked}]" :style="{...position.style.value,'--orb-size':`${orbSize}px`}" :tabindex="open?-1:undefined" :aria-hidden="open||undefined" :data-avatar-state="state" :data-avatar-mode="avatarPreferences.mode" data-sound="off" aria-label="打开个人助手" :aria-expanded="open" aria-controls="closet-assistant" @pointerdown="down" @pointermove="move" @pointerup="end" @pointercancel="end" @lostpointercapture="end" @keydown="position.keyboard" @click="activate" @pointerenter="hovered=true" @pointerleave="hovered=false">
 <span class="bloub-orb-shape" :class="{'bloub-responding':responding}" :style="{transform:deformation}"><BloubAvatar v-bind="appearance" :size="orbSize*1.25" /></span>

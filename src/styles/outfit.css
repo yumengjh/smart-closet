@@ -277,3 +277,24 @@
   .outfit-editor-toolbar { gap: 8px; padding-inline: 8px; }
   .outfit-zoom-controls > span { display: none; }
 }
+
+/* 清新改版 §5：组合台列表。标题进顶栏；视图切换、搜索、操作合成一行；卡片去边框、浅底大圆角、悬停浮起。 */
+.outfit-library-bar { flex-wrap: wrap; justify-content: flex-start; gap: 10px; margin: 6px 0 22px; }
+.outfit-library-gap { flex: 1; }
+.outfit-library-search.ant-input-affix-wrapper { height: 40px; border: 0; border-radius: 999px; background: var(--surface-alt); box-shadow: none; }
+.outfit-library-search.ant-input-affix-wrapper-focused { background: var(--surface); box-shadow: 0 0 0 1.5px var(--brand); }
+.outfit-library-search .ant-input { background: transparent; }
+.outfit-library-actions .ant-btn { height: 40px; }
+.outfit-library-grid { gap: 28px 20px; }
+.outfit-card-preview { border: 0; border-radius: 24px; background: var(--surface-alt); transition: transform .35s var(--spring), box-shadow .35s ease; }
+.outfit-card-preview:hover { transform: translateY(-4px); box-shadow: 0 18px 30px -18px #0d3b3340; }
+.outfit-card-count { border: 0; border-radius: 999px; background: var(--glass); backdrop-filter: blur(8px); }
+.outfit-card-details { padding: 12px 6px 0; }
+.outfit-empty { border: 0; border-radius: 32px; background: var(--surface-alt); }
+.outfit-empty .ant-empty-image { color: var(--brand); }
+@media (max-width: 767px) {
+  .outfit-library-gap { display: none; }
+  .outfit-library-bar .outfit-library-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; gap: 8px; }
+  .outfit-library-bar .outfit-library-actions > .ant-btn { width: 100%; min-width: 0; padding-inline: 8px; }
+}
+@media (prefers-reduced-motion: reduce) { .outfit-card-preview { transition: none; } }

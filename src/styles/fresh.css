@@ -1,0 +1,75 @@
+/* 清新改版 §5：各页共用的清新外观（在 style.css 之后加载）。大圆角、少边框、浅底分区、胶囊按钮、大留白。
+   每页的特殊部分仍在各自组件里；这里只放跨页共用的：分段控件、列表工具条、衣物卡片网格、空状态、分区卡片、批量悬浮条。 */
+
+/* 分段控件：胶囊 */
+.ant-segmented { padding: 3px; border-radius: 999px; background: var(--surface-alt); }
+.ant-segmented .ant-segmented-item, .ant-segmented .ant-segmented-thumb { border-radius: 999px; }
+.ant-segmented .ant-segmented-item-label { min-height: 34px; padding: 0 16px; line-height: 34px; }
+
+/* 列表工具条：一行，左筛选右操作 */
+.list-toolbar { gap: 12px; margin: 6px 0 22px; }
+.list-toolbar > .muted { font-size: 12px; color: var(--muted-subtle); }
+
+/* 衣物卡片：无边框浅底，大圆角，悬停轻轻浮起 */
+.garment-grid { gap: 28px 20px; }
+.card-image-wrap { border-radius: 24px; background: var(--surface-alt); transition: transform .35s var(--spring), box-shadow .35s ease; }
+.garment-card:hover .card-image-wrap { transform: translateY(-4px); box-shadow: 0 18px 30px -18px #0d3b3340; }
+.garment-card.selected .card-image-wrap { box-shadow: 0 0 0 2px var(--brand); }
+.card-copy { padding: 12px 6px 4px; }
+.card-copy h3 { font-weight: 500; }
+.card-swatch { width: 10px; height: 10px; border: 0; box-shadow: inset 0 0 0 1px #0d1f1b22; }
+.add-card { border: 1.5px dashed color-mix(in srgb, var(--muted) 35%, transparent); border-radius: 24px; color: var(--muted-strong); transition: border-color .2s, color .2s, background .2s; }
+.add-card:hover { border-color: var(--brand); color: var(--accent-strong); background: var(--accent-soft); }
+.add-card-icon { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; color: var(--accent-strong); background: var(--accent-soft); font-size: 20px; }
+
+/* 空状态：不要外框，留白居中 */
+.empty-wardrobe { border: 0; border-radius: 32px; background: var(--surface-alt); }
+.empty-spark { width: 64px; height: 64px; border-radius: 50%; color: var(--accent-strong); background: var(--accent-soft); }
+
+/* 分页 */
+.pagination-row { justify-content: center; gap: 16px; margin: 36px 0 12px; color: var(--muted); }
+.pagination-row > div { display: flex; gap: 8px; }
+
+/* 分区卡片：去边框，浅底大圆角 */
+.fresh-panel { padding: 24px; border-radius: 28px; background: var(--surface-alt); }
+
+/* 批量悬浮条（衣柜、未入柜共用）：底部玻璃胶囊，进入时导航胶囊让位（dock.css html.closet-selecting）。 */
+.batch-float { position: fixed; z-index: 40; left: 50%; bottom: 20px; display: flex; align-items: center; gap: 14px; max-width: calc(100vw - 32px); padding: 8px 8px 8px 22px; border-radius: 999px; background: var(--glass); backdrop-filter: blur(18px) saturate(140%); -webkit-backdrop-filter: blur(18px) saturate(140%); box-shadow: var(--dock-shadow), 0 0 0 1px var(--line); transform: translateX(-50%); }
+.batch-float-count { display: flex; align-items: baseline; gap: 6px; white-space: nowrap; }
+.batch-float-count b { font-size: 22px; font-weight: 600; color: var(--accent-strong); font-variant-numeric: tabular-nums; }
+.batch-float-count span { font-size: 13px; color: var(--muted-strong); }
+.batch-float-count small { margin-left: 6px; font-size: 12px; color: var(--muted); }
+.batch-float-pick { display: flex; align-items: center; gap: 2px; padding-left: 14px; border-left: 1px solid var(--line); white-space: nowrap; }
+.batch-float-actions { display: flex; align-items: center; gap: 6px; }
+.batch-float-close.ant-btn { width: 40px; height: 40px; color: var(--muted-strong); }
+.batch-float-enter-active, .batch-float-leave-active { transition: opacity .25s, transform .4s var(--spring); }
+.batch-float-enter-from, .batch-float-leave-to { opacity: 0; transform: translate(-50%, 24px) scale(.96); }
+@media (prefers-reduced-motion: reduce) { .batch-float-enter-active, .batch-float-leave-active, .card-image-wrap { transition: none; } }
+@media (max-width: 1023px) {
+  .batch-float { left: 10px; right: 10px; bottom: calc(10px + env(safe-area-inset-bottom)); flex-wrap: wrap; gap: 8px 10px; max-width: none; padding: 12px 12px 12px 18px; border-radius: 24px; transform: none; }
+  .batch-float-enter-from, .batch-float-leave-to { transform: translateY(24px); }
+  .batch-float-pick { order: 3; padding-left: 0; border-left: 0; }
+  .batch-float-actions { order: 4; width: 100%; overflow-x: auto; }
+  .batch-float-close.ant-btn { margin-left: auto; }
+}
+@media (max-width: 767px) { .card-image-wrap { border-radius: 20px; } .garment-grid { gap: 20px 12px; } }
+
+/* 我的（设置）：左侧个人卡片 + 无边框菜单，右侧分组卡片浅底大圆角。 */
+.settings-layout { gap: 40px; margin-top: 6px; }
+.settings-nav { top: 84px; gap: 4px; padding: 10px; border: 0; border-radius: 28px; background: var(--surface-alt); }
+.settings-profile { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; padding: 14px 12px 16px; border-bottom: 1px solid var(--line); }
+.settings-profile .settings-avatar { width: 52px; height: 52px; border-radius: 50%; color: var(--accent-strong); background: var(--accent-soft); font-size: 22px; }
+.settings-profile-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.settings-profile-text strong { overflow: hidden; font-size: 16px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.settings-profile-text small { overflow: hidden; font-size: 12px; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }
+.settings-nav .settings-nav-item { min-height: 54px; border-radius: 18px; }
+.settings-nav .settings-nav-item:hover { background: var(--surface); }
+.settings-nav .settings-nav-item.active, .settings-nav .settings-nav-item.active:hover { background: var(--surface); box-shadow: 0 6px 18px -12px #0d3b3340; }
+.settings-nav-item > .settings-nav-icon { border-radius: 12px; background: var(--surface); color: var(--muted-strong); }
+.settings-nav-item.active > .settings-nav-icon { color: var(--accent-strong); background: var(--accent-soft); }
+.settings-nav .settings-nav-link::before { border-top-color: var(--line); }
+.settings-version { border-top: 0; }
+.settings-panel-icon { border: 0; border-radius: 16px; color: var(--accent-strong); background: var(--accent-soft); }
+.settings-panel-title h2 { font-size: 22px; }
+.settings-group { border: 0; border-radius: 28px; background: var(--surface-alt); }
+@media (max-width: 1023px) { .settings-layout { gap: 20px; } .settings-nav { top: 0; } }

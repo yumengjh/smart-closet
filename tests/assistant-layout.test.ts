@@ -1,17 +1,17 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { clampHeight, clampPosition, clampWidth, heightBounds, keyboardSize, migrateMode, restoreLayout, widthBounds } from '../src/agent/assistantLayout.ts'
-test('assistant layout: defaults to overlay and migrates either legacy pin value', () => {
-  assert.deepEqual(restoreLayout(null, null), { mode: 'overlay', width: 460, floatingHeight: 820 })
-  assert.equal(migrateMode(undefined, 'true'), 'overlay')
+import { centerSize, clampHeight, clampPosition, clampWidth, heightBounds, keyboardSize, migrateMode, restoreLayout, widthBounds } from '../src/agent/assistantLayout.ts'
+test('assistant layout: defaults to the centre window and migrates either legacy pin value', () => {
+  assert.deepEqual(restoreLayout(null, null), { mode: 'center', width: 460, floatingHeight: 820, centerWidth: 720, centerHeight: 680 })
+  assert.equal(migrateMode(undefined, 'true'), 'center')
   assert.equal(migrateMode(undefined, 'false'), 'floating')
   assert.equal(migrateMode('docked', 'false'), 'docked')
-  assert.equal(migrateMode('invalid', 'true'), 'overlay')
+  assert.equal(migrateMode('invalid', 'true'), 'center')
 })
 test('assistant layout: recovers malformed storage and invalid sizes without losing legacy mode', () => {
-  assert.deepEqual(restoreLayout('{', 'false'), { mode: 'floating', width: 460, floatingHeight: 820 })
-  assert.deepEqual(restoreLayout('{"mode":"docked","width":"800","floatingHeight":null}', null), { mode: 'docked', width: 460, floatingHeight: 820 })
-  assert.deepEqual(restoreLayout('{"mode":"floating","width":780,"floatingHeight":650}', 'true'), { mode: 'floating', width: 780, floatingHeight: 650 })
+  assert.deepEqual(restoreLayout('{', 'false'), { mode: 'floating', width: 460, floatingHeight: 820, centerWidth: 720, centerHeight: 680 })
+  assert.deepEqual(restoreLayout('{"version":2,"mode":"docked","width":"800","floatingHeight":null}', null), { mode: 'docked', width: 460, floatingHeight: 820, centerWidth: 720, centerHeight: 680 })
+  assert.deepEqual(restoreLayout('{"version":2,"mode":"floating","width":780,"floatingHeight":650}', 'true'), { mode: 'floating', width: 780, floatingHeight: 650, centerWidth: 720, centerHeight: 680 })
 })
 test('assistant layout: caps width by 70 percent, 960px and the docked app space', () => {
   assert.deepEqual(widthBounds(1024, 'overlay'), { min: 360, max: 716 })
@@ -45,4 +45,16 @@ test('assistant layout: reclamps the floating position when either size or viewp
   assert.deepEqual(clampPosition(point, { width: 1440, height: 1000 }, { width: 960, height: 820 }), { x: 472, y: 172 })
   assert.deepEqual(clampPosition(point, { width: 1024, height: 600 }, { width: 700, height: 568 }), { x: 316, y: 24 })
   assert.deepEqual(clampPosition({ x: -10, y: -20 }, { width: 1024, height: 600 }, { width: 460, height: 568 }), { x: 8, y: 8 })
+})
+
+test('assistant layout: pre-redesign saves open once in the centre window, keeping their sizes', () => {
+  assert.deepEqual(restoreLayout('{"mode":"docked","width":600,"floatingHeight":700}', null), { mode: 'center', width: 600, floatingHeight: 700, centerWidth: 720, centerHeight: 680 })
+  assert.deepEqual(restoreLayout('{"version":2,"mode":"center","width":600,"floatingHeight":700}', null), { mode: 'center', width: 600, floatingHeight: 700, centerWidth: 720, centerHeight: 680 })
+  assert.deepEqual(centerSize({ width: 1440, height: 900 }, 100), { width: 720, height: 680 })
+  assert.deepEqual(centerSize({ width: 600, height: 700 }, 100), { width: 568, height: 528 })
+})
+test('assistant layout: the centre window keeps a dragged size within the screen, and restores it', () => {
+  assert.deepEqual(centerSize({ width: 1440, height: 900 }, 100, { width: 2000, height: 100 }), { width: 1100, height: 360 })
+  assert.deepEqual(centerSize({ width: 1440, height: 900 }, 100, { width: 900, height: 600 }), { width: 900, height: 600 })
+  assert.deepEqual(restoreLayout('{"version":2,"mode":"center","width":460,"floatingHeight":820,"centerWidth":900,"centerHeight":600}', null), { mode: 'center', centerWidth: 900, centerHeight: 600, width: 460, floatingHeight: 820 })
 })
