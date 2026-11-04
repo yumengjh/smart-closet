@@ -2,25 +2,27 @@
 :root {
   font-family: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', system-ui, sans-serif;
   color-scheme: light; color: var(--ink); background: var(--paper); font-synthesis: none; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased;
-  --ink: #25262b; --muted: #666b76; --muted-copy: var(--muted); --muted-strong: #626774; --muted-subtle: #858a97;
-  --line: #e8e9ee; --accent: #1f5c45; --accent-strong: #16432f; --surface: #fff; --surface-alt: #f5f6f8; --paper: #f7f8fa;
-  --overlay: #ffffffed; --canvas: #fff; --board: #fff; --action-bg: #25262b; --action-hover: #414247; --action-fg: #fff;
-  --selection-bg: #eceef1; --accent-soft: #eef6f1; --info-bg: #f0f5ff; --info: #385eac;
+  --ink: #16201e; --muted: #5f6b68; --muted-copy: var(--muted); --muted-strong: #4f5b58; --muted-subtle: #86908d;
+  --line: #e6edeb; --accent: #0e8a76; --accent-strong: #0b6f5f; --surface: #fff; --surface-alt: #f1f6f4; --paper: #f7faf9;
+  --overlay: #ffffffed; --canvas: #fff; --board: #fff; --action-bg: #16201e; --action-hover: #2f3c39; --action-fg: #fff;
+  --selection-bg: #e6f1ed; --accent-soft: #e6f6f2; --info-bg: #f0f5ff; --info: #385eac;
   --success-bg: #e9f6f1; --success: #1f8a6e; --warning-bg: #fff9ee; --warning: #956516; --danger-bg: #fff4f3; --danger: #bd4b4b;
-  --assistant-bg: #eef3eb; --assistant-hover: #e3eddf;
-  --focus-ring: #9fd8bd; --info-line: #e1e7f7; --success-line: #d7ede4; --warning-line: #f1e6ce; --danger-line: #f5dfde;
+  --assistant-bg: #e6f6f2; --assistant-hover: #d6f0e9;
+  --focus-ring: #8fdccb; --info-line: #e1e7f7; --success-line: #d7ede4; --warning-line: #f1e6ce; --danger-line: #f5dfde;
   --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 20px; --space-6: 24px; --space-7: 32px; --space-8: 40px; --space-9: 48px;
+  --brand: #1db39a; --glass: #ffffffe0; --dock-shadow: 0 14px 40px -14px #0d3b3340; --spring: cubic-bezier(.3, 1.45, .45, 1); --ease-out: cubic-bezier(.2, .8, .2, 1);
   --radius-sm: 8px; --radius-md: 10px; --radius-lg: 14px; --radius-xl: 20px;
 }
 :root[data-theme='dark'] {
   color-scheme: dark; color: var(--ink); background: var(--paper);
-  --ink: #edf0f6; --muted: #aab2c0; --muted-copy: var(--muted); --muted-strong: #c2c9d4; --muted-subtle: #929bab;
-  --line: #3b404b; --accent: #5fcb9d; --accent-strong: #79d6ac; --surface: #242832; --surface-alt: #2d323d; --paper: #191c23;
-  --overlay: #242832ed; --canvas: #fff; --board: #2d323d; --action-bg: #edf0f6; --action-hover: #cfd3db; --action-fg: #191c23;
-  --selection-bg: #333841; --accent-soft: #1d2e26; --info-bg: #25344d; --info: #a9c1ff;
+  --ink: #ecf2f0; --muted: #a5b1ae; --muted-copy: var(--muted); --muted-strong: #c3cdca; --muted-subtle: #8b9895;
+  --line: #2a3633; --accent: #42d3b8; --accent-strong: #6fe0ca; --surface: #18201e; --surface-alt: #1f2927; --paper: #0f1413;
+  --overlay: #18201eed; --canvas: #fff; --board: #1f2927; --action-bg: #ecf2f0; --action-hover: #cbd6d3; --action-fg: #0f1413;
+  --selection-bg: #24322f; --accent-soft: #15302a; --info-bg: #25344d; --info: #a9c1ff;
   --success-bg: #1d352c; --success: #5fd0a8; --warning-bg: #3e3320; --warning: #e7bf72; --danger-bg: #3c292d; --danger: #f19a9b;
-  --assistant-bg: #202b24; --assistant-hover: #29372d;
-  --focus-ring: #5fcb9d; --info-line: #354b6b; --success-line: #2a4b3f; --warning-line: #665533; --danger-line: #684148;
+  --assistant-bg: #15302a; --assistant-hover: #1c3c35;
+  --focus-ring: #42d3b8; --info-line: #354b6b; --success-line: #2a4b3f; --warning-line: #665533; --danger-line: #684148;
+  --brand: #42d3b8; --glass: #18201eeb; --dock-shadow: 0 14px 40px -14px #00000080;
 }
 * { box-sizing: border-box; }
 html, body, #app { min-height: 100%; margin: 0; }
@@ -352,12 +354,6 @@ h3 { font-size: 15px; line-height: 1.5; font-weight: 600; }
 @media (max-width: 767px) { .image-style-select { flex-basis: 100%; width: 100%; }.search-tags { margin-top: -6px; } }
 .search-help-trigger { color: var(--muted-copy); height: 24px; width: 24px; padding: 0; }.search-help .ant-popover-inner { max-width: 340px; }.search-help-body p { margin: 0 0 8px; font-size: 13px; line-height: 1.6; }.search-help-examples { display: flex; flex-wrap: wrap; gap: 6px; }.search-help-example { cursor: pointer; margin: 0; min-height: 28px; display: inline-flex; align-items: center; }
 
-/* Minimal mode (issue #19, stores/preferences.ts): hide explanations and secondary actions; the main flow stays. */
-html[data-density="minimal"] :is(.page-subtitle, .eyebrow, .settings-group-head p, .settings-hint, .settings-field-note, .settings-panel-title p, .upload-footnote, .privacy-note, .workspace-footer, .ootd-note, .outfit-canvas-status .muted) { display: none !important; }
-html[data-density='minimal'] .topbar-assistant { display: none; }
-html[data-density='minimal'] .page-heading { margin-bottom: 18px; }
-html[data-density='minimal'] .wardrobe-tools :is(.image-style-select, .sort-select, .search-help-trigger) { display: none; }
-html[data-density='minimal'] .settings-group { padding-top: 20px; padding-bottom: 20px; }
 
 /* Mobile-first page headers: compact title, short subtitle, actions in one tidy row. */
 @media (max-width: 767px) {

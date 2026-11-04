@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import QuickMix from '../outfit/QuickMix.vue'
+import PageTitle from '../shell/PageTitle.vue'
 import { thumbUrl } from '../services/urls'
 import { tryOnAccess } from '../tryon/access'
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
@@ -49,10 +51,17 @@ const router = useRouter()
 const closet = useClosetStore()
 // Library tabs: saved outfits (default) and "今天穿什么". The recommendation panel is built on first visit and then kept.
 const TAB_KEY = 'yixu.outfits.tab.v1'
-function readTab(): 'mine' | 'today' { try { return localStorage.getItem(TAB_KEY) === 'today' ? 'today' : 'mine' } catch { return 'mine' } }
-const libraryTab = ref<'mine' | 'today'>(readTab())
+// 快速搭（清新改版 §6）：手机上第一次进来默认是它；之后记住上次停留的视图。
+type LibraryTab = 'mix' | 'mine' | 'today'
+function readTab(): LibraryTab {
+  try { const saved = localStorage.getItem(TAB_KEY); if (saved === 'today' || saved === 'mine' || saved === 'mix') return saved } catch { /* storage blocked */ }
+  return window.matchMedia('(max-width: 767px)').matches ? 'mix' : 'mine'
+}
+const libraryTab = ref<LibraryTab>(readTab())
 const todayVisited = ref(libraryTab.value === 'today')
 watch(() => actualRoute.query.with, value => { if (typeof value === 'string') libraryTab.value = 'today' }, { immediate: true })
+// 衣物详情卡的“用它搭一套”带 ?mix=id：进快速搭并锁住这件。
+watch(() => actualRoute.query.mix, value => { if (typeof value === 'string') libraryTab.value = 'mix' }, { immediate: true })
 watch(libraryTab, tab => { if (tab === 'today') todayVisited.value = true; try { localStorage.setItem(TAB_KEY, tab) } catch { /* storage blocked */ } })
 const appearance = useThemeStore()
 const accentColor = computed(() => tokens[appearance.isDark ? 'dark' : 'light'].accent)
@@ -1011,12 +1020,15 @@ defineExpose({ flush: persistDraft, exportPng })
 
 <template>
   <div v-if="!editing" class="outfit-library-page">
-    <div class="page-heading outfit-library-heading"><div class="outfit-library-title"><h1>穿搭组合台</h1><p class="page-subtitle">从自己的衣柜选单品，保存一套随时可以穿的搭配。</p></div><div class="outfit-library-actions"><WorkspaceMenu /><a-button @click="router.push('/ootd')"><CameraOutlined /><span>OOTD 试穿</span></a-button><a-button type="primary" class="outfit-library-new" @click="router.push('/outfits/new')"><PlusOutlined /><span>新建搭配</span></a-button></div></div>
+    <PageTitle title="组合台" :count="saved.length || null" unit="套" hint="从自己的衣柜选单品，保存一套随时可以穿的搭配；“今天穿什么”按天气和场合推荐，不消耗 AI 额度。" />
     <!-- Saved outfits are the page's main job; "今天穿什么" is its own tab, opened on demand (and by ?with= from a garment page). -->
     <div class="outfit-library-bar">
-      <a-segmented v-model:value="libraryTab" class="outfit-library-tabs" aria-label="搭配视图" :options="[{ value: 'mine', label: saved.length ? `我的搭配 · ${saved.length}` : '我的搭配' }, { value: 'today', label: '今天穿什么' }]" />
+      <a-segmented v-model:value="libraryTab" class="outfit-library-tabs" aria-label="搭配视图" :options="[{ value: 'mix', label: '快速搭' }, { value: 'mine', label: saved.length ? `我的搭配 · ${saved.length}` : '我的搭配' }, { value: 'today', label: '今天穿什么' }]" />
       <a-input v-if="saved.length" v-show="libraryTab === 'mine'" v-model:value="librarySearch" class="outfit-library-search" allow-clear placeholder="搜索搭配名称" aria-label="搜索搭配"><template #prefix><SearchOutlined /></template></a-input>
+      <span class="outfit-library-gap"></span>
+      <div class="outfit-library-actions"><WorkspaceMenu /><a-button @click="router.push('/ootd')"><CameraOutlined /><span>OOTD 试穿</span></a-button><a-button type="primary" class="outfit-library-new" @click="router.push('/outfits/new')"><PlusOutlined /><span>新建搭配</span></a-button></div>
     </div>
+    <QuickMix v-if="libraryTab === 'mix'" :key="String(actualRoute.query.mix || '')" />
     <RecommendationStrip v-if="todayVisited" v-show="libraryTab === 'today'" />
     <div v-show="libraryTab === 'mine'">
     <TodayTeaser v-if="saved.length" @open="libraryTab = 'today'" />

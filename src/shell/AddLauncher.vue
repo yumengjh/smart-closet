@@ -1,17 +1,20 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { AppstoreAddOutlined, CameraOutlined, SkinOutlined, UserOutlined } from '@ant-design/icons-vue'
+import { AppstoreAddOutlined, CameraOutlined, SkinOutlined, UserOutlined, InboxOutlined, RightOutlined } from '@ant-design/icons-vue'
+import { useClosetStore } from '../stores/closet'
 import { playSound } from '../services/sound'
 import { usePreferencesStore } from '../stores/preferences'
 import { revealNavigate } from './revealNavigate'
 
 /**
+ * 清新改版 §2.1: the phone bar keeps only the main five; 未入柜 also lives here as a row under the tiles (with its count),
+ * and the ＋ shows a dot while something waits there.
  * Centre button of the mobile bar. A tap raises a card of four quick actions just above the bar (the bar stays on top,
  * the page and the assistant orb blur behind); choosing one opens that page growing out of the chosen tile
  * (revealNavigate). Tiles follow 界面偏好 → 导航栏样式: icon + text, icon only, or text only.
  */
-const router = useRouter(); const route = useRoute(); const preferences = usePreferencesStore()
+const router = useRouter(); const route = useRoute(); const preferences = usePreferencesStore(); const closet = useClosetStore()
 const open = ref(false)
 const mode = computed(() => preferences.navLabels)
 const ACTIONS = [
@@ -44,6 +47,7 @@ onUnmounted(() => { window.removeEventListener('keydown', keys); document.docume
 </script>
 <template>
   <a-button class="mobile-add" :class="{ open }" :aria-expanded="open" aria-haspopup="menu" :aria-label="open ? '收起添加菜单' : '添加'" @click="toggle">
+    <i v-if="closet.pendingCount" class="mobile-add-dot" aria-hidden="true"></i>
     <em class="mobile-add-disc"><svg class="mobile-add-mark" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg></em>
     <b class="mobile-add-text">{{ open && mode === 'text' ? '收起' : '添加' }}</b>
   </a-button>
@@ -53,6 +57,9 @@ onUnmounted(() => { window.removeEventListener('keydown', keys); document.docume
         <div class="add-sheet-card" role="menu" aria-label="添加">
           <a-button v-for="(action, index) in ACTIONS" :key="action.key" class="add-sheet-tile" role="menuitem" :aria-label="action.label" :style="{ '--i': index }" @click="choose(action.to, $event)">
             <i class="add-sheet-icon"><component :is="action.icon" /></i><b class="add-sheet-label">{{ action.label }}</b>
+          </a-button>
+          <a-button class="add-sheet-row" role="menuitem" :style="{ '--i': ACTIONS.length }" @click="choose('/pending', $event)">
+            <InboxOutlined /><b>未入柜</b><small>{{ closet.pendingCount ? `${closet.pendingCount} 件在处理或待核对` : '没有待处理的衣物' }}</small><RightOutlined class="add-sheet-row-arrow" />
           </a-button>
         </div>
       </div>
@@ -82,6 +89,14 @@ html[data-nav-labels='text'] .mobile-add-text { padding: 6px 16px; border-radius
 
 /* While open the bar sits above the blur (the assistant orb is z 910), so the trigger stays usable as “close”. */
 html.add-menu-open .mobile-nav { z-index: 930; }
+.mobile-nav .mobile-add-dot { position: absolute; top: 4px; right: calc(50% - 22px); z-index: 1; width: 7px; height: 7px; border-radius: 50%; background: var(--brand); box-shadow: 0 0 0 2px var(--surface); }
+.add-sheet-row.ant-btn { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 16px; border: 0; border-radius: 16px; color: var(--ink); background: var(--surface-alt); box-shadow: none; text-align: left; }
+.add-sheet-row.ant-btn > .anticon:first-child { font-size: 18px; color: var(--accent-strong); }
+.add-sheet-row b { font-weight: 500; }
+.add-sheet-row small { flex: 1; min-width: 0; overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.add-sheet-row-arrow { font-size: 11px; color: var(--muted-subtle); }
+.add-sheet-enter-active .add-sheet-row { transition: opacity .24s ease calc(60ms + var(--i) * 35ms), transform .32s cubic-bezier(.22, 1.3, .36, 1) calc(60ms + var(--i) * 35ms); }
+.add-sheet-enter-from .add-sheet-row { opacity: 0; transform: translateY(14px); }
 .add-sheet { position: fixed; inset: 0; z-index: 920; background: color-mix(in srgb, var(--paper) 70%, transparent); backdrop-filter: blur(14px) saturate(1.1); -webkit-backdrop-filter: blur(14px) saturate(1.1); }
 .add-sheet-card { position: absolute; left: 12px; right: 12px; bottom: calc(84px + env(safe-area-inset-bottom)); display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; padding: 10px; border: 1px solid var(--line); border-radius: 22px; background: var(--surface); box-shadow: 0 18px 40px #0000002a, 0 2px 8px #00000012; transform-origin: 50% 100%; }
 html[data-nav-labels='text'] .add-sheet-card { bottom: calc(70px + env(safe-area-inset-bottom)); }
