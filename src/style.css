@@ -418,3 +418,10 @@ html[data-density='minimal'] .settings-group { padding-top: 20px; padding-bottom
 .auth-form label { margin-top: 6px; font-size: 13px; color: var(--muted-strong); }
 .auth-submit.ant-btn { height: 50px; margin-top: 14px; font-size: 16px; }
 .auth-hint { margin: 4px 0 0; color: var(--warning); font-size: 12px; line-height: 1.7; }
+
+/* Real-time camera focus retains assistant state while hiding mobile chrome. */
+.tryon-settings-links { display:flex;gap:12px;flex-wrap:wrap;grid-column:1/-1;margin-bottom:16px; }
+/* 实时试穿：取景框顶满内容区，去掉外壳顶栏和页面留白（相机页有自己的顶栏）。 */
+.tryon-camera-mode .topbar { display: none; }
+.tryon-camera-mode .route-content { width: 100%; max-width: none; padding: 0; }
+@media (max-width:767px), (max-height:500px) and (pointer:coarse) { .tryon-camera-mode .sidebar,.tryon-camera-mode .sidebar-edge-toggle,.tryon-camera-mode .mobile-nav,.tryon-camera-mode .topbar { display:none!important; } .tryon-camera-mode .main-area { margin:0!important;padding:0!important; } .tryon-camera-mode .route-content,.tryon-camera-mode .route-view { padding:0!important;margin:0!important; } }

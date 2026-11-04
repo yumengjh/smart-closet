@@ -32,6 +32,8 @@ import { installInteractionSounds, unlockSound } from '../services/sound'
 import { pendingPath, prefetchRoute, prefetchWhenIdle } from '../composables/useRouteProgress'
 import { accountIsStale, markAccountStale, onAccountChange } from '../domain/accountSession'
 import { useNotificationStore } from '../stores/notifications'
+import { tryOnAccess, refreshTryOnAccess, resetTryOnAccess } from '../tryon/access'
+import { CAMERA_LAYOUT_QUERY } from '../tryon/stage'
 
 const route = useRoute()
 const router = useRouter()
@@ -47,19 +49,35 @@ const closetTheme = computed(() => ({
   token: antTokens(appearance.isDark ? 'dark' : 'light'),
   components: antComponentTokens(appearance.isDark ? 'dark' : 'light'),
 }))
+const tryonRoute = computed(() => route.path === '/try-on')
+watch(tryonRoute, on => { if (on) tryonExpanded.value = false })
 // Desktop sidebar: expanded (icons + names) or collapsed (icons only); remembered on this browser.
-const collapsed = ref(readCollapsed())
-function toggleSidebar() { collapsed.value = !collapsed.value; saveCollapsed(collapsed.value) }
+const savedCollapsed = ref(readCollapsed())
+// 实时试穿要尽量大的取景框：进入时侧栏临时收起成图标，展开只在本次停留有效，不改写保存的偏好。
+const tryonExpanded = ref(false)
+const collapsed = computed(() => tryonRoute.value ? !tryonExpanded.value : savedCollapsed.value)
+function toggleSidebar() {
+  if (tryonRoute.value) { tryonExpanded.value = !tryonExpanded.value; return }
+  savedCollapsed.value = !savedCollapsed.value; saveCollapsed(savedCollapsed.value)
+}
 const frameStyle = computed(() => ({ '--sidebar-w': `${sidebarWidth(collapsed.value)}px` }))
 // 注册后问询 /welcome 也是全屏页，但需要已登录（路由守卫负责）。
 const isLogin = computed(() => ['/login', '/register'].includes(route.path) || route.path === '/welcome' && closet.isSignedIn)
 const isOutfitEditor = computed(() => route.path.startsWith('/outfits/'))
+const tryonMediaQuery = window.matchMedia(CAMERA_LAYOUT_QUERY)
+const tryonNarrow = ref(tryonMediaQuery.matches)
+const updateTryonNarrow = () => { tryonNarrow.value = tryonMediaQuery.matches }
+let tryonAccessTimer = 0
+watch(() => closet.user && !closet.user.mustChangePassword ? closet.user.username : '', name => { resetTryOnAccess(); if (name) void refreshTryOnAccess() }, { immediate: true })
+onMounted(() => { tryonMediaQuery.addEventListener('change', updateTryonNarrow); tryonAccessTimer = window.setInterval(() => { if (closet.user && !closet.user.mustChangePassword && !document.hidden) void refreshTryOnAccess() }, 60000) })
+onUnmounted(() => { tryonMediaQuery.removeEventListener('change', updateTryonNarrow); clearInterval(tryonAccessTimer) })
 const navItems = [
   { path: '/wardrobe', label: '我的衣柜', icon: AppstoreOutlined, glyph: 'wardrobe' as const },
   { path: '/pending', label: '未入柜', icon: CheckCircleOutlined, glyph: 'pending' as const },
   { path: '/outfits', label: '组合台', icon: PictureOutlined, glyph: 'outfits' as const },
   // OOTD was only reachable from settings and the editor; the bottom bar keeps its five slots, so it is desktop-only there.
   { path: '/ootd', label: 'OOTD 试穿', icon: SkinOutlined, desktopOnly: true },
+  { path: '/try-on', label: '实时试穿', icon: SkinOutlined, desktopOnly: true },
   { path: '/settings', label: '我的', icon: SettingOutlined, glyph: 'me' as const },
 ]
 // Highlight the clicked destination immediately; on slow networks the route itself resolves later.
@@ -70,7 +88,7 @@ function isNavActive(path: string) {
 }
 const assistantShortcut = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘K' : 'Ctrl K'
 function openAssistant() { window.dispatchEvent(new CustomEvent('closet-assistant-open')) }
-const visibleNavItems = computed(() => closet.user?.mustChangePassword ? navItems.filter(item => item.path === '/settings') : navItems)
+const visibleNavItems = computed(() => (closet.user?.mustChangePassword ? navItems.filter(item => item.path === '/settings') : navItems).filter(item => item.path !== '/try-on' || tryOnAccess.value?.enabled))
 const mobileNavItems = computed(() => visibleNavItems.value.filter(item => !item.desktopOnly))
 const preferences = usePreferencesStore()
 const prefetch = (path: string) => prefetchRoute(router, path)
@@ -173,7 +191,7 @@ async function signOut() {
       </a-modal>
       <div class="route-progress" :class="{ active: showProgress }" role="progressbar" aria-label="页面加载中" :aria-hidden="!showProgress"><span></span></div>
       <div v-if="isLogin" class="login-frame"><RouterView /></div>
-      <div v-else-if="closet.isSignedIn && (!closet.user?.mustChangePassword || route.path === '/settings')" class="app-frame" :class="{ 'outfit-editing': isOutfitEditor, 'sidebar-collapsed': collapsed }" :style="frameStyle">
+      <div v-else-if="closet.isSignedIn && (!closet.user?.mustChangePassword || route.path === '/settings')" class="app-frame" :class="{ 'outfit-editing': isOutfitEditor, 'sidebar-collapsed': collapsed, 'tryon-camera-mode': tryonRoute }" :style="frameStyle">
         <aside class="sidebar" :class="{ collapsed }">
           <RouterLink :to="closet.user?.mustChangePassword ? '/settings' : '/wardrobe'" class="brand-lockup" aria-label="鱼搭首页">
             <span class="brand-mark"><img src="/yuda-logo-192.png" alt="" /></span>
@@ -206,7 +224,7 @@ async function signOut() {
           <section class="route-content" :aria-busy="!!pendingPath"><TaskToast /><RouterView v-slot="{ Component }"><Transition mode="out-in" :css="false" @enter="routeEnter" @leave="routeLeave"><div :key="viewKey(Component)" class="route-view"><component :is="Component" /></div></Transition></RouterView></section>
           <WaitingGame v-if="!closet.user?.mustChangePassword" />
           <WaitingStarted v-if="!closet.user?.mustChangePassword" /><RenderSendOff v-if="!closet.user?.mustChangePassword" />
-          <AssistantPanel v-if="!closet.user?.mustChangePassword" :key="closet.user?.username" />
+          <AssistantPanel v-if="!closet.user?.mustChangePassword" :key="closet.user?.username" :suspended="tryonRoute && tryonNarrow" />
           <GuideTour v-if="!closet.user?.mustChangePassword" />
         </main>
         <nav v-if="!closet.user?.mustChangePassword" ref="mobileNav" class="mobile-nav" aria-label="移动端主导航">

@@ -151,6 +151,8 @@ export type InviteCreated = RegistrationInvite & { code: string }
 const MOCK_KEY = 'yixu.mock-data.v2'
 export const usingMocks = import.meta.env.VITE_USE_MOCKS === 'true'
 let csrfToken = ''
+/** Reuse the last masked CSRF token for best-effort keepalive on pagehide. */
+export const currentCsrfToken = () => csrfToken
 
 function now(offset = 0) {
   return new Date(Date.now() - offset * 86_400_000).toISOString()

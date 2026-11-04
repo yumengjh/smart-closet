@@ -30,6 +30,7 @@ import { playSound } from '../services/sound'
 import { useClosetStore } from '../stores/closet'
 import { useFloatingPosition } from './useFloatingPosition'
 import { clampHeight, clampSize, clampWidth, DEFAULT_FLOATING_HEIGHT, DEFAULT_WIDTH, heightBounds, keyboardSize, restoreLayout, widthBounds, type AssistantMode } from './assistantLayout'
+const props = defineProps<{ suspended?: boolean }>()
 const route = useRoute(); const router = useRouter(); const { modal, message } = App.useApp()
 const open = ref(false); const busy = ref(false); const loading = ref(false); const status = ref(''); const error = ref(''); const input = ref('')
 const avatarCue=ref<AvatarCue|null>(null); const activityTool=ref('')
@@ -113,7 +114,7 @@ function restorePreferences() {
   persistLayout()
 }
 function syncDock() {
-  const active = open.value && !compact.value && mode.value === 'docked', root = document.documentElement
+  const active = open.value && !props.suspended && !compact.value && mode.value === 'docked', root = document.documentElement
   root.classList.toggle('assistant-docked', active)
   if (active) root.style.setProperty('--assistant-dock-width', `${dimensions.value.width}px`)
   else root.style.removeProperty('--assistant-dock-width')
@@ -175,7 +176,7 @@ function resetSize(edge: ResizeEdge) {
 }
 function changeMode({ key }: { key: string | number }) { const next = modes.find(item => item.key === key); if (!next || next.key === mode.value) return; endResize(); floating.end(); mode.value = next.key; persistLayout(); playSound('latch') }
 watch(layoutKey, restorePreferences, { immediate: true })
-watch([open, compact, mode, () => dimensions.value.width], syncDock, { flush: 'sync' })
+watch([open, compact, mode, () => dimensions.value.width, () => props.suspended], syncDock, { flush: 'sync' })
 // Phones get a bottom sheet: pull the handle or header down far or fast enough to dismiss it.
 let sheetOrigin: { pointer: number; y: number; last: number; time: number; speed: number } | undefined
 function startSheetDrag(event: PointerEvent) {
@@ -373,19 +374,19 @@ function lockBackground(lock: boolean) {
     window.scrollTo({ left: saved.x, top: saved.y, behavior: 'instant' })
   }
 }
-watch([open, compact], ([visible, mobile]) => lockBackground(visible && mobile), { flush: 'post' })
+watch([open, compact, () => props.suspended], ([visible, mobile, suspended]) => lockBackground(visible && mobile && !suspended), { flush: 'post' })
 onMounted(() => { window.addEventListener('closet-assistant-open', openFromWaiting); window.addEventListener(ASSISTANT_SEND_EVENT, sendFromCard); window.addEventListener(ASSISTANT_PREFILL_EVENT, prefillFromCard); window.addEventListener('resize', resize); window.addEventListener('keydown', keyboard); window.addEventListener('blur', cancelResize); window.visualViewport?.addEventListener('resize', resizeMobileViewport); window.visualViewport?.addEventListener('scroll', resizeMobileViewport) })
 function cancelResize() { endResize() }
 onUnmounted(() => { abort?.abort(); endResize(); floating.end(); document.documentElement.classList.remove('assistant-docked'); document.documentElement.style.removeProperty('--assistant-dock-width'); window.removeEventListener('closet-assistant-open', openFromWaiting); window.removeEventListener(ASSISTANT_SEND_EVENT, sendFromCard); window.removeEventListener(ASSISTANT_PREFILL_EVENT, prefillFromCard); abort?.abort(); clearTimeout(delightTimer); window.removeEventListener('resize', resize); window.removeEventListener('keydown', keyboard); window.removeEventListener('blur', cancelResize); window.visualViewport?.removeEventListener('resize', resizeMobileViewport); window.visualViewport?.removeEventListener('scroll', resizeMobileViewport); lockBackground(false) })
 </script>
 <template>
   <AgentTraceModal v-model:open="debugOpen" :session-id="selected" :request-id="debugRequest" :updates="debugUpdates" />
-  <AssistantOrb ref="launcher" :open="open || landing" :suppressed="editorRoute" :mood="mood" :busy="busy" :phase="isOperating?'operating':activityPhase" :tool="activityTool" :cue="avatarCue" @toggle="toggle" />
+  <AssistantOrb ref="launcher" :open="open || landing" :suppressed="editorRoute || props.suspended" :mood="mood" :busy="busy" :phase="isOperating?'operating':activityPhase" :tool="activityTool" :cue="avatarCue" @toggle="toggle" />
   <Teleport to="body">
-    <Transition name="assistant-scrim"><div v-if="open && compact" class="assistant-scrim" @click="close" /></Transition>
-    <span v-if="morph" ref="morphGhost" class="bloub-orb-shape assistant-morph" :style="{ '--orb-size': `${morph.size}px` }" aria-hidden="true"><BloubAvatar v-bind="launcher?.appearance" :size="morph.size * 1.25" /></span>
+    <Transition name="assistant-scrim"><div v-if="open && compact" v-show="!props.suspended" class="assistant-scrim" @click="close" /></Transition>
+    <span v-if="morph" v-show="!props.suspended" ref="morphGhost" class="bloub-orb-shape assistant-morph" :style="{ '--orb-size': `${morph.size}px` }" aria-hidden="true"><BloubAvatar v-bind="launcher?.appearance" :size="morph.size * 1.25" /></span>
     <Transition :css="false" @enter="enterPanel" @leave="leavePanel">
-      <aside v-if="open" id="closet-assistant" ref="panel" tabindex="-1" class="assistant-panel" :class="[compact ? 'sheet' : mode, { pinned: mode === 'overlay' && !compact, dragging: floating.dragging.value || !!sheetDrag, resizing }]" :style="panelStyle" :role="compact ? 'dialog' : 'complementary'" :aria-modal="compact || undefined" aria-label="个人助手">
+      <aside v-if="open" v-show="!props.suspended" id="closet-assistant" ref="panel" tabindex="-1" class="assistant-panel" :class="[compact ? 'sheet' : mode, { pinned: mode === 'overlay' && !compact, dragging: floating.dragging.value || !!sheetDrag, resizing }]" :style="panelStyle" :role="compact ? 'dialog' : 'complementary'" :aria-modal="compact || undefined" aria-label="个人助手">
         <template v-if="!compact"><a-button v-for="handle in resizeHandles" :key="handle.edge" type="text" class="assistant-resize-handle" :class="`resize-${handle.edge}`" role="separator" :aria-label="handle.label" :aria-orientation="handle.edge === 'bottom' ? 'horizontal' : 'vertical'" :aria-valuenow="Math.round(handle.value)" :aria-valuemin="handle.bounds.min" :aria-valuemax="handle.bounds.max" :aria-valuetext="handle.edge === 'corner' ? `宽 ${Math.round(dimensions.width)} 像素，高 ${Math.round(dimensions.height)} 像素` : undefined" aria-controls="closet-assistant" tabindex="0" data-no-drag data-sound="off" @pointerdown="startResize($event, handle.edge)" @pointermove="moveResize" @pointerup="endResize()" @pointercancel="endResize()" @lostpointercapture="endResize()" @keydown="resizeKey($event, handle.edge)" @dblclick="resetSize(handle.edge)" /></template>
         <header class="assistant-header" @pointerdown="startHeaderDrag" @pointermove="moveHeader" @pointerup="endHeaderDrag" @pointercancel="endHeaderDrag" @lostpointercapture="endHeaderDrag">
           <span v-if="compact" class="assistant-sheet-handle" aria-hidden="true" />

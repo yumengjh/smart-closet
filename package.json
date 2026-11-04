@@ -6,6 +6,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
+    "setup:pose": "node scripts/setup-pose.mjs",
+    "prebuild": "npm run setup:pose",
+    "prebuild:server": "npm run setup:pose",
+    "prebuild:standalone": "npm run setup:pose",
     "build": "vue-tsc -b && vite build",
     "build:server": "vue-tsc -b && VITE_API_BASE_URL='' VITE_USE_MOCKS=false vite build && node scripts/publish-to-server.mjs",
     "build:standalone": "vue-tsc -b && CLOSET_STANDALONE_BUILD=true VITE_USE_MOCKS=false vite build",
@@ -17,8 +21,11 @@
   "dependencies": {
     "@ant-design/icons-vue": "^7.0.1",
     "@foleyjs/core": "^2.9.0",
+    "@mediapipe/tasks-vision": "1.1.0",
+    "@xmaxai/web-sdk": "1.1.1",
     "ant-design-vue": "^4.2.6",
     "konva": "^10.7.0",
+    "mediabunny": "1.65.0",
     "pinia": "^3.0.3",
     "vue": "^3.5.13",
     "vue-konva": "^4.0.1",
@@ -30,5 +37,10 @@
     "typescript": "~5.7.2",
     "vite": "^6.0.7",
     "vue-tsc": "^2.2.0"
+  },
+  "overrides": {
+    "cos-js-sdk-v5": {
+      "fast-xml-parser": "5.7.0"
+    }
   }
 }

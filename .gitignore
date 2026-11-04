@@ -18,3 +18,7 @@ dist/
 /.cache/
 /.planning/.active_plan
 /.planning/*/.attestation
+
+# Local pose-check runtime and model, rebuilt by npm run setup:pose (see public/tryon-pose/README.md).
+/public/tryon-pose/wasm/
+/public/tryon-pose/*.task

@@ -6,6 +6,7 @@ import { taskLabels, isProcessing } from '../domain/workflow'
 import type { Garment } from '../services/api'
 import GarmentArt from './GarmentArt.vue'
 import { playSound } from '../services/sound'
+import { tryOnAccess } from '../tryon/access'
 
 /** review (issue #88): why the category needs checking, shown as a small warning badge. */
 const props = defineProps<{ garment: Garment; pending?: boolean; trashed?: boolean; selectable?: boolean; selected?: boolean; review?: string }>()
@@ -27,6 +28,7 @@ function openGarment() { if (props.selectable) { emit('toggle'); return }
   <article class="garment-card" :class="{ selected }" tabindex="0" :role="selectable ? 'checkbox' : 'link'" :aria-checked="selectable ? selected : undefined" :aria-label="selectable ? `选择${title}` : `打开${title}`" @keydown.enter="openGarment()" @click="openGarment()">
     <div class="card-image-wrap">
       <GarmentArt :garment="garment" />
+      <a-button v-if="tryOnAccess?.enabled && !pending && !trashed && !selectable && garment.status === 'ACTIVE'" class="card-tryon" size="small" @click.stop="router.push({ path: '/try-on', query: { garment: garment.id } })">实时试穿</a-button>
       <a-tag v-if="queueLabel && !trashed" class="card-queue" :color="garment.taskStatus === 'QUEUED' ? 'default' : 'processing'" :aria-label="`图片${queueLabel}，展示图可能还不是最终结果`" :title="`图片${queueLabel}，展示图可能还不是最终结果`">{{ queueLabel }}</a-tag>
       <a-checkbox v-if="selectable" class="card-check" :checked="selected" tabindex="-1" @click.stop @change="emit('toggle')" />
       <button v-if="!pending && !trashed && !selectable" class="card-more" aria-label="打开衣物详情" @click.stop="openGarment()"><ArrowRightOutlined /></button>
@@ -69,4 +71,5 @@ function openGarment() { if (props.selectable) { emit('toggle'); return }
 .card-check{position:absolute;left:10px;top:10px;z-index:1}
 .card-queue{position:absolute;right:8px;bottom:8px;z-index:1;margin:0;font-size:11px;line-height:18px;padding:0 6px;pointer-events:none}
 .garment-card.selected .card-image-wrap{box-shadow:0 0 0 2px var(--accent)}
+.card-tryon{position:absolute;left:10px;bottom:10px;min-height:36px;background:var(--surface);color:var(--ink)}
 </style>
