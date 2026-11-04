@@ -1,11 +1,10 @@
 name: Deploy frontend
 
-# Pushing a tag v* (or running it by hand) tests and builds the site, then replaces every file in the site directory on
+# Manual backup only. Semaphore owns automatic v* deployments.
+# Running this workflow by hand tests and builds the site, then replaces every file in the site directory on
 # the web server over SSH (1Panel static site, default /opt/1panel/www/sites/yuda.yumg.cn/index). No container involved.
 # Settings: repository secrets (Settings → Secrets and variables → Actions).
 on:
-  push:
-    tags: ["v*"]
   workflow_dispatch:
 
 permissions:

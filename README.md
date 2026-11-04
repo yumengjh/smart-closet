@@ -169,9 +169,11 @@ npm test
 npm run build
 ```
 
-**2026-10-24 起主用 Semaphore（免绑卡，每月 $15 额度，与后端共用组织 yumg，部署变量放在独立的 Secret `frontend`（Web 服务器与后端不是同一台））**：配置在 `.semaphore/`，分支推送运行 `npm ci`、测试、类型检查和关闭模拟的构建；推送 `v*` 标签检查通过后自动运行 `deploy.yml`（`scripts/ci/deploy.sh`：检查后端接口 → 构建 → SSH 覆盖 1Panel 站点 → 刷新 CDN → 核对线上）。其他提交可在 Semaphore 里手动 Promote「Deploy this commit」。可选变量 `DEPLOY_PATH`、`DEPLOY_SITE_URL`、`FRONTEND_API_BASE_URL`、`TENCENTCLOUD_SECRET_ID/KEY`、`CDN_PURGE_PATHS` 写进同一个 Secret `frontend`。GitHub Actions 额度恢复后 `deploy.yml` 与 Semaphore 都响应 `v*` 标签，需二选一，否则同一个标签部署两次。
+**Semaphore 是唯一响应 `v*` 标签自动部署的平台**（与后端共用组织 yumg，部署变量放在独立的 Secret `frontend`，Web 服务器与后端不是同一台）：配置在 `.semaphore/`，分支推送运行 `npm ci`、测试、类型检查和关闭模拟的构建；推送 `v*` 标签检查通过后自动运行 `deploy.yml`（`scripts/ci/deploy.sh`：检查后端接口 → 构建 → SSH 覆盖 1Panel 站点 → 刷新 CDN → 核对线上）。其他提交可在 Semaphore 里手动 Promote「Deploy this commit」。可选变量 `DEPLOY_PATH`、`DEPLOY_SITE_URL`、`FRONTEND_API_BASE_URL`、`TENCENTCLOUD_SECRET_ID/KEY`、`CDN_PURGE_PATHS` 写进同一个 Secret `frontend`。GitHub Actions 与 CircleCI 配置保留作手动备用，不随标签自动部署。
 
-226 项测试覆盖工作区注册、衣架分组、助手窗口布局、翻页件数、OOTD 任务状态、搭配错误、实时试穿状态机与取景检查等。CircleCI（`.circleci/config.yml`）在每次推送与 PR 时使用 Node.js 24，在干净检出中运行 `npm ci`、测试、类型检查和关闭模拟的构建；不会调用真实 AI 或发布页面。GitHub Actions 只负责标签部署与手动检查。2026-10-24 起 CircleCI 自动运行暂停：需要时 Trigger Pipeline 并加参数 `auto=true`，把默认值改回 `true` 即恢复。
+226 项测试覆盖工作区注册、衣架分组、助手窗口布局、翻页件数、OOTD 任务状态、搭配错误、实时试穿状态机与取景检查等。CircleCI（`.circleci/config.yml`）默认不运行工作流；手动传 `auto=true` 只运行检查，传 `release=true` 才在 `v*` 标签上运行备用发版，传 `deploy=true` 则部署所选分支。GitHub Actions 的检查与部署仅保留手动入口。启用备用部署前，先停止同一版本的 Semaphore 部署；各平台的并发控制不能跨平台互斥。
+
+先提交、推送 CI 配置，再在包含该配置的提交上打版本标签。旧提交、旧标签仍使用其对应版本的配置；发版前确认三家平台没有旧部署任务仍在运行或排队。
 
 后端回归在 `smart-closet-server` 执行 `mvn test`。
 

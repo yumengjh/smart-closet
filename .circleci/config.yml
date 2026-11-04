@@ -1,8 +1,7 @@
-# CircleCI: everyday checks on every push, plus a deployment path that mirrors .github/workflows/deploy.yml
-# (the GitHub Actions workflows stay as they are; either side can deploy).
+# CircleCI: manual backup. Semaphore owns automatic v* deployments.
 #
-#   push a branch                         -> checks (verify)
-#   push a tag v*                         -> release: verify -> deploy (build, replace the 1Panel site over SSH)
+#   Trigger Pipeline with auto=true       -> checks (verify), without deployment
+#   Trigger Pipeline on v* with release=true -> verify -> deploy; stop the Semaphore deployment first
 #   Trigger Pipeline with deploy=true     -> manual-deploy: deploy the chosen branch
 #
 # Project Settings -> Environment Variables (same names as the GitHub secrets):
@@ -13,10 +12,13 @@
 #             CDN_PURGE_PATHS (directories to refresh, default the site origin)
 version: 2.1
 
-# Paused since 2026-10-24 to save credits: pushes and tags start nothing. Trigger Pipeline with auto=true runs the
-# checks (branch) or the release (tag) as before. Set the default back to true to resume.
+# Pushes and tags start no workflows with these defaults. Checks and releases have separate opt-ins.
+# Keep release=false for normal Semaphore releases; auto=true must not re-enable deployments.
 parameters:
   auto:
+    type: boolean
+    default: false
+  release:
     type: boolean
     default: false
   deploy:
@@ -211,7 +213,7 @@ workflows:
     when:
       and:
         - not: << pipeline.parameters.deploy >>
-        - << pipeline.parameters.auto >>
+        - << pipeline.parameters.release >>
     jobs:
       - verify:
           filters: &release_filters
