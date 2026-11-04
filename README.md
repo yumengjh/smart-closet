@@ -2,14 +2,14 @@
 
 # 鱼搭 · 数字衣柜（用户端）
 
-**手机和桌面一起设计的数字衣柜界面：入柜、衣柜、推荐、搭台、助手、OOTD。**
+**手机和桌面一起设计的数字衣柜界面：入柜、衣柜、推荐、搭台、助手、OOTD、实时试穿。**
 
 ![Vue](https://img.shields.io/badge/Vue-3.5-4FC08D?logo=vuedotjs&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.7-3178C6?logo=typescript&logoColor=white)
 ![Vite](https://img.shields.io/badge/Vite-6-646CFF?logo=vite&logoColor=white)
 ![Ant Design Vue](https://img.shields.io/badge/Ant_Design_Vue-4-1677FF?logo=antdesign&logoColor=white)
 ![Konva](https://img.shields.io/badge/Konva-画板-0D83CD)
-![Tests](https://img.shields.io/badge/测试-107_项-success)
+![Tests](https://img.shields.io/badge/测试-226_项-success)
 ![License](https://img.shields.io/badge/license-源码仅供评审_·_非开源-red)
 
 [快速开始](#快速开始) · [功能](#功能) · [构建与发布](#构建与发布) · [相关仓库](#相关仓库) · [后端仓库（评审副本）](https://github.com/yumengjh/smart-closet-server-review) · [界面流程说明](docs/INTERACTION.md)
@@ -46,12 +46,14 @@ project/
 |:--|:--|
 | 账号 | 登录、凭邀请码注册、首次改密、登录设备管理、自助注销；会话失效自动回到登录 |
 | 快速入柜 | 连拍上传，后台抠图与识别，处理中心统一查看任务、提醒与重试 |
-| 我的衣柜 | 分页与键盘翻页、颜色精确筛选、语义搜索与以图搜图、相似衣物提示、回收站 |
+| 我的衣柜 | “衣架”按品类分隔间叠挂、悬停展开，也可切回“平铺”网格；分页与键盘翻页、颜色精确筛选、语义搜索与以图搜图、相似衣物提示、回收站 |
 | 今天穿什么 | 按天气与风格推荐，每套附依据；换一批、换一件、反馈 |
 | 多画板搭台 | Konva 画板，多画板、图层、变换、导出；助手的方案落在临时画板 |
-| 全局助手 | 右侧覆盖面板，可固定、拖动；流式回复，操作以浏览器回执为准 |
+| 快速搭 | 上衣、下装上下两排左右滑动翻看，可锁住一排、随机一套；“评一评”用本地推荐引擎打分，不调用模型；满意后在搭台打开 |
+| 全局助手 | 从底部导航胶囊的“问鱼搭”唤起（桌面 ⌘K / Ctrl K），默认在下方居中展开，可切换为覆盖右侧、右侧停靠或自由窗口；流式回复，操作以浏览器回执为准 |
 | 个人 OOTD | 基准人物、多模特、动作、身材调节，生成前须确认 |
-| 主题与手机端 | 浅色 / 深色主题；手机底部面板、手势翻页；PWA |
+| 实时试穿（实验性，默认关闭） | 接入 XMax 实时视频生成，摄像头画面实时换上衣柜成品图或临时衣物；手机系统相机式全屏、PC 全宽舞台；本地姿态检查提示取景、无人 30 秒自动结束；拍照、有声分段录像、历史与下载；点开始后才计费 |
+| 主题与导航 | 清新薄荷浅色 / 深色主题；所有宽度共用底部悬浮胶囊导航（没有侧栏），向下阅读时自动让开；手机底部面板、手势翻页；PWA |
 
 ## 界面一览
 
@@ -114,6 +116,7 @@ flowchart LR
 | `npm run typecheck` | `vue-tsc` 类型检查 |
 | `npm test` | 单元测试（Node 内置测试运行器） |
 | `npm run deploy:local` | 本机一键构建并重启后端 |
+| `npm run setup:pose` | 下载实时试穿取景检查用的 MediaPipe 姿态模型与运行库到 `public/tryon-pose/` 并做 SHA256 校验；三个构建命令会自动先执行，资源不进 Git |
 
 **同源发布**（本机或局域网使用）：
 
@@ -145,13 +148,14 @@ src/
   outfit/         画板（Konva）、画板切换与保存
   agent/          全局助手面板与命令执行回执
   ootd/           基准人物、模特、动作、OOTD
+  tryon/          实时试穿：相机、SDK 适配、录像、舞台布局、姿态检查
   presets/        预设衣物库
   similar/        相似衣物与以图搜图
   notifications/  处理中心与提醒
   services/       API 封装（api.ts、platform.ts）、音效
   stores/         Pinia 状态
   domain/         与服务端对应的领域逻辑（角色分类、图片规则等）
-  shell/          主布局、侧栏、手机端导航
+  shell/          主布局、底部胶囊导航、添加菜单、新手指引
   theme/ styles/  主题与全局样式
 tests/            单元测试
 docs/             界面流程、PWA、OOTD 界面设计、评审记录
@@ -167,14 +171,14 @@ npm run build
 
 **2026-10-24 起主用 Semaphore（免绑卡，每月 $15 额度，与后端共用组织 yumg，部署变量放在独立的 Secret `frontend`（Web 服务器与后端不是同一台））**：配置在 `.semaphore/`，分支推送运行 `npm ci`、测试、类型检查和关闭模拟的构建；推送 `v*` 标签检查通过后自动运行 `deploy.yml`（`scripts/ci/deploy.sh`：检查后端接口 → 构建 → SSH 覆盖 1Panel 站点 → 刷新 CDN → 核对线上）。其他提交可在 Semaphore 里手动 Promote「Deploy this commit」。可选变量 `DEPLOY_PATH`、`DEPLOY_SITE_URL`、`FRONTEND_API_BASE_URL`、`TENCENTCLOUD_SECRET_ID/KEY`、`CDN_PURGE_PATHS` 写进同一个 Secret `frontend`。GitHub Actions 额度恢复后 `deploy.yml` 与 Semaphore 都响应 `v*` 标签，需二选一，否则同一个标签部署两次。
 
-107 项测试覆盖工作区注册、侧栏偏好、翻页件数、OOTD 任务状态、搭配错误等。CircleCI（`.circleci/config.yml`）在每次推送与 PR 时使用 Node.js 24，在干净检出中运行 `npm ci`、测试、类型检查和关闭模拟的构建；不会调用真实 AI 或发布页面。GitHub Actions 只负责标签部署与手动检查。2026-10-24 起 CircleCI 自动运行暂停：需要时 Trigger Pipeline 并加参数 `auto=true`，把默认值改回 `true` 即恢复。
+226 项测试覆盖工作区注册、衣架分组、助手窗口布局、翻页件数、OOTD 任务状态、搭配错误、实时试穿状态机与取景检查等。CircleCI（`.circleci/config.yml`）在每次推送与 PR 时使用 Node.js 24，在干净检出中运行 `npm ci`、测试、类型检查和关闭模拟的构建；不会调用真实 AI 或发布页面。GitHub Actions 只负责标签部署与手动检查。2026-10-24 起 CircleCI 自动运行暂停：需要时 Trigger Pipeline 并加参数 `auto=true`，把默认值改回 `true` 即恢复。
 
 后端回归在 `smart-closet-server` 执行 `mvn test`。
 
 ## 开发约定
 
 - 所有可见交互控件统一使用 **Ant Design Vue**，不混用原生 select、checkbox、textarea、浏览器 prompt / confirm；完整约定见 [AGENTS.md](AGENTS.md)。
-- 全局助手覆盖在右侧，打开、关闭、固定都不改变主布局尺寸。
+- 全局助手从导航胶囊的“问鱼搭”唤起，默认在下方居中展开，不改变主布局尺寸；只有用户选择右侧停靠时才挤开页面。
 - 音效走 `src/services/sound.ts` 并尊重开关；动效尊重 `prefers-reduced-motion`。
 - 改界面先改本仓库源码，再用 `npm run build:server` 发布，不手工改后端的构建产物。
 
