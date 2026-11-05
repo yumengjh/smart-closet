@@ -170,7 +170,7 @@ npm test
 npm run build
 ```
 
-**GitHub Actions 是日常检查与 `v*` 标签自动部署的主平台**（2026-11-05 起）。`.github/workflows/frontend.yml` 响应 main 推送、PR、版本标签或手动触发：依赖审计（high/critical 阻断）、`npm ci`、测试、类型检查、真实 API 构建。普通分支/PR 不部署；只有 `v*` 标签在检查通过后调用可复用 `deploy.yml`：检查后端接口 → 构建 → SSH 覆盖站点 → 刷新 CDN → 核对线上。`Deploy frontend` 也保留手动入口。
+**GitHub Actions 是日常检查与 `v*` 标签自动部署的主平台**（2026-11-05 起）。`.github/workflows/frontend.yml` 响应 main 推送、PR、版本标签或手动触发：依赖审计（high/critical 阻断）、`npm ci`、测试、类型检查、真实 API 构建。普通分支/PR 不部署；只有 `v*` 标签在检查通过后调用可复用 `deploy.yml`：检查后端接口 → 构建 → SSH 覆盖站点 → 刷新 CDN → 核对线上。`Deploy frontend` 也保留手动入口。选择 `validate_only=true` 时只检查部署密钥是否配置（不打印值），不连接服务器、不构建或部署。
 
 全部与生产依赖 audit JSON、完整提交号保留在 `frontend-security-reports` artifact 30 天。部署变量使用仓库 Actions Secrets（`DEPLOY_SSH_HOST/USER/KEY` 或 PASSWORD、`DEPLOY_SSH_KNOWN_HOSTS`；可选 PORT、`DEPLOY_PATH`、`DEPLOY_SITE_URL`、`FRONTEND_API_BASE_URL`、`TENCENTCLOUD_SECRET_ID/KEY`、`CDN_PURGE_PATHS`）。工作流会前置检查密钥；本次修复分支 CI 不验证生产部署权限。
 
