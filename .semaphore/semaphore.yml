@@ -1,8 +1,6 @@
-# Semaphore: everyday checks, and the site deployment of a version tag (README: 持续集成与部署).
-#
-#   push a branch  -> checks (test, typecheck, build)
-#   push a tag v*  -> checks, then deploy.yml automatically: build and replace the 1Panel site over SSH
-#   Promote "Deploy this commit" by hand -> deploy.yml for any checked commit
+# Archived backup: all automatic blocks/promotions are disabled.
+# GitHub Actions owns checks and checked version-tag releases (#138, 2026-11-05).
+# Manual backup deployment requires stopping the corresponding Actions deployment first.
 version: v1.0
 name: Checks
 agent:
@@ -22,6 +20,8 @@ execution_time_limit:
 
 blocks:
   - name: Verify
+    skip:
+      when: "true"
     task:
       jobs:
         - name: test, typecheck, build
@@ -29,6 +29,7 @@ blocks:
             - checkout
             - sem-version node 24
             - cache restore npm-$(checksum package-lock.json)
+            - npm audit --package-lock-only --ignore-scripts --audit-level=high
             - npm ci
             - cache store npm-$(checksum package-lock.json) ~/.npm
             - npm test
@@ -39,4 +40,4 @@ promotions:
   - name: Deploy this commit
     pipeline_file: deploy.yml
     auto_promote:
-      when: "result = 'passed' AND tag =~ '^v'"
+      when: "false"

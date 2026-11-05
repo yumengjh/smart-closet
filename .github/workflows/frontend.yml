@@ -1,7 +1,11 @@
 name: Frontend checks
 
-# Everyday checks run on Semaphore; this workflow is kept for manual runs only.
+# Primary CI; only a checked version tag calls the deployment workflow.
 on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -15,12 +19,25 @@ jobs:
   verify:
     name: Test and build Vue frontend
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
           cache: npm
+      - name: Audit locked dependencies
+        run: |
+          mkdir -p security-reports
+          git rev-parse HEAD > security-reports/commit.txt
+          npm audit --package-lock-only --ignore-scripts --audit-level=high --json > security-reports/npm-all.json
+          npm audit --package-lock-only --ignore-scripts --omit=dev --audit-level=high --json > security-reports/npm-production.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: frontend-security-reports
+          path: security-reports
+          retention-days: 30
       - run: npm ci
       - run: npm test
       - run: npm run typecheck
@@ -29,3 +46,10 @@ jobs:
           VITE_USE_MOCKS: "false"
           VITE_API_BASE_URL: ""
         run: npm run build
+
+  deploy:
+    name: Deploy checked version tag
+    needs: verify
+    if: startsWith(github.ref, 'refs/tags/v')
+    uses: ./.github/workflows/deploy.yml
+    secrets: inherit

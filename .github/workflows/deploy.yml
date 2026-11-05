@@ -1,10 +1,11 @@
 name: Deploy frontend
 
-# Manual backup only. Semaphore owns automatic v* deployments.
+# Called by frontend.yml after successful tag checks, or run manually.
 # Running this workflow by hand tests and builds the site, then replaces every file in the site directory on
 # the web server over SSH (1Panel static site, default /opt/1panel/www/sites/yuda.yumg.cn/index). No container involved.
 # Settings: repository secrets (Settings → Secrets and variables → Actions).
 on:
+  workflow_call:
   workflow_dispatch:
 
 permissions:
