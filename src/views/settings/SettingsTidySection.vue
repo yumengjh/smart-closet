@@ -6,6 +6,8 @@ import { thumbUrl } from '../../services/urls'
 import type { ImageModelStatus } from '../../services/api'
 import { similarApi, type DuplicatePair, type DuplicateScan } from '../../similar/api'
 import { useNotificationStore } from '../../stores/notifications'
+import { loadWantedLabel, wantedLabel } from '../../wardrobe/wanted'
+void loadWantedLabel()
 
 /**
  * 整理衣柜 · 可能重复 (design 相似衣物 §4, 模型内存与图像向量 §8.3): pairs that look like the same piece entered twice.
@@ -67,7 +69,7 @@ onUnmounted(() => clearTimeout(poll))
     <ul v-else class="tidy-pairs">
       <li v-for="p in pairs" :key="p.a.id + p.b.id">
         <div class="tidy-pair">
-          <RouterLink v-for="g in [p.a, p.b]" :key="g.id" :to="`/garment/${g.id}`" class="tidy-item"><img v-if="g.displayUrl" :src="thumbUrl(g.displayUrl, 320)" :alt="g.name" loading="lazy" decoding="async" /><span>{{ g.name }}</span></RouterLink>
+          <RouterLink v-for="g in [p.a, p.b]" :key="g.id" :to="`/garment/${g.id}`" class="tidy-item"><img v-if="g.displayUrl" :src="thumbUrl(g.displayUrl, 320)" :alt="g.name" loading="lazy" decoding="async" /><span>{{ g.name }}</span><a-tag v-if="g.status === 'WANTED'" class="tidy-wanted">{{ wantedLabel }}</a-tag></RouterLink>
         </div>
         <p class="muted">{{ p.reasons.join('，') }}</p>
         <a-button size="small" :loading="busy === p.a.id + p.b.id" @click="dismiss(p)">不是重复</a-button>
@@ -83,6 +85,7 @@ onUnmounted(() => clearTimeout(poll))
 .tidy-pairs li { display: grid; gap: 6px; padding-bottom: 12px; border-bottom: 1px solid var(--border-subtle, rgba(0,0,0,.06)); }
 .tidy-pair { display: flex; gap: 12px; flex-wrap: wrap; }
 .tidy-item { display: grid; justify-items: center; gap: 4px; width: 120px; text-align: center; }
+.tidy-wanted { margin: 0; border: 0; font-size: 11px; color: var(--accent-strong); background: var(--accent-soft); }
 .tidy-item img { width: 96px; height: 96px; object-fit: contain; border-radius: 8px; background: var(--surface-muted, rgba(0,0,0,.04)); }
 .tidy-pairs p { margin: 0; font-size: 12px; }
 .tidy-pairs li > button { justify-self: start; }

@@ -9,11 +9,14 @@ import { thumbUrl } from '../services/urls'
 import { playSound } from '../services/sound'
 import { colorFamilies, garmentFamily, pileTilt, rackBays, type Bay, type ColorFamily } from './rack'
 import GarmentQuickCard from './GarmentQuickCard.vue'
+import { wantedLabel } from './wanted'
 
 /** spread: 0 = 叠放 … 1 = 散开（工具条滑块）。 */
 const props = defineProps<{ items: Garment[]; reviews?: Record<string, { message?: string } | undefined>; spread: number }>()
 const bays = computed(() => rackBays(props.items))
-const families = computed(() => colorFamilies(props.items))
+// 色谱只统计已拥有的衣物；种草（还没买）不计入（#197）。
+const families = computed(() => colorFamilies(props.items.filter(item => item.status !== 'WANTED')))
+const wantedIn = (bay: Bay) => bay.items.filter(item => item.status === 'WANTED').length
 const focusFamily = ref<ColorFamily | null>(null)
 // The label floats above the hovered segment (no legend underneath); it slides from segment to segment.
 const tip = ref<{ x: number; text: string } | null>(null)
@@ -79,13 +82,13 @@ onUnmounted(() => observer?.disconnect())
         <span class="rack-spectrum-tip" :class="{ show: tip }" :style="{ left: `${tip?.x ?? 0}px` }" aria-hidden="true">{{ tip?.text }}</span>
       </div>
     </div>
-    <section v-for="bay in bays" :key="bay.key" class="rack-bay" :class="{ shelf: bay.shelf, in: seen.has(bay.key), holding: quick?.bay.key === bay.key }" :data-bay="bay.key" :aria-label="`${bay.label}，${bay.items.length} 件`">
-      <header class="rack-bay-head"><h2>{{ bay.label }}</h2><small>{{ bay.items.length }} 件</small><span class="rack-bay-hint">移过来展开 · 右上角滑块调松紧</span></header>
+    <section v-for="bay in bays" :key="bay.key" class="rack-bay" :class="{ shelf: bay.shelf, in: seen.has(bay.key), holding: quick?.bay.key === bay.key }" :data-bay="bay.key" :aria-label="`${bay.label}，${bay.items.length - wantedIn(bay)} 件${wantedIn(bay) ? `，${wantedLabel} ${wantedIn(bay)} 件` : ''}`">
+      <header class="rack-bay-head"><h2>{{ bay.label }}</h2><small>{{ bay.items.length - wantedIn(bay) }} 件<template v-if="wantedIn(bay)"> · {{ wantedLabel }} {{ wantedIn(bay) }}</template></small><span class="rack-bay-hint">移过来展开 · 右上角滑块调松紧</span></header>
       <div class="rack-wrap">
         <template v-if="!bay.shelf"><span class="rack-end left"></span><span class="rack-rod"></span><span class="rack-end right"></span></template>
         <span v-else class="rack-shelf"></span>
         <div class="rack-lane">
-          <article v-for="(item, index) in bay.items" :key="item.id" :data-id="item.id" class="rack-hang" :class="{ dim: focusFamily && familyOf(item) !== focusFamily }" :style="{ '--i': index, '--r': `${pileTilt(item.id)}deg` }" tabindex="0" role="link" :aria-label="`打开${title(item)}`" @click="open(item, bay)" @keydown.enter="open(item, bay)">
+          <article v-for="(item, index) in bay.items" :key="item.id" :data-id="item.id" class="rack-hang" :class="{ dim: focusFamily && familyOf(item) !== focusFamily, wanted: item.status === 'WANTED' }" :style="{ '--i': index, '--r': `${pileTilt(item.id)}deg` }" tabindex="0" role="link" :aria-label="`打开${item.status === 'WANTED' ? `${wantedLabel}的` : ''}${title(item)}`" @click="open(item, bay)" @keydown.enter="open(item, bay)">
             <div class="rack-swing">
               <svg v-if="!bay.shelf" class="rack-hanger" viewBox="0 0 96 52" aria-hidden="true"><path class="hook" d="M48 19V13A5 5 0 1 0 43 8" /><path class="body" d="M48 20L86 42Q89 45 86 45H10Q7 45 10 42Z" /><circle class="knob" cx="48" cy="20" r="2" /></svg>
               <div class="rack-cloth">
@@ -95,6 +98,7 @@ onUnmounted(() => observer?.disconnect())
               </div>
             </div>
             <span v-if="reviews?.[item.id]?.message" class="rack-flag" :title="`需核对：${reviews[item.id]!.message}`">需核对</span>
+            <span v-if="item.status === 'WANTED'" class="rack-flag wanted" :title="`${wantedLabel}：还没买，不参与推荐与统计`">{{ wantedLabel }}</span>
             <span v-if="item.sourceOrigin === 'PRESET'" class="rack-flag preset" title="预设衣物的示意图，可在详情里换成自己的照片">预设</span>
             <div class="rack-foot"></div>
           </article>
@@ -169,6 +173,10 @@ onUnmounted(() => observer?.disconnect())
 .rack-hang:is(:hover, :focus-visible) .rack-cloth img { transform: scale(1.04); filter: drop-shadow(0 18px 18px #0d3b3326); }
 .rack-flag { position: absolute; top: 40px; left: 18px; z-index: 6; padding: 1px 7px; border-radius: 999px; font-size: 11px; color: var(--warning); background: var(--warning-bg); }
 .rack-flag.preset { color: var(--muted-strong); background: var(--surface-alt); }
+.rack-flag.wanted { color: var(--accent-strong); background: var(--accent-soft); }
+/* 种草：衣物半透明、虚线轮廓，一眼看出“还没买” */
+.rack-hang.wanted .rack-fig img { opacity: .72; }
+.rack-hang.wanted .rack-fig { outline: 1.5px dashed var(--accent); outline-offset: 2px; border-radius: 10px; }
 .rack-flag + .rack-flag { top: 62px; }
 .rack-foot { height: 22px; }
 

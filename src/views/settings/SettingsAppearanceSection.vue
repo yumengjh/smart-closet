@@ -5,6 +5,9 @@ import { useThemeStore } from '../../stores/theme'
 import type { ThemeMode } from '../../theme/tokens'
 import { playSound } from '../../services/sound'
 import NavGlyph from '../../shell/NavGlyph.vue'
+import { onMounted, ref } from 'vue'
+import { App } from 'ant-design-vue'
+import { DEFAULT_WANTED_LABEL, WANTED_LABEL_MAX, loadWantedLabel, saveWantedLabel, wantedLabel } from '../../wardrobe/wanted'
 
 /**
  * 界面偏好, two independent choices, each shown as what it looks like: the bottom bar style and light or dark.
@@ -17,6 +20,18 @@ const MINI = [{ glyph: 'wardrobe', label: '衣柜' }, { glyph: 'outfits', label:
 const THEMES: { value: ThemeMode; label: string }[] = [{ value: 'light', label: '浅色' }, { value: 'dark', label: '深色' }]
 function pickBar(value: NavLabels) { if (preferences.navLabels !== value) { preferences.navLabels = value; playSound('tick') } }
 function pickTheme(value: ThemeMode) { if (appearance.mode !== value) { appearance.mode = value; playSound('tick') } }
+// 种草的叫法（#197）：网上看中、还没买的衣服在衣柜里叫什么。存在账号上，只改显示。
+const { message } = App.useApp()
+const labelDraft = ref(wantedLabel.value)
+const savingLabel = ref(false)
+onMounted(async () => { await loadWantedLabel(); labelDraft.value = wantedLabel.value })
+async function saveLabel(value = labelDraft.value) {
+  if (savingLabel.value || value.trim() === wantedLabel.value) { labelDraft.value = wantedLabel.value; return }
+  savingLabel.value = true
+  try { await saveWantedLabel(value); labelDraft.value = wantedLabel.value; playSound('tick'); message.success(`已改为“${wantedLabel.value}”`) }
+  catch (cause) { message.error(cause instanceof Error ? cause.message : '没有保存成功，请再试一次。'); labelDraft.value = wantedLabel.value }
+  finally { savingLabel.value = false }
+}
 </script>
 <template>
   <div class="settings-section-content">
@@ -43,9 +58,20 @@ function pickTheme(value: ThemeMode) { if (appearance.mode !== value) { appearan
         </a-button>
       </div>
     </section>
+
+    <section class="settings-group">
+      <header class="settings-group-head"><h3>“种草”的叫法</h3><p>网上看中、还没买的衣服可以存进衣柜，它们不参与推荐和统计。这里改它们在衣柜里显示的名字，最多 {{ WANTED_LABEL_MAX }} 个字，清空恢复“{{ DEFAULT_WANTED_LABEL }}”。</p></header>
+      <div class="wanted-label-row">
+        <a-input v-model:value="labelDraft" class="wanted-label-input" :maxlength="WANTED_LABEL_MAX" :placeholder="DEFAULT_WANTED_LABEL" aria-label="种草的叫法" allow-clear @press-enter="saveLabel()" />
+        <a-button type="primary" :loading="savingLabel" :disabled="labelDraft.trim() === wantedLabel || (!labelDraft.trim() && wantedLabel === DEFAULT_WANTED_LABEL)" @click="saveLabel()">保存</a-button>
+        <a-button v-if="wantedLabel !== DEFAULT_WANTED_LABEL" type="link" :disabled="savingLabel" @click="saveLabel('')">恢复默认</a-button>
+      </div>
+    </section>
   </div>
 </template>
 <style scoped>
+.wanted-label-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.wanted-label-input.ant-input-affix-wrapper { width: 180px; max-width: 100%; }
 .look-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .look-options.two { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 420px; }
 .look-option.ant-btn { position: relative; display: flex; flex-direction: column; align-items: stretch; gap: 10px; height: auto; padding: 10px; border: 1.5px solid var(--line); border-radius: 16px; background: var(--surface); box-shadow: none; text-align: center; transition: border-color .2s ease, transform .25s cubic-bezier(.34, 1.56, .64, 1); }
