@@ -4,8 +4,9 @@ import { request, closetApi } from './api'
 import { useProcessingStore } from '../stores/processing'
 import { isAccountSwitched, mayPoll } from '../domain/accountSession'
 export type Hint = { kind: 'POINT' | 'BOX'; x: number; y: number; width?: number; height?: number }
-export type QuickView = { intakeId: string; garmentId: string; sourceSaved: boolean; revision: number; awaitTargetHint: boolean; task: { status: string; steps: { type: string; status: string; error?: { message: string } }[] }; garment: { status: string; sourceUrl: string; displayUrl: string; displayAssetId: string; images: { id: string; kind: string; url: string; aiGenerated: boolean }[]; imageProcessing?: { stickerReady: boolean } }; quality: { needsEnhancement: boolean; reason: string } | null }
-export type LocalPhoto = { id: string; owner: string; blob?: Blob; name: string; options: { admissionMode: string; captureSessionId: string; targetHint?: Hint }; created: number; state: 'PENDING' | 'UPLOADING' | 'SAVED' | 'ERROR' | 'MARKING'; nextAttemptAt?: number; leaseUntil?: number; leaseOwner?: string; error?: string; result?: QuickView }
+/** wanted: 本次选了种草（#197）；入柜后以 garment.status（WANTED / ACTIVE）为准。 */
+export type QuickView = { intakeId: string; garmentId: string; sourceSaved: boolean; revision: number; awaitTargetHint: boolean; wanted?: boolean; task: { status: string; steps: { type: string; status: string; error?: { message: string } }[] }; garment: { status: string; sourceUrl: string; displayUrl: string; displayAssetId: string; images: { id: string; kind: string; url: string; aiGenerated: boolean }[]; imageProcessing?: { stickerReady: boolean } }; quality: { needsEnhancement: boolean; reason: string } | null }
+export type LocalPhoto = { id: string; owner: string; blob?: Blob; name: string; options: { admissionMode: string; captureSessionId: string; targetHint?: Hint; wanted?: boolean }; created: number; state: 'PENDING' | 'UPLOADING' | 'SAVED' | 'ERROR' | 'MARKING'; nextAttemptAt?: number; leaseUntil?: number; leaseOwner?: string; error?: string; result?: QuickView }
 export const uploadRows = ref<LocalPhoto[]>([])
 export const uploadError = ref('')
 let database: Promise<IDBDatabase> | undefined
@@ -14,13 +15,29 @@ async function change<T>(mode: IDBTransactionMode, action: (store: IDBObjectStor
 const tabId = createUuid()
 const readAll = () => change<LocalPhoto[]>('readonly', (store, done) => { store.getAll().onsuccess = event => done((event.target as IDBRequest).result) })
 export async function refreshUploads(owner: string) { uploadRows.value = (await readAll()).filter(row => row.owner === owner).sort((a, b) => b.created - a.created) }
-export async function savePhoto(owner: string, file: File, mode: string, session: string, marking = false) {
+/** wanted: 存为种草（网上看中、还没买）；只在选了时写进 options，旧记录与默认请求保持不变。 */
+export async function savePhoto(owner: string, file: File, mode: string, session: string, marking = false, wanted = false) {
   if (!['image/jpeg', 'image/png'].includes(file.type) || file.size > 50 * 1024 * 1024) throw new Error('请选择不超过 50 MB 的 JPEG 或 PNG 照片。')
-  const row: LocalPhoto = { id: createUuid(), owner, blob: file, name: file.name, options: { admissionMode: mode, captureSessionId: session }, state: marking ? 'MARKING' : 'PENDING', created: Date.now() }
+  const row: LocalPhoto = { id: createUuid(), owner, blob: file, name: file.name, options: { admissionMode: mode, captureSessionId: session, ...(wanted ? { wanted: true } : {}) }, state: marking ? 'MARKING' : 'PENDING', created: Date.now() }
   try { await change<void>('readwrite', (store, done) => { store.add(row); done() }); uploadError.value = ''; await refreshUploads(owner); return row }
   catch { uploadError.value = '本机空间不足或无法保存，请停止拍摄并释放空间。此照片尚未安全保存。'; throw new Error(uploadError.value) }
 }
 export async function markPhoto(id: string, owner: string, hint?: Hint) { await change<void>('readwrite', (store, done) => { store.get(id).onsuccess = event => { const row = (event.target as IDBRequest).result as LocalPhoto; if (row?.owner !== owner || row.state !== 'MARKING') { done(); return }; row.options.targetHint = hint ? { kind: hint.kind, x: hint.x, y: hint.y, ...(hint.width === undefined ? {} : { width: hint.width }), ...(hint.height === undefined ? {} : { height: hint.height }) } : undefined; row.state = 'PENDING'; store.put(row); done() } }); await refreshUploads(owner) }
+/**
+ * 改为种草 / 已拥有（#197）。还没发出的照片只改本机选项；已经上传的交给服务器（入柜前决定入柜方式，入柜后直接切换）。
+ * 正在上传的那一张不能改，等它收到保存确认。
+ */
+export async function setPhotoWanted(id: string, owner: string, wanted: boolean) {
+  const row = uploadRows.value.find(item => item.id === id && item.owner === owner)
+  if (!row || row.state === 'UPLOADING') throw new Error('这张正在上传，稍等片刻再改。')
+  if (row.state === 'SAVED') {
+    const view = await quickApi.setWanted(id, wanted)
+    await updateSavedResult(id, owner, view)
+  } else {
+    await change<void>('readwrite', (store, done) => { store.get(id).onsuccess = event => { const current = (event.target as IDBRequest).result as LocalPhoto; if (current?.owner === owner && current.state !== 'UPLOADING' && current.state !== 'SAVED') { const { wanted: _old, ...rest } = current.options; current.options = wanted ? { ...rest, wanted: true } : rest; store.put(current) }; done() } })
+  }
+  await refreshUploads(owner)
+}
 export async function updateSavedResult(id: string, owner: string, result: QuickView) { await change<void>('readwrite', (store, done) => { store.get(id).onsuccess = e => { const row = (e.target as IDBRequest).result as LocalPhoto; if (row?.owner === owner && row.state === 'SAVED') store.put({ ...row, blob: undefined, result }); done() } }) }
 export async function checkLocalStorage(owner: string) { await refreshUploads(owner); uploadError.value = '' }
 export async function retryPhoto(id: string, owner: string) { await change<void>('readwrite', (store, done) => { store.get(id).onsuccess = e => { const row = (e.target as IDBRequest).result as LocalPhoto; if (row?.owner === owner && row.state === 'ERROR') { row.state = 'PENDING'; row.error = undefined; store.put(row) }; done() } }) }
@@ -46,5 +63,6 @@ export async function pumpUploads(getOwner: () => string | undefined) {
 export const quickApi = {
  get: (id: string) => request<QuickView>(`/api/closet/quick-intakes/${id}`),
  provenance: (garment: string) => request<{ intakeId?: string }>(`/api/closet/quick-intakes/garment/${garment}`),
+ setWanted: (id: string, wanted: boolean) => request<QuickView>(`/api/closet/quick-intakes/${id}/wanted`, { method: 'PUT', body: JSON.stringify({ wanted }) }),
  enhance: (id: string, key: string, feedback: string) => request<QuickView>(`/api/closet/quick-intakes/${id}/enhance`, { method: 'POST', headers: { 'Idempotency-Key': key }, body: JSON.stringify({ feedback }) }),
 }

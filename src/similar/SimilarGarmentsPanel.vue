@@ -3,12 +3,20 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { App } from 'ant-design-vue'
 import { thumbUrl } from '../services/urls'
 import { similarApi, LEVEL_LABELS, type SimilarView } from './api'
+import { wantedLabel } from '../wardrobe/wanted'
 
-/** 相似的衣物 on the garment page: hints only, never merges or blocks (design S2). */
-const props = defineProps<{ garmentId: string; draft?: boolean }>()
+/** 相似的衣物 on the garment page: hints only, never merges or blocks (design S2). wanted: this garment is 种草 (#197). */
+const props = defineProps<{ garmentId: string; draft?: boolean; wanted?: boolean }>()
 const { message } = App.useApp()
 const view = ref<SimilarView | null>(null); const loading = ref(true); const error = ref(''); const busy = ref('')
 const duplicate = computed(() => view.value?.items.find(i => i.level === 'DUPLICATE') || null)
+// 种草（#197）：重复的是已有衣物还是另一件种草，说法不同；下单前查重是主要用途。
+const duplicateMessage = computed(() => {
+  const other = duplicate.value; if (!other) return ''
+  if (other.status === 'WANTED') return props.draft ? `你已经${wantedLabel.value}过一件几乎一样的，确认不是重复再入柜` : `另一件${wantedLabel.value}的衣服和它几乎一样，可能重复存了`
+  if (props.wanted) return '你已经有一件几乎一样的了，下单前看看是否还需要'
+  return props.draft ? '衣柜里已有一件几乎一样的，确认不是重复再入柜' : '衣柜里有一件几乎一样的，可能重复录入了'
+})
 async function load() {
   loading.value = true; error.value = ''
   try { view.value = await similarApi.similar(props.garmentId) }
@@ -27,7 +35,7 @@ onMounted(load); watch(() => props.garmentId, load)
   <section v-if="!loading && (view?.items.length || error)" class="garment-surface similar-panel" aria-label="相似的衣物">
     <header class="similar-head"><h2>相似的衣物</h2><p class="muted">按颜色、轮廓、外观与描述比对，本地计算</p></header>
     <a-alert v-if="error" type="warning" show-icon :message="error" />
-    <a-alert v-if="duplicate" type="warning" show-icon :message="draft ? '衣柜里已有一件几乎一样的，确认不是重复再入柜' : '衣柜里有一件几乎一样的，可能重复录入了'">
+    <a-alert v-if="duplicate" type="warning" show-icon :message="duplicateMessage">
       <template #description>
         <RouterLink :to="`/garment/${duplicate.id}`">{{ duplicate.name }}</RouterLink>：{{ duplicate.reasons.join('，') }}
         <a-button type="link" size="small" :loading="busy === duplicate.id" @click="dismiss(duplicate.id)">不是重复</a-button>
@@ -38,7 +46,7 @@ onMounted(load); watch(() => props.garmentId, load)
         <RouterLink :to="`/garment/${item.id}`" class="similar-item">
           <span class="similar-thumb"><img v-if="item.displayUrl" :src="thumbUrl(item.displayUrl, 320)" :alt="item.name" loading="lazy" decoding="async" /></span>
           <span class="similar-copy">
-            <span class="similar-title"><strong>{{ item.name }}</strong><a-tag v-if="item.level" :color="LEVEL_LABELS[item.level].color">{{ LEVEL_LABELS[item.level].label }}</a-tag></span>
+            <span class="similar-title"><strong>{{ item.name }}</strong><a-tag v-if="item.level" :color="LEVEL_LABELS[item.level].color">{{ LEVEL_LABELS[item.level].label }}</a-tag><a-tag v-if="item.status === 'WANTED'" class="similar-wanted">{{ wantedLabel }}</a-tag></span>
             <span class="similar-reasons"><em v-for="reason in (item.reasons.length ? item.reasons : ['整体相近']).slice(0, 3)" :key="reason">{{ reason }}</em></span>
           </span>
         </RouterLink>
@@ -61,6 +69,7 @@ onMounted(load); watch(() => props.garmentId, load)
 .similar-title { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .similar-title strong { overflow: hidden; font-size: 14px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .similar-title :deep(.ant-tag) { flex: none; margin: 0; font-size: 11px; line-height: 18px; }
+.similar-title :deep(.similar-wanted) { border: 0; color: var(--accent-strong); background: var(--accent-soft); }
 .similar-reasons { display: flex; flex-wrap: wrap; gap: 4px; }
 .similar-reasons em { padding: 0 6px; border-radius: 4px; background: var(--surface-alt); color: var(--muted-strong); font-size: 11px; font-style: normal; line-height: 18px; }
 .similar-item:hover .similar-reasons em { background: var(--surface); }

@@ -4,7 +4,7 @@ import { isAccountSwitched, mayPoll } from '../domain/accountSession'
 import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { App, message } from 'ant-design-vue'
-import { CameraOutlined, PictureOutlined, SettingOutlined, CheckCircleFilled, LoadingOutlined, ClockCircleOutlined, ArrowRightOutlined, InboxOutlined, CloseOutlined, DownOutlined } from '@ant-design/icons-vue'
+import { CameraOutlined, PictureOutlined, SettingOutlined, CheckCircleFilled, LoadingOutlined, ArrowRightOutlined, InboxOutlined, CloseOutlined, DownOutlined, MoreOutlined, QuestionCircleOutlined, ExclamationCircleFilled } from '@ant-design/icons-vue'
 import { useClosetStore } from '../stores/closet'
 import { useNotificationStore } from '../stores/notifications'
 import { thumbUrl } from '../services/urls'
@@ -12,7 +12,8 @@ import { prefersNativeCamera } from '../services/camera'
 import { playSound } from '../services/sound'
 import CameraCapture from './CameraCapture.vue'
 import TargetMarker from './TargetMarker.vue'
-import { savePhoto, checkLocalStorage, updateSavedResult, refreshUploads, pumpUploads, uploadRows, uploadError, markPhoto, retryPhoto, removePhoto, removePhotos, quickApi, type LocalPhoto, type Hint } from '../services/quickIntake'
+import { loadWantedLabel, wantedLabel } from '../wardrobe/wanted'
+import { savePhoto, setPhotoWanted, checkLocalStorage, updateSavedResult, refreshUploads, pumpUploads, uploadRows, uploadError, markPhoto, retryPhoto, removePhoto, removePhotos, quickApi, type LocalPhoto, type Hint } from '../services/quickIntake'
 
 const notifications = useNotificationStore()
 const closet = useClosetStore(), router = useRouter(), { modal } = App.useApp()
@@ -26,7 +27,23 @@ const owner = () => closet.user?.username
 const rows = computed(() => uploadRows.value.filter(row => row.owner === owner()))
 const visibleRows = computed(() => expanded.value ? rows.value : rows.value.slice(0, 6))
 const localCount = computed(() => rows.value.filter(row => row.state !== 'SAVED').length)
-const admitted = computed(() => rows.value.filter(row => row.result?.garment.status === 'ACTIVE').length)
+const inCloset = (row: LocalPhoto) => row.result?.garment.status === 'ACTIVE' || row.result?.garment.status === 'WANTED'
+const admitted = computed(() => rows.value.filter(inCloset).length)
+// 种草（#197）：网上看中、还没买的衣服也从这里收进衣柜，入柜为 WANTED，不参与推荐与统计。只在本次打开页面期间有效，默认“我有这件”。
+const ownership = ref<'OWNED' | 'WANTED'>('OWNED')
+void loadWantedLabel()
+const ownershipOptions = computed(() => [{ value: 'OWNED', label: '我有这件' }, { value: 'WANTED', label: `${wantedLabel.value}（还没买）` }])
+/** The row's current choice: the closet status once admitted, otherwise what was chosen for it. */
+const rowWanted = (row: LocalPhoto) => row.result?.garment.status === 'WANTED' || (!inCloset(row) && Boolean(row.result?.wanted ?? row.options.wanted))
+const switching = ref('')
+async function toggleWanted(row: LocalPhoto) {
+  const account = owner(); if (!account || switching.value) return
+  const next = !rowWanted(row)
+  switching.value = row.id
+  try { await setPhotoWanted(row.id, account, next); const current = uploadRows.value.find(item => item.id === row.id); if (current?.result) current.result = await quickApi.get(row.id); playSound('tick'); message.success(next ? `已改为${wantedLabel.value}，不参与推荐和统计` : '已改为已拥有') }
+  catch (cause) { playSound('denied'); message.error(cause instanceof Error ? cause.message : '没有改成功，请稍后再试。') }
+  finally { switching.value = '' }
+}
 const thumbnails = new Map<string, string>()
 const active = (row: LocalPhoto) => row.result && ['QUEUED', 'RUNNING'].includes(row.result.task.status)
 function thumbnail(row: LocalPhoto) {
@@ -48,9 +65,10 @@ function status(row: LocalPhoto) {
   const sticker = view.garment.imageProcessing?.stickerReady || view.garment.images?.some(image => image.kind === 'BASE_STICKER')
   if (['FAILED', 'UNKNOWN', 'NEEDS_REVIEW'].includes(view.task.status)) return { title: sticker ? '贴纸已保留，后续处理需查看' : '照片已保留，处理需查看', detail: view.task.status === 'UNKNOWN' ? '云端结果待确认，请到衣物详情查看' : '可先使用衣物，或在详情中重新处理', tone: 'warning' }
   if (view.task.status === 'CANCELLED') return { title: '后续处理已取消', detail: '已保存的衣物和图片仍然保留', tone: 'waiting' }
-  if (sticker) return { title: '贴纸已入柜', detail: active(row) ? '现在就能查看使用，资料在后台补齐' : '整理完成，可以查看或修改衣物信息', tone: 'success' }
-  if (base?.status === 'SKIPPED') return { title: '原图已入柜', detail: '去背景未完成，资料识别继续进行', tone: 'warning' }
-  return { title: view.garment.status === 'ACTIVE' ? '原图已入柜，贴纸制作中' : '照片已保存，正在准备贴纸', detail: base?.status === 'RUNNING' ? '正在去背景、加白边，做好后自动显示' : '已排队，无需再次提交', tone: base?.status === 'RUNNING' ? 'processing' : 'waiting' }
+  const wantedNow = view.garment.status === 'WANTED'
+  if (sticker) return { title: wantedNow ? `贴纸已存为${wantedLabel.value}` : '贴纸已入柜', detail: active(row) ? '现在就能查看使用，资料在后台补齐' : '整理完成，可以查看或修改衣物信息', tone: 'success' }
+  if (base?.status === 'SKIPPED') return { title: wantedNow ? `原图已存为${wantedLabel.value}` : '原图已入柜', detail: '去背景未完成，资料识别继续进行', tone: 'warning' }
+  return { title: view.garment.status === 'ACTIVE' ? '原图已入柜，贴纸制作中' : wantedNow ? `原图已存为${wantedLabel.value}，贴纸制作中` : '照片已保存，正在准备贴纸', detail: base?.status === 'RUNNING' ? '正在去背景、加白边，做好后自动显示' : '已排队，无需再次提交', tone: base?.status === 'RUNNING' ? 'processing' : 'waiting' }
 }
 function takePhoto() { if (nativeCamera) nativeInput.value?.click(); else camera.value = true }
 async function capture(file: File, specify = false, quiet = false) {
@@ -58,7 +76,7 @@ async function capture(file: File, specify = false, quiet = false) {
   saving.value = true; received.value = '已收到照片，正在保存在本机…'; celebration.value = null
   const dismiss = quiet ? () => {} : message.loading({ content: '已收到照片，正在保存…', duration: 0 })
   try {
-    const row = await savePhoto(account, file, mode.value, session, specify || markerMode.value)
+    const row = await savePhoto(account, file, mode.value, session, specify || markerMode.value, ownership.value === 'WANTED')
     if (owner() !== account) return
     if (row.state === 'MARKING' && !marker.value) marker.value = row
     received.value = row.state === 'MARKING' ? '照片已收到，请指定这张的主视衣物。' : navigator.onLine ? '照片已收到，正在上传。可以继续拍下一件。' : '照片已保存在本机，联网后会自动上传。'
@@ -158,6 +176,29 @@ function manage({ key }: { key: string | number }) {
     onOk: async () => { await removePhotos(targets.map(row => row.id), account); if (marker.value && targets.some(row => row.id === marker.value?.id)) marker.value = undefined; expanded.value = false },
   })
 }
+// 网格里的每张只显示一个短状态；完整说明放在悬停提示和读屏文字里。
+function chip(row: LocalPhoto) {
+  const tone = status(row).tone
+  if (row.state === 'MARKING') return '待指定'
+  if (row.state === 'ERROR') return '未上传'
+  if (row.state === 'UPLOADING') return '上传中'
+  if (row.state === 'PENDING') return '在本机'
+  if (row.result?.garment.status === 'TRASHED') return '已删除'
+  if (tone === 'success') return rowWanted(row) ? wantedLabel.value : '已入柜'
+  if (tone === 'warning') return '需查看'
+  return tone === 'processing' ? '处理中' : '排队中'
+}
+function openRow(row: LocalPhoto) {
+  if (row.state === 'MARKING') { marker.value = row; return }
+  if (row.state === 'ERROR') { void retry(row); return }
+  if (row.result) void router.push(`/garment/${row.result.garmentId}`)
+}
+function menuClick(row: LocalPhoto, info: { key: string | number }) { rowAction(row, String(info.key)) }
+function rowAction(row: LocalPhoto, key: string) {
+  if (key === 'open') openRow(row)
+  else if (key === 'ownership') void toggleWanted(row)
+  else if (key === 'remove') modal.confirm({ title: '删除这条记录？', content: removeHint(row), okText: '删除', okButtonProps: { danger: true }, cancelText: '取消', onOk: () => removeRecord(row) })
+}
 async function retry(row: LocalPhoto) { await retryPhoto(row.id, owner()!); await refreshUploads(owner()!); void pumpUploads(owner) }
 const POLL_BATCH = 4
 // Roughly 8 requests/second at most however many photos are in flight; quiet pages relax to 4 s.
@@ -196,26 +237,29 @@ onBeforeUnmount(() => { alive = false; clearTimeout(timer); for (const url of th
 
 <template>
   <section class="quick-intake" aria-label="快速拍照入柜">
-    <div class="capture-panel" :class="{ dragging }" @dragenter.prevent="dragEnter" @dragover.prevent @dragleave="dragLeave" @drop.prevent="dropped">
-      <div v-if="dragging" class="drop-veil" aria-hidden="true"><InboxOutlined /><strong>松手，收进衣柜</strong><span>JPEG / PNG，可一次拖入多张</span></div>
-      <div class="capture-heading"><div><h2>拍一件，收一件</h2><p>先做好贴纸给你看，资料自动补齐。</p></div><a-button type="text" class="settings-button" aria-label="录入设置" @click="settings = true"><SettingOutlined /><span>设置</span></a-button></div>
+    <div class="capture-panel" :class="{ dragging, wanted: ownership === 'WANTED' }" @dragenter.prevent="dragEnter" @dragover.prevent @dragleave="dragLeave" @drop.prevent="dropped">
+      <div v-if="dragging" class="drop-veil" aria-hidden="true"><InboxOutlined /><strong>{{ ownership === 'WANTED' ? `松手，存为${wantedLabel}` : '松手，收进衣柜' }}</strong></div>
+      <a-button type="text" shape="circle" class="settings-button" aria-label="录入设置" @click="settings = true"><SettingOutlined /></a-button>
+      <h2 class="capture-title">{{ ownership === 'WANTED' ? `存一件${wantedLabel}` : '拍一件，收一件' }}</h2>
+      <div class="ownership-choice">
+        <a-segmented v-model:value="ownership" :options="ownershipOptions" class="ownership-switch" :aria-label="`这次收的是已有的衣服，还是${wantedLabel}`" />
+        <a-tooltip :title="`${wantedLabel}：网上看中、还没买的衣服。存进衣柜但不参与推荐和统计，买到后一键标为已拥有。`" placement="bottom"><QuestionCircleOutlined class="ownership-help" tabindex="0" :aria-label="`${wantedLabel}是什么`" /></a-tooltip>
+      </div>
       <div class="capture-actions">
-        <a-button type="primary" size="large" :disabled="saving || Boolean(uploadError)" :loading="saving" @click="takePhoto"><CameraOutlined v-if="!saving" />{{ rows.length ? '再拍一件' : '拍照' }}</a-button>
-        <a-button size="large" :disabled="saving || Boolean(uploadError)" @click="input?.click()"><PictureOutlined />从相册选</a-button>
+        <a-button type="primary" size="large" class="capture-main" :disabled="saving || Boolean(uploadError)" :loading="saving" @click="ownership === 'WANTED' ? input?.click() : takePhoto()"><template v-if="ownership === 'WANTED'"><PictureOutlined v-if="!saving" />选截图</template><template v-else><CameraOutlined v-if="!saving" />拍照</template></a-button>
+        <a-button size="large" class="capture-soft" :disabled="saving || Boolean(uploadError)" @click="ownership === 'WANTED' ? takePhoto() : input?.click()"><template v-if="ownership === 'WANTED'"><CameraOutlined />拍照</template><template v-else><PictureOutlined />相册</template></a-button>
       </div>
-      <p class="capture-hint">{{ compact ? '相册可多选 · 拍完自动上传 · 不用等上一件' : '相册可多选 · 也能直接拖进来或 Ctrl/⌘ + V 粘贴 · 不用等上一件' }}</p>
-      <div class="capture-receipt" role="status" aria-live="polite" aria-atomic="true">
-        <template v-if="saving"><LoadingOutlined spin /><span>收到照片，正在保存…</span></template>
-        <template v-else-if="sessionRows.length">
-          <span class="session-count" :class="{ done: sessionPercent === 100 }">{{ sessionRows.length }}</span>
-          <span class="session-copy">本次收了 {{ sessionRows.length }} 件<template v-if="sessionReady"> · {{ sessionReady }} 件已入柜</template><small>{{ localCount ? `${localCount} 张仍在本机，请保持网页打开完成上传。` : sessionPercent === 100 ? '这一轮都处理好了，可以继续拍或去衣柜看看。' : '贴纸在后台制作，可以继续拍下一件。' }}</small>
+      <p class="capture-hint">{{ compact ? '可多选，不用等上一件' : '可多选、拖入或粘贴，不用等上一件' }}</p>
+      <Transition name="note">
+        <div v-if="saving || sessionRows.length" class="capture-receipt" role="status" aria-live="polite" aria-atomic="true">
+          <template v-if="saving"><LoadingOutlined spin /><span>正在保存…</span></template>
+          <template v-else>
+            <span class="session-copy">本次 {{ sessionRows.length }} 件<template v-if="sessionReady"> · {{ sessionReady }} 件已入柜</template></span>
             <a-progress :percent="sessionPercent" :show-info="false" size="small" :stroke-color="'var(--accent)'" :status="sessionPercent === 100 ? 'normal' : 'active'" class="session-progress" />
-          </span>
-        </template>
-        <template v-else-if="rows[0]"><CheckCircleFilled v-if="status(rows[0]).tone === 'success'" class="success" /><LoadingOutlined v-else-if="status(rows[0]).tone === 'processing'" spin /><ClockCircleOutlined v-else /><span>{{ status(rows[0]).title }}<small>{{ localCount ? `${localCount} 张仍在本机，请保持网页打开完成上传。` : '可以继续拍照，或离开页面做别的事。' }}</small></span></template>
-        <template v-else><CheckCircleFilled /><span>贴纸做好后自动入柜<small>无需逐件确认，可随时修改和换图。</small></span></template>
-      </div>
-      <p v-if="markerMode || mode === 'UPLOAD_READY'" class="custom-settings">{{ mode === 'UPLOAD_READY' ? '当前：原图保存即入柜' : '' }}{{ markerMode ? ' · 每张指定主视衣物' : '' }}</p>
+          </template>
+        </div>
+      </Transition>
+      <p v-if="localCount" class="capture-local">{{ localCount }} 张还在本机，请保持页面打开</p>
     </div>
     <input ref="input" type="file" class="hidden-file-input" multiple accept="image/jpeg,image/png" tabindex="-1" @change="selected" />
     <input ref="nativeInput" type="file" class="hidden-file-input" accept="image/*" capture="environment" tabindex="-1" @change="selected" />
@@ -225,77 +269,142 @@ onBeforeUnmount(() => { alive = false; clearTimeout(timer); for (const url of th
       <section v-if="celebration" class="celebration" role="status" aria-live="polite">
         <div class="confetti" aria-hidden="true"><i v-for="index in 14" :key="index"></i></div>
         <span class="celebration-badge"><CheckCircleFilled /></span>
-        <div class="celebration-copy"><strong>这一轮收好了 {{ celebration.ready }} 件，{{ celebration.line }}</strong><p>{{ celebration.attention ? `另有 ${celebration.attention} 件需要看一下，在下方对应照片里处理。` : '贴纸都做好了，资料会在后台慢慢补齐。' }}</p></div>
-        <div class="celebration-actions"><a-button type="primary" @click="router.push('/wardrobe')">去衣柜看看</a-button><a-button @click="celebration = null; takePhoto()">再拍一件</a-button></div>
+        <div class="celebration-copy"><strong>收好了 {{ celebration.ready }} 件，{{ celebration.line }}</strong><p v-if="celebration.attention">另有 {{ celebration.attention }} 件需要看一下</p></div>
+        <div class="celebration-actions"><a-button type="primary" @click="router.push('/wardrobe')">去衣柜</a-button><a-button @click="celebration = null; takePhoto()">再拍一件</a-button></div>
         <a-button type="text" size="small" class="celebration-close" aria-label="关闭" @click="celebration = null"><template #icon><CloseOutlined /></template></a-button>
       </section>
     </Transition>
     <a-alert v-if="error || uploadError" class="capture-error" type="warning" :message="uploadError || error" show-icon />
     <a-button v-if="uploadError" @click="checkLocalStorage(owner()!)">释放空间后重新检查</a-button>
     <section class="recent-section" aria-label="本机最近录入">
-      <div class="recent-heading"><h2>最近录入 <span v-if="rows.length"><b class="recent-total">共 {{ rows.length }} 条 · </b>{{ admitted }} 件已入柜</span></h2>
+      <div v-if="rows.length" class="recent-heading"><h2>最近录入<span>{{ admitted }} / {{ rows.length }}</span></h2>
         <div class="recent-tools">
-          <a-dropdown v-if="rows.length" :trigger="['click']"><a-button type="text">管理记录<DownOutlined /></a-button>
+          <a-dropdown :trigger="['click']"><a-button type="text" size="small">管理<DownOutlined /></a-button>
             <template #overlay><a-menu @click="manage"><a-menu-item key="finished" :disabled="!finishedRows.length">清除已完成记录（{{ finishedRows.length }}）</a-menu-item><a-menu-item key="all" danger>清空全部记录</a-menu-item></a-menu></template>
           </a-dropdown>
-          <a-button type="text" @click="router.push('/tasks')">全部任务<ArrowRightOutlined /></a-button>
+          <a-button type="text" size="small" @click="router.push('/tasks')">任务<ArrowRightOutlined /></a-button>
         </div>
       </div>
       <div v-if="!rows.length" class="capture-empty">
-        <div class="empty-main"><span class="empty-hanger" aria-hidden="true"><svg viewBox="0 0 64 40"><path d="M32 12a4.5 4.5 0 1 0-4.5-4.5M32 12v3.5L5 33.5c-1.6 1.1-.8 3.5 1.1 3.5h51.8c1.9 0 2.7-2.4 1.1-3.5L32 15.5" /></svg></span><div><strong>衣柜在等第一位新成员</strong><p>照片与贴纸会在这里更新，处理进度一眼可见。</p></div></div>
-        <ul class="shoot-tips" aria-label="拍摄小建议"><li><b>1</b>平铺或挂起来拍，贴纸边缘更干净</li><li><b>2</b>一张照片放一件，整件入镜</li><li><b>3</b>光线充足，背景越简单越好</li></ul>
+        <span class="empty-hanger" aria-hidden="true"><svg viewBox="0 0 64 40"><path d="M32 12a4.5 4.5 0 1 0-4.5-4.5M32 12v3.5L5 33.5c-1.6 1.1-.8 3.5 1.1 3.5h51.8c1.9 0 2.7-2.4 1.1-3.5L32 15.5" /></svg></span>
+        <p>平铺或挂起来拍，一张一件</p>
       </div>
-      <TransitionGroup v-else tag="div" name="row" class="quick-list">
-        <article v-for="row in visibleRows" :key="row.id" class="quick-row" :data-state="row.state" :data-tone="status(row).tone" :class="{ 'just-ready': justReady.has(row.id) }">
-          <div class="quick-image"><span v-if="justReady.has(row.id)" class="sparkles" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span><img :src="thumbnail(row)" :alt="row.result?.garment.imageProcessing?.stickerReady ? '已制作的衣物贴纸' : '本次录入的衣物照片'" /><span v-if="aiImage(row)" class="ai-label">AI 生成</span></div>
-          <div class="quick-row-copy"><div class="row-head"><p class="row-status" :class="status(row).tone"><LoadingOutlined v-if="status(row).tone === 'processing'" spin /><CheckCircleFilled v-else-if="status(row).tone === 'success'" />{{ status(row).title }}</p><time class="row-time" :datetime="new Date(row.created).toISOString()">{{ recordedAt(row) }}</time></div><p class="row-detail">{{ status(row).detail }}</p><p v-if="aiImage(row)" class="row-detail">可能包含推测细节</p>
-            <div class="row-actions"><a-button v-if="row.result" size="small" @click="router.push(`/garment/${row.result.garmentId}`)">查看衣物<ArrowRightOutlined /></a-button><a-button v-if="row.state === 'ERROR'" size="small" @click="retry(row)">重试上传</a-button><a-button v-if="row.state === 'MARKING'" size="small" @click="marker = row">指定目标</a-button><a-popconfirm v-if="row.state !== 'UPLOADING'" :title="removeHint(row)" ok-text="删除" cancel-text="取消" :ok-button-props="{ danger: true }" @confirm="removeRecord(row)"><a-button type="text" size="small" class="row-remove">删除记录</a-button></a-popconfirm></div>
+      <TransitionGroup v-else tag="div" name="row" class="quick-grid">
+        <article v-for="row in visibleRows" :key="row.id" class="quick-tile" :data-state="row.state" :data-tone="status(row).tone" :class="{ 'just-ready': justReady.has(row.id), wanted: rowWanted(row) }">
+          <button type="button" class="quick-image" :title="`${status(row).title} · ${status(row).detail}`" :aria-label="`${status(row).title}，${status(row).detail}，${recordedAt(row)}`" @click="openRow(row)">
+            <span v-if="justReady.has(row.id)" class="sparkles" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+            <img :src="thumbnail(row)" alt="" />
+            <span v-if="aiImage(row)" class="ai-label">AI</span>
+          </button>
+          <div class="tile-foot">
+            <span class="tile-chip" :class="[status(row).tone, { wanted: rowWanted(row) && status(row).tone === 'success' }]"><LoadingOutlined v-if="status(row).tone === 'processing'" spin /><ExclamationCircleFilled v-else-if="status(row).tone === 'warning'" /><i v-else class="tile-dot" aria-hidden="true"></i>{{ chip(row) }}</span>
+            <a-dropdown v-if="row.state !== 'UPLOADING'" :trigger="['click']" placement="bottomRight">
+              <a-button type="text" size="small" shape="circle" class="tile-more" :loading="switching === row.id" aria-label="更多操作"><MoreOutlined v-if="switching !== row.id" /></a-button>
+              <template #overlay><a-menu @click="menuClick(row, $event)">
+                <a-menu-item v-if="row.result || row.state === 'MARKING' || row.state === 'ERROR'" key="open">{{ row.state === 'MARKING' ? '指定目标' : row.state === 'ERROR' ? '重试上传' : '查看衣物' }}</a-menu-item>
+                <a-menu-item v-if="row.result?.garment.status !== 'TRASHED'" key="ownership" :disabled="Boolean(switching)">{{ rowWanted(row) ? '买到了，改为已拥有' : `改为${wantedLabel}` }}</a-menu-item>
+                <a-menu-item key="remove" danger>删除记录</a-menu-item>
+              </a-menu></template>
+            </a-dropdown>
           </div>
         </article>
       </TransitionGroup>
-      <a-button v-if="rows.length > 6" block class="show-more" @click="expanded = !expanded">{{ expanded ? '收起历史照片' : `展开其余 ${rows.length - 6} 张` }}</a-button>
+      <a-button v-if="rows.length > 6" type="text" block class="show-more" @click="expanded = !expanded">{{ expanded ? '收起' : `还有 ${rows.length - 6} 张` }}</a-button>
     </section>
     <a-modal v-if="!compact" v-model:open="settings" title="录入设置" :footer="null" width="480px" centered>
-      <div class="quick-settings"><h3>什么时候入柜</h3><a-radio-group v-model:value="mode"><a-radio value="BASE_READY"><strong>贴纸做好后入柜</strong><small>推荐 · 去背景、加白边后即可查看使用</small></a-radio><a-radio value="UPLOAD_READY"><strong>原图保存后立即入柜</strong><small>先用原图，贴纸做好后自动更新</small></a-radio></a-radio-group><div class="marker-setting"><div><h3>拍摄后指定主视衣物</h3><p>照片里有多件衣物时，点选或框选目标。</p></div><a-switch v-model:checked="markerMode" aria-label="拍摄后指定主视衣物" /></div><p class="storage-note">照片先存在本机，上传完成前请保持网页打开。</p><a-button type="primary" block size="large" @click="settings = false">完成设置</a-button></div>
+      <div class="quick-settings"><h3>什么时候入柜</h3><a-radio-group v-model:value="mode"><a-radio value="BASE_READY"><strong>贴纸做好后入柜</strong><small>推荐 · 去背景、加白边后即可查看使用</small></a-radio><a-radio value="UPLOAD_READY"><strong>原图保存后立即入柜</strong><small>先用原图，贴纸做好后自动更新</small></a-radio></a-radio-group><div class="marker-setting"><div><h3>拍摄后指定主视衣物</h3><p>照片里有多件衣物时，点选或框选目标。</p></div><a-switch v-model:checked="markerMode" aria-label="拍摄后指定主视衣物" /></div><p class="storage-note">照片先存在本机，上传完成前请保持网页打开。“{{ wantedLabel }}”的叫法可以在「我的 → 界面偏好」里改。</p><a-button type="primary" block size="large" @click="settings = false">完成</a-button></div>
     </a-modal>
     <a-drawer v-else v-model:open="settings" title="录入设置" placement="bottom" height="auto" root-class-name="quick-settings-drawer">
-      <div class="quick-settings"><h3>什么时候入柜</h3><a-radio-group v-model:value="mode"><a-radio value="BASE_READY"><strong>贴纸做好后入柜</strong><small>推荐 · 去背景、加白边后即可查看使用</small></a-radio><a-radio value="UPLOAD_READY"><strong>原图保存后立即入柜</strong><small>先用原图，贴纸做好后自动更新</small></a-radio></a-radio-group><div class="marker-setting"><div><h3>拍摄后指定主视衣物</h3><p>照片里有多件衣物时，点选或框选目标。</p></div><a-switch v-model:checked="markerMode" aria-label="拍摄后指定主视衣物" /></div><p class="storage-note">照片先存在本机，上传完成前请保持网页打开。</p><a-button type="primary" block size="large" @click="settings = false">完成设置</a-button></div>
+      <div class="quick-settings"><h3>什么时候入柜</h3><a-radio-group v-model:value="mode"><a-radio value="BASE_READY"><strong>贴纸做好后入柜</strong><small>推荐 · 去背景、加白边后即可查看使用</small></a-radio><a-radio value="UPLOAD_READY"><strong>原图保存后立即入柜</strong><small>先用原图，贴纸做好后自动更新</small></a-radio></a-radio-group><div class="marker-setting"><div><h3>拍摄后指定主视衣物</h3><p>照片里有多件衣物时，点选或框选目标。</p></div><a-switch v-model:checked="markerMode" aria-label="拍摄后指定主视衣物" /></div><p class="storage-note">照片先存在本机，上传完成前请保持网页打开。“{{ wantedLabel }}”的叫法可以在「我的 → 界面偏好」里改。</p><a-button type="primary" block size="large" @click="settings = false">完成</a-button></div>
     </a-drawer>
   </section>
 </template>
 
 <style scoped>
-.quick-intake{max-width:900px;margin:0 auto}.capture-panel{padding:28px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-xl)}.capture-heading,.recent-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}.capture-heading h2{font-size:22px;line-height:1.4;margin:0;letter-spacing:-.4px}.capture-heading p{font-size:14px;color:var(--muted);margin:6px 0 0}.settings-button{min-height:44px;color:var(--muted);display:inline-flex;align-items:center;gap:5px;padding:0 10px}.capture-actions{display:grid;grid-template-columns:1.2fr 1fr;gap:12px;margin-top:24px}.capture-actions .ant-btn{height:60px;border-radius:var(--radius-lg);font-size:17px;font-weight:600;display:flex;justify-content:center;align-items:center;gap:8px}.capture-actions .anticon{font-size:23px}.capture-hint{font-size:12px;line-height:1.6;color:var(--muted);margin:12px 0 0;text-align:center}.capture-receipt{display:flex;align-items:center;gap:12px;border-top:1px solid var(--line);padding-top:18px;margin-top:20px;font-size:14px;color:var(--ink);min-height:61px}.capture-receipt>.anticon{font-size:21px;color:var(--accent)}.capture-receipt small{display:block;font-size:12px;color:var(--muted);margin-top:4px;line-height:1.6}.capture-receipt .success{color:var(--success)}.custom-settings{font-size:12px;color:var(--muted);margin:12px 0 0}.capture-error{margin-top:16px}.recent-section{margin-top:28px}.recent-heading{margin-bottom:8px}.recent-heading h2{font-size:17px;margin:0}.recent-heading h2 span{font-size:12px;font-weight:400;color:var(--muted);margin-left:8px}.recent-heading .ant-btn{min-height:36px;padding-right:0;color:var(--muted)}.capture-empty{display:flex;align-items:center;gap:16px;border:1px dashed var(--line);border-radius:var(--radius-lg);padding:28px 24px;color:var(--muted)}.capture-empty>.anticon{font-size:32px;color:var(--muted-copy)}.capture-empty strong{font-size:14px;font-weight:500;color:var(--ink)}.capture-empty p{font-size:12px;margin:6px 0 0;line-height:1.7}.quick-row{display:flex;align-items:center;gap:20px;padding:18px 0;border-bottom:1px solid var(--line)}.quick-image{position:relative;flex:none;width:112px;height:120px;border:1px solid var(--line);border-radius:var(--radius-lg);overflow:hidden;background:var(--surface-alt)}.quick-image img{width:100%;height:100%;object-fit:contain}.ai-label{position:absolute;bottom:0;left:0;right:0;font-size:10px;text-align:center;background:var(--surface);color:var(--muted);padding:2px}.quick-row-copy{flex:1;min-width:0}.row-status{display:flex;align-items:center;gap:6px;font-size:15px;font-weight:600;line-height:1.5;color:var(--ink);margin:0}.row-status.success{color:var(--success)}.row-status.warning{color:var(--warning)}.row-detail{font-size:12px;color:var(--muted);line-height:1.7;margin:5px 0 0}.row-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}.row-actions .ant-btn{min-height:36px;padding:0 12px;display:flex;align-items:center;gap:6px}.row-actions .ant-btn-default{border-color:transparent;background:var(--surface);color:var(--accent-strong)}.show-more{margin-top:16px;min-height:44px}.quick-settings{max-width:600px;margin:auto;padding-bottom:env(safe-area-inset-bottom)}.quick-settings h3{font-size:15px;margin:0 0 12px}.quick-settings :deep(.ant-radio-group){display:grid;gap:12px}.quick-settings :deep(.ant-radio-wrapper){align-items:flex-start;min-height:54px}.quick-settings strong{display:block;font-size:14px;font-weight:500}.quick-settings small{display:block;margin-top:6px;font-size:12px;color:var(--muted)}.marker-setting{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:24px;padding-top:20px;border-top:1px solid var(--line)}.marker-setting h3{margin:0}.marker-setting p,.storage-note{font-size:12px;line-height:1.8;color:var(--muted);margin:6px 0 0}.marker-setting :deep(.ant-switch){flex-shrink:0}.storage-note{margin:20px 0}
-@media(max-width:767px){.capture-panel{padding:20px;border-radius:var(--radius-lg)}.capture-heading h2{font-size:20px}.capture-heading p{font-size:12px}.settings-button{padding:0 4px}.capture-actions{margin-top:20px;gap:10px;grid-template-columns:1.1fr 1fr}.capture-actions .ant-btn{height:58px;font-size:16px;padding:0 8px}.capture-hint{font-size:11px}.capture-receipt{font-size:13px;gap:10px}.capture-receipt small{font-size:11px}.recent-section{margin-top:22px}.recent-heading h2{font-size:16px}.recent-heading .ant-btn{font-size:12px}.quick-row{gap:14px;padding:16px 0;align-items:flex-start}.quick-image{width:88px;height:104px;border-radius:var(--radius-md)}.row-status{font-size:14px}.row-detail{font-size:12px}.capture-empty{padding:22px 18px;gap:12px}.capture-empty>.anticon{font-size:26px}}
-
-.capture-panel{position:relative}
-.drop-veil{position:absolute;inset:6px;z-index:2;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;border:2px dashed var(--accent);border-radius:var(--radius-lg);background:color-mix(in srgb,var(--surface) 90%,var(--accent) 10%);color:var(--accent-strong);pointer-events:none;animation:veil-in .18s ease-out}
-.drop-veil .anticon{font-size:36px;animation:veil-bob 1s ease-in-out infinite}.drop-veil strong{font-size:18px}.drop-veil span{font-size:12px;color:var(--muted)}
-.session-count{display:grid;place-items:center;flex:none;width:40px;height:40px;border-radius:50%;background:var(--accent-soft);color:var(--accent-strong);font-size:17px;font-weight:700;font-variant-numeric:tabular-nums;transition:background .3s,color .3s}
-.session-count.done{background:var(--success);color:var(--surface)}
-.session-copy{flex:1;min-width:0;font-weight:500}.session-copy small{font-weight:400}
-.session-progress{margin:6px 0 0;line-height:1}
-.celebration{position:relative;display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:16px;margin-top:16px;padding:18px 44px 18px 20px;overflow:hidden;border:1px solid var(--success-line);border-radius:var(--radius-lg);background:var(--success-bg)}
-.celebration-badge{display:grid;place-items:center;width:44px;height:44px;border-radius:50%;background:var(--surface);color:var(--success);font-size:24px;animation:badge-pop .5s cubic-bezier(.34,1.56,.64,1) both .1s}
-.celebration-copy strong{display:block;font-size:15px;color:var(--ink)}.celebration-copy p{margin:4px 0 0;font-size:12px;line-height:1.6;color:var(--muted)}
+/* 清新改版：少字、大留白、居中；说明收进提示。浅底大圆角、胶囊按钮（src/styles/fresh.css）。 */
+.quick-intake{max-width:760px;margin:0 auto}
+.capture-panel{position:relative;overflow:hidden;display:flex;flex-direction:column;align-items:center;padding:56px 32px 44px;border-radius:36px;background:var(--surface-alt);text-align:center;isolation:isolate;transition:background .35s ease}
+.capture-panel::before,.capture-panel::after{content:'';position:absolute;z-index:-1;border-radius:50%;pointer-events:none;transition:transform .8s var(--spring)}
+.capture-panel::before{top:-140px;right:-100px;width:360px;height:360px;background:radial-gradient(circle,var(--accent-soft) 0,transparent 70%)}
+.capture-panel::after{bottom:-160px;left:-120px;width:320px;height:320px;background:radial-gradient(circle,color-mix(in srgb,var(--accent-soft) 70%,transparent) 0,transparent 70%)}
+.capture-panel.wanted::before{transform:translate(-60px,40px) scale(1.2)}
+.capture-panel.wanted::after{transform:translate(40px,-30px)}
+.settings-button.ant-btn{position:absolute;top:18px;right:18px;width:40px;height:40px;color:var(--muted);background:var(--surface)}
+.capture-title{margin:0;font-size:28px;line-height:1.3;font-weight:600;letter-spacing:-.5px;color:var(--ink)}
+.ownership-choice{display:flex;align-items:center;gap:8px;margin-top:22px}
+.ownership-switch.ant-segmented{background:var(--surface)}
+.ownership-switch :deep(.ant-segmented-item-label){min-height:34px;line-height:34px;padding:0 16px;font-size:13px}
+.ownership-switch :deep(.ant-segmented-item-selected),.ownership-switch :deep(.ant-segmented-thumb){background:var(--accent-soft);color:var(--accent-strong);box-shadow:none}
+.ownership-help{font-size:14px;color:var(--muted-subtle);cursor:help}
+.ownership-help:hover,.ownership-help:focus-visible{color:var(--accent-strong)}
+.capture-actions{display:flex;justify-content:center;gap:12px;width:100%;max-width:440px;margin-top:40px}
+.capture-actions .ant-btn{flex:1;height:60px;border-radius:999px;font-size:17px;font-weight:600;display:flex;justify-content:center;align-items:center;gap:8px}
+.capture-actions .capture-main{flex:1.3}
+.capture-actions .anticon{font-size:21px}
+.capture-main.ant-btn{box-shadow:0 16px 30px -18px var(--accent)}
+.capture-soft.ant-btn{border:0;background:var(--surface);color:var(--ink)}
+.capture-soft.ant-btn:not(:disabled):hover{color:var(--accent-strong);background:var(--accent-soft)}
+.capture-hint{margin:14px 0 0;font-size:12px;color:var(--muted-subtle)}
+.capture-receipt{display:flex;align-items:center;gap:14px;width:100%;max-width:440px;margin-top:28px;font-size:13px;color:var(--muted-strong)}
+.capture-receipt>.anticon{color:var(--accent)}
+.session-copy{flex:none;font-variant-numeric:tabular-nums}
+.session-progress{flex:1;margin:0;line-height:1}
+.capture-local{margin:10px 0 0;font-size:12px;color:var(--warning)}
+.capture-error{margin-top:16px}
+.recent-section{margin-top:48px}
+.recent-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 4px 16px}
+.recent-heading h2{display:flex;align-items:baseline;gap:8px;margin:0;font-size:16px;font-weight:600}
+.recent-heading h2 span{font-size:12px;font-weight:400;color:var(--muted);font-variant-numeric:tabular-nums}
+.recent-tools{display:flex;align-items:center}
+.recent-tools .ant-btn{display:inline-flex;align-items:center;gap:4px;color:var(--muted)}.recent-tools .anticon-down{font-size:10px}
+.capture-empty{display:flex;flex-direction:column;align-items:center;gap:12px;padding:12px 0;color:var(--muted-subtle);font-size:13px}
+.capture-empty p{margin:0}
+.empty-hanger{display:grid;place-items:center;width:56px;height:56px;border-radius:50%;background:var(--surface-alt)}
+.empty-hanger svg{width:30px;fill:none;stroke:var(--accent);stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;transform-origin:50% 10%;animation:hanger-sway 2.6s ease-in-out infinite}
+.quick-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:24px 18px}
+.quick-tile{min-width:0}
+.quick-image{position:relative;display:block;width:100%;aspect-ratio:4/5;padding:0;border:0;border-radius:24px;overflow:hidden;background:var(--surface-alt);cursor:pointer;transition:transform .35s var(--spring),box-shadow .35s ease}
+.quick-image:hover{transform:translateY(-3px);box-shadow:0 18px 30px -20px #0d3b3340}
+.quick-image:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.quick-image img{width:100%;height:100%;object-fit:contain;padding:12px}
+.quick-tile.wanted .quick-image{outline:1.5px dashed var(--accent);outline-offset:-7px}
+.ai-label{position:absolute;right:10px;bottom:10px;padding:0 6px;border-radius:999px;font-size:10px;line-height:16px;color:var(--muted);background:var(--surface)}
+.tile-foot{display:flex;align-items:center;justify-content:space-between;gap:4px;padding:8px 4px 0 6px}
+.tile-chip{display:inline-flex;align-items:center;gap:6px;min-width:0;font-size:12px;color:var(--muted-strong);white-space:nowrap}
+.tile-dot{width:6px;height:6px;border-radius:50%;background:var(--muted-subtle)}
+.tile-chip.success .tile-dot{background:var(--success)}
+.tile-chip.wanted{color:var(--accent-strong)}.tile-chip.wanted .tile-dot{background:var(--accent)}
+.tile-chip.warning{color:var(--warning)}
+.tile-chip.processing{color:var(--accent-strong)}
+.tile-more.ant-btn{flex:none;color:var(--muted)}
+.show-more.ant-btn{margin-top:20px;color:var(--muted)}
+.quick-settings{max-width:600px;margin:auto;padding-bottom:env(safe-area-inset-bottom)}
+.quick-settings h3{font-size:15px;margin:0 0 12px}
+.quick-settings :deep(.ant-radio-group){display:grid;gap:12px}
+.quick-settings :deep(.ant-radio-wrapper){align-items:flex-start;min-height:54px}
+.quick-settings strong{display:block;font-size:14px;font-weight:500}
+.quick-settings small{display:block;margin-top:6px;font-size:12px;color:var(--muted)}
+.marker-setting{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:24px;padding-top:20px;border-top:1px solid var(--line)}
+.marker-setting h3{margin:0}
+.marker-setting p,.storage-note{font-size:12px;line-height:1.8;color:var(--muted);margin:6px 0 0}
+.marker-setting :deep(.ant-switch){flex-shrink:0}
+.storage-note{margin:20px 0}
+.drop-veil{position:absolute;inset:10px;z-index:2;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;border:2px dashed var(--accent);border-radius:28px;background:color-mix(in srgb,var(--surface) 90%,var(--accent) 10%);color:var(--accent-strong);pointer-events:none;animation:veil-in .18s ease-out}
+.drop-veil .anticon{font-size:36px;animation:veil-bob 1s ease-in-out infinite}.drop-veil strong{font-size:18px}
+.celebration{position:relative;display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:16px;margin-top:16px;padding:16px 44px 16px 18px;overflow:hidden;border-radius:28px;background:var(--success-bg)}
+.celebration-badge{display:grid;place-items:center;width:40px;height:40px;border-radius:50%;background:var(--surface);color:var(--success);font-size:22px;animation:badge-pop .5s cubic-bezier(.34,1.56,.64,1) both .1s}
+.celebration-copy strong{display:block;font-size:14px;font-weight:500;color:var(--ink)}.celebration-copy p{margin:2px 0 0;font-size:12px;color:var(--muted)}
 .celebration-actions{display:flex;gap:8px}.celebration-actions .ant-btn{min-height:36px}
 .celebration-close{position:absolute;top:6px;right:6px;color:var(--muted)}
 .confetti{position:absolute;inset:0;pointer-events:none}
-.confetti i{position:absolute;top:50%;left:42px;width:6px;height:6px;border-radius:2px;opacity:0;animation:confetti 1.1s cubic-bezier(.2,.7,.3,1) forwards}
+.confetti i{position:absolute;top:50%;left:38px;width:6px;height:6px;border-radius:2px;opacity:0;animation:confetti 1.1s cubic-bezier(.2,.7,.3,1) forwards}
 .confetti i:nth-child(4n+1){background:var(--accent)}.confetti i:nth-child(4n+2){background:var(--warning)}.confetti i:nth-child(4n+3){background:var(--info)}.confetti i:nth-child(4n){background:var(--danger);border-radius:50%}
 .confetti i:nth-child(1){--x:60px;--y:-40px}.confetti i:nth-child(2){--x:110px;--y:-22px}.confetti i:nth-child(3){--x:150px;--y:18px}.confetti i:nth-child(4){--x:90px;--y:34px}.confetti i:nth-child(5){--x:40px;--y:44px}.confetti i:nth-child(6){--x:-10px;--y:-46px}.confetti i:nth-child(7){--x:190px;--y:-34px}.confetti i:nth-child(8){--x:230px;--y:10px}.confetti i:nth-child(9){--x:130px;--y:-48px}.confetti i:nth-child(10){--x:-24px;--y:30px}.confetti i:nth-child(11){--x:270px;--y:-20px}.confetti i:nth-child(12){--x:200px;--y:40px}.confetti i:nth-child(13){--x:310px;--y:24px}.confetti i:nth-child(14){--x:75px;--y:-58px}
 .celebrate-enter-active{transition:opacity .3s ease-out,transform .35s cubic-bezier(.34,1.56,.64,1)}.celebrate-leave-active{transition:opacity .2s ease-in}
 .celebrate-enter-from{opacity:0;transform:translateY(8px) scale(.98)}.celebrate-leave-to{opacity:0}
-.capture-empty{flex-direction:column;align-items:stretch;gap:18px}
-.empty-main{display:flex;align-items:center;gap:16px}
-.empty-hanger{display:grid;place-items:center;flex:none;width:52px;height:52px;border-radius:50%;background:var(--accent-soft)}
-.empty-hanger svg{width:30px;fill:none;stroke:var(--accent);stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;transform-origin:50% 10%;animation:hanger-sway 2.6s ease-in-out infinite}
-.shoot-tips{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:0;padding:0;list-style:none}
-.shoot-tips li{display:flex;align-items:flex-start;gap:8px;padding:10px 12px;border-radius:var(--radius-md);background:var(--surface);font-size:12px;line-height:1.6;color:var(--muted-strong)}
-.shoot-tips b{display:grid;place-items:center;flex:none;width:18px;height:18px;margin-top:1px;border-radius:50%;background:var(--accent-soft);color:var(--accent-strong);font-size:11px}
-.quick-row[data-tone="processing"] .quick-image::after,.quick-row[data-state="UPLOADING"] .quick-image::after{content:'';position:absolute;left:0;right:0;top:0;height:36%;background:linear-gradient(180deg,transparent,color-mix(in srgb,var(--accent) 22%,transparent) 85%,color-mix(in srgb,var(--accent) 70%,transparent));animation:scan 1.8s ease-in-out infinite;pointer-events:none}
-.quick-row.just-ready .quick-image{animation:sticker-pop .6s cubic-bezier(.34,1.56,.64,1);border-color:var(--success-line);box-shadow:0 0 0 4px var(--success-bg)}
-.quick-row.just-ready .row-status{animation:status-in .4s ease-out}
+.note-enter-active,.note-leave-active{transition:opacity .25s,transform .3s}.note-enter-from,.note-leave-to{opacity:0;transform:translateY(-4px)}
+.quick-tile[data-tone="processing"] .quick-image::after,.quick-tile[data-state="UPLOADING"] .quick-image::after{content:'';position:absolute;left:0;right:0;top:0;height:36%;background:linear-gradient(180deg,transparent,color-mix(in srgb,var(--accent) 18%,transparent) 85%,color-mix(in srgb,var(--accent) 55%,transparent));animation:scan 1.8s ease-in-out infinite;pointer-events:none}
+.quick-tile.just-ready .quick-image{animation:sticker-pop .6s cubic-bezier(.34,1.56,.64,1);box-shadow:0 0 0 4px var(--success-bg)}
 .sparkles{position:absolute;inset:0;z-index:1;pointer-events:none}
 .sparkles i{position:absolute;width:8px;height:8px;background:var(--warning);clip-path:polygon(50% 0,62% 38%,100% 50%,62% 62%,50% 100%,38% 62%,0 50%,38% 38%);opacity:0;animation:sparkle .9s ease-out forwards}
 .sparkles i:nth-child(1){top:12%;left:14%}.sparkles i:nth-child(2){top:8%;right:16%;animation-delay:.12s;background:var(--accent)}.sparkles i:nth-child(3){bottom:16%;right:10%;animation-delay:.2s}.sparkles i:nth-child(4){bottom:12%;left:20%;animation-delay:.28s;background:var(--info)}.sparkles i:nth-child(5){top:44%;left:48%;animation-delay:.08s;width:11px;height:11px}
@@ -308,14 +417,20 @@ onBeforeUnmount(() => { alive = false; clearTimeout(timer); for (const url of th
 @keyframes hanger-sway{0%,100%{transform:rotate(-4deg)}50%{transform:rotate(4deg)}}
 @keyframes scan{0%{transform:translateY(-100%)}100%{transform:translateY(280%)}}
 @keyframes sticker-pop{0%{transform:scale(.92)}60%{transform:scale(1.05)}100%{transform:scale(1)}}
-@keyframes status-in{from{opacity:0;transform:translateX(-4px)}}
 @keyframes sparkle{0%{opacity:0;transform:scale(.2) rotate(0)}40%{opacity:1;transform:scale(1.2) rotate(45deg)}100%{opacity:0;transform:scale(.6) rotate(90deg)}}
-@media(max-width:767px){.celebration{grid-template-columns:auto minmax(0,1fr);padding:16px;gap:12px}.celebration-copy{padding-right:24px}.celebration-actions{grid-column:1/-1}.celebration-actions .ant-btn{flex:1}.shoot-tips{grid-template-columns:1fr;gap:8px}.session-count{width:36px;height:36px;font-size:15px}}
-@media(prefers-reduced-motion:reduce){.drop-veil,.drop-veil .anticon,.celebration-badge,.confetti i,.empty-hanger svg,.quick-row .quick-image::after,.quick-row.just-ready .quick-image,.quick-row.just-ready .row-status,.sparkles i{animation:none}.confetti,.sparkles{display:none}.row-enter-from,.celebrate-enter-from{transform:none}}
-</style>
-<style scoped>
-.recent-tools{display:flex;align-items:center;gap:4px}.recent-tools .ant-btn{display:inline-flex;align-items:center;gap:4px}.recent-tools .anticon-down{font-size:10px}
-.recent-heading h2{white-space:nowrap}.recent-total{font-weight:inherit}.row-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px}.row-head .row-status{min-width:0}.row-time{flex:none;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
-.row-actions .row-remove.ant-btn{color:var(--muted);background:transparent}.row-actions .row-remove.ant-btn:hover{color:var(--danger);background:var(--danger-bg)}
-@media(max-width:767px){.recent-total{display:none}.recent-tools{gap:0}.recent-tools .ant-btn{padding:0 6px}.row-head{flex-direction:column;gap:2px}}
+@media(max-width:767px){
+  .capture-panel{padding:44px 20px 32px;border-radius:30px}
+  .capture-panel::before{width:240px;height:240px;top:-100px;right:-80px}
+  .capture-panel::after{width:220px;height:220px;bottom:-120px;left:-90px}
+  .settings-button.ant-btn{top:12px;right:12px}
+  .capture-title{font-size:23px}
+  .ownership-switch :deep(.ant-segmented-item-label){padding:0 12px}
+  .capture-actions{margin-top:32px;gap:10px}
+  .capture-actions .ant-btn{height:56px;font-size:16px}
+  .recent-section{margin-top:36px}
+  .quick-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 12px}
+  .quick-image{border-radius:20px}
+  .celebration{grid-template-columns:auto minmax(0,1fr);padding:14px;gap:12px}.celebration-copy{padding-right:24px}.celebration-actions{grid-column:1/-1}.celebration-actions .ant-btn{flex:1}
+}
+@media(prefers-reduced-motion:reduce){.drop-veil,.drop-veil .anticon,.celebration-badge,.confetti i,.empty-hanger svg,.quick-tile .quick-image::after,.quick-tile.just-ready .quick-image,.sparkles i{animation:none}.confetti,.sparkles{display:none}.row-enter-from,.celebrate-enter-from,.note-enter-from{transform:none}.capture-panel,.capture-panel::before,.capture-panel::after,.quick-image{transition:none}}
 </style>

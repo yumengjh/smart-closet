@@ -20,12 +20,16 @@ import { DEFAULT_SORT, SORT_OPTIONS, readSort, saveSort, sortLabel } from '../wa
 import { readView, saveView } from '../wardrobe/viewMemory'
 import pageLocale from 'ant-design-vue/es/vc-pagination/locale/zh_CN'
 import { PAGE_SIZES, pageAfterSizeChange, readPageSize, savePageSize } from '../wardrobe/pageSize'
+import { listStatus, loadWantedLabel, readOwnership, saveOwnership, wantedLabel, type Ownership } from '../wardrobe/wanted'
 import { buildTags, combineQuery, imageModelNotice, removeWords, IMAGE_STYLE_LABELS, SEARCH_EXAMPLES, type SearchTag } from '../wardrobe/search'
 
 const router = useRouter()
 const closet = useClosetStore()
 const processing = useProcessingStore()
-const query = reactive<ListQuery>({ status: 'ACTIVE', q: '', category: '', color: '', season: '', page: 1, size: readPageSize(), sort: readSort() })
+// 全部 / 已拥有 / 种草（#197），本机记住；种草是网上看中、还没买的衣服。
+const ownership = ref<Ownership>(readOwnership())
+const wantedTotal = ref(0)
+const query = reactive<ListQuery>({ status: listStatus(ownership.value), q: '', category: '', color: '', season: '', page: 1, size: readPageSize(), sort: readSort() })
 // The three dropdowns take several values: words of one kind are "or" ("裤子 裙子"), different kinds are "and". query.category/color/season
 // hold the value only when exactly one is chosen (the plain list API); several values go through the search, like typed words.
 const sel = reactive({ category: [] as string[], color: [] as string[], season: [] as string[] })
@@ -181,8 +185,8 @@ let latestLoad = 0
 /** One page of the current view (browse, words/filters, or picture search) without touching the screen state. */
 async function fetchPage(page: number): Promise<{ items: Garment[]; total: number; search: SearchResult | null }> {
   const words = combineQuery(query.q, ...chosen())
-  if (queryImage.value) { const result = await closetApi.superSearch(queryImage.value, words, page); return { items: result.items, total: result.total, search: result } }
-  if (searching.value) { const result = await closetApi.search(words, page, imageStyle.value || undefined); return { items: result.items, total: result.total, search: result } }
+  if (queryImage.value) { const result = await closetApi.superSearch(queryImage.value, words, page, ownership.value); return { items: result.items, total: result.total, search: result } }
+  if (searching.value) { const result = await closetApi.search(words, page, imageStyle.value || undefined, ownership.value); return { items: result.items, total: result.total, search: result } }
   const result = await closetApi.list({ ...query, page })
   return { items: result.items, total: result.total, search: null }
 }
@@ -191,8 +195,11 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    const result = await fetchPage(query.page)
+    // 件数只算已拥有：看“全部”时另取种草的件数，标题里单列（#197）。
+    const [result, wanted] = await Promise.all([fetchPage(query.page),
+      ownership.value === 'ALL' && !searching.value ? closetApi.list({ status: 'WANTED', q: '', category: '', color: '', season: '', page: 1, size: 1 }).then(page => page.total).catch(() => 0) : Promise.resolve(ownership.value === 'WANTED' ? -1 : 0)])
     if (mine !== latestLoad) return
+    wantedTotal.value = wanted
     searchResult.value = result.search; items.value = result.items; total.value = result.total
   } catch (cause) { if (mine === latestLoad) error.value = cause instanceof Error ? cause.message : '衣柜暂时无法加载。' }
   finally { if (mine === latestLoad) loading.value = false }
@@ -224,6 +231,10 @@ function pageKeys(event: KeyboardEvent) {
 }
 let narrowQuery: MediaQueryList | undefined
 const onNarrow = () => { narrow.value = Boolean(narrowQuery?.matches) }
+function chooseOwnership(value: Ownership) { ownership.value = value; saveOwnership(value); query.status = listStatus(value); query.page = 1; void load() }
+const ownershipOptions = computed(() => [{ value: 'ALL', label: '全部' }, { value: 'OWNED', label: '已拥有' }, { value: 'WANTED', label: wantedLabel.value }])
+// Title count: owned garments only; 种草 shown apart (wantedTotal = -1 while only 种草 are listed).
+const ownedTotal = computed(() => wantedTotal.value > 0 ? total.value - wantedTotal.value : total.value)
 function debounceLoad() {
   window.clearTimeout(searchTimer)
   query.page = 1
@@ -256,7 +267,7 @@ function closeTag(tag: SearchTag) {
   debounceLoad()
 }
 onMounted(async () => {
-  void loadPictureChecks(); void loadReviewCount()
+  void loadPictureChecks(); void loadReviewCount(); void loadWantedLabel()
   window.scrollTo({ top: 0, behavior: 'instant' })
   window.addEventListener('pagehide', rememberView); window.addEventListener('keydown', pageKeys)
   narrowQuery = window.matchMedia('(max-width: 767px)'); onNarrow(); narrowQuery.addEventListener('change', onNarrow)
@@ -281,7 +292,7 @@ const onboardingSeen = () => { try { return localStorage.getItem(ONBOARDING_KEY)
 const route = useRoute()
 const demoGuide = computed(() => route.query.guide === '1')
 watch(demoGuide, on => { if (on) onboardingOpen.value = true }, { immediate: true })
-watch([total, loading], ([count, busy]) => { if (!busy && count === 0 && !error.value && !hasFilters.value && !onboardingSeen()) onboardingOpen.value = true })
+watch([total, loading], ([count, busy]) => { if (!busy && count === 0 && !error.value && !hasFilters.value && ownership.value === 'ALL' && !onboardingSeen()) onboardingOpen.value = true })
 // 新手指引 (issue #81): asked once the first load settles, unless the preset picker took the screen; then it asks on close.
 const guideAsked = ref(false)
 watch(loading, busy => { if (busy || guideAsked.value) return; guideAsked.value = true; window.setTimeout(() => { if (!onboardingOpen.value) window.dispatchEvent(new CustomEvent('closet-guide-first-visit')) }, 800) })
@@ -293,7 +304,7 @@ watch(() => route.query.presets, value => { if (value !== '1') return; presetsOp
 <template>
   <!-- 标题和件数放到顶栏 logo 旁边（清新改版 §4.1）；页面里留一个只给读屏用的 h1。 -->
   <Teleport defer to="#topbar-page">
-    <span class="closet-title" :title="searching ? '搜索结果按相关度排序' : `按“${sortLabel(query.sort || DEFAULT_SORT)}”排序`"><b>我的衣柜</b><em>{{ total }}</em><small>{{ searching ? '件符合' : '件' }}</small></span>
+    <span class="closet-title" :title="searching ? '搜索结果按相关度排序' : `按“${sortLabel(query.sort || DEFAULT_SORT)}”排序`"><b>我的衣柜</b><em>{{ searching || wantedTotal < 0 ? total : ownedTotal }}</em><small>{{ searching ? '件符合' : wantedTotal < 0 ? `件${wantedLabel}` : '件' }}</small><small v-if="!searching && wantedTotal > 0" class="closet-title-wanted">· {{ wantedLabel }} {{ wantedTotal }}</small></span>
   </Teleport>
   <h1 class="closet-h1">我的衣柜</h1>
   <section class="closet-toolbar" aria-label="搜索和筛选衣物" @dragover.prevent @drop.prevent="dropped">
@@ -335,6 +346,7 @@ watch(() => route.query.presets, value => { if (value !== '1') return; presetsOp
     </template>
     <span class="closet-toolbar-gap"></span>
     <span class="closet-break" aria-hidden="true"></span>
+    <a-segmented v-if="total || hasFilters || ownership !== 'ALL'" class="closet-ownership" :value="ownership" :options="ownershipOptions" :aria-label="`显示全部、已拥有或${wantedLabel}的衣物`" @change="chooseOwnership($event as Ownership)" />
     <a-button v-if="reviewCount" class="closet-chip warn" @click="router.push('/review')"><ExclamationCircleOutlined />待核对 {{ reviewCount }}</a-button>
     <a-segmented v-if="items.length && !selecting && !searching" class="closet-layout" :value="layout" :options="[{ value: 'rack', label: '衣架' }, { value: 'grid', label: '平铺' }]" aria-label="衣柜展示方式" @change="chooseLayout($event as 'rack' | 'grid')" />
     <div v-if="items.length && rackView" class="closet-spread" role="group" aria-label="衣架松紧">
@@ -407,7 +419,7 @@ watch(() => route.query.presets, value => { if (value !== '1') return; presetsOp
     <button v-if="!selecting" class="add-card" @click="router.push('/add')"><span class="add-card-icon"><PlusOutlined /></span><strong>添加衣物</strong><small>上传 → 处理 → 核对入柜</small></button>
   </section>
   <section v-else class="empty-wardrobe">
-    <span class="empty-spark"><PlusOutlined /></span><p class="eyebrow">从一件衣服开始</p><h2>{{ hasFilters ? '没有找到这件衣物' : '你的衣柜还没有衣物' }}</h2><p>{{ hasFilters ? (searchResult?.emptyHint || '试试换一个关键词，或清除筛选条件。') : '上传单件衣物照片，处理后核对并确认，它就会出现在这里。' }}</p>
+    <span class="empty-spark"><PlusOutlined /></span><p class="eyebrow">从一件衣服开始</p><h2>{{ hasFilters ? '没有找到这件衣物' : ownership === 'WANTED' ? `还没有${wantedLabel}的衣服` : ownership === 'OWNED' ? '还没有已拥有的衣物' : '你的衣柜还没有衣物' }}</h2><p>{{ hasFilters ? (searchResult?.emptyHint || '试试换一个关键词，或清除筛选条件。') : ownership === 'WANTED' ? `网上看中、还没买的衣服，可以把商品图或截图上传，确认入柜时选“${wantedLabel}”。买到后在详情里标为已拥有。` : '上传单件衣物照片，处理后核对并确认，它就会出现在这里。' }}</p>
     <a-button v-if="hasFilters" class="outline-button" @click="clearFilters">清除筛选</a-button><button v-else class="outline-button" @click="router.push('/add')"><PlusOutlined /> 添加第一件衣物</button><a-button v-if="!hasFilters" type="link" @click="presetsOpen = true"><AppstoreAddOutlined /> 先从常见单品里挑几件</a-button>
   </section>
   <PresetOnboarding v-model:open="onboardingOpen" @done="onboardingDone" />
@@ -454,9 +466,11 @@ watch(() => route.query.presets, value => { if (value !== '1') return; presetsOp
 .closet-chip-count{min-width:18px;height:18px;padding:0 5px;border-radius:9px;font-size:11px;line-height:18px;text-align:center;color:#fff;background:var(--brand)}
 .closet-sort-icon{transform:rotate(90deg)}
 .closet-toolbar-gap{flex:1}
-.closet-layout.ant-segmented{padding:3px;border-radius:999px;background:var(--surface-alt)}
-.closet-layout :deep(.ant-segmented-item),.closet-layout :deep(.ant-segmented-thumb){border-radius:999px}
+.closet-layout.ant-segmented,.closet-ownership.ant-segmented{padding:3px;border-radius:999px;background:var(--surface-alt)}
+.closet-layout :deep(.ant-segmented-item),.closet-layout :deep(.ant-segmented-thumb),.closet-ownership :deep(.ant-segmented-item),.closet-ownership :deep(.ant-segmented-thumb){border-radius:999px}
 .closet-layout :deep(.ant-segmented-item-label){min-height:36px;padding:0 16px;line-height:36px}
+.closet-ownership :deep(.ant-segmented-item-label){min-height:36px;padding:0 14px;line-height:36px}
+.closet-title-wanted{margin-left:2px}
 .closet-soft.ant-btn{display:inline-flex;align-items:center;gap:6px;height:42px;padding:0 18px;border:0;border-radius:999px;color:var(--accent-strong);background:var(--accent-soft);box-shadow:none;transition:background .2s,transform .2s var(--spring)}
 .closet-soft.ant-btn:hover{color:var(--accent-strong);background:color-mix(in srgb,var(--brand) 20%,var(--surface))}
 .closet-soft.ant-btn:active{transform:scale(.96)}
@@ -502,6 +516,8 @@ watch(() => route.query.presets, value => { if (value !== '1') return; presetsOp
   .closet-chip.ant-btn{position:relative}
   .closet-round.ant-btn{order:3;width:40px;height:40px}
   .closet-break{display:block;order:4;flex-basis:100%;height:0}
+  .closet-ownership{order:5}
+  .closet-ownership :deep(.ant-segmented-item-label){min-height:32px;padding:0 10px;line-height:32px}
   .closet-layout{order:5}
   .closet-layout :deep(.ant-segmented-item-label){min-height:32px;padding:0 14px;line-height:32px}
   .closet-toolbar-gap{display:block;order:6}

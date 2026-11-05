@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeftOutlined, PictureOutlined, CameraOutlined, RotateRightOutlined, ArrowRightOutlined, InfoCircleOutlined } from '@ant-design/icons-vue'
 import CameraCapture from '../components/CameraCapture.vue'
 import QuickIntake from '../components/QuickIntake.vue'
+import PageTitle from '../shell/PageTitle.vue'
 import BatchIntake from '../components/BatchIntake.vue'
 import GarmentEdgeHelp from '../components/GarmentEdgeHelp.vue'
 import { useProcessingStore } from '../stores/processing'
@@ -107,9 +108,9 @@ async function submit() {
     <input ref="rearInput" class="hidden-file-input" type="file" accept="image/jpeg,image/png" capture="environment" tabindex="-1" :disabled="busy" @change="handleFileChange" />
     <input ref="selfieInput" class="hidden-file-input" type="file" accept="image/jpeg,image/png" capture="user" tabindex="-1" :disabled="busy" @change="handleFileChange" />
     <CameraCapture v-if="cameraOpen" @close="cameraOpen = false" @capture="setFile" />
-    <a-button type="text" class="back-link" @click="router.push('/wardrobe')"><ArrowLeftOutlined /> 返回衣柜</a-button>
-    <header class="page-heading"><div><h1>添加衣物</h1><p class="page-subtitle">{{ quick ? '一张照片一件衣物，拍完就能继续下一件。' : intake ? '多张单件照、多件同框或自拍，分开整理后逐件核对。' : '一件衣物，用单件工具更直接；多件照片，再选择批量整理。' }}</p></div></header>
-    <a-segmented v-model:value="entryMode" block :options="entryOptions" :disabled="busy" class="entry-switch" aria-label="录入方式" />
+    <!-- 清新改版 §4.3：标题进顶栏，说明收进“？”；录入方式用胶囊分段，和快速入柜面板同宽。 -->
+    <PageTitle title="添加衣物" :hint="quick ? '一张照片一件衣物，拍完就能继续下一件；网上看中、还没买的衣服可以切到“种草”。' : intake ? '多张单件照、多件同框或自拍，分开整理后逐件核对。' : '一件衣物，用单件工具更直接；多件照片，再选择批量整理。'" />
+    <div class="entry-bar"><a-button type="text" class="back-link" aria-label="返回衣柜" @click="router.push('/wardrobe')"><ArrowLeftOutlined /></a-button><a-segmented v-model:value="entryMode" :options="entryOptions" :disabled="busy" class="entry-switch" aria-label="录入方式" /></div>
     <QuickIntake v-if="quick" />
     <KeepAlive><BatchIntake v-if="!quick && intake" embedded /></KeepAlive>
     <template v-if="!quick && !intake">
@@ -177,6 +178,11 @@ async function submit() {
 </style>
 
 <style scoped>
-.entry-switch{margin-bottom:24px;padding:4px;border:1px solid var(--line);background:var(--surface-alt);border-radius:var(--radius-lg)}.entry-switch :deep(.ant-segmented-item-label){min-height:44px;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;padding:0 12px}.entry-switch :deep(.ant-segmented-item-selected){background:var(--surface);color:var(--ink);border-radius:var(--radius-sm);box-shadow:0 1px 3px #0000000c}.entry-switch :deep(.ant-segmented-thumb){border-radius:var(--radius-sm);background:var(--surface)}
-@media(max-width:767px){.redesigned-intake .back-link{margin-bottom:8px;min-height:44px}.redesigned-intake .page-heading{margin-bottom:20px}.redesigned-intake .page-heading h1{font-size:26px}.redesigned-intake .page-subtitle{font-size:13px;line-height:1.6;margin-top:6px}.entry-switch{margin-bottom:20px}.entry-switch :deep(.ant-segmented-item-label){font-size:14px;padding:0 8px}}
+.entry-bar{display:flex;align-items:center;gap:8px;max-width:900px;margin:4px auto 20px}
+.entry-bar .back-link.ant-btn{flex:none;width:44px;height:44px;margin:0;border-radius:50%;color:var(--muted-strong);background:var(--surface-alt)}
+.entry-switch.ant-segmented{flex:1;padding:4px;border:0;background:var(--surface-alt)}
+.entry-switch :deep(.ant-segmented-group){width:100%}.entry-switch :deep(.ant-segmented-item){flex:1}
+.entry-switch :deep(.ant-segmented-item-label){min-height:40px;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;padding:0 12px}
+.entry-switch :deep(.ant-segmented-item-selected),.entry-switch :deep(.ant-segmented-thumb){background:var(--surface);color:var(--ink);box-shadow:0 4px 12px -6px #0d3b3330}
+@media(max-width:767px){.entry-bar{margin-bottom:16px}.entry-switch :deep(.ant-segmented-item-label){font-size:14px;padding:0 8px}}
 </style>

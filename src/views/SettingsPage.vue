@@ -65,8 +65,8 @@ const categories: SettingsCategory[] = [
   {
     key: 'appearance',
     label: '界面偏好',
-    eyebrow: '导航栏与颜色',
-    description: '底部导航栏的样式，浅色或深色。',
+    eyebrow: '导航栏、颜色与叫法',
+    description: '底部导航栏的样式，浅色或深色，“种草”的叫法。',
     icon: BgColorsOutlined,
     hidden: () => firstLogin.value,
     component: defineAsyncComponent(() => import('./settings/SettingsAppearanceSection.vue')),
