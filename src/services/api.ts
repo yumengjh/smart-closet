@@ -328,6 +328,8 @@ function fromJob(job: WorkflowResponse): ClosetTask {
 
 export type PortableLoginLink = { id: string; createdAt: number; expiresAt: number; sessionExpiresAt: number | null; status: 'PENDING' | 'USED' | 'EXPIRED' | 'REVOKED' }
 export type PortableLoginGrant = { id: string; token: string; expiresAt: number }
+let tasksInFlight: Promise<ClosetTask[]> | null = null
+
 export const closetApi = {
   async metadataOptions(): Promise<Record<string, string[]>> {
     if (!usingMocks) return request<Record<string, string[]>>('/api/closet/metadata-options')
@@ -434,7 +436,18 @@ export const closetApi = {
     writeMockOutfits(outfits.filter((outfit) => outfit.id !== id))
   },
   async tasks(): Promise<ClosetTask[]> {
-    if (!usingMocks) return (await request<ClosetTask[]>('/api/closet/tasks?page=1&size=50')).map(task => ({ ...task, steps: task.steps.map(step => ({ ...step, name: stepLabels[step.name] || step.name })) }))
+    if (!usingMocks) {
+      // Issue #198: the counts badge, the task centre and the inbox ask at the same moment; they share one request in flight.
+      let shared = tasksInFlight
+      if (!shared) {
+        const pending: Promise<ClosetTask[]> = request<ClosetTask[]>('/api/closet/tasks?page=1&size=50')
+          .then(tasks => tasks.map(task => ({ ...task, steps: task.steps.map(step => ({ ...step, name: stepLabels[step.name] || step.name })) })))
+          .finally(() => { if (tasksInFlight === pending) tasksInFlight = null })
+        shared = tasksInFlight = pending
+      }
+      // Each caller gets its own copy, so one sorting or editing its list never changes another's.
+      return structuredClone(await shared)
+    }
     await delay()
     return structuredClone(readMock().tasks.sort((a, b) => b.createdAt.localeCompare(a.createdAt)))
   },
