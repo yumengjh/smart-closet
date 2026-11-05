@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { App } from 'ant-design-vue'
 import { request } from '../services/api'
+import { thumbUrl } from '../services/urls'
 import { playSound } from '../services/sound'
 import TemplatePreview from '../components/TemplatePreview.vue'
 
@@ -128,7 +129,7 @@ const columns = [
         <div class="template-try-grid">
           <div v-for="(slot, i) in preview.slots" :key="i" class="template-try-slot" :class="{ empty: !slot.candidates.length }">
             <template v-if="slot.candidates.length">
-              <div class="template-try-image"><img v-if="slot.candidates[picks[i]].displayUrl" :src="slot.candidates[picks[i]].displayUrl!" :alt="garmentLabel(slot.candidates[picks[i]])" loading="lazy" /><span v-else class="muted">无图片</span></div>
+              <div class="template-try-image"><img v-if="slot.candidates[picks[i]].displayUrl" :src="thumbUrl(slot.candidates[picks[i]].displayUrl, 320)" :alt="garmentLabel(slot.candidates[picks[i]])" loading="lazy" /><span v-else class="muted">无图片</span></div>
               <strong>{{ garmentLabel(slot.candidates[picks[i]]) }}</strong>
               <small class="muted">{{ picks[i] + 1 }} / {{ slot.candidates.length }}<template v-if="slot.total > slot.candidates.length">（共 {{ slot.total }} 件符合）</template></small>
               <a-button size="small" :disabled="slot.candidates.length < 2" @click="swapSlot(i)">换一件</a-button>
