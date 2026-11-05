@@ -14,6 +14,7 @@
 .shell-dock > a.active { color: var(--action-fg); }
 .shell-dock > a .nav-glyph { width: 20px; height: 20px; }
 .shell-dock > a .dock-icon { font-size: 18px; }
+.shell-dock > a .nav-glyph-box { display: block; flex: none; font-style: normal; line-height: 0; }
 .shell-dock > a > i { display: none; }
 .shell-dock .dock-count { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; font-size: 11px; font-weight: 600; line-height: 18px; text-align: center; color: #fff; background: var(--brand); }
 .shell-dock .mobile-nav-indicator { position: absolute; left: 0; top: 0; z-index: 0; border-radius: 999px; background: var(--action-bg); pointer-events: none; transition: transform .5s cubic-bezier(.34, 1.36, .64, 1), width .35s ease, height .35s ease, opacity .2s ease; }

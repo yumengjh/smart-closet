@@ -391,6 +391,7 @@ h3 { font-size: 15px; line-height: 1.5; font-weight: 600; }
   html[data-nav-labels='text'] .mobile-nav i { top: 8px; right: 14%; }
   html[data-nav-labels='icon'] .mobile-nav > a > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   html[data-nav-labels='icon'] .mobile-nav .nav-glyph { width: 26px; height: 26px; }
+  html[data-nav-labels='icon'] .shell-dock > a .dock-icon { font-size: 25px; }
 }
 /* Folding outer screens (~280px): keep the five tabs on one line. */
 @media (max-width: 339px) { .mobile-nav { padding-inline: 6px; } .mobile-nav > a > span { white-space: nowrap; font-size: 11px; } .mobile-nav .mobile-add { width: 48px; } }

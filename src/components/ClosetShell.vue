@@ -262,7 +262,7 @@ async function signOut() {
         <!-- 底部悬浮胶囊：所有宽度共用。桌面按 order 排，手机按 --mobile-order 排（＋ 在正中，问鱼搭在最右）。 -->
         <nav ref="mobileNav" class="mobile-nav shell-dock" :class="{ away: dockAway }" aria-label="主导航">
           <RouterLink v-for="(item, index) in visibleNavItems" :key="item.path" :to="item.path" :class="{ active: isNavActive(item.path), pending: pendingPath === item.path, 'desktop-only': mobileSlot(item) === undefined }" :style="{ order: index * 10, '--mobile-order': mobileSlot(item) ?? 99 }" :aria-current="isNavActive(item.path) ? 'page' : undefined" @pointerenter="prefetch(item.path)" @focus="prefetch(item.path)" @touchstart.passive="prefetch(item.path)">
-            <NavGlyph v-if="item.glyph" :name="item.glyph" :active="isNavActive(item.path)" /><component :is="item.icon" v-else class="dock-icon" /><span>{{ narrowNav ? item.short || item.label : item.label }}</span>
+            <NavGlyph v-if="item.glyph" :name="item.glyph" :active="isNavActive(item.path)" /><em v-else class="nav-glyph-box"><component :is="item.icon" class="dock-icon" /></em><span>{{ narrowNav ? item.short || item.label : item.label }}</span>
             <i v-if="item.path === '/pending' && closet.pendingCount"></i><b v-if="item.path === '/pending' && closet.pendingCount" class="dock-count">{{ closet.pendingCount > 99 ? '99+' : closet.pendingCount }}</b>
           </RouterLink>
           <template v-if="!closet.user?.mustChangePassword">
