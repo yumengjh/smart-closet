@@ -374,7 +374,8 @@ export const closetApi = {
   },
   async list(query: ListQuery): Promise<GarmentPage> {
     if (!usingMocks) {
-      const page = await request<{ items: GarmentView[]; total: number; page: number; size: number }>(`/api/closet/garments?${new URLSearchParams({ ...query, q: query.q || '', category: query.category || '', color: query.color || '', season: query.season || '', size: String(query.size), page: String(query.page), sort: query.sort || 'updated' })}`)
+      // view=card: attributes without status and evidence, which fromView drops anyway (smart-closet-server#198).
+      const page = await request<{ items: GarmentView[]; total: number; page: number; size: number }>(`/api/closet/garments?${new URLSearchParams({ ...query, q: query.q || '', category: query.category || '', color: query.color || '', season: query.season || '', size: String(query.size), page: String(query.page), sort: query.sort || 'updated', view: 'card' })}`)
       return { ...page, items: page.items.map(fromView) }
     }
     await delay()
