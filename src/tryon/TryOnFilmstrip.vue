@@ -5,6 +5,7 @@ import type { Outfit } from '../domain/outfit'
 import OutfitThumbnail from '../components/OutfitThumbnail.vue'
 import { thumbUrl } from '../services/urls'
 import type { Candidate, Selection } from './api'
+import { wantedLabel } from '../wardrobe/wanted'
 
 /** 桌面快速换衣：浮在舞台左侧的竖向衣物栏，可收起成一枚按钮，不再占用舞台下方的高度。 */
 const props = defineProps<{
@@ -33,7 +34,7 @@ function scrolled() {
       <div ref="scroller" class="rail-scroller" @scroll.passive="scrolled">
         <template v-if="tab === '单品'">
           <a-button class="rail-item rail-upload" :disabled="blocked" aria-label="上传自定义衣物" title="上传自定义衣物" @click="emit('upload')"><PlusOutlined /><small>上传</small></a-button>
-          <a-button v-for="g in ready" :key="g.id" class="rail-item" :class="{ selected: has(g.id) }" :disabled="blocked || !!busyId" :aria-pressed="has(g.id)" :aria-label="g.name || '衣物'" :title="g.name || '衣物'" @click="emit('toggle', { type: 'GARMENT', id: g.id, revision: g.revision, assetId: g.assetId })">
+          <a-button v-for="g in ready" :key="g.id" class="rail-item" :class="{ selected: has(g.id) }" :disabled="blocked || !!busyId" :aria-pressed="has(g.id)" :aria-label="`${g.wanted ? `${wantedLabel}的` : ''}${g.name || '衣物'}`" :title="`${g.wanted ? `${wantedLabel} · ` : ''}${g.name || '衣物'}`" @click="emit('toggle', { type: 'GARMENT', id: g.id, revision: g.revision, assetId: g.assetId })">
             <img :src="thumbUrl(g.imageUrl, 160)" alt="" loading="lazy" decoding="async" />
             <CheckOutlined v-if="has(g.id)" class="rail-check" />
           </a-button>

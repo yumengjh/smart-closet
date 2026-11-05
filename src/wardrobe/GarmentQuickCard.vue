@@ -12,6 +12,7 @@ import { tryOnAccess } from '../tryon/access'
 import { playSound } from '../services/sound'
 import { FAMILY_SWATCH, familyFromName, garmentFamily } from './rack'
 import { roleFromGarment } from '../domain/outfit'
+import { wantedLabel } from './wanted'
 
 const props = defineProps<{ items: Garment[]; index: number; origin: HTMLElement | null; bay: string }>()
 const emit = defineEmits<{ close: []; move: [index: number] }>()
@@ -128,6 +129,7 @@ onUnmounted(() => window.removeEventListener('keydown', keys))
         <header>
           <small>{{ kind }}</small>
           <h2>{{ title }}<HeartFilled v-if="garment.favorite" class="garment-quick-fav" aria-label="已收藏" /></h2>
+          <span v-if="garment.status === 'WANTED'" class="garment-quick-badge">{{ wantedLabel }} · 还没买</span>
           <span v-if="garment.sourceOrigin === 'PRESET'" class="garment-quick-badge">预设示意图</span>
         </header>
         <div class="garment-quick-stats">

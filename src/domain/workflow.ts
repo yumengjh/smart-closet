@@ -32,12 +32,14 @@ export function workflowSummary(garment: Pick<Garment, 'taskStatus' | 'status' |
   const recognition = [...(task?.steps || [])].reverse().find(step => step.recognition)?.recognition
   if (blocksConfirmation(recognition?.assessment)) return { title: '本次识别需要补充目标说明', description: recognition?.issues?.[0]?.message || task?.note || '未能确定本次衣物。可以说明要识别哪件，或说明实物是否为一件连衣裙，再主动识别。', tone: 'warning' }
   if (task && ['FAILED', 'UNKNOWN', 'NEEDS_REVIEW'].includes(state || '') && (task.note || task.steps?.some(step => step.error)))
-    return { title: garment.status === 'ACTIVE' ? '衣物已入柜，本次处理需查看' : '本次处理需要查看', description: task.steps?.find(step => step.error)?.error || task.note || '请查看本次处理记录。', tone: 'warning' }
+    return { title: garment.status === 'ACTIVE' || garment.status === 'WANTED' ? '衣物已入柜，本次处理需查看' : '本次处理需要查看', description: task.steps?.find(step => step.error)?.error || task.note || '请查看本次处理记录。', tone: 'warning' }
   if (blocksConfirmation(garment.assessment)) return { title: '这张照片需要重新上传', description: '识别发现多件衣物、没有衣物或图片不可用，请重新拍摄单件衣物。', tone: 'error' }
   if (garment.imageProcessing?.stickerRequired && !garment.imageProcessing.stickerReady)
-    return { title: garment.status === 'ACTIVE' ? '已入柜，贴纸尚未完成' : '贴纸尚未完成，等待继续处理', description: '当前图片是中间结果。请继续本地抠图或核对透明背景后制作贴纸；完成后再选择展示图。', tone: 'warning' }
+    return { title: garment.status === 'ACTIVE' || garment.status === 'WANTED' ? '已入柜，贴纸尚未完成' : '贴纸尚未完成，等待继续处理', description: '当前图片是中间结果。请继续本地抠图或核对透明背景后制作贴纸；完成后再选择展示图。', tone: 'warning' }
   if (garment.imageProcessing?.stickerReady && garment.status === 'DRAFT') return { title: '贴纸已完成，请核对结果', description: '最终贴纸已显示。选择展示图、核对信息后确认入柜。', tone: 'success' }
   if (garment.status === 'ACTIVE') return { title: '已确认入柜', description: '你选择的图片和衣物信息已保存到衣柜。', tone: 'success' }
+  // 种草（#197）：存进了衣柜，但还没买。
+  if (garment.status === 'WANTED') return { title: '已存进衣柜（还没买）', description: '图片和信息已保存；买到后在详情里标为已拥有，就会参与推荐和搭配。', tone: 'success' }
   if (state === 'FAILED') return { title: '处理失败，原图已保留', description: '查看失败原因后可以主动重试，也可以选择原图并手动填写信息入柜。', tone: 'error' }
   if (state === 'UNKNOWN') return { title: '处理结果待核实', description: '服务端无法确认上游调用结果，不会自动再次调用 AI。你可以核对现有图片。', tone: 'warning' }
   if (state === 'CANCELLED') return { title: '处理已取消，原图已保留', description: '可以使用原图入柜，或主动重新提交处理。', tone: 'neutral' }

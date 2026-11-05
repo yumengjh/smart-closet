@@ -9,7 +9,12 @@ import personCatalog from '../domain/person-stickers.json'
 import type { PersonCatalog } from '../domain/person-stickers'
 import type { MetadataField } from '../domain/metadata'
 import type { Outfit, OutfitScene } from '../domain/outfit'
-export type ClosetStatus = 'DRAFT' | 'ACTIVE' | 'TRASHED'
+/** WANTED = 种草：网上看中、还没买（smart-closet-server#197）。 */
+export type ClosetStatus = 'DRAFT' | 'ACTIVE' | 'WANTED' | 'TRASHED'
+/** The closet list also takes owned and 种草 together. */
+export type ClosetListStatus = ClosetStatus | 'ACTIVE,WANTED'
+export type SearchOwnership = 'OWNED' | 'WANTED' | 'ALL'
+export type ClosetPreferences = { wantedLabel: string; defaultWantedLabel: string; customized: boolean }
 export type ImageProcessing = { jobId: string; status: string; stickerRequired: boolean; stickerReady: boolean; stickerAssetId: string | null }
 export type TransparencyReport = { verdict: string; hasAlpha: boolean; transparentRatio: number; reasons: string[] }
 export type GarmentTarget = { description: string; worn: boolean; bounds: { x: number; y: number; width: number; height: number } }
@@ -60,7 +65,7 @@ export type Garment = {
   imageColor: string
   taskStatus?: 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'NEEDS_REVIEW' | 'FAILED' | 'UNKNOWN' | 'CANCEL_REQUESTED' | 'CANCELLED'
   taskId?: string
-  restoreStatus?: 'ACTIVE' | 'DRAFT'
+  restoreStatus?: 'ACTIVE' | 'WANTED' | 'DRAFT'
   images: { id: string; url: string; kind: string; reviewStatus: string; aiGenerated?: boolean; width?: number | null; height?: number | null }[]
 }
 
@@ -91,7 +96,7 @@ export const fieldLabels: Record<keyof Pick<Garment, 'category' | 'subtype' | 'p
 
 /** Server-side batch of re-recognitions (POST /api/garments/batch-recognize): the server submits the tasks itself. */
 export type BatchRecognize = { id: string; total: number; submitted: number; failed: number; completed: number; succeeded: number; finished: boolean; createdAtMs: number; failures: { garmentId: string; message: string }[]; jobIds: string[] }
-export type ListQuery = { status: ClosetStatus; q: string; category: string; color: string; season: string; page: number; size: number; sort?: string }
+export type ListQuery = { status: ClosetListStatus; q: string; category: string; color: string; season: string; page: number; size: number; sort?: string }
 /** Hybrid wardrobe search result (server: GET /api/garments/search); reasons/parsed/hints are written by the server. */
 export type SearchResult = {
   items: Garment[]; reasons: Record<string, string[]>; total: number; page: number; hasMore: boolean; mode: string
@@ -349,18 +354,18 @@ export const closetApi = {
     const recognition = choices(recognizers).sort((a, b) => Number(JSON.parse(b.value).provider === recognizers.find((provider) => provider.preferred)?.id) - Number(JSON.parse(a.value).provider === recognizers.find((provider) => provider.preferred)?.id))
     return { generation, recognition }
   },
-  async search(q: string, page: number, imageStyle?: string): Promise<SearchResult> {
+  async search(q: string, page: number, imageStyle?: string, ownership: SearchOwnership = 'OWNED'): Promise<SearchResult> {
     if (usingMocks) {
-      const list = await closetApi.list({ status: 'ACTIVE', q, category: '', color: '', season: '', page, size: 20 })
+      const list = await closetApi.list({ status: ownership === 'ALL' ? 'ACTIVE,WANTED' : ownership === 'WANTED' ? 'WANTED' : 'ACTIVE', q, category: '', color: '', season: '', page, size: 20 })
       return { items: list.items, reasons: {}, total: list.total, page, hasMore: page * 20 < list.total, mode: 'KEYWORD', parsed: null, emptyHint: '', notice: '', imageStyle: null }
     }
-    const params = new URLSearchParams({ q, page: String(page) }); if (imageStyle) params.set('imageStyle', imageStyle)
+    const params = new URLSearchParams({ q, page: String(page), ownership }); if (imageStyle) params.set('imageStyle', imageStyle)
     return searchResult(await request<SearchResponse>(`/api/garments/search?${params}`))
   },
   /** 超级搜索: a picture (and optional words) against the closet; same result shape as {@link search}. */
-  async superSearch(image: File, q: string, page: number): Promise<SearchResult> {
-    if (usingMocks) return closetApi.search(q, page)
-    const form = new FormData(); form.append('image', image); form.append('q', q); form.append('page', String(page))
+  async superSearch(image: File, q: string, page: number, ownership: SearchOwnership = 'OWNED'): Promise<SearchResult> {
+    if (usingMocks) return closetApi.search(q, page, undefined, ownership)
+    const form = new FormData(); form.append('image', image); form.append('q', q); form.append('page', String(page)); form.append('ownership', ownership)
     return searchResult(await request<SearchResponse>('/api/garments/search', { method: 'POST', body: form }))
   },
   async list(query: ListQuery): Promise<GarmentPage> {
@@ -371,7 +376,7 @@ export const closetApi = {
     await delay()
     const state = readMock()
     const search = query.q.trim().toLocaleLowerCase()
-    const matching = state.garments.filter((item) => item.status === query.status)
+    const matching = state.garments.filter((item) => query.status.split(',').includes(item.status))
       .filter((item) => !search || [item.category, item.primaryColor, item.secondaryColors, item.patterns, item.brand, item.styles, item.seasons].flat().join(' ').toLocaleLowerCase().includes(search))
       .filter((item) => !query.category || item.category.includes(query.category))
       .filter((item) => !query.color || item.primaryColor.includes(query.color))
@@ -476,10 +481,11 @@ export const closetApi = {
     return fromJob(await request<WorkflowResponse>(`/api/workflows/${taskId}/continue`, { method: 'POST', headers: { 'Idempotency-Key': key }, body: JSON.stringify({ assetId, policy, method: 'U2NET' }) }))
   },
 
-  async confirm(id: string, patch: Partial<Garment> & { fields?: Record<string, string[]>; resetFields?: string[]; revision?: number; assetId?: string; allowIncompleteSticker?: boolean }) {
+  /** wanted: true 存为种草，false 为已拥有，省略时已是种草的保持种草（smart-closet-server#197）。 */
+  async confirm(id: string, patch: Partial<Garment> & { fields?: Record<string, string[]>; resetFields?: string[]; revision?: number; assetId?: string; allowIncompleteSticker?: boolean; wanted?: boolean }) {
     if (!usingMocks) {
       const view = await request<GarmentView>(`/api/garments/${id}`)
-      return fromView(await request<GarmentView>(`/api/closet/garments/${id}/confirm`, { method: 'POST', body: JSON.stringify({ revision: patch.revision ?? view.revision, assetId: patch.assetId ?? view.displayAssetId, fields: patch.fields || {}, resetFields: patch.resetFields || [], allowIncompleteSticker: patch.allowIncompleteSticker || false }) }))
+      return fromView(await request<GarmentView>(`/api/closet/garments/${id}/confirm`, { method: 'POST', body: JSON.stringify({ revision: patch.revision ?? view.revision, assetId: patch.assetId ?? view.displayAssetId, fields: patch.fields || {}, resetFields: patch.resetFields || [], allowIncompleteSticker: patch.allowIncompleteSticker || false, ...(patch.wanted === undefined ? {} : { wanted: patch.wanted }) }) }))
     }
     await delay()
     const state = readMock()
@@ -493,7 +499,7 @@ export const closetApi = {
       item.displayAssetId = patch.assetId
       if (selected) item.displayUrl = selected.url
     }
-    Object.assign(item, { status: 'ACTIVE', reviewMessage: undefined, updatedAt: now(), revision: item.revision + 1 })
+    Object.assign(item, { status: (patch.wanted ?? item.status === 'WANTED') ? 'WANTED' : 'ACTIVE', reviewMessage: undefined, updatedAt: now(), revision: item.revision + 1 })
     writeMock(state)
     return item
   },
@@ -526,6 +532,25 @@ export const closetApi = {
     return item
   },
   async trash(id: string, revision?: number) { return this.setStatus(id, 'TRASHED', revision) },
+  /** 种草 ↔ 已拥有，保留原记录（smart-closet-server#197）。 */
+  async setOwned(id: string, owned: boolean, revision: number) {
+    if (!usingMocks) return fromView(await request<GarmentView>(`/api/closet/garments/${id}/ownership`, { method: 'POST', body: JSON.stringify({ revision, owned }) }))
+    await delay()
+    const state = readMock()
+    const item = state.garments.find((candidate) => candidate.id === id)
+    if (!item) throw new Error('找不到这件衣物。')
+    if (!['ACTIVE', 'WANTED'].includes(item.status)) throw new Error('请先确认入柜。')
+    item.status = owned ? 'ACTIVE' : 'WANTED'; item.revision += 1; item.updatedAt = now(); writeMock(state)
+    return item
+  },
+  async preferences(): Promise<ClosetPreferences> {
+    if (usingMocks) { const label = localStorage.getItem('yixu.mock-wanted-label') || '种草'; return { wantedLabel: label, defaultWantedLabel: '种草', customized: label !== '种草' } }
+    return request<ClosetPreferences>('/api/closet/preferences')
+  },
+  async savePreferences(patch: { wantedLabel?: string }): Promise<ClosetPreferences> {
+    if (usingMocks) { if (patch.wantedLabel !== undefined) localStorage.setItem('yixu.mock-wanted-label', patch.wantedLabel || '种草'); return this.preferences() }
+    return request<ClosetPreferences>('/api/closet/preferences', { method: 'PUT', body: JSON.stringify(patch) })
+  },
   async restore(id: string, status: 'ACTIVE' | 'DRAFT' = 'ACTIVE', revision?: number) { return this.setStatus(id, status, revision) },
   async setStatus(id: string, status: ClosetStatus, revision?: number) {
     if (!usingMocks) {
