@@ -29,6 +29,7 @@ blocks:
             - checkout
             - sem-version node 24
             - cache restore npm-$(checksum package-lock.json)
+            - npm audit --package-lock-only --ignore-scripts --audit-level=high
             - npm ci
             - cache store npm-$(checksum package-lock.json) ~/.npm
             - npm test

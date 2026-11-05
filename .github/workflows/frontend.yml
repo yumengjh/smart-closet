@@ -21,6 +21,18 @@ jobs:
         with:
           node-version: "24"
           cache: npm
+      - name: Audit locked dependencies
+        run: |
+          mkdir -p security-reports
+          git rev-parse HEAD > security-reports/commit.txt
+          npm audit --package-lock-only --ignore-scripts --audit-level=high --json > security-reports/npm-all.json
+          npm audit --package-lock-only --ignore-scripts --omit=dev --audit-level=high --json > security-reports/npm-production.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: frontend-security-reports
+          path: security-reports
+          retention-days: 30
       - run: npm ci
       - run: npm test
       - run: npm run typecheck
