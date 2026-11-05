@@ -6,7 +6,8 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { App as AntApp } from 'ant-design-vue'
 import { LockOutlined, UnlockOutlined, LeftOutlined, RightOutlined, StarOutlined, PlusOutlined } from '@ant-design/icons-vue'
-import { closetApi, type Garment } from '../services/api'
+import type { Garment } from '../services/api'
+import { activeCloset } from '../services/activeCloset'
 import { thumbUrl } from '../services/urls'
 import { roleFromGarment } from '../domain/outfit'
 import { candidateScene } from '../agent/bridge'
@@ -39,12 +40,9 @@ const pick = computed(() => ({ top: rows.value.top[current.value.top], bottom: r
 async function load() {
   loading.value = true; error.value = ''
   try {
-    const all: Garment[] = []
-    for (let page = 1; page <= 16; page++) {
-      const result = await closetApi.list({ status: 'ACTIVE', q: '', category: '', color: '', season: '', page, size: 50, sort: 'favorite' })
-      all.push(...result.items)
-      if (!result.items.length || all.length >= result.total) break
-    }
+    // smart-closet-server#198: the closet the outfit board already loaded; favourites first, otherwise newest-updated
+    // first (the same stable order as the list API's sort=favorite).
+    const all: Garment[] = (await activeCloset()).sort((a, b) => Number(Boolean(b.favorite)) - Number(Boolean(a.favorite)))
     const tops = all.filter(item => ['TOP', 'OUTER'].includes(roleFromGarment(item)))
     const bottoms = all.filter(item => roleFromGarment(item) === 'BOTTOM')
     rows.value = { top: tops, bottom: bottoms }

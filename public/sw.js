@@ -4,10 +4,11 @@ const ASSETS = 'yuda-assets-v1'
 const STATIC = 'yuda-static-v1'
 const KNOWN = [SHELL, ASSETS, STATIC]
 const ASSET_LIMIT = 160
-const PRECACHE = ['/index.html', '/manifest.webmanifest', '/yuda-logo.png', '/icons/icon-192.png', '/icons/icon-512.png']
+// The pages show the 320 px copy; /yuda-logo.png (1 MB) is only the source of the PWA icons.
+const PRECACHE = ['/index.html', '/manifest.webmanifest', '/yuda-logo-320.png', '/icons/icon-192.png', '/icons/icon-512.png']
 const BYPASS = ['/api/', '/workflow/', '/studio/']
 const STATIC_PREFIXES = ['/icons/', '/illustrations/', '/person-stickers/', '/licenses/']
-const STATIC_FILES = ['/yuda-logo.png', '/favicon.svg', '/manifest.webmanifest']
+const STATIC_FILES = ['/yuda-logo-320.png', '/favicon.svg', '/manifest.webmanifest']
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(SHELL).then(cache => cache.addAll(PRECACHE)).then(() => self.skipWaiting()))

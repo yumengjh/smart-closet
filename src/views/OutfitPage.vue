@@ -22,6 +22,7 @@ import { useThemeStore } from '../stores/theme'
 import { tokens } from '../theme/tokens'
 import { isMissingOutfit } from '../domain/outfitErrors'
 import { closetApi, type Garment } from '../services/api'
+import { activeCloset } from '../services/activeCloset'
 import { dropOutfitLayer, elementKey, normalizeScene, stickerLimit, copySticker, OUTFIT_HEIGHT, OUTFIT_VERSION, OUTFIT_WIDTH, outfitDropPosition, outfitRoleOptions, reorderOutfitElements, restoreOutfitDraft, roleFromGarment, type Outfit, type OutfitDraft, type OutfitElement, type OutfitLayerMove, type OutfitRole, type OutfitScene } from '../domain/outfit'
 import { artworkForGarment, createOutfitElement, downloadOutfitPng, loadOutfitImage } from '../domain/outfit-images'
 import OutfitReview from '../components/OutfitReview.vue'
@@ -215,14 +216,8 @@ async function loadGarments() {
   loadingGarments.value = true
   garmentError.value = ''
   try {
-    const first = await closetApi.list({ status: 'ACTIVE', q: '', category: '', color: '', season: '', page: 1, size: 50 })
-    const items = [...first.items]
-    const pages = Math.min(40, Math.ceil(first.total / 50))
-    for (let page = 2; page <= pages; page++) {
-      const result = await closetApi.list({ status: 'ACTIVE', q: '', category: '', color: '', season: '', page, size: 50 })
-      items.push(...result.items)
-    }
-    garments.value = items
+    // smart-closet-server#198: pages in parallel, and shared with 随手搭 and the recommendation previews.
+    garments.value = await activeCloset()
   } catch (cause) {
     garmentError.value = cause instanceof Error ? cause.message : '衣柜暂时无法加载。'
   } finally { loadingGarments.value = false }

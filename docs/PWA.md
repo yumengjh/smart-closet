@@ -95,7 +95,7 @@ iOS Safari 对 manifest 的支持不完整，`index.html` 额外加入：
 | `/api/**`、`/workflow/**`、`/studio/**` | 不拦截 | — |
 | 页面导航（`request.mode === 'navigate'`） | 网络优先，离线回退 | `yuda-shell-v1` 中的 `/index.html` |
 | `/assets/**`（Vite 带哈希产物） | 缓存优先 | `yuda-assets-v1`，最多 160 条 |
-| `/icons/**`、`/illustrations/**`、`/person-stickers/**`、`/licenses/**`、`/yuda-logo.png`、`/favicon.svg`、`/manifest.webmanifest` | 先返回缓存，后台更新 | `yuda-static-v1` |
+| `/icons/**`、`/illustrations/**`、`/person-stickers/**`、`/licenses/**`、`/yuda-logo-320.png`、`/favicon.svg`、`/manifest.webmanifest` | 先返回缓存，后台更新 | `yuda-static-v1` |
 | 其他同源 GET | 不拦截 | — |
 
 ### 4.3 各策略细节
@@ -139,6 +139,8 @@ iOS Safari 对 manifest 的支持不完整，`index.html` 额外加入：
 ## 5. 图标
 
 源图：`public/yuda-logo.png`（1428 × 1102，透明背景，非正方形）。生成脚本：`scripts/generate-pwa-icons.swift`（使用 macOS 自带 AppKit，无需安装依赖）。
+
+页面上显示的标志（开屏、登录页、网页图标、`favicon.svg`）用 `public/yuda-logo-320.png`（320 × 247，约 90 KB）。源图约 1 MB，而标志最大只显示 88 px；它又走"先返回缓存、后台更新"，所以每次打开页面都会在后台把 1 MB 重新下载一遍（smart-closet-server#198）。改了源图后要重新生成：`sips --resampleWidth 320 public/yuda-logo.png --out public/yuda-logo-320.png`。
 
 ```bash
 swift scripts/generate-pwa-icons.swift
