@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { App } from 'ant-design-vue'
-import { CameraOutlined, SwapOutlined, LeftOutlined, PictureOutlined, DownloadOutlined, DeleteOutlined, PlusOutlined, ExpandOutlined, CompressOutlined, InfoCircleOutlined, LoadingOutlined, BorderOutlined, ColumnWidthOutlined, EyeOutlined, EyeInvisibleOutlined, RightOutlined, PoweroffOutlined, CheckCircleFilled, ExclamationCircleFilled } from '@ant-design/icons-vue'
+import { CameraOutlined, SwapOutlined, LeftOutlined, PictureOutlined, DownloadOutlined, DeleteOutlined, PlusOutlined, ExpandOutlined, CompressOutlined, InfoCircleOutlined, LoadingOutlined, BorderOutlined, ColumnWidthOutlined, EyeOutlined, EyeInvisibleOutlined, RightOutlined, PoweroffOutlined, CheckCircleFilled, ExclamationCircleFilled, WifiOutlined } from '@ant-design/icons-vue'
 import { tryOnApi, emergencyStop, duration, finished, mediaUrl, type Candidate, type Capabilities, type Media, type Prepared, type Selection, type Session } from '../tryon/api'
 import { TryOnCamera } from '../tryon/camera'
 import { frameCanvas, photo, startRecording, type Recorder } from '../tryon/recording'
@@ -18,7 +18,10 @@ import { playSound } from '../services/sound'
 import { ASPECTS, CAMERA_LAYOUT_QUERY, CONNECT_STEPS, aspectOf, autoFit, connectStep, cornerPosition, defaultAspect, nearestCorner, pipSize, presetOf, shutterIntent, swipeDirection, tryOnPhase, type AspectValue, type Box, type CaptureMode, type Corner, type Fit, type Insets } from '../tryon/stage'
 import OutfitThumbnail from '../components/OutfitThumbnail.vue'
 import { AbsenceWatch, SteadyCheck, checkFrame, present, type Absence, type FrameCheck } from '../tryon/pose/checks'
-import { PoseSampler } from '../tryon/pose/sampler'
+import { PoseSampler, poseFailureLabel, type PoseStatus } from '../tryon/pose/sampler'
+import { shrinkImage, formatBytes, type Shrunk } from '../tryon/shrink'
+import { probeNetwork, describeProbe, saveData, sdkQualityLabel, type NetworkProbe } from '../tryon/network'
+import { apiUrl } from '../services/urls'
 import type { Outfit } from '../domain/outfit'
 
 const route = useRoute(), router = useRouter(), { message, modal } = App.useApp()
@@ -27,7 +30,7 @@ const loading = ref(true), cameraReady = ref(false), busy = ref(false), error = 
 const garments = ref<Candidate[]>([]), outfits = ref<Outfit[]>([]), selected = ref<Selection[]>([])
 const prepared = ref<Prepared | null>(null), lease = ref<Session | null>(null), picker = ref(false), tab = ref('衣柜'), historyOpen = ref(false)
 const media = ref<Media[]>([]), sessionHistory = ref<Session[]>([]), historyPage = ref(1), garmentPage = ref(1), historyBusy = ref(false), search = ref('')
-const temporary = ref<{ id: string; imageUrl: string; expiresAtMs: number; role?: string }[]>([]), uploading = ref(false), importChoice = ref<File | null>(null), importRole = ref<string>()
+const temporary = ref<{ id: string; imageUrl: string; expiresAtMs: number; role?: string }[]>([]), uploading = ref(false), uploadPhase = ref(''), importChoice = ref<File | null>(null), importRole = ref<string>()
 const recording = ref(false), recordingBusy = ref(false), recordingSeconds = ref(0), uploadedBytes = ref(0), recordingError = ref('')
 const selectedOutfit = ref<string | null>(null), selectingOutfit = ref<string | null>(null), pendingOutfit = ref<string | null>(null), preparing = ref(false)
 const captureMode = ref<CaptureMode>('拍照'), busyPhase = ref(''), latestBusy = ref(false), startupStage = ref<StartupStage | undefined>()
@@ -69,12 +72,14 @@ const selectedRoles = computed(() => selected.value.map(s => ({ wearingRole: s.r
 // 本地姿态检查（docs/design/2026-11-03-实时试穿本地姿态检查设计.md）：关键点只在本页使用，不上传、不保存。
 const poseCheck = ref<FrameCheck | null>(null), absence = ref<Absence>({ state: 'ok' })
 const steady = new SteadyCheck(), away = new AbsenceWatch()
-let sampler: PoseSampler | undefined
+let sampler: PoseSampler | undefined, poseTimer = 0
+const poseStatus = ref<PoseStatus | null>(null)
 const showPoseCheck = computed(() => phase.value === 'preview' && selected.value.length > 0 && poseCheck.value !== null && !error.value)
 function startPose() {
   if (sampler || disposed) return
   sampler = new PoseSampler(() => camera?.localVideo)
   sampler.onUnavailable = () => { sampler = undefined; poseCheck.value = null }
+  sampler.onStatus = status => { if (!disposed) poseStatus.value = status }
   sampler.onPoints = (points, at) => {
     if (phase.value === 'preview') { poseCheck.value = steady.update(checkFrame(points, selectedRoles.value.map(r => r.wearingRole)), at); return }
     if (!generating.value) return
@@ -86,7 +91,82 @@ function startPose() {
   }
   sampler.start()
 }
-function stopPose() { sampler?.close(); sampler = undefined; steady.reset(); away.reset(); poseCheck.value = null; absence.value = { state: 'ok' } }
+function stopPose() { clearTimeout(poseTimer); poseTimer = 0; sampler?.close(); sampler = undefined; poseStatus.value = null; steady.reset(); away.reset(); poseCheck.value = null; absence.value = { state: 'ok' } }
+/**
+ * 姿态识别文件约 19 MB：本地画面出现后再空闲 2 秒才加载；正在连接试穿时等试穿画面出来，
+ * 不和上传参考图、建立实时连接抢带宽（2026-11-06 加载提速设计 §3.4）。
+ */
+function schedulePose() {
+  clearTimeout(poseTimer)
+  const later = (ms: number) => { poseTimer = window.setTimeout(tryStartPose, ms) }
+  const video = camera?.localVideo
+  if (video && video.readyState < 2) video.addEventListener('loadeddata', () => later(2000), { once: true })
+  else later(2000)
+}
+function tryStartPose() {
+  poseTimer = 0
+  if (disposed || !cameraReady.value || sampler) return
+  if (live.value && !frameReady.value) { poseTimer = window.setTimeout(tryStartPose, 1000); return }
+  startPose()
+}
+// 本机网络检查（§3.5）：只在本页显示，不上传。30 秒内不重复测；较差时只提示一次，不阻止操作。
+const networkProbe = ref<NetworkProbe | null>(null), probing = ref(false)
+let networkWarned = false
+async function checkNetwork(force = false) {
+  if (probing.value || (!force && networkProbe.value && Date.now() - networkProbe.value.at < 30_000)) return
+  probing.value = true
+  try {
+    const probe = await probeNetwork(apiUrl('/api/health'))
+    if (disposed) return
+    networkProbe.value = probe
+    if ((probe.level === 'poor' || probe.level === 'offline') && !networkWarned) {
+      networkWarned = true
+      message.warning({ content: probe.level === 'offline' ? '暂时连不上服务器，请检查网络后再试。' : `当前网络较慢（${describeProbe(probe)}），打开相机和试穿可能卡顿，建议换到更稳定的网络。`, duration: 6 })
+    }
+  } finally { probing.value = false }
+}
+/** 空闲时预先下载实时 SDK 与声网引擎（x2.1 固定使用），点“打开相机”时不用再等；不建客户端、不申请摄像头（§3.3）。 */
+let warmed = false
+function prewarmSdk() {
+  if (warmed || saveData() || !cap.value?.enabled || !cap.value.ready) return
+  warmed = true
+  const run = () => { if (disposed) return; void import('@xmaxai/web-sdk').catch(() => {}); void import('agora-rtc-sdk-ng').catch(() => {}) }
+  const idle = (window as Window & { requestIdleCallback?: (cb: () => void, options?: { timeout: number }) => number }).requestIdleCallback
+  if (idle) idle(run, { timeout: 4000 }); else window.setTimeout(run, 1500)
+}
+const networkText = computed(() => networkProbe.value ? describeProbe(networkProbe.value) : probing.value ? '检测中…' : '尚未检测')
+const liveNetworkText = computed(() => {
+  void now.value
+  if (!live.value || !camera) return ''
+  const d = camera.diagnostic, parts = [] as string[]
+  if (d.uplink) parts.push(`上行 ${sdkQualityLabel[d.uplink] || d.uplink}`)
+  if (d.downlink) parts.push(`下行 ${sdkQualityLabel[d.downlink] || d.downlink}`)
+  if (typeof d.video.mediaDelayMs === 'number') parts.push(`画面延迟 ${Math.round(d.video.mediaDelayMs)} ms`)
+  const loss = Math.max(d.video.uplinkLoss ?? 0, d.video.downlinkLoss ?? 0)
+  if (d.video.uplinkLoss !== undefined || d.video.downlinkLoss !== undefined) parts.push(`丢包 ${loss.toFixed(1)}%`)
+  return parts.length ? parts.join(' · ') : '等待实时连接回报…'
+})
+const liveLevel = computed(() => {
+  void now.value
+  const d = live.value && camera ? camera.diagnostic : undefined
+  const worst = [d?.uplink, d?.downlink].filter(Boolean) as string[]
+  if (worst.some(q => ['Bad', 'VeryBad', 'Down'].includes(q))) return 'poor'
+  if (worst.some(q => q === 'Poor')) return 'fair'
+  return worst.length ? 'good' : ''
+})
+const healthLevel = computed(() => liveLevel.value || networkProbe.value?.level || 'unknown')
+const poseText = computed(() => {
+  void now.value
+  const status = poseStatus.value
+  if (!status) return cameraReady.value ? '等画面稳定后加载' : '打开相机后加载'
+  if (status.state === 'loading') return `加载中（已等待 ${Math.round((performance.now() - status.since) / 1000)} 秒，首次约 19 MB）`
+  if (status.state === 'unavailable') return `不可用：${poseFailureLabel[status.reason]}，不影响试穿`
+  const parts = [`已就绪 · ${status.delegate}`]
+  if (status.inferenceMs !== null) parts.push(`每帧 ${Math.round(status.inferenceMs)} ms`)
+  parts.push(`每秒 ${status.perSecond} 次`)
+  if (status.loadMs) parts.push(`加载用时 ${(status.loadMs / 1000).toFixed(1)} 秒`)
+  return parts.join(' · ')
+})
 function stillHere() { away.snooze(performance.now()); absence.value = { state: 'ok' } }
 const startHint = computed(() => {
   if (!cap.value?.enabled) return '由管理员开通实时试穿，已有结果仍可在历史中查看。'
@@ -222,7 +302,7 @@ function flyToHistory(blob: Blob) {
 function flyDone() { if (fly.value) URL.revokeObjectURL(fly.value.url); fly.value = null; bumpKey.value++ }
 const pickerProps = computed(() => ({ garments: garments.value, outfits: outfits.value, selected: selected.value, temporary: temporary.value,
   blocked: queued.value || offered.value || reclaiming.value || busy.value, busyId: selectingOutfit.value, selectedOutfit: selectedOutfit.value,
-  uploading: uploading.value, error: error.value, canUseLatest: canUseLatest.value, chooseUpload,
+  uploading: uploading.value, uploadPhase: uploadPhase.value, error: error.value, canUseLatest: canUseLatest.value, chooseUpload,
   autoRoles: Object.fromEntries(selected.value.map(s => [s.id, autoRole(s.id)])) }))
 function applyPrepared(p: Prepared) {
   const chosen = new Map(selected.value.map(s => [s.id, s.role]))
@@ -248,12 +328,13 @@ async function loadGarments(more = false) {
 async function openCamera() {
   if (!cap.value?.enabled || !host.value || busy.value) return
   busy.value = true; busyPhase.value = '正在打开摄像头，请在浏览器提示中允许访问。'; error.value = ''
+  void checkNetwork()
   try {
     camera ??= new TryOnCamera(host.value, () => { if (!finished(lease.value)) { frameReady.value = true; busyPhase.value = ''; void pulse() } }, cause => { fail(cause); if (live.value) void stop(true) }, stage => { startupStage.value = stage; if (live.value) { busyPhase.value = stageLabel[stage]; void pulse() } })
     camera.onSize = (source, width, height) => { sizes.value = { ...sizes.value, [source]: width / height } }
     await camera.setAspect(presetOf(aspect.value))
     await camera.open(); cameraReady.value = camera.ready
-    if (cameraReady.value) startPose()
+    if (cameraReady.value) schedulePose()
   } catch (e) { fail(e) } finally { busy.value = false; busyPhase.value = '' }
 }
 async function build(allowLatest = false) {
@@ -374,19 +455,25 @@ async function selectOutfit(id: string, allowLatest = false) {
     message.success(`已选择「${outfits.value.find(o => o.id === id)?.name || '搭配'}」，共 ${p.items.length} 件。`)
   } catch (e) { fail(e) } finally { preparing.value = false; selectingOutfit.value = null }
 }
-async function chooseUpload(file: File) { leaveFullscreen(); await stop(); importRole.value = undefined; importChoice.value = file; return false }
+// 选图后就在本机开始缩小（§3.1），用户选穿戴位置时压缩已在进行；入柜流程仍交原文件。
+let shrinking: { file: File; job: Promise<Shrunk> } | undefined
+async function chooseUpload(file: File) { leaveFullscreen(); await stop(); importRole.value = undefined; importChoice.value = file; shrinking = { file, job: shrinkImage(file) }; return false }
 async function uploadTemporary() {
-  const file = importChoice.value; if (!file) return
-  uploading.value = true; error.value = ''
-  const role = importRole.value; if (!role) return
-  try { const item = await tryOnApi.upload(file); temporary.value.push({ ...item, role }); selected.value.push({ type: 'TEMPORARY', id: item.id, role }); prepared.value = null; importChoice.value = null; message.success('已加入当前页面，七天后删除。') }
-  catch (e) { fail(e) } finally { uploading.value = false }
+  const file = importChoice.value, role = importRole.value; if (!file || !role) return
+  uploading.value = true; error.value = ''; uploadPhase.value = '正在压缩…'
+  try {
+    const shrunk = await (shrinking?.file === file ? shrinking.job : shrinkImage(file)); shrinking = undefined
+    uploadPhase.value = `正在上传 ${formatBytes(shrunk.after)}…`
+    const item = await tryOnApi.upload(shrunk.file); temporary.value.push({ ...item, role }); selected.value.push({ type: 'TEMPORARY', id: item.id, role }); prepared.value = null; importChoice.value = null
+    message.success(shrunk.changed ? `已加入当前页面（已从 ${formatBytes(shrunk.before)} 压缩到 ${formatBytes(shrunk.after)}），七天后删除。` : '已加入当前页面，七天后删除。')
+  }
+  catch (e) { fail(e) } finally { uploading.value = false; uploadPhase.value = '' }
 }
 async function importGarment() {
   const file = importChoice.value; if (!file) return
   // Explicit intake handoff, consumed once by the existing upload page. No garment/model call before this choice.
   const { setTryOnIntake } = await import('../tryon/intake')
-  setTryOnIntake(file); importChoice.value = null; await router.push('/add?from=tryon')
+  setTryOnIntake(file); importChoice.value = null; shrinking = undefined; await router.push('/add?from=tryon')
 }
 async function takePhoto() {
   if (!generating.value || !camera?.video || !lease.value) return
@@ -464,6 +551,7 @@ const offAccount = onAccountChange(() => { if (accountIsStale()) { background();
 onMounted(async () => {
   try {
     await refresh()
+    prewarmSdk(); void checkNetwork()
     if (cap.value?.enabled) { await Promise.all([loadGarments(), tryOnApi.outfits().then(rows => { outfits.value = rows })]); if (typeof route.query.garment === 'string') { const g = garments.value.find(g => g.id === route.query.garment) || await tryOnApi.garment(route.query.garment); if (!garments.value.some(v => v.id === g.id)) garments.value.unshift(g); if (g?.ready) selected.value = [{ type: 'GARMENT', id: g.id, revision: g.revision, assetId: g.assetId }]; else error.value = '该衣物尚无可用成品，请完成处理后再试。' }
       if (typeof route.query.outfit === 'string') await selectOutfit(route.query.outfit)
     }
@@ -531,6 +619,7 @@ onBeforeUnmount(() => { disposed = true; action++; stopPose(); layoutObserver?.d
               <a-tooltip v-if="cameraReady" :title="live ? '结束试穿并关闭相机' : '关闭相机'" placement="bottom" :get-popup-container="popupHost"><a-button type="text" class="camera-tool" :aria-label="live ? '结束试穿并关闭相机' : '关闭相机'" :disabled="busy || recordingBusy" @click="closeCamera"><PoweroffOutlined /></a-button></a-tooltip>
               <a-tooltip v-if="cameraReady" :title="fit === 'cover' ? '完整显示画面' : '铺满取景框'" placement="bottom" :get-popup-container="popupHost"><a-button type="text" class="camera-tool" :aria-label="fit === 'cover' ? '完整显示画面' : '铺满取景框'" @click="toggleFit"><BorderOutlined v-if="fit === 'cover'" /><ColumnWidthOutlined v-else /></a-button></a-tooltip>
               <a-button v-if="!narrow && cameraReady" type="text" class="camera-tool" :aria-label="fullscreen ? '退出全屏' : '全屏试穿'" @click="toggleFullscreen"><CompressOutlined v-if="fullscreen" /><ExpandOutlined v-else /></a-button>
+              <a-popover title="连接状态" trigger="click" placement="bottomRight" :get-popup-container="popupHost"><template #content><div class="tryon-health"><p><strong>网络</strong><span>{{ networkText }}</span></p><p v-if="liveNetworkText"><strong>试穿中</strong><span>{{ liveNetworkText }}</span></p><p><strong>姿态检查</strong><span>{{ poseText }}</span></p><p class="tryon-info-copy">只在本机检测，结果不上传；姿态检查只是取景提示，没加载好也能正常试穿。</p><a-button size="small" :loading="probing" @click="checkNetwork(true)">重新检测网络</a-button></div></template><a-button type="text" class="camera-tool tryon-health-tool" :class="`is-${healthLevel}`" :aria-label="`连接状态：${networkText}`"><WifiOutlined /><i v-if="poseStatus?.state === 'loading'" class="tryon-health-dot" aria-hidden="true"></i></a-button></a-popover>
               <a-popover title="试穿与拍摄说明" placement="bottomRight" :get-popup-container="popupHost"><template #content><p class="tryon-info-copy">打开相机只做本地预览。点击开始后，视频与服装参考图会发送至 XMax，连接后按时长消耗额度。录像声音仅用于本地混录。切后台会结束试穿，未上传的最后片段可能丢失。</p><p class="tryon-info-copy">点小窗互换主画面，拖动可换位置；左右滑动切换拍照和录像，手机上双击切换铺满。无论看哪个画面，保存的都是试穿效果。</p></template><a-button type="text" class="camera-tool" aria-label="查看试穿说明"><InfoCircleOutlined /></a-button></a-popover>
             </div>
           </header>
@@ -582,7 +671,7 @@ onBeforeUnmount(() => { disposed = true; action++; stopPose(); layoutObserver?.d
     </div>
     <a-drawer v-model:open="picker" title="选择试穿衣物" :placement="narrow ? 'bottom' : 'right'" height="min(76dvh, 760px)" :width="420" :mask="narrow" :get-container="popupHost" root-class-name="tryon-material-drawer"><p v-if="generating" class="tryon-paid-notice">选衣期间仍在计时 · {{ duration(remaining) }} <a-button size="small" danger @click="stop()">停止试穿</a-button></p><TryOnPicker v-bind="pickerProps" v-model:search="search" v-model:tab="tab" :popup-host="popupHost" @toggle="toggle" @outfit="selectOutfit" @more="loadGarments(true)" @latest="latest" @role="setRole" /><template #footer><div class="tryon-picker-footer"><span>{{ selected.length ? `已选 ${selected.length} 件衣物` : '尚未选择衣物' }}</span><a-button type="primary" :disabled="preparing" @click="picker=false">{{ selected.length ? '选好了，返回相机' : '返回相机' }}</a-button></div></template></a-drawer>
     <a-drawer v-model:open="historyOpen" title="拍摄历史" placement="right" :width="'min(100vw, 620px)'"><a-alert type="info" show-icon message="历史查看期间已停止实时连接。" /><a-segmented v-model:value="historyFilter" :options="['全部','照片','视频']" block /><a-spin :spinning="historyBusy"><a-empty v-if="!visibleMedia.length" description="主动拍摄的照片和录像会保存在这里" /><article v-for="item in visibleMedia" :key="item.id" class="tryon-history-item"><MediaPreview v-if="item.type==='VIDEO' && ['READY','PARTIAL'].includes(item.state)" :src="mediaUrl(item.url)" :duration-ms="item.durationMs" /><img v-else-if="item.type==='PHOTO'" :src="mediaUrl(item.url)" alt="AI试穿效果" /><div v-else class="tryon-pending-media">{{ item.state === 'UNRECOVERABLE' ? '片段不足以恢复录像，可删除释放空间' : '分段已上传，正在恢复可用片段' }}</div><div><strong>{{ item.type==='PHOTO' ? '试穿照片' : `${item.state==='PARTIAL'?'中断片段':'录像'} · ${duration(item.durationMs/1000)}` }}</strong><p>{{ new Date(item.createdAtMs).toLocaleString() }} <template v-if="item.type==='VIDEO'"> · {{ item.hasAudio?'有声':'无声' }} · {{ item.mimeType.split('/')[1]?.toUpperCase() }}</template></p><div class="tryon-history-actions"><a-button :href="mediaUrl(item.downloadUrl)" :disabled="!['READY','PARTIAL'].includes(item.state)"><DownloadOutlined /> 下载</a-button><a-button v-if="cap?.enabled" @click="repeat(item)">再次试穿</a-button><a-button type="text" danger aria-label="删除结果" @click="remove(item)"><DeleteOutlined /></a-button></div></div></article><a-button block :loading="historyBusy" @click="moreHistory">加载更多结果</a-button><a-collapse v-if="sessionHistory.length" ghost><a-collapse-panel key="sessions" header="查看会话与用量记录"><p v-for="s in sessionHistory" :key="s.id" class="tryon-session-history">{{ new Date(s.createdAtMs).toLocaleString() }} · {{ stateName(s.state) }} · {{ duration(s.userSeconds) }}</p></a-collapse-panel></a-collapse></a-spin></a-drawer>
-    <a-modal :open="!!importChoice" title="这件衣物是否入柜？" :footer="null" @cancel="importChoice=null"><p>入柜会进入现有衣物处理流程。仅试穿不会自动识图或生图，离开页面后不恢复。</p><p class="tryon-import-label">仅试穿时，这件衣物戴在或穿在哪里？</p><a-select v-model:value="importRole" class="tryon-import-role" show-search option-filter-prop="label" :options="WEAR_GROUPS" placeholder="选择穿戴位置，例如头饰、手表、手持物" /><div class="tryon-modal-actions"><a-button :loading="uploading" :disabled="!importRole" @click="uploadTemporary">仅当前页面试穿</a-button><a-button type="primary" @click="importGarment">进入入柜流程</a-button></div></a-modal>
+    <a-modal :open="!!importChoice" title="这件衣物是否入柜？" :footer="null" @cancel="importChoice=null"><p>入柜会进入现有衣物处理流程。仅试穿不会自动识图或生图，离开页面后不恢复。</p><p class="tryon-import-label">仅试穿时，这件衣物戴在或穿在哪里？</p><a-select v-model:value="importRole" class="tryon-import-role" show-search option-filter-prop="label" :options="WEAR_GROUPS" placeholder="选择穿戴位置，例如头饰、手表、手持物" /><div class="tryon-modal-actions"><a-button :loading="uploading" :disabled="!importRole" @click="uploadTemporary">{{ uploading && uploadPhase ? uploadPhase : '仅当前页面试穿' }}</a-button><a-button type="primary" @click="importGarment">进入入柜流程</a-button></div></a-modal>
     <a-modal v-model:open="silentChoice" title="麦克风暂不可用" :footer="null"><p>{{ microphoneError }}</p><div class="tryon-modal-actions"><a-button @click="silentChoice=false; record(true)">继续无声录像</a-button><a-button type="primary" @click="silentChoice=false; record()">重新申请麦克风</a-button></div></a-modal>
   </section>
 </template>
@@ -798,6 +887,17 @@ onBeforeUnmount(() => { disposed = true; action++; stopPose(); layoutObserver?.d
 .tryon-recording-error { width: min(100%, 420px); }
 
 .tryon-info-copy { max-width: 30ch; margin: 8px 0 0; font-size: 13px; line-height: 1.8; }
+.tryon-health { display: flex; flex-direction: column; gap: 6px; max-width: 300px; }
+.tryon-health > p { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 8px; margin: 0; font-size: 13px; line-height: 1.7; font-variant-numeric: tabular-nums; }
+.tryon-health > p.tryon-info-copy { display: block; margin-bottom: 4px; color: var(--muted-strong); }
+.tryon-health > .ant-btn { align-self: flex-start; }
+.tryon-health-tool { position: relative; }
+.tryon-health-tool.is-good { color: #52c41a; }
+.tryon-health-tool.is-fair { color: #faad14; }
+.tryon-health-tool.is-poor, .tryon-health-tool.is-offline { color: #ff4d4f; }
+.tryon-health-dot { position: absolute; top: 7px; right: 7px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent, #1677ff); animation: tryon-health-pulse 1.2s ease-in-out infinite; }
+@keyframes tryon-health-pulse { 50% { opacity: .3; } }
+@media (prefers-reduced-motion: reduce) { .tryon-health-dot { animation: none; } }
 
 /* 抽屉与历史（内容沿用） */
 .tryon-picker-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding-bottom: env(safe-area-inset-bottom); font-size: 13px; color: var(--muted-strong); }

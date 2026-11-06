@@ -24,8 +24,10 @@ self.onmessage = async (event: MessageEvent) => {
   const message = event.data
   try {
     if (message.type === 'INIT') {
-      try { pose = await create('GPU') } catch { pose = await create('CPU') }
-      self.postMessage({ type: 'READY' })
+      const started = performance.now()
+      let delegate: 'GPU' | 'CPU' = 'GPU'
+      try { pose = await create('GPU') } catch { delegate = 'CPU'; pose = await create('CPU') }
+      self.postMessage({ type: 'READY', delegate, loadMs: performance.now() - started })
     } else if (message.type === 'FRAME') {
       try {
         if (!pose) return
