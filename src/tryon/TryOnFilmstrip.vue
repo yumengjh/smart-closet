@@ -1,18 +1,21 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { AppstoreOutlined, CheckOutlined, LeftOutlined, PlusOutlined, SkinOutlined } from '@ant-design/icons-vue'
+import { AppstoreOutlined, CheckOutlined, CloseOutlined, LeftOutlined, PlusOutlined, SkinOutlined } from '@ant-design/icons-vue'
 import type { Outfit } from '../domain/outfit'
 import OutfitThumbnail from '../components/OutfitThumbnail.vue'
 import { thumbUrl } from '../services/urls'
 import type { Candidate, Selection } from './api'
+import type { SelectedChip } from './selection'
 import { wantedLabel } from '../wardrobe/wanted'
 
 /** 桌面快速换衣：浮在舞台左侧的竖向衣物栏，可收起成一枚按钮，不再占用舞台下方的高度。 */
 const props = defineProps<{
   garments: Candidate[]; outfits: Outfit[]; selected: Selection[]; selectedOutfit: string | null
   blocked: boolean; busyId: string | null; title: string; open: boolean
+  /** 当前已选（含临时衣物），点一下移除。 */
+  chips: SelectedChip[]
 }>()
-const emit = defineEmits<{ toggle: [item: Selection]; outfit: [id: string]; more: []; all: []; upload: []; 'update:open': [value: boolean] }>()
+const emit = defineEmits<{ toggle: [item: Selection]; outfit: [id: string]; more: []; all: []; upload: []; clear: []; 'update:open': [value: boolean] }>()
 const tab = ref('单品'), scroller = ref<HTMLElement>()
 const ready = computed(() => props.garments.filter(g => g.ready))
 const usable = computed(() => props.outfits.filter(o => o.scene.elements.some(e => e.garmentId)))
@@ -30,6 +33,14 @@ function scrolled() {
         <strong :title="title">{{ title }}</strong>
         <a-tooltip title="收起衣物栏" placement="right"><a-button type="text" size="small" class="rail-fold" aria-label="收起衣物栏" @click="emit('update:open', false)"><LeftOutlined /></a-button></a-tooltip>
       </header>
+      <div v-if="chips.length" class="rail-selected" aria-label="已选衣物">
+        <div class="rail-selected-head"><span>已选 {{ chips.length }} 件</span><a-button type="link" size="small" :disabled="blocked || !!busyId" @click="emit('clear')">清空</a-button></div>
+        <div class="rail-chips">
+          <a-tooltip v-for="c in chips" :key="c.id" :title="`移除：${c.name}`" placement="right">
+            <a-button class="rail-chip" :disabled="blocked || !!busyId" :aria-label="`移除：${c.name}`" @click="emit('toggle', c.selection)"><img v-if="c.image" :src="c.image" alt="" /><SkinOutlined v-else /><CloseOutlined class="rail-chip-x" /></a-button>
+          </a-tooltip>
+        </div>
+      </div>
       <a-segmented v-model:value="tab" size="small" block :options="['单品', '搭配']" />
       <div ref="scroller" class="rail-scroller" @scroll.passive="scrolled">
         <template v-if="tab === '单品'">
@@ -77,6 +88,15 @@ function scrolled() {
 .rail-upload.ant-btn:not(:disabled):hover { color: var(--accent); background: transparent; border-color: var(--accent); }
 .rail-upload small { font-size: 11px; }
 .rail-check { position: absolute; right: 4px; top: 4px; padding: 2px; font-size: 9px; color: #fff; background: var(--accent); border-radius: 50%; }
+.rail-selected { display: flex; flex-direction: column; gap: 6px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.rail-selected-head { display: flex; align-items: center; justify-content: space-between; font-size: 12px; color: var(--muted-strong); }
+.rail-selected-head .ant-btn { height: 22px; padding: 0 2px; font-size: 12px; }
+.rail-chips { display: flex; flex-wrap: wrap; gap: 6px; max-height: 76px; overflow-y: auto; scrollbar-width: thin; }
+.rail-chip.ant-btn { position: relative; width: 32px; height: 32px; padding: 2px; overflow: hidden; background: var(--surface-alt); border-color: var(--accent); border-radius: 8px; }
+.rail-chip img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.rail-chip-x { position: absolute; inset: 0; display: grid; place-items: center; font-size: 12px; color: #fff; background: #0008; opacity: 0; transition: opacity .15s ease; }
+.rail-chip.ant-btn:hover .rail-chip-x, .rail-chip.ant-btn:focus-visible .rail-chip-x { opacity: 1; }
+@media (hover: none) { .rail-chip-x { inset: auto -1px -1px auto; width: 13px; height: 13px; font-size: 8px; border-radius: 6px 0 0 0; opacity: 1; } }
 .rail-empty { grid-column: 1 / -1; margin: 4px 0; font-size: 12px; line-height: 1.7; color: var(--muted-strong); }
 .rail-all.ant-btn { flex: none; min-height: 36px; }
 .tryon-rail-tab.ant-btn { position: relative; display: grid; place-items: center; width: 44px; height: 44px; padding: 0; font-size: 18px; color: var(--ink); background: var(--overlay); border-color: var(--line); border-radius: var(--radius-md); box-shadow: 0 6px 20px #0000001f; backdrop-filter: blur(14px); }

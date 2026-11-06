@@ -7,7 +7,14 @@ import { observeFirstFrame } from './firstFrame'
 import { StartupDiagnostic, type StartupStage } from './diagnostic'
 import { CAMERA_LAYOUT_QUERY, defaultAspect, presetOf, type CameraPresetKey } from './stage'
 
+/** 只给本页“连接状态”看的画质数字，不进连接诊断、不上传（2026-11-06 加载提速设计 §3.6）。 */
+export type StreamStats = { width?: number; height?: number; fps?: number; kbps?: number; loss?: number; delayMs?: number }
+const finite = (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : undefined
+
 export class TryOnCamera {
+  /** 试穿中 SDK 回报的上行（摄像头 → 云端）与下行（试穿画面 → 本机）统计。 */
+  uplinkStats: StreamStats = {}
+  downlinkStats: StreamStats = {}
   private manager?: XmaxRealtimeManaging
   private local?: RealtimeMediaStream
   private localView?: XmaxRealtimeVideoView
@@ -30,6 +37,14 @@ export class TryOnCamera {
   /** 摄像头原画（未经生成），只给本地姿态检查读帧。 */
   get localVideo() { return this.localView?.videoElement }
   get ready() { return Boolean(this.local) }
+  /** 本地预览的实际分辨率与帧率（读摄像头轨道设置，读不到时只给分辨率）。 */
+  get previewStats(): StreamStats {
+    const video = this.localView?.videoElement
+    if (!video) return {}
+    const track = (video.srcObject instanceof MediaStream ? video.srcObject.getVideoTracks()[0] : undefined)
+    const settings = track?.getSettings?.() ?? {}
+    return { width: finite(video.videoWidth) || finite(settings.width), height: finite(video.videoHeight) || finite(settings.height), fps: finite(settings.frameRate) }
+  }
   get isFront() { return this.front }
   private watchSize(video: HTMLVideoElement, source: 'local' | 'remote') {
     const report = () => { if (video.videoWidth && video.videoHeight) this.onSize?.(source, video.videoWidth, video.videoHeight) }
@@ -68,8 +83,16 @@ export class TryOnCamera {
     })
     await manager.setTimingListener(timing => this.trace.timing(timing))
     await manager.setNetworkQualityListener(quality => { if (quality) this.trace.quality(quality.uplink, quality.downlink) })
-    await manager.setUplinkVideoStatisticsListener(stats => { if (stats) this.trace.video({ sendFps:stats.sendFrameRate, uplinkKbps:stats.bitrateKbps, uplinkLoss:stats.packetLossPercent }) })
-    await manager.setDownlinkVideoStatisticsListener(stats => { if (stats) this.trace.video({ decodeFps:stats.decodeFrameRate, downlinkKbps:stats.bitrateKbps, downlinkLoss:stats.packetLossPercent, mediaDelayMs:stats.endToEndDelayMs }) })
+    await manager.setUplinkVideoStatisticsListener(stats => {
+      if (!stats) { this.uplinkStats = {}; return }
+      this.trace.video({ sendFps:stats.sendFrameRate, uplinkKbps:stats.bitrateKbps, uplinkLoss:stats.packetLossPercent })
+      this.uplinkStats = { width: finite(stats.width), height: finite(stats.height), fps: finite(stats.sendFrameRate), kbps: finite(stats.bitrateKbps), loss: finite(stats.packetLossPercent) }
+    })
+    await manager.setDownlinkVideoStatisticsListener(stats => {
+      if (!stats) { this.downlinkStats = {}; return }
+      this.trace.video({ decodeFps:stats.decodeFrameRate, downlinkKbps:stats.bitrateKbps, downlinkLoss:stats.packetLossPercent, mediaDelayMs:stats.endToEndDelayMs })
+      this.downlinkStats = { width: finite(stats.width), height: finite(stats.height), fps: finite(stats.renderFrameRate ?? stats.decodeFrameRate), kbps: finite(stats.bitrateKbps), loss: finite(stats.packetLossPercent), delayMs: finite(stats.endToEndDelayMs) }
+    })
     await manager.setRemoteAudioVolume(0)
     const local = await manager.createLocalCameraStream({ position: this.front ? sdk.CameraPosition.front : sdk.CameraPosition.back, useMicrophone: false, preset: sdk.RealtimeCameraPreset[this.preset] })
     if (this.disposed || revision !== this.revision) { await manager.close(); return }
@@ -94,7 +117,7 @@ export class TryOnCamera {
     }
   }
   async switchCamera() { if (!this.manager) return; await this.manager.switchCamera(); this.front = !this.front; if (this.localView) this.localView.isMirrored = this.front }
-  async stop() { this.trace.end(); this.lease = ''; this.cancelFrameObservation?.(); this.cancelFrameObservation = undefined; this.reportedLease = ''; this.host.classList.remove('has-result'); await this.manager?.disconnect(); if (this.remoteView) this.remoteView.track = undefined; this.lease = '' }
+  async stop() { this.uplinkStats = {}; this.downlinkStats = {}; this.trace.end(); this.lease = ''; this.cancelFrameObservation?.(); this.cancelFrameObservation = undefined; this.reportedLease = ''; this.host.classList.remove('has-result'); await this.manager?.disconnect(); if (this.remoteView) this.remoteView.track = undefined; this.lease = '' }
   async release() { this.trace.end(); this.lease = ''; this.cancelFrameObservation?.(); this.cancelFrameObservation = undefined; this.reportedLease = ''; this.host.classList.remove('has-result'); await this.manager?.close(); this.localView?.detach(); this.remoteView?.detach(); this.manager = undefined; this.local = undefined; this.localView = undefined; this.remoteView = undefined; this.lease = '' }
   async dispose() { this.disposed = true; this.revision++; await this.release() }
 }

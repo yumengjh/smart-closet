@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { targetSize, canKeepOriginal, hasTransparency, preferShrunk, formatBytes } from '../src/tryon/shrink.ts'
-import { median, estimateDownlink, classify, describeProbe } from '../src/tryon/network.ts'
+import { median, estimateDownlink, classify, describeProbe, describeStream } from '../src/tryon/network.ts'
 
 test('temporary garments shrink to a 1024 px long side and are never enlarged', () => {
   assert.deepEqual(targetSize(3024, 4032), { width: 768, height: 1024, scale: 1024 / 4032 })
@@ -49,4 +49,9 @@ test('levels: good, fair, poor, offline; unknown speed does not lower the level'
   assert.equal(classify(null, 50), 'offline')
   assert.equal(describeProbe({ level: 'good', rttMs: 86.4, downlinkMbps: 12.3, at: 0 }), '往返 86 ms · 下行约 12 Mbps · 良好')
   assert.equal(describeProbe({ level: 'offline', rttMs: null, downlinkMbps: null, at: 0 }), '无法连接服务器')
+})
+test('stream quality lists only what the SDK reported', () => {
+  assert.equal(describeStream({ width: 720, height: 1280, fps: 24.4, kbps: 1234, loss: 0.25, delayMs: 418.6 }), '720×1280 · 24 帧/秒 · 1.2 Mbps · 丢包 0.3% · 延迟 419 ms')
+  assert.equal(describeStream({ fps: 15, kbps: 640 }), '15 帧/秒 · 640 kbps')
+  assert.equal(describeStream({}), '')
 })

@@ -70,3 +70,15 @@ export async function probeNetwork(url: string, times = 3, timeoutMs = 5000): Pr
 
 /** 试穿中 SDK 回报的质量（Excellent…Down）。 */
 export const sdkQualityLabel: Record<string, string> = { Excellent: '很好', Good: '良好', Poor: '一般', Bad: '较差', VeryBad: '很差', Down: '断开', Unknown: '未知' }
+
+type Stream = { width?: number; height?: number; fps?: number; kbps?: number; loss?: number; delayMs?: number }
+/** 画质一行：分辨率 · 帧率 · 码率 · 丢包 · 延迟；缺的项不写，全缺时为空串。 */
+export function describeStream(s: Stream) {
+  const parts = [] as string[]
+  if (s.width && s.height) parts.push(`${Math.round(s.width)}×${Math.round(s.height)}`)
+  if (s.fps !== undefined) parts.push(`${Math.round(s.fps)} 帧/秒`)
+  if (s.kbps !== undefined) parts.push(s.kbps >= 1000 ? `${(s.kbps / 1000).toFixed(1)} Mbps` : `${Math.round(s.kbps)} kbps`)
+  if (s.loss !== undefined) parts.push(`丢包 ${s.loss.toFixed(1)}%`)
+  if (s.delayMs !== undefined) parts.push(`延迟 ${Math.round(s.delayMs)} ms`)
+  return parts.join(' · ')
+}
