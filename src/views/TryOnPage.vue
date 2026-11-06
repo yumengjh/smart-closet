@@ -62,12 +62,33 @@ const status = computed(() => {
     default: return cap.value ? `今日剩余 ${duration(remaining.value)}` : '实时试穿'
   }
 })
-/** 手机上顶部只放状态本身，“今日剩余”收进连接状态弹层；试穿中的倒计时关系到计费，始终显示。 */
-const statusText = computed(() => {
-  if (!narrow.value) return status.value
-  if (phase.value === 'preview') return '本地预览'
-  if (['live', 'recording', 'queued', 'offered', 'connecting', 'stopping'].includes(phase.value)) return status.value
-  return '实时试穿'
+/**
+ * 手机顶栏：状态只用一盏灯（点一下看文字），时间单独显示在正中，只在计时或等待时出现。
+ * 灯：off 未开相机、preview 本地预览不计费、wait 连接/排队/轮到你、live 试穿计费中、rec 录像中、error 出错、stopping 正在结束。
+ */
+const light = computed(() => {
+  if (notice.value === 'error') return 'error'
+  switch (phase.value) {
+    case 'recording': return 'rec'
+    case 'live': return 'live'
+    case 'queued': case 'offered': case 'connecting': return 'wait'
+    case 'stopping': return 'stopping'
+    case 'preview': return 'preview'
+    default: return 'off'
+  }
+})
+type Timer = { text: string; label: string; tone: 'ok' | 'low' | 'urgent' | 'wait'; fraction: number | null }
+const timer = computed<Timer | null>(() => {
+  const s = lease.value
+  if (phase.value === 'live' || phase.value === 'recording') {
+    const left = remaining.value, total = s?.reservedPoints || 0
+    return { text: duration(left), label: `本次试穿剩余 ${duration(left)}`, tone: left <= 20 ? 'urgent' : left <= 60 ? 'low' : 'ok', fraction: total > 0 ? Math.min(1, Math.max(0, left / total)) : null }
+  }
+  if (phase.value === 'queued' || phase.value === 'offered' || phase.value === 'connecting' && s) {
+    const label = phase.value === 'queued' ? '排队' : phase.value === 'offered' ? '名额保留' : '连接'
+    return { text: `${waitSeconds.value}s`, label: `${label}剩余 ${waitSeconds.value} 秒`, tone: 'wait', fraction: null }
+  }
+  return null
 })
 const chosenOutfit = computed(() => outfits.value.find(o => o.id === selectedOutfit.value))
 const canUseLatest = computed(() => /确认使用最新|成品.*改变|衣物已经更新/.test(error.value))
@@ -642,7 +663,11 @@ onBeforeUnmount(() => { disposed = true; action++; stopPose(); layoutObserver?.d
 
           <header ref="topbar" class="tryon-topbar">
             <a-button type="text" class="camera-tool" aria-label="返回衣柜" @click="router.push('/wardrobe')"><LeftOutlined /></a-button>
-            <div class="tryon-status" :class="{ live: showsResult, waiting: phase === 'connecting' || phase === 'queued' || phase === 'offered' || phase === 'stopping' }"><i></i><span>{{ statusText }}</span></div>
+            <div v-if="!narrow" class="tryon-status" :class="{ live: showsResult, waiting: phase === 'connecting' || phase === 'queued' || phase === 'offered' || phase === 'stopping' }"><i></i><span>{{ status }}</span></div>
+            <template v-else>
+              <a-tooltip :title="status" trigger="click" placement="bottomLeft" :get-popup-container="popupHost"><a-button type="text" class="camera-tool tryon-light" :class="`is-${light}`" :aria-label="`当前状态：${status}`"><i aria-hidden="true"></i></a-button></a-tooltip>
+              <Transition name="tryon-fade"><div v-if="timer" class="tryon-timer" :class="`is-${timer.tone}`" role="timer" :aria-label="timer.label"><span>{{ timer.text }}</span><b v-if="timer.fraction !== null" aria-hidden="true"><em :style="{ transform: `scaleX(${timer.fraction})` }"></em></b></div></Transition>
+            </template>
             <div class="tryon-tools">
               <a-button v-if="showsResult" type="text" class="camera-tool" :aria-label="pipOpen ? '隐藏原画小窗' : '显示原画小窗'" :aria-pressed="pipOpen" @click="togglePip"><EyeOutlined v-if="pipOpen" /><EyeInvisibleOutlined v-else /></a-button>
               <a-popover v-else-if="!narrow && !clean && (phase === 'preview' || phase === 'cover')" trigger="click" placement="bottomRight" title="画面比例" :get-popup-container="popupHost"><template #content><a-segmented :value="aspect" :options="aspectOptions" @change="changeAspect" /><p class="tryon-info-copy">拍全身用 9:16 或 3:4。切换免费，开始后固定。</p></template><a-button type="text" class="camera-tool tryon-aspect" :aria-label="`画面比例 ${aspect}`">{{ aspect }}</a-button></a-popover>
@@ -866,6 +891,28 @@ onBeforeUnmount(() => { disposed = true; action++; stopPose(); layoutObserver?.d
 .tryon-status i { flex: none; width: 7px; height: 7px; background: var(--muted-subtle); border-radius: 50%; transition: background .3s ease; }
 .tryon-status.live i { background: #7fe3a6; animation: tryon-pulse 1.6s ease-in-out infinite; }
 .tryon-status.waiting i { background: #f2d28b; animation: tryon-pulse 1s ease-in-out infinite; }
+/* 手机状态灯：颜色即状态，文字点开看。 */
+.tryon-light.ant-btn { display: inline-grid; place-items: center; }
+.tryon-light i { display: block; width: 10px; height: 10px; border-radius: 50%; background: #ffffffeb; box-shadow: 0 0 0 3px #ffffff1f; transition: background .3s ease, box-shadow .3s ease; }
+.tryon-light.is-off i { background: transparent; box-shadow: inset 0 0 0 2px #ffffff99; }
+.tryon-light.is-wait i { background: #f5c451; box-shadow: 0 0 0 3px #f5c45133; animation: tryon-pulse 1s ease-in-out infinite; }
+.tryon-light.is-live i { background: #5fe08f; box-shadow: 0 0 0 3px #5fe08f33, 0 0 10px #5fe08f99; animation: tryon-breathe 2.4s ease-in-out infinite; }
+.tryon-light.is-rec i { background: #ff4d4f; box-shadow: 0 0 0 3px #ff4d4f33, 0 0 10px #ff4d4f99; animation: tryon-pulse 1.2s ease-in-out infinite; }
+.tryon-light.is-error i { background: #ff4d4f; box-shadow: 0 0 0 3px #ff4d4f33; }
+.tryon-light.is-stopping i { background: #ffffff8c; animation: tryon-pulse .8s ease-in-out infinite; }
+@keyframes tryon-breathe { 50% { box-shadow: 0 0 0 5px #5fe08f1f, 0 0 16px #5fe08fcc; } }
+/* 手机计时：正中大号数字，下方细条是本次预留时长的剩余比例。 */
+.tryon-timer { position: absolute; left: 50%; top: calc(env(safe-area-inset-top) + 8px); display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 76px; padding: 5px 14px 6px; color: #fff; background: #0000006b; border-radius: 14px; backdrop-filter: blur(10px); transform: translateX(-50%); pointer-events: none; }
+.tryon-timer span { font-size: 18px; font-weight: 600; line-height: 1.1; letter-spacing: .04em; font-variant-numeric: tabular-nums; }
+.tryon-timer b { display: block; width: 100%; height: 2px; overflow: hidden; background: #ffffff33; border-radius: 1px; }
+.tryon-timer em { display: block; height: 100%; background: currentColor; transform-origin: left center; transition: transform .5s linear; }
+.tryon-timer.is-ok { color: #fff; }
+.tryon-timer.is-ok em { background: #5fe08f; }
+.tryon-timer.is-low { color: #f5c451; }
+.tryon-timer.is-urgent { color: #ff6b6b; animation: tryon-pulse 1s ease-in-out infinite; }
+.tryon-timer.is-wait { color: #f5c451; }
+.tryon-timer.is-wait span { font-size: 15px; }
+@media (prefers-reduced-motion: reduce) { .tryon-light i, .tryon-timer { animation: none !important; } }
 .tryon-recording-status { position: absolute; left: 12px; top: 66px; z-index: 10; padding: 6px 10px; font-size: 12px; color: #ffd9d2; font-variant-numeric: tabular-nums; background: #261511cc; border-radius: 8px; }
 .tryon-recording-status i { display: inline-block; width: 8px; height: 8px; margin-right: 7px; background: #ff5a4e; border-radius: 50%; animation: tryon-pulse 1s ease-in-out infinite; }
 .tryon-recording-status small { display: block; margin-top: 2px; font-size: 11px; color: #f6d9d1; }
@@ -987,7 +1034,6 @@ onBeforeUnmount(() => { disposed = true; action++; stopPose(); layoutObserver?.d
   .tryon-page { position: fixed; inset: 0; z-index: 40; width: 100vw; height: 100dvh; min-height: 0; max-width: none; background: #000; overscroll-behavior: none; }
   .tryon-body, .tryon-stage-area { display: block; height: 100%; }
   .tryon-topbar { padding: calc(env(safe-area-inset-top) + 4px) 6px 22px; }
-  .tryon-topbar .tryon-status { position: absolute; left: 50%; top: calc(env(safe-area-inset-top) + 10px); max-width: calc(100% - 200px); transform: translateX(-50%); }
   .tryon-recording-status { top: calc(env(safe-area-inset-top) + 56px); }
   .tryon-dock { padding: 44px 16px calc(env(safe-area-inset-bottom) + 12px); }
   .tryon-viewfinder { inset: 14% 8% 38%; }
