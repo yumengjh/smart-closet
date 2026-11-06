@@ -29,6 +29,7 @@ const processing = useProcessingStore()
 // 全部 / 已拥有 / 种草（#197），本机记住；种草是网上看中、还没买的衣服。
 const ownership = ref<Ownership>(readOwnership())
 const wantedTotal = ref(0)
+const wantedCountKnown = ref(true)
 const query = reactive<ListQuery>({ status: listStatus(ownership.value), q: '', category: '', color: '', season: '', page: 1, size: readPageSize(), sort: readSort() })
 // The three dropdowns take several values: words of one kind are "or" ("裤子 裙子"), different kinds are "and". query.category/color/season
 // hold the value only when exactly one is chosen (the plain list API); several values go through the search, like typed words.
@@ -190,19 +191,41 @@ async function fetchPage(page: number): Promise<{ items: Garment[]; total: numbe
   const result = await closetApi.list({ ...query, page })
   return { items: result.items, total: result.total, search: null }
 }
+let backgroundFrame = 0, backgroundTimer = 0, backgroundStarted = false, unmounted = false
+function cancelBackground() { window.cancelAnimationFrame(backgroundFrame); window.clearTimeout(backgroundTimer) }
+function loadBackground(mine: number) {
+  cancelBackground()
+  // A frame can show the new garments before notices, metadata and task discovery start.
+  backgroundFrame = window.requestAnimationFrame(() => {
+    backgroundTimer = window.setTimeout(() => {
+      if (unmounted || mine !== latestLoad) return
+      if (!backgroundStarted) {
+        backgroundStarted = true
+        void loadPictureChecks(); void loadReviewCount(); void loadWantedLabel()
+        void closet.refreshCounts()
+        void closetApi.metadataOptions().then(values => { if (!unmounted) options.value = values }).catch(() => { /* Filters can still use the current selection. */ })
+        processing.resumeDiscovery()
+      }
+      if (ownership.value === 'ALL' && !searching.value) {
+        void closetApi.list({ status: 'WANTED', q: '', category: '', color: '', season: '', page: 1, size: 1 })
+          .then(page => { if (!unmounted && mine === latestLoad) { wantedTotal.value = page.total; wantedCountKnown.value = true } }).catch(() => { /* Keep the count until the next successful refresh. */ })
+      }
+    }, 0)
+  })
+}
 async function load() {
   const mine = ++latestLoad
+  cancelBackground()
   loading.value = true
   error.value = ''
   try {
-    // 件数只算已拥有：看“全部”时另取种草的件数，标题里单列（#197）。
-    const [result, wanted] = await Promise.all([fetchPage(query.page),
-      ownership.value === 'ALL' && !searching.value ? closetApi.list({ status: 'WANTED', q: '', category: '', color: '', season: '', page: 1, size: 1 }).then(page => page.total).catch(() => 0) : Promise.resolve(ownership.value === 'WANTED' ? -1 : 0)])
-    if (mine !== latestLoad) return
-    wantedTotal.value = wanted
+    const result = await fetchPage(query.page)
+    if (mine !== latestLoad || unmounted) return
+    wantedTotal.value = ownership.value === 'WANTED' ? -1 : 0
+    wantedCountKnown.value = ownership.value !== 'ALL' || searching.value
     searchResult.value = result.search; items.value = result.items; total.value = result.total
   } catch (cause) { if (mine === latestLoad) error.value = cause instanceof Error ? cause.message : '衣柜暂时无法加载。' }
-  finally { if (mine === latestLoad) loading.value = false }
+  finally { if (mine === latestLoad && !unmounted) { loading.value = false; loadBackground(mine) } }
 }
 // Paging: the old garments stay (dimmed) until the new page arrives, then the view returns to the top of the list.
 const listTop = ref<HTMLElement | null>(null)
@@ -234,7 +257,7 @@ const onNarrow = () => { narrow.value = Boolean(narrowQuery?.matches) }
 function chooseOwnership(value: Ownership) { ownership.value = value; saveOwnership(value); query.status = listStatus(value); query.page = 1; void load() }
 const ownershipOptions = computed(() => [{ value: 'ALL', label: '全部' }, { value: 'OWNED', label: '已拥有' }, { value: 'WANTED', label: wantedLabel.value }])
 // Title count: owned garments only; 种草 shown apart (wantedTotal = -1 while only 种草 are listed).
-const ownedTotal = computed(() => wantedTotal.value > 0 ? total.value - wantedTotal.value : total.value)
+const ownedTotal = computed(() => !wantedCountKnown.value ? '—' : wantedTotal.value > 0 ? total.value - wantedTotal.value : total.value)
 function debounceLoad() {
   window.clearTimeout(searchTimer)
   query.page = 1
@@ -267,16 +290,17 @@ function closeTag(tag: SearchTag) {
   debounceLoad()
 }
 onMounted(async () => {
-  void loadPictureChecks(); void loadReviewCount(); void loadWantedLabel()
   window.scrollTo({ top: 0, behavior: 'instant' })
   window.addEventListener('pagehide', rememberView); window.addEventListener('keydown', pageKeys)
   narrowQuery = window.matchMedia('(max-width: 767px)'); onNarrow(); narrowQuery.addEventListener('change', onNarrow)
-  await Promise.all([load(), closet.refreshCounts(), closetApi.metadataOptions().then(values => { options.value = values }).catch(cause => { error.value = String(cause) })])
+  await load()
+  if (unmounted) return
   // The remembered page may no longer exist (garments were removed meanwhile): fall back to the last page.
   if (remembered && !items.value.length && query.page > 1 && total.value > 0) { query.page = pageCount.value; await load() }
+  if (unmounted) return
   if (remembered?.scrollY) { await nextTick(); window.scrollTo({ top: Math.min(remembered.scrollY, document.documentElement.scrollHeight), behavior: 'instant' }) }
 })
-onUnmounted(() => { window.removeEventListener('pagehide', rememberView); window.removeEventListener('keydown', pageKeys); narrowQuery?.removeEventListener('change', onNarrow); window.clearTimeout(searchTimer); if (queryPreview.value) URL.revokeObjectURL(queryPreview.value) })
+onUnmounted(() => { unmounted = true; latestLoad++; cancelBackground(); window.removeEventListener('pagehide', rememberView); window.removeEventListener('keydown', pageKeys); narrowQuery?.removeEventListener('change', onNarrow); window.clearTimeout(searchTimer); if (queryPreview.value) URL.revokeObjectURL(queryPreview.value) })
 // Choosing an order is remembered on this browser; searching ranks by relevance, so the order only applies when browsing.
 function pickSort(info: { key: string | number }) { chooseSort(String(info.key)) }
 function chooseSort(value: string) { query.sort = value; saveSort(value); query.page = 1; void load() }

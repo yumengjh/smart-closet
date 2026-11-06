@@ -37,8 +37,17 @@ const router = useRouter()
 const closet = useClosetStore()
 const appearance = useThemeStore()
 const processing = useProcessingStore()
-watch(() => closet.user && !closet.user.mustChangePassword ? closet.user.username : '', user => { if (user) processing.start(user); else processing.stop() }, { immediate: true })
-watch(() => route.fullPath, () => { void processing.refresh(true) })
+watch(() => closet.user && !closet.user.mustChangePassword ? closet.user.username : '', (user, _previous, onCleanup) => {
+  if (!user) { processing.stop(); return }
+  let current = true
+  onCleanup(() => { current = false })
+  // Session loading can finish while the initial route is still '/'. Wait for the actual destination.
+  void router.isReady().then(() => { if (current) processing.start(user, route.path === '/wardrobe') })
+}, { immediate: true })
+watch(() => route.fullPath, () => {
+  if (route.path === '/wardrobe') processing.deferDiscovery()
+  else { processing.resumeDiscovery(); void processing.refresh(true) }
+})
 watch(() => processing.latestNotice, notice => { if (notice) void closet.refreshCounts() })
 onUnmounted(() => processing.stop())
 const closetTheme = computed(() => ({
@@ -165,7 +174,11 @@ function viewKey(component: { type: unknown } | undefined) {
   return componentKeys.get(type)
 }
 
-watch(() => [closet.user?.username, closet.user?.mustChangePassword], () => { void closet.refreshCounts() }, { immediate: true })
+watch(() => [closet.user?.username, closet.user?.mustChangePassword], (_user, _previous, onCleanup) => {
+  let current = true
+  onCleanup(() => { current = false })
+  void router.isReady().then(() => { if (current && route.path !== '/wardrobe') void closet.refreshCounts() })
+}, { immediate: true })
 function sessionExpired() { closet.user = null; closet.taskCount = 0; closet.pendingCount = 0; void router.replace('/login') }
 function passwordRequired() { if (closet.user) closet.user.mustChangePassword = true; closet.taskCount = 0; closet.pendingCount = 0; void router.replace('/settings?firstLogin=1') }
 // Another tab signed in as someone else (smart-closet-server#160): this page still shows the previous account, so it stops

@@ -15,7 +15,7 @@ export const useProcessingStore = defineStore('processing', () => {
   const activeCount = computed(() => entries.value.filter(entry => entry.state === 'processing').length)
   const unreadCount = computed(() => entries.value.filter(entry => entry.state !== 'processing' && !entry.read).length)
   const ordered = computed(() => [...entries.value].sort((a, b) => Number(b.state === 'processing') - Number(a.state === 'processing') || b.startedAt - a.startedAt))
-  let username = '', generation = 0, busy = false, discoveredAt = 0
+  let username = '', generation = 0, busy = false, discoveredAt = 0, discoveryDeferred = false
   let timer: ReturnType<typeof setTimeout> | undefined
   const storageKey = () => `yuda.processing.v1:${username}`
   const invited = new Set<string>()
@@ -121,7 +121,7 @@ export const useProcessingStore = defineStore('processing', () => {
     save()
   }
   async function refresh(discover = false) {
-    if (!username || busy || document.hidden || !mayPoll()) return
+    if (discoveryDeferred || !username || busy || document.hidden || !mayPoll()) return
     busy = true
     const epoch = generation
     try {
@@ -173,17 +173,24 @@ export const useProcessingStore = defineStore('processing', () => {
   }
   function schedule() {
     clearTimeout(timer)
-    if (username && !document.hidden && mayPoll()) timer = setTimeout(() => { void refresh() }, connectionError.value ? 10_000 : activeCount.value ? 4_000 : 30_000)
+    if (!discoveryDeferred && username && !document.hidden && mayPoll()) timer = setTimeout(() => { void refresh() }, connectionError.value ? 10_000 : activeCount.value ? 4_000 : 30_000)
   }
   function visibility() { clearTimeout(timer); if (!document.hidden) void refresh(true) }
   function stop() {
-    save(); generation++; username = ''; busy = false; discoveredAt = 0
+    save(); generation++; username = ''; busy = false; discoveredAt = 0; discoveryDeferred = false
     clearTimeout(timer); document.removeEventListener('visibilitychange', visibility)
     entries.value = []; latestNotice.value = null; startPrompt.value = null; invited.clear(); connectionError.value = false
   }
-  function start(user: string) {
+  /** The wardrobe gets its first list before global task discovery competes for the server. */
+  function deferDiscovery() { discoveryDeferred = true; clearTimeout(timer) }
+  function resumeDiscovery() {
+    if (!discoveryDeferred) return
+    discoveryDeferred = false
+    void refresh(true)
+  }
+  function start(user: string, defer = false) {
     if (username === user) return
-    stop(); username = user
+    stop(); username = user; discoveryDeferred = defer
     try {
       const saved: WaitingEntry[] = JSON.parse(sessionStorage.getItem(storageKey()) || '[]')
       if (Array.isArray(saved)) entries.value = saved.filter(entry => entry && ['task', 'batch', 'render', 'bulk'].includes(entry.kind) && typeof entry.id === 'string' && entry.key === `${entry.kind}:${entry.id}` && Array.isArray(entry.childIds) && !(entry.id.startsWith('demo-') && entry.state === 'processing'))
@@ -194,5 +201,5 @@ export const useProcessingStore = defineStore('processing', () => {
     document.addEventListener('visibilitychange', visibility)
     void refresh(true)
   }
-  return { entries, ordered, latestNotice, startPrompt, activeCount, unreadCount, connectionError, start, stop, refresh, trackTask, trackBatch, trackBulk, trackRender, simulateRender, dismissStartPrompt, dismissNotice, viewed, dismiss, dismissFinished, isHidden, hideTask, hideAllTasks }
+  return { entries, ordered, latestNotice, startPrompt, activeCount, unreadCount, connectionError, start, stop, deferDiscovery, resumeDiscovery, refresh, trackTask, trackBatch, trackBulk, trackRender, simulateRender, dismissStartPrompt, dismissNotice, viewed, dismiss, dismissFinished, isHidden, hideTask, hideAllTasks }
 })
