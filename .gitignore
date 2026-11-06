@@ -28,3 +28,6 @@ dist/
 
 # Local security scan artifacts.
 /security-reports/
+
+# Local IDE settings.
+/.openidea/
