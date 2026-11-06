@@ -22,7 +22,7 @@ const features = [
   <div class="auth-shell" :class="{ 'compact-art': compactArt }">
     <section class="auth-art">
       <div class="auth-brand-row">
-        <RouterLink to="/login" class="auth-brand" aria-label="鱼搭"><img src="/yuda-logo.png" alt="" /><span><strong>鱼搭</strong><small>数字衣橱</small></span></RouterLink>
+        <RouterLink to="/login" class="auth-brand" aria-label="鱼搭"><img src="/yuda-logo-320.png" alt="" /><span><strong>鱼搭</strong><small>数字衣橱</small></span></RouterLink>
         <ThemeToggle />
       </div>
       <img class="auth-illustration" :src="illustration" alt="" aria-hidden="true" />

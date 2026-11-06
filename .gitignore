@@ -25,3 +25,6 @@ dist/
 
 # Visual redesign mockups (reference only; real UI lives in src/).
 /docs/redesign-concepts/
+
+# Local security scan artifacts.
+/security-reports/

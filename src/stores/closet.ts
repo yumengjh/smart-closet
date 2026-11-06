@@ -2,6 +2,7 @@ import { useNotificationStore } from './notifications'
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import { closetApi, usingMocks } from '../services/api'
+import { forgetActiveCloset } from '../services/activeCloset'
 import { canUseCloset, type SessionUser } from '../domain/session'
 import { AccountSwitchedError, connectAccountTransport, markAccountStale, setActiveAccount } from '../domain/accountSession'
 
@@ -16,6 +17,8 @@ export const useClosetStore = defineStore('closet', () => {
   // Every place that signs in or out assigns `user`; the account epoch and the other tabs follow from this one watcher (smart-closet-server#159, #160).
   connectAccountTransport()
   watch(user, current => setActiveAccount(current?.username ?? null), { immediate: true, flush: 'sync' })
+  // The shared closet load belongs to one account: a sign-out or switch never shows the previous closet (#198).
+  watch(() => user.value?.username, () => forgetActiveCloset(), { flush: 'sync' })
 
   function refreshUser() {
     if (userRequest) return userRequest

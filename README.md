@@ -170,9 +170,11 @@ npm test
 npm run build
 ```
 
-**Semaphore 是唯一响应 `v*` 标签自动部署的平台**（与后端共用组织 yumg，部署变量放在独立的 Secret `frontend`，Web 服务器与后端不是同一台）：配置在 `.semaphore/`，分支推送运行 `npm ci`、测试、类型检查和关闭模拟的构建；推送 `v*` 标签检查通过后自动运行 `deploy.yml`（`scripts/ci/deploy.sh`：检查后端接口 → 构建 → SSH 覆盖 1Panel 站点 → 刷新 CDN → 核对线上）。其他提交可在 Semaphore 里手动 Promote「Deploy this commit」。可选变量 `DEPLOY_PATH`、`DEPLOY_SITE_URL`、`FRONTEND_API_BASE_URL`、`TENCENTCLOUD_SECRET_ID/KEY`、`CDN_PURGE_PATHS` 写进同一个 Secret `frontend`。GitHub Actions 与 CircleCI 配置保留作手动备用，不随标签自动部署。
+**GitHub Actions 是日常检查与 `v*` 标签自动部署的主平台**（2026-11-05 起）。`.github/workflows/frontend.yml` 响应 main 推送、PR、版本标签或手动触发：依赖审计（high/critical 阻断）、`npm ci`、测试、类型检查、真实 API 构建。普通分支/PR 不部署；只有 `v*` 标签在检查通过后调用可复用 `deploy.yml`：检查后端接口 → 构建 → SSH 覆盖站点 → 刷新 CDN → 核对线上。`Deploy frontend` 也保留手动入口。选择 `validate_only=true` 时只检查部署密钥是否配置（不打印值），不连接服务器、不构建或部署。
 
-226 项测试覆盖工作区注册、衣架分组、助手窗口布局、翻页件数、OOTD 任务状态、搭配错误、实时试穿状态机与取景检查等。CircleCI（`.circleci/config.yml`）默认不运行工作流；手动传 `auto=true` 只运行检查，传 `release=true` 才在 `v*` 标签上运行备用发版，传 `deploy=true` 则部署所选分支。GitHub Actions 的检查与部署仅保留手动入口。启用备用部署前，先停止同一版本的 Semaphore 部署；各平台的并发控制不能跨平台互斥。
+全部与生产依赖 audit JSON、完整提交号保留在 `frontend-security-reports` artifact 30 天。部署变量使用仓库 Actions Secrets（`DEPLOY_SSH_HOST/USER/KEY` 或 PASSWORD、`DEPLOY_SSH_KNOWN_HOSTS`；可选 PORT、`DEPLOY_PATH`、`DEPLOY_SITE_URL`、`FRONTEND_API_BASE_URL`、`TENCENTCLOUD_SECRET_ID/KEY`、`CDN_PURGE_PATHS`）。工作流会前置检查密钥；本次修复分支 CI 不验证生产部署权限。
+
+Semaphore 配置保留，但自动检查和自动 promotion 已停用。CircleCI（`.circleci/config.yml`）仍默认不运行；手动 `auto=true` 只检查，`release=true` 才在 `v*` 标签运行备用发版，`deploy=true` 部署所选分支。使用备用部署前须停止相应 Actions 部署，各平台并发控制不能跨平台互斥。
 
 先提交、推送 CI 配置，再在包含该配置的提交上打版本标签。旧提交、旧标签仍使用其对应版本的配置；发版前确认三家平台没有旧部署任务仍在运行或排队。
 

@@ -274,7 +274,7 @@ async function signOut() {
           <span v-if="indicator" class="mobile-nav-indicator" :class="{ instant: indicator.instant }" :style="{ width: `${indicator.w}px`, height: `${indicator.h}px`, transform: `translate(${indicator.x}px, ${indicator.y}px)` }" aria-hidden="true"></span>
         </nav>
       </div>
-      <div v-else class="boot-screen"><img class="brand-logo boot-logo" src="/yuda-logo.png" alt="鱼搭" /><p>正在打开衣橱…</p></div>
+      <div v-else class="boot-screen"><img class="brand-logo boot-logo" src="/yuda-logo-320.png" alt="鱼搭" /><p>正在打开衣橱…</p></div>
     </a-app>
   </a-config-provider>
 </template>

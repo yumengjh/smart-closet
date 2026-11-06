@@ -273,8 +273,12 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
     if (response.status === 409 && data.code === 'ACCOUNT_MISMATCH') window.dispatchEvent(new Event('closet-account-mismatch'))
     throw new Error(data.message || data.detail || `请求失败 (${response.status})`)
   }
+  // A change to a garment makes the shared closet load (services/activeCloset) stale (smart-closet-server#198).
+  if (write && typeof window !== 'undefined' && /^\/api\/(closet|garments|workflows)\//.test(path)) window.dispatchEvent(new Event(CLOSET_CHANGED))
   return response.status === 204 ? undefined as T : await response.json() as T
 }
+/** Fired after a successful write to garments, their processing or the closet. */
+export const CLOSET_CHANGED = 'closet-garments-changed'
 
 type GarmentView = {
   name?: string | null; favorite?: boolean;
@@ -370,7 +374,8 @@ export const closetApi = {
   },
   async list(query: ListQuery): Promise<GarmentPage> {
     if (!usingMocks) {
-      const page = await request<{ items: GarmentView[]; total: number; page: number; size: number }>(`/api/closet/garments?${new URLSearchParams({ ...query, q: query.q || '', category: query.category || '', color: query.color || '', season: query.season || '', size: String(query.size), page: String(query.page), sort: query.sort || 'updated' })}`)
+      // view=card: attributes without status and evidence, which fromView drops anyway (smart-closet-server#198).
+      const page = await request<{ items: GarmentView[]; total: number; page: number; size: number }>(`/api/closet/garments?${new URLSearchParams({ ...query, q: query.q || '', category: query.category || '', color: query.color || '', season: query.season || '', size: String(query.size), page: String(query.page), sort: query.sort || 'updated', view: 'card' })}`)
       return { ...page, items: page.items.map(fromView) }
     }
     await delay()

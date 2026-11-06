@@ -1,6 +1,7 @@
 import { shallowRef } from 'vue'
 import { arrangeOutfit, orderOutfitLayers } from '../domain/outfit-layout'
 import { closetApi } from '../services/api'
+import { knownGarment } from '../services/activeCloset'
 import { artworkForGarment, createOutfitElement, layoutImageUrl, loadOutfitImage } from '../domain/outfit-images'
 import { elementKey, normalizeScene, OUTFIT_VERSION, stickerLimit, type OutfitElement, type OutfitScene } from '../domain/outfit'
 import type { AgentContext, Candidate, Proposal } from './api'
@@ -22,7 +23,9 @@ const details = new Map<string, { at: number; promise: ReturnType<typeof closetA
 function garmentDetail(id: string) {
   const hit = details.get(id)
   if (hit && Date.now() - hit.at < DETAIL_TTL_MS) return hit.promise
-  const promise = closetApi.detail(id); details.set(id, { at: Date.now(), promise }); promise.catch(() => details.delete(id))
+  // smart-closet-server#198: the closet the page just loaded already has it (same view as the details), so the
+  // previews of a recommendation round no longer ask for each garment.
+  const promise = knownGarment(id).then(known => known || closetApi.detail(id)); details.set(id, { at: Date.now(), promise }); promise.catch(() => details.delete(id))
   return promise
 }
 export async function candidateScene(candidate: Candidate, people: OutfitElement[] = []): Promise<OutfitScene> {
