@@ -208,7 +208,7 @@ function loadBackground(mine: number) {
       }
       if (ownership.value === 'ALL' && !searching.value) {
         void closetApi.list({ status: 'WANTED', q: '', category: '', color: '', season: '', page: 1, size: 1 })
-          .then(page => { if (!unmounted && mine === latestLoad) wantedTotal.value = page.total; wantedCountKnown.value = true }).catch(() => { /* Keep the count until the next successful refresh. */ })
+          .then(page => { if (!unmounted && mine === latestLoad) { wantedTotal.value = page.total; wantedCountKnown.value = true } }).catch(() => { /* Keep the count until the next successful refresh. */ })
       }
     }, 0)
   })
