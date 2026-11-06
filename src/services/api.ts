@@ -2,7 +2,7 @@ import type { SessionUser } from '../domain/session'
 import { createUuid } from '../domain/id'
 import { apiUrl } from './urls'
 import { fetchWithRetry } from '../domain/network'
-import { accountHeaders, assertAccountCurrent, captureAccount } from '../domain/accountSession'
+import { accountEpoch, accountHeaders, activeAccount, assertAccountCurrent, captureAccount } from '../domain/accountSession'
 import { noteSessionLost, signalSessionExpired } from '../domain/sessionNotice'
 import { normalizeScene, sceneWrite } from '../domain/outfit'
 import personCatalog from '../domain/person-stickers.json'
@@ -155,9 +155,33 @@ export type InviteCreated = RegistrationInvite & { code: string }
 
 const MOCK_KEY = 'yixu.mock-data.v2'
 export const usingMocks = import.meta.env.VITE_USE_MOCKS === 'true'
-let csrfToken = ''
+let csrfToken = '', csrfOwner = ''
 /** Reuse the last masked CSRF token for best-effort keepalive on pagehide. */
 export const currentCsrfToken = () => csrfToken
+/** Tests and sign-in/out paths drop the cached token; the next write fetches a fresh one. */
+export function forgetCsrfToken() { csrfToken = ''; csrfOwner = '' }
+/**
+ * The token lives in the XSRF-TOKEN cookie and stays valid until the session changes, so one lookup serves
+ * every later write of the same account (smart-closet-server#198: the try-on start used to pay one extra
+ * round trip per POST). It is bound to the account and its switch count; a switch, sign-in or sign-out
+ * fetches a new one, and a CSRF_INVALID answer refreshes it and retries that write once.
+ */
+const csrfKey = () => `${activeAccount() ?? ''}#${accountEpoch()}`
+let csrfLookup: Promise<void> | undefined
+async function ensureCsrf(stillSameAccount: () => void, force = false) {
+  if (!force && csrfToken && csrfOwner === csrfKey()) return
+  const key = csrfKey()
+  csrfLookup ??= (async () => {
+    try {
+      const csrf = await fetchWithRetry(apiUrl('/api/auth/csrf'), { credentials: 'include' })
+      if (csrf.ok) { csrfToken = ((await csrf.json()) as { token: string }).token; csrfOwner = key }
+    } finally { csrfLookup = undefined }
+  })()
+  await csrfLookup
+  stillSameAccount()
+  // Joined a lookup that another account's request started: fetch one for this account.
+  if (csrfOwner !== csrfKey() && !force) await ensureCsrf(stillSameAccount, true)
+}
 
 function now(offset = 0) {
   return new Date(Date.now() - offset * 86_400_000).toISOString()
@@ -254,16 +278,25 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
   const stillSameAccount = captureAccount()
   const write = !['GET', 'HEAD', 'OPTIONS'].includes(method)
   if (!usingMocks && write) {
-    const csrf = await fetchWithRetry(apiUrl('/api/auth/csrf'), { credentials: 'include' })
-    stillSameAccount()
-    if (csrf.ok) csrfToken = ((await csrf.json()) as { token: string }).token
+    await ensureCsrf(stillSameAccount)
     if (csrfToken) headers.set('X-XSRF-TOKEN', csrfToken)
   }
   if (!usingMocks && write) for (const [name, value] of Object.entries(accountHeaders(path))) headers.set(name, value)
   // Reads retry after a dropped connection (iPhone backgrounding, network switch); a final failure is a NetworkError.
-  const response = await fetchWithRetry(apiUrl(path), { ...init, headers, credentials: 'include' })
+  let response = await fetchWithRetry(apiUrl(path), { ...init, headers, credentials: 'include' })
   // A response that outlived an account switch belongs to the previous account: never hand it to the new one.
   stillSameAccount()
+  // A cached token the server no longer accepts (session renewed in another tab): refused before any handler ran,
+  // so asking for a fresh token and sending the same write once more cannot apply it twice.
+  if (!usingMocks && write && response.status === 403 && !(init.body instanceof ReadableStream)) {
+    const code = await response.clone().json().then((d: { code?: string }) => d.code, () => undefined)
+    if (code === 'CSRF_INVALID') {
+      await ensureCsrf(stillSameAccount, true)
+      if (csrfToken) headers.set('X-XSRF-TOKEN', csrfToken)
+      response = await fetchWithRetry(apiUrl(path), { ...init, headers, credentials: 'include' })
+      stillSameAccount()
+    }
+  }
   if (!response.ok) {
     const data = await response.json().catch(() => ({})) as { code?: string; message?: string; detail?: string }
     // The start-up /api/auth/me only notes why (the login page shows it); other protected requests also leave the page.
@@ -626,7 +659,7 @@ export const closetApi = {
     return { mode: 'INVITE' }
   },
   async register(payload: RegisterRequest): Promise<SessionUser> {
-    if (!usingMocks) { const user = await request<SessionUser>('/api/auth/register', { method: 'POST', body: JSON.stringify(payload) }); csrfToken = ''; return user }
+    if (!usingMocks) { const user = await request<SessionUser>('/api/auth/register', { method: 'POST', body: JSON.stringify(payload) }); forgetCsrfToken(); return user }
     await delay()
     const state = readMockAccounts()
     if (state.users.some(u => u.username === payload.username)) throw new Error('用户名已被使用，请换一个。')
@@ -656,7 +689,7 @@ export const closetApi = {
     await delay(); const state = readMockAccounts(); mockEvent(state, mockAccount(state).username, 'SESSIONS_REVOKED'); writeMockAccounts(state); return { revokedSessions: 0 }
   },
   async deactivate(currentPassword: string): Promise<void> {
-    if (!usingMocks) { await request<void>('/api/auth/deactivate', { method: 'POST', body: JSON.stringify({ currentPassword } satisfies AccountDeactivation) }); csrfToken = ''; return }
+    if (!usingMocks) { await request<void>('/api/auth/deactivate', { method: 'POST', body: JSON.stringify({ currentPassword } satisfies AccountDeactivation) }); forgetCsrfToken(); return }
     await delay(); if (!currentPassword) throw new Error('请输入当前密码。')
     const state = readMockAccounts(); const user = mockAccount(state)
     if (user.role === 'ADMIN' && state.users.filter(u => u.role === 'ADMIN' && u.enabled).length === 1) throw new Error('最后一个启用的管理员不能注销账号。')
@@ -751,7 +784,7 @@ export const closetApi = {
     await delay(); const state = readMockAccounts(); const invite = state.invites.find(i => i.id === id); if (invite) invite.revokedAtMs = Date.now(); writeMockAccounts(state)
   },
   async login(username: string, password: string) {
-    if (!usingMocks) { const result = await request<SessionUser>('/api/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }); csrfToken = ''; return result }
+    if (!usingMocks) { const result = await request<SessionUser>('/api/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }); forgetCsrfToken(); return result }
     await delay(250)
     if (!username.trim() || !password.trim()) throw new Error('请输入用户名和密码。')
     const state = readMockAccounts()
@@ -778,7 +811,7 @@ export const closetApi = {
     if (window.location.protocol !== 'https:' && !['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname)) throw new Error('便携登录需要 HTTPS。')
     if (usingMocks) throw new Error('演示模式不支持便携登录。')
     const user = await request<SessionUser>('/api/auth/portable-login', { method: 'POST', body: JSON.stringify({ token }) })
-    csrfToken = ''
+    forgetCsrfToken()
     return user
   },
   async currentUser() {
@@ -790,11 +823,11 @@ export const closetApi = {
     return { username, displayName: account?.displayName, role: account?.role, mustChangePassword: localStorage.getItem('yixu.mock-first-login') === '1' }
   },
   async logout() {
-    if (!usingMocks) { await request('/api/auth/logout', { method: 'POST' }); csrfToken = '' }
+    if (!usingMocks) { await request('/api/auth/logout', { method: 'POST' }); forgetCsrfToken() }
     else localStorage.removeItem('yixu.mock-user')
   },
   async changePassword(currentPassword: string, newPassword: string, signOutOthers = true) {
-    if (!usingMocks) { await request('/api/auth/password', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword, signOutOthers } satisfies PasswordChange) }); csrfToken = '' }
+    if (!usingMocks) { await request('/api/auth/password', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword, signOutOthers } satisfies PasswordChange) }); forgetCsrfToken() }
     else { await delay(); if (!newPassword) throw new Error('请输入新密码。'); localStorage.setItem('yixu.mock-first-login', '0'); const state = readMockAccounts(); const user = mockAccount(state); user.mustChangePassword = false; mockEvent(state, user.username, 'PASSWORD_CHANGED'); writeMockAccounts(state) }
   },
 }

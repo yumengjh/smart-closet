@@ -6,7 +6,7 @@ import { CameraOutlined, SwapOutlined, LeftOutlined, PictureOutlined, DownloadOu
 import { tryOnApi, emergencyStop, duration, finished, mediaUrl, type Candidate, type Capabilities, type Media, type Prepared, type Selection, type Session } from '../tryon/api'
 import { TryOnCamera } from '../tryon/camera'
 import { frameCanvas, photo, startRecording, type Recorder } from '../tryon/recording'
-import { refreshTryOnAccess } from '../tryon/access'
+import { setTryOnAccess } from '../tryon/access'
 import { onAccountChange, accountIsStale } from '../domain/accountSession'
 import MediaPreview from '../tryon/MediaPreview.vue'
 import TryOnPicker from '../tryon/TryOnPicker.vue'
@@ -358,7 +358,12 @@ const selectedChips = computed<SelectedChip[]>(() => selected.value.map(s => {
   return { id: s.id, name: selectionName(s), image: garment ? thumbUrl(garment.imageUrl, 160) : temp ? mediaUrl(temp.imageUrl) : undefined, selection: s }
 }))
 function fail(cause: unknown) { if (!disposed) error.value = cause instanceof Error ? cause.message : '操作暂时未完成，请稍后再试。' }
-async function refresh() { cap.value = await tryOnApi.capabilities(); void refreshTryOnAccess() }
+// 同一时刻的几次刷新（结束试穿与心跳同时发现会话结束）合并成一个请求。
+let refreshing: Promise<void> | undefined
+function refresh() {
+  refreshing ??= tryOnApi.capabilities().then(result => { cap.value = result; setTryOnAccess(result) }).finally(() => { refreshing = undefined })
+  return refreshing
+}
 let stripDone = false, stripBusy = false
 async function stripMore() {
   if (stripDone || stripBusy) return

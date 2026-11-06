@@ -5,7 +5,7 @@ import { build } from 'esbuild'
 const bundle = await build({
   stdin: { resolveDir: process.cwd(), loader: 'ts', contents: `
     export * from './src/domain/accountSession.ts'
-    export { request } from './src/services/api.ts'
+    export { request, forgetCsrfToken } from './src/services/api.ts'
     export { platformRequest } from './src/services/platform.ts'
     export { useNotificationStore } from './src/stores/notifications.ts'
     export { createPinia, setActivePinia } from 'pinia'` },
@@ -14,7 +14,7 @@ const bundle = await build({
 const m = await import('data:text/javascript;base64,' + Buffer.from(bundle.outputFiles[0].text).toString('base64'))
 const json = (body: unknown, status = 200) => Response.json(body, { status })
 const isCsrf = (url: unknown) => String(url).endsWith('/api/auth/csrf')
-test.beforeEach(() => { m.resetAccountSession(); m.setActivePinia(m.createPinia()) })
+test.beforeEach(() => { m.resetAccountSession(); m.forgetCsrfToken(); m.setActivePinia(m.createPinia()) })
 
 test('writes carry the page account so the server can refuse a submit that raced the broadcast', async t => {
   const seen: Record<string, string | null> = {}
@@ -180,4 +180,24 @@ test('a notification poll that fires after the page went stale sends nothing', a
     m.markAccountStale(); t.mock.timers.tick(120_000); await new Promise(r => setImmediate(r))
     assert.equal(calls, before)
   } finally { globalThis.document = original; store.stop() }
+})
+test('one CSRF lookup serves later writes of the same account; a switch or a refusal fetches a new one', async t => {
+  const calls: string[] = []; let token = 'first', reject = false
+  t.mock.method(globalThis, 'fetch', async (url: unknown, init: RequestInit = {}) => {
+    const path = new URL(String(url), 'http://x').pathname; calls.push(path)
+    if (isCsrf(url)) return json({ token })
+    if (reject && new Headers(init.headers).get('X-XSRF-TOKEN') !== token) return json({ code: 'CSRF_INVALID', message: '安全校验已失效' }, 403)
+    return json({ ok: true })
+  })
+  m.setActiveAccount('alice')
+  await m.request('/api/tryon/preparations', { method: 'POST', body: '{}' })
+  await m.request('/api/tryon/sessions', { method: 'POST', body: '{}' })
+  assert.deepEqual(calls, ['/api/auth/csrf', '/api/tryon/preparations', '/api/tryon/sessions'])
+  calls.length = 0; token = 'second'; reject = true
+  await m.request('/api/tryon/sessions/x/stop', { method: 'POST', body: '{}' })
+  assert.deepEqual(calls, ['/api/tryon/sessions/x/stop', '/api/auth/csrf', '/api/tryon/sessions/x/stop'], 'a refused token is refreshed and the write sent once more')
+  calls.length = 0
+  m.setActiveAccount(null); m.setActiveAccount('bob')
+  await m.request('/api/closet/quick-intakes', { method: 'POST', body: new FormData() })
+  assert.deepEqual(calls, ['/api/auth/csrf', '/api/closet/quick-intakes'], 'another account never reuses the token')
 })
