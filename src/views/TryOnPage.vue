@@ -892,18 +892,18 @@ onBeforeUnmount(() => { disposed = true; action++; stopPose(); layoutObserver?.d
 .tryon-status.live i { background: #7fe3a6; animation: tryon-pulse 1.6s ease-in-out infinite; }
 .tryon-status.waiting i { background: #f2d28b; animation: tryon-pulse 1s ease-in-out infinite; }
 /* 手机状态灯：颜色即状态，文字点开看。 */
-.tryon-light.ant-btn { display: inline-grid; place-items: center; }
-.tryon-light i { display: block; width: 10px; height: 10px; border-radius: 50%; background: #ffffffeb; box-shadow: 0 0 0 3px #ffffff1f; transition: background .3s ease, box-shadow .3s ease; }
+.tryon-light.camera-tool.ant-btn { display: inline-grid; place-items: center; width: 26px; margin-left: -6px; }
+.tryon-light i { display: block; width: 7px; height: 7px; border-radius: 50%; background: #ffffffeb; box-shadow: 0 0 0 2px #ffffff1f; transition: background .3s ease, box-shadow .3s ease; }
 .tryon-light.is-off i { background: transparent; box-shadow: inset 0 0 0 2px #ffffff99; }
-.tryon-light.is-wait i { background: #f5c451; box-shadow: 0 0 0 3px #f5c45133; animation: tryon-pulse 1s ease-in-out infinite; }
-.tryon-light.is-live i { background: #5fe08f; box-shadow: 0 0 0 3px #5fe08f33, 0 0 10px #5fe08f99; animation: tryon-breathe 2.4s ease-in-out infinite; }
-.tryon-light.is-rec i { background: #ff4d4f; box-shadow: 0 0 0 3px #ff4d4f33, 0 0 10px #ff4d4f99; animation: tryon-pulse 1.2s ease-in-out infinite; }
-.tryon-light.is-error i { background: #ff4d4f; box-shadow: 0 0 0 3px #ff4d4f33; }
+.tryon-light.is-wait i { background: #f5c451; box-shadow: 0 0 0 2px #f5c45133; animation: tryon-pulse 1s ease-in-out infinite; }
+.tryon-light.is-live i { background: #5fe08f; box-shadow: 0 0 0 2px #5fe08f33, 0 0 6px #5fe08f99; animation: tryon-breathe 2.4s ease-in-out infinite; }
+.tryon-light.is-rec i { background: #ff4d4f; box-shadow: 0 0 0 2px #ff4d4f33, 0 0 6px #ff4d4f99; animation: tryon-pulse 1.2s ease-in-out infinite; }
+.tryon-light.is-error i { background: #ff4d4f; box-shadow: 0 0 0 2px #ff4d4f33; }
 .tryon-light.is-stopping i { background: #ffffff8c; animation: tryon-pulse .8s ease-in-out infinite; }
-@keyframes tryon-breathe { 50% { box-shadow: 0 0 0 5px #5fe08f1f, 0 0 16px #5fe08fcc; } }
-/* 手机计时：正中大号数字，下方细条是本次预留时长的剩余比例。 */
-.tryon-timer { position: absolute; left: 50%; top: calc(env(safe-area-inset-top) + 8px); display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 76px; padding: 5px 14px 6px; color: #fff; background: #0000006b; border-radius: 14px; backdrop-filter: blur(10px); transform: translateX(-50%); pointer-events: none; }
-.tryon-timer span { font-size: 18px; font-weight: 600; line-height: 1.1; letter-spacing: .04em; font-variant-numeric: tabular-nums; }
+@keyframes tryon-breathe { 50% { box-shadow: 0 0 0 3px #5fe08f1f, 0 0 9px #5fe08fcc; } }
+/* 手机计时：紧跟状态灯排在左侧（不再绝对居中，避免压住右侧工具），下方细条是本次预留时长的剩余比例。 */
+.tryon-timer { display: flex; flex: none; flex-direction: column; align-items: center; gap: 2px; min-width: 62px; padding: 4px 10px 5px; color: #fff; background: #0000006b; border-radius: 12px; backdrop-filter: blur(10px); pointer-events: none; }
+.tryon-timer span { font-size: 16px; font-weight: 600; line-height: 1.1; letter-spacing: .04em; font-variant-numeric: tabular-nums; }
 .tryon-timer b { display: block; width: 100%; height: 2px; overflow: hidden; background: #ffffff33; border-radius: 1px; }
 .tryon-timer em { display: block; height: 100%; background: currentColor; transform-origin: left center; transition: transform .5s linear; }
 .tryon-timer.is-ok { color: #fff; }
@@ -911,7 +911,8 @@ onBeforeUnmount(() => { disposed = true; action++; stopPose(); layoutObserver?.d
 .tryon-timer.is-low { color: #f5c451; }
 .tryon-timer.is-urgent { color: #ff6b6b; animation: tryon-pulse 1s ease-in-out infinite; }
 .tryon-timer.is-wait { color: #f5c451; }
-.tryon-timer.is-wait span { font-size: 15px; }
+.tryon-timer.is-wait span { font-size: 14px; }
+@media (max-width: 380px) { .tryon-tools .camera-tool.ant-btn { width: 38px; font-size: 18px; } }
 @media (prefers-reduced-motion: reduce) { .tryon-light i, .tryon-timer { animation: none !important; } }
 .tryon-recording-status { position: absolute; left: 12px; top: 66px; z-index: 10; padding: 6px 10px; font-size: 12px; color: #ffd9d2; font-variant-numeric: tabular-nums; background: #261511cc; border-radius: 8px; }
 .tryon-recording-status i { display: inline-block; width: 8px; height: 8px; margin-right: 7px; background: #ff5a4e; border-radius: 50%; animation: tryon-pulse 1s ease-in-out infinite; }
