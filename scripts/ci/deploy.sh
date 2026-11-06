@@ -2,9 +2,8 @@
 # Build the site and replace the 1Panel static site over SSH (used by .semaphore/deploy.yml). Same steps as
 # .github/workflows/deploy.yml and the CircleCI deploy job; the tests have already run in the checks pipeline.
 #
-# Secret "frontend" (Semaphore organization; the web server is not the backend server): DEPLOY_SSH_HOST, DEPLOY_SSH_USER, DEPLOY_SSH_KEY or DEPLOY_SSH_PASSWORD;
-# optional DEPLOY_SSH_PORT, DEPLOY_SSH_KNOWN_HOSTS, DEPLOY_PATH (default /opt/1panel/www/sites/yuda.yumg.cn/index),
-# DEPLOY_SITE_URL (default https://yuda.yumg.cn/), FRONTEND_API_BASE_URL,
+# Secret "frontend" (Semaphore organization; the web server is not the backend server): DEPLOY_SSH_HOST, DEPLOY_SSH_USER, DEPLOY_SSH_KEY or DEPLOY_SSH_PASSWORD,
+# DEPLOY_PATH (site root on the server), DEPLOY_SITE_URL (public site URL); optional DEPLOY_SSH_PORT, DEPLOY_SSH_KNOWN_HOSTS, FRONTEND_API_BASE_URL,
 # TENCENTCLOUD_SECRET_ID + TENCENTCLOUD_SECRET_KEY + CDN_PURGE_PATHS (refresh the CDN after deploy).
 # Multi-line values (keys, known_hosts) may be stored as they are or base64-encoded on one line.
 set -euo pipefail
@@ -13,10 +12,11 @@ missing=()
 [ -n "${DEPLOY_SSH_HOST:-}" ] || missing+=(DEPLOY_SSH_HOST)
 [ -n "${DEPLOY_SSH_USER:-}" ] || missing+=(DEPLOY_SSH_USER)
 [ -n "${DEPLOY_SSH_KEY:-}${DEPLOY_SSH_PASSWORD:-}" ] || missing+=("DEPLOY_SSH_KEY 或 DEPLOY_SSH_PASSWORD")
+[ -n "${DEPLOY_PATH:-}" ] || missing+=(DEPLOY_PATH)
+[ -n "${DEPLOY_SITE_URL:-}" ] || missing+=(DEPLOY_SITE_URL)
 [ ${#missing[@]} -eq 0 ] || { echo "缺少环境变量：${missing[*]}"; exit 1; }
-DEPLOY_PATH=${DEPLOY_PATH:-/opt/1panel/www/sites/yuda.yumg.cn/index}
 case "$DEPLOY_PATH" in /*/*/*) ;; *) echo "DEPLOY_PATH 太短，拒绝覆盖：$DEPLOY_PATH"; exit 1 ;; esac
-SITE_URL=${DEPLOY_SITE_URL:-https://yuda.yumg.cn/}
+SITE_URL=$DEPLOY_SITE_URL
 API_BASE=${FRONTEND_API_BASE_URL:-}
 
 # The site only works if its API answers: FRONTEND_API_BASE_URL (a separate API host, which must allow this site in the

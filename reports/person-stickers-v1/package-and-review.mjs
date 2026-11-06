@@ -1,7 +1,7 @@
 import { mkdirSync, copyFileSync, writeFileSync, readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { createCanvas, loadImage, GlobalFonts } from '/Users/yaopinxin/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/@napi-rs/canvas/index.js'
+import { createCanvas, loadImage, GlobalFonts } from '@napi-rs/canvas'
 
 const root = dirname(fileURLToPath(import.meta.url))
 GlobalFonts.registerFromPath('/System/Library/Fonts/STHeiti Medium.ttc', 'ReviewChinese')

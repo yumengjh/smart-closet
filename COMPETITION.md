@@ -1,12 +1,12 @@
-> 本文是**第九届传智杯 · AI WEB 网页开发挑战赛**的参赛说明，只服务于评审。用户端的介绍、运行与开发文档见 [README.md](README.md)；完整的作品说明、技术架构与 AI 方案见后端仓库的 [COMPETITION.md](https://github.com/yumengjh/smart-closet-server-review/blob/main/COMPETITION.md)。
+> 本文是**一带一路暨金砖国家技能大赛 · AI+应用创新与安全设计国际赛**的参赛说明，只服务于评审。用户端的介绍、运行与开发文档见 [README.md](README.md)；完整的作品说明、技术架构与 AI 方案见后端仓库的 [COMPETITION.md](https://github.com/yumengjh/smart-closet-server-review/blob/main/COMPETITION.md)。
 
 <div align="center">
 
 # 鱼搭 · 用户端
 
-**第九届传智杯 · AI WEB 网页开发挑战赛 参赛作品的前端部分**
+**一带一路暨金砖国家技能大赛 · AI+应用创新与安全设计国际赛 参赛作品的前端部分**
 
-团队：鱼力无限
+参赛编号：（提交前填写）
 
 </div>
 
@@ -44,9 +44,6 @@
 
 作品为团队原创，使用的开源组件见 `package.json`；真实密钥不在仓库中，构建期只使用公开的 `VITE_*` 变量，模板见 [.env.example](.env.example)。
 
-## 团队
+## 署名
 
-| 角色 | 姓名 | 学校 / 组别 |
-|:--|:--|:--|
-| 团队成员 | 姚品鑫、张榆晓 | 广东科贸职业学院（参赛组别以报名为准） |
-| 指导教师 | 凡飞飞、李观金 | 广东科贸职业学院 |
+按赛事规程，本作品只以参赛编号署名，文中不出现学校、队名、成员或指导教师姓名。参赛编号：（提交前填写）
