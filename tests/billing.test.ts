@@ -33,3 +33,18 @@ test('仅403/404表示隐藏，其他失败不可误判收费关闭', () => {
   for (const status of [403, 404]) assert.equal(billingHidden(new ApiError('不可用', status)), true)
   for (const status of [400, 429, 503]) assert.equal(billingHidden(new ApiError('不可用', status)), false)
 })
+
+import { formatMinor, orderError, orderStatusLabels, productSummary } from '../src/billing/model.ts'
+test('金额按最小货币单位换算，日元没有小数', () => {
+  assert.equal(formatMinor(1000, 'CNY'), '¥10.00'); assert.equal(formatMinor(1999, 'USD'), '$19.99'); assert.equal(formatMinor(500, 'JPY'), '¥500')
+  assert.equal(formatMinor(123456, 'CNY'), '¥1,234.56'); assert.equal(formatMinor(250, 'CHF'), '2.50 CHF')
+})
+test('商品摘要区分点数包与订阅，订单状态都有中文', () => {
+  assert.equal(productSummary({ kind: 'POINTS', points: 1200, entDays: null, imageDailyLimit: null, agentDailyLimit: null }), '1,200 点')
+  assert.equal(productSummary({ kind: 'SUBSCRIPTION', points: 0, entDays: 30, imageDailyLimit: 40, agentDailyLimit: 60 }), '30 天 · 生图每日 40 次，助手每日 60 次')
+  assert.equal(productSummary({ kind: 'SUBSCRIPTION', points: 0, entDays: 7, imageDailyLimit: null, agentDailyLimit: 20 }), '7 天 · 助手每日 20 次')
+  for (const status of ['CREATED', 'PAID', 'FULFILLED', 'CLOSED', 'FAILED', 'DISPUTED']) assert.ok(orderStatusLabels[status])
+})
+test('下单错误优先用服务器的话，否则按代码给出固定提示', () => {
+  assert.equal(orderError({ code: 'TOO_MANY_OPEN_ORDERS' }), '未支付的订单太多，请先完成或等待超时关闭。'); assert.equal(orderError({ message: '自定义' }), '自定义'); assert.equal(orderError(null), '下单未能完成，请稍后重试。')
+})

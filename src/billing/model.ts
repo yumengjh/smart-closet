@@ -36,3 +36,28 @@ export function redeemError(error: unknown) {
   const failure = error as { message?: string; code?: string } | null
   return failure?.message || redeemMessages[failure?.code || ''] || '兑换未能完成，请稍后重试。'
 }
+
+export type Product = { id: string; kind: 'POINTS' | 'SUBSCRIPTION'; name: string; currency: string; priceMinor: number; points: number; entDays: number | null; imageDailyLimit: number | null; agentDailyLimit: number | null }
+export type OrderView = { id: string; productName: string; kind: string; currency: string; amountMinor: number; points: number; channel: string; status: string; note: string | null; createdAtMs: number; expiresAtMs: number; fulfilledAtMs: number | null }
+export type CreatedOrder = { order: OrderView; payUrl: string | null; sandbox: boolean }
+export const orderStatusLabels: Record<string, string> = { CREATED: '待支付', PAID: '处理中', FULFILLED: '已到账', CLOSED: '已关闭', FAILED: '支付异常', DISPUTED: '已撤销' }
+const symbols: Record<string, string> = { CNY: '¥', USD: '$', EUR: '€', JPY: '¥' }
+/** Amounts arrive in the currency's minor unit (fen, cent); JPY has none. */
+export function formatMinor(amountMinor: number, currency: string) {
+  const digits = currency === 'JPY' ? 0 : 2
+  const value = (amountMinor / 10 ** digits).toLocaleString('zh-CN', { minimumFractionDigits: digits, maximumFractionDigits: digits })
+  return symbols[currency] ? `${symbols[currency]}${value}` : `${value} ${currency}`
+}
+export function productSummary(p: Pick<Product, 'kind' | 'points' | 'entDays' | 'imageDailyLimit' | 'agentDailyLimit'>) {
+  if (p.kind === 'POINTS') return formatPoints(p.points)
+  const parts = [p.imageDailyLimit !== null ? `生图每日 ${p.imageDailyLimit} 次` : '', p.agentDailyLimit !== null ? `助手每日 ${p.agentDailyLimit} 次` : ''].filter(Boolean)
+  return `${p.entDays} 天 · ${parts.join('，')}`
+}
+const orderMessages: Record<string, string> = {
+  PAYMENT_UNAVAILABLE: '暂时没有可用的支付方式。', TOO_MANY_OPEN_ORDERS: '未支付的订单太多，请先完成或等待超时关闭。', PRODUCT_NOT_FOUND: '这个商品已下架。',
+  BILLING_DISABLED: '收费暂未开放。', IDEMPOTENCY_CONFLICT: '请求发生冲突，请重新提交。',
+}
+export function orderError(error: unknown) {
+  const failure = error as { message?: string; code?: string } | null
+  return failure?.message || orderMessages[failure?.code || ''] || '下单未能完成，请稍后重试。'
+}

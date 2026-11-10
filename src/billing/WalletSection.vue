@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { billingApi } from './api'
 import { billingHidden, entitlementState, formatPoints, ledgerLabels, normalizeCode, redeemError, retryDeadline, secondsRemaining, sourceLabels, type Wallet } from './model'
+import ShopSection from './ShopSection.vue'
 import { createUuid } from '../domain/id'
 import { accountTime } from '../domain/account'
 import { ApiError } from '../domain/apiError'
@@ -55,6 +56,7 @@ onUnmounted(() => { clearInterval(timer); close() })
     </header>
     <a-alert v-if="success" :message="success" type="success" show-icon />
     <a-alert v-if="loadError" :message="loadError" type="warning" show-icon />
+    <ShopSection @paid="load(); emit('redeemed')" />
     <h4>有效权益</h4>
     <p v-if="!active.length" class="settings-hint">暂无有效权益，每日额度按当前账号设置执行。</p>
     <article v-for="ent in active" :key="ent.id" class="billing-row">

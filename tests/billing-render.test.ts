@@ -17,7 +17,9 @@ test('钱包开关关闭/403/404不渲染、不发起其他收费请求；开启
       load(id) {
         if (id !== virtualId) return
         const { descriptor } = parse(readFileSync('src/billing/WalletSection.vue', 'utf8'))
+        // The shop is a separate component with its own requests; this test is about the wallet alone.
         return compileScript(descriptor, { id: 'billing-test', inlineTemplate: true }).content
+          .replace(/import ShopSection from ['"]\.\/ShopSection\.vue['"]/, 'const ShopSection = { render: () => null }')
           .replace(/from (['"])(\.[^'"]+)\1/g, (_, quote, path) => `from ${quote}${resolve('src/billing', path)}${quote}`)
       },
     }],
