@@ -8,6 +8,7 @@ const pointsHint = computed(() => {
   if (milliPointsPerSecond <= 0) return ''
   const minutes = Number((paidSeconds / 60).toFixed(2))
   if (props.remaining <= 0) return paidSeconds > 0 ? `免费时长已用完，将使用点数，约可试穿 ${minutes} 分钟` : '免费时长已用完，点数不足'
+  if (paidSeconds <= 0) return ""
   const price = Number((milliPointsPerSecond * 60 / 1000).toFixed(2))
   return `另可用点数试穿约 ${minutes} 分钟（每分钟 ${price} 点）`
 })

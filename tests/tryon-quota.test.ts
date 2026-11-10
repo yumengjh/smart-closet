@@ -65,7 +65,7 @@ test('实时试穿额度兼容旧后端并显示点数时长与兑换入口', as
           text: `今日剩余 02:05 另可用点数试穿约 1.5 分钟（每分钟 ${price} 点）`, links: [],
         })
       }
-      assert.equal(render(125, { paidSeconds: 0, milliPointsPerSecond: 25 }).text, '今日剩余 02:05 另可用点数试穿约 0 分钟（每分钟 1.5 点）')
+      assert.equal(render(125, { paidSeconds: 0, milliPointsPerSecond: 25 }).text, '今日剩余 02:05')
     })
     await t.test('免费用完但点数够时提示将使用点数，分钟由可支付秒数换算', () => {
       for (const [paidSeconds, minutes] of [[600, '10'], [30, '0.5'], [100, '1.67']] as const) {
