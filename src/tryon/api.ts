@@ -5,7 +5,7 @@ import type { Outfit } from '../domain/outfit'
 import type { ConnectionDiagnostic } from './diagnostic'
 
 export type Limits = { dailySeconds: number; sessionSeconds: number; startupSeconds: number; firstFrameSeconds: number; queueSeconds: number; offerSeconds: number; recordingSeconds: number; recordingBytes: number; storageBytes: number }
-export type Capabilities = { enabled: boolean; ready: boolean; reason: string; quota: { limit: number; used: number; reserved: number; remaining: number }; limits: Limits; hasHistory: boolean }
+export type Capabilities = { enabled: boolean; ready: boolean; reason: string; quota: { limit: number; used: number; reserved: number; remaining: number }; points?: { paidSeconds: number; milliPointsPerSecond: number }; limits: Limits; hasHistory: boolean }
 /** role：用户从固定列表里选的穿戴位置，不填则按衣物分类自动判断。 */
 export type Selection = { type: 'GARMENT' | 'TEMPORARY'; id: string; revision?: number; assetId?: string; role?: string }
 export type Item = Selection & { assetId: string; hash: string; name: string; wearingRole?: string | null }

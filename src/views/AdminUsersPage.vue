@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import AdminBillingSection from '../billing/AdminBillingSection.vue'
+import { billingApi } from '../billing/api'
 import { computed, h, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { App, Alert, Button, Input, Space, Tabs as ATabs } from 'ant-design-vue'
@@ -9,6 +11,11 @@ import { accountTime, registeredViaLabels, accountEventLabel, usernameProblem } 
 const ATabPane = ATabs.TabPane
 defineProps<{ embedded?: boolean }>()
 const { modal, message } = App.useApp(); const closet = useClosetStore(); const router = useRouter()
+const billingEnabled = ref(false)
+onMounted(async () => {
+  if (closet.user?.role !== 'ADMIN' || closet.user?.portableLogin) return
+  try { billingEnabled.value = (await billingApi.state()).enabled } catch { billingEnabled.value = false }
+})
 const tab = ref('users'); const error = ref(''); const usersBusy = ref(false); const invitesBusy = ref(false)
 const query = reactive<AdminUsersQuery>({ q: '', status: undefined, role: undefined, page: 1, size: 20 })
 const users = ref<AdminUsersPage>({ items: [], total: 0, page: 1, size: 20 }); const search = ref('')
@@ -208,6 +215,7 @@ function revokeInvite(invite: RegistrationInvite) {
             </a-table></div>
           </section>
         </a-tab-pane>
+        <a-tab-pane v-if="billingEnabled" key="billing" tab="兑换码"><AdminBillingSection @disabled="billingEnabled = false; tab = 'users'" /></a-tab-pane>
       </a-tabs>
     </template>
 

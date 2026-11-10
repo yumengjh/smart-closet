@@ -201,3 +201,24 @@ test('one CSRF lookup serves later writes of the same account; a switch or a ref
   await m.request('/api/closet/quick-intakes', { method: 'POST', body: new FormData() })
   assert.deepEqual(calls, ['/api/auth/csrf', '/api/closet/quick-intakes'], 'another account never reuses the token')
 })
+
+test('收费请求保留错误码、状态与 Retry-After，沿用 CSRF 和幂等头', async t => {
+  let writes = 0
+  t.mock.method(globalThis, 'fetch', async (url: unknown, init: RequestInit) => {
+    if (isCsrf(url)) return json({ token: 'csrf-billing' })
+    writes++
+    const headers = new Headers(init.headers)
+    assert.equal(headers.get('X-XSRF-TOKEN'), 'csrf-billing')
+    assert.equal(headers.get('Idempotency-Key'), 'billing-attempt-1')
+    return Response.json({ code: 'REDEEM_THROTTLED', message: '请稍后再试' }, { status: 429, headers: { 'Retry-After': '900' } })
+  })
+  await assert.rejects(m.request('/api/billing/redeem', { method: 'POST', headers: { 'Idempotency-Key': 'billing-attempt-1' }, body: JSON.stringify({ code: 'DEMO' }) }), (error: unknown) => {
+    assert.ok(error instanceof Error)
+    assert.equal(error.message, '请稍后再试')
+    assert.equal((error as { status: number }).status, 429)
+    assert.equal((error as { code: string }).code, 'REDEEM_THROTTLED')
+    assert.equal((error as { retryAfter: string }).retryAfter, '900')
+    return true
+  })
+  assert.equal(writes, 1, '限流响应不自动重放兑换')
+})
