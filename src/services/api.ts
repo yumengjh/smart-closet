@@ -1,3 +1,4 @@
+import { ApiError } from '../domain/apiError'
 import type { SessionUser } from '../domain/session'
 import { createUuid } from '../domain/id'
 import { apiUrl } from './urls'
@@ -304,7 +305,7 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
     else if (response.status === 401 && !['/api/auth/login', '/api/auth/portable-login'].includes(path)) signalSessionExpired(data.code)
     if (response.status === 403 && data.code === 'PASSWORD_CHANGE_REQUIRED') window.dispatchEvent(new Event('closet-password-change-required'))
     if (response.status === 409 && data.code === 'ACCOUNT_MISMATCH') window.dispatchEvent(new Event('closet-account-mismatch'))
-    throw new Error(data.message || data.detail || `请求失败 (${response.status})`)
+    throw new ApiError(data.message || data.detail || `请求失败 (${response.status})`, response.status, data.code, response.headers.get('Retry-After'))
   }
   // A change to a garment makes the shared closet load (services/activeCloset) stale (smart-closet-server#198).
   if (write && typeof window !== 'undefined' && /^\/api\/(closet|garments|workflows)\//.test(path)) window.dispatchEvent(new Event(CLOSET_CHANGED))

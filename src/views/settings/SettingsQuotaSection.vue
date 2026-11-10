@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import WalletSection from '../../billing/WalletSection.vue'
 import { computed, onMounted, ref } from 'vue'
 import { closetApi } from '../../services/api'
 import { tokens } from '../../theme/tokens'
@@ -14,9 +15,10 @@ const progressColors = computed(() => {
   return { stroke: t.accent, trail: t.surfaceAlt }
 })
 
-onMounted(async () => {
+async function loadQuota() {
   try { quota.value = await closetApi.quota() } catch (cause) { error.value = cause instanceof Error ? cause.message : '无法加载额度。' }
-})
+}
+onMounted(loadQuota)
 </script>
 
 <template>
@@ -38,5 +40,6 @@ onMounted(async () => {
       </div>
       <p class="quota-reset">每日按北京时间重置 · 下次重置 {{ new Date(quota.resetAt || Date.now()).toLocaleString('zh-CN') }}</p>
     </section>
+    <WalletSection @redeemed="loadQuota" />
   </div>
 </template>
