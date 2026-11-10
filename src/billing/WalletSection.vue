@@ -68,8 +68,8 @@ onUnmounted(() => { clearInterval(timer); close() })
       <div class="billing-entry"><strong>{{ ledgerLabels[entry.kind] || '点数变动' }}</strong><span>{{ formatPoints(entry.points, true) }}</span></div>
       <p>{{ accountTime(entry.createdAtMs) }}<template v-if="entry.note"> · {{ entry.note }}</template></p>
     </article>
-    <a-modal v-model:open="open" title="兑换码" :ok-text="remaining ? `${remaining} 秒后重试` : '确认兑换'" cancel-text="取消" :confirm-loading="busy" :ok-button-props="{ disabled: !!remaining || !normalizeCode(code) }" :closable="!busy" :keyboard="!busy" :mask-closable="false" :cancel-button-props="{ disabled: busy }" @ok="redeem" @cancel="close" @after-close="code = ''">
-      <a-form layout="vertical" @finish="redeem"><a-form-item label="兑换码"><a-input v-model:value="code" autocomplete="off" :maxlength="200" placeholder="YD1-…" :disabled="busy" @press-enter="redeem" @blur="code = normalizeCode(code)" /></a-form-item></a-form>
+    <a-modal wrap-class-name="billing-wallet-modal" v-model:open="open" title="兑换码" :ok-text="remaining ? `${remaining} 秒后重试` : '确认兑换'" cancel-text="取消" :confirm-loading="busy" :ok-button-props="{ disabled: !!remaining || !normalizeCode(code) }" :closable="!busy" :keyboard="!busy" :mask-closable="false" :cancel-button-props="{ disabled: busy }" @ok="redeem" @cancel="close" @after-close="code = ''">
+      <a-form layout="vertical" @finish="redeem"><a-form-item label="兑换码" html-for="billing-code"><a-input id="billing-code" v-model:value="code" autocomplete="off" :maxlength="200" placeholder="YD1-…" :disabled="busy" @press-enter="redeem" @blur="code = normalizeCode(code)" /></a-form-item></a-form>
       <p class="settings-hint">可直接粘贴，空格、大小写和连字符不影响兑换。</p>
       <a-alert v-if="error" type="error" :message="error" show-icon />
       <p v-if="remaining" role="status">请稍后再试，{{ remaining }} 秒后可重新提交。</p>
@@ -82,4 +82,5 @@ h4 { margin: var(--space-5) 0 var(--space-3); }
 .billing-row p { margin: var(--space-2) 0 0; color: var(--muted-copy); }
 .billing-entry { display: flex; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
 .billing-wallet :deep(.ant-btn) { min-height: 44px; }
+:global(.billing-wallet-modal .ant-btn), :global(.billing-wallet-modal .ant-input) { min-height: 44px; }
 </style>

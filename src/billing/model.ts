@@ -5,7 +5,7 @@ export type NewBatch = { name: string; points: number; unitPriceMicro: number; c
 export type Batch = NewBatch & { id: string; batchNo: string; status: string; available: number; redeemed: number; createdAtMs: number }
 export type CodeView = { id: string; mask: string; status: string; redeemedBy: string | null; redeemedAtMs: number | null }
 export const ledgerLabels: Record<string, string> = { TOPUP: '充值', GRANT: '赠送', RESERVE: '预留', SETTLE: '结算', RELEASE: '释放', EXPIRE: '过期', ADJUST: '调整' }
-export const sourceLabels: Record<string, string> = { SUBSCRIPTION: '订阅权益', ADMIN: '管理员发放', PROMOTION: '活动赠送' }
+export const sourceLabels: Record<string, string> = { SUBSCRIPTION: '订阅权益', ADMIN: '管理员发放', PROMO: '活动赠送' }
 export function formatPoints(points: number, signed = false) { return `${signed && points > 0 ? '+' : ''}${points.toLocaleString('zh-CN')} 点` }
 /** Decimal input -> integer micro units, avoiding binary multiplication drift. */
 export function priceToMicro(value: string | number): number {
