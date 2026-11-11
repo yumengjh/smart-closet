@@ -1,19 +1,19 @@
 /** Keep numerically in sync with the :root / :root[data-theme='dark'] blocks in src/style.css. */
 export const tokens = {
   light: {
-    ink: '#16201e', muted: '#5f6b68', mutedSubtle: '#86908d', line: '#e6edeb', surface: '#fff', surfaceAlt: '#f1f6f4', paper: '#f7faf9',
-    action: '#16201e', actionHover: '#2f3c39', actionFg: '#fff',
-    accent: '#0e8a76', accentStrong: '#0b6f5f', accentSoft: '#e6f6f2', selectionBg: '#e6f1ed',
-    success: '#1f8a6e', warning: '#956516', danger: '#bd4b4b', info: '#385eac', focusRing: '#8fdccb',
+    ink: '#1f1b16', muted: '#6b6157', mutedSubtle: '#94897c', line: '#e8dfd2', surface: '#fffdf9', surfaceAlt: '#f3ece2', paper: '#f7f2eb',
+    action: '#1f1b16', actionHover: '#3a332b', actionFg: '#fffdf9',
+    accent: '#b9432c', accentStrong: '#a83a26', accentSoft: '#fbe6de', selectionBg: '#f7e4dc',
+    success: '#1f8a6e', warning: '#956516', danger: '#bd4b4b', info: '#385eac', focusRing: '#f0a08f',
     board: '#ffffff',
   },
   dark: {
-    ink: '#ecf2f0', muted: '#a5b1ae', mutedSubtle: '#8b9895', line: '#2a3633', surface: '#18201e', surfaceAlt: '#1f2927', paper: '#0f1413',
-    action: '#ecf2f0', actionHover: '#cbd6d3', actionFg: '#0f1413',
-    accent: '#42d3b8', accentStrong: '#6fe0ca', accentSoft: '#15302a', selectionBg: '#24322f',
-    success: '#5fd0a8', warning: '#e7bf72', danger: '#f19a9b', info: '#a9c1ff', focusRing: '#42d3b8',
+    ink: '#f5eee5', muted: '#b5a99a', mutedSubtle: '#8d8274', line: '#352d26', surface: '#1f1a16', surfaceAlt: '#29231e', paper: '#15110e',
+    action: '#f5eee5', actionHover: '#ddd2c4', actionFg: '#15110e',
+    accent: '#f08a73', accentStrong: '#f6a693', accentSoft: '#3b231a', selectionBg: '#3a2a22',
+    success: '#5fd0a8', warning: '#e7bf72', danger: '#f19a9b', info: '#a9c1ff', focusRing: '#f08a73',
     /** Outfit board shown on screen; exports stay white. */
-    board: '#1f2927',
+    board: '#29231e',
   },
 } as const
 
@@ -29,7 +29,7 @@ export function antTokens(mode: ThemeMode) {
     colorWarning: t.warning,
     colorError: t.danger,
     colorText: t.ink,
-    colorTextSecondary: mode === 'dark' ? '#aeb5c2' : '#737680',
+    colorTextSecondary: t.muted,
     colorTextLightSolid: t.actionFg,
     colorBgBase: mode === 'dark' ? t.paper : '#ffffff',
     colorBgLayout: t.paper,

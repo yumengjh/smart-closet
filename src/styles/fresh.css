@@ -13,7 +13,7 @@
 /* 衣物卡片：无边框浅底，大圆角，悬停轻轻浮起 */
 .garment-grid { gap: 28px 20px; }
 .card-image-wrap { border-radius: 24px; background: var(--surface-alt); transition: transform .35s var(--spring), box-shadow .35s ease; }
-.garment-card:hover .card-image-wrap { transform: translateY(-4px); box-shadow: 0 18px 30px -18px #0d3b3340; }
+.garment-card:hover .card-image-wrap { transform: translateY(-4px); box-shadow: 0 18px 30px -18px #3b241a40; }
 .garment-card.selected .card-image-wrap { box-shadow: 0 0 0 2px var(--brand); }
 .card-copy { padding: 12px 6px 4px; }
 .card-copy h3 { font-weight: 500; }
@@ -64,7 +64,7 @@
 .settings-profile-text small { overflow: hidden; font-size: 12px; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }
 .settings-nav .settings-nav-item { min-height: 54px; border-radius: 18px; }
 .settings-nav .settings-nav-item:hover { background: var(--surface); }
-.settings-nav .settings-nav-item.active, .settings-nav .settings-nav-item.active:hover { background: var(--surface); box-shadow: 0 6px 18px -12px #0d3b3340; }
+.settings-nav .settings-nav-item.active, .settings-nav .settings-nav-item.active:hover { background: var(--surface); box-shadow: 0 6px 18px -12px #3b241a40; }
 .settings-nav-item > .settings-nav-icon { border-radius: 12px; background: var(--surface); color: var(--muted-strong); }
 .settings-nav-item.active > .settings-nav-icon { color: var(--accent-strong); background: var(--accent-soft); }
 .settings-nav .settings-nav-link::before { border-top-color: var(--line); }

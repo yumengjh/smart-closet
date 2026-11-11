@@ -183,9 +183,9 @@ onUnmounted(() => window.removeEventListener('keydown', keys))
 .mix-track::-webkit-scrollbar { display: none; }
 .mix-track.frozen { overflow-x: hidden; }
 .mix-card { display: grid; flex: none; place-items: center; width: var(--card-w); height: var(--card-h); border-radius: 24px; background: color-mix(in srgb, var(--tint) 16%, var(--surface-alt)); scroll-snap-align: center; cursor: pointer; opacity: .45; transform: scale(.88); transition: transform .45s var(--spring), opacity .3s ease, box-shadow .3s ease; }
-.mix-card.current { opacity: 1; transform: none; box-shadow: 0 16px 30px -22px #0d3b3366; }
-.mix-row.locked .mix-card.current { box-shadow: 0 0 0 2px var(--brand), 0 16px 30px -22px #0d3b3366; }
-.mix-card img { max-width: 80%; max-height: 84%; object-fit: contain; filter: drop-shadow(0 10px 12px #0d3b3322); user-select: none; pointer-events: none; }
+.mix-card.current { opacity: 1; transform: none; box-shadow: 0 16px 30px -22px #3b241a66; }
+.mix-row.locked .mix-card.current { box-shadow: 0 0 0 2px var(--brand), 0 16px 30px -22px #3b241a66; }
+.mix-card img { max-width: 80%; max-height: 84%; object-fit: contain; filter: drop-shadow(0 10px 12px #3b241a22); user-select: none; pointer-events: none; }
 .mix-arrow.ant-btn { position: absolute; top: calc(50% - 20px); z-index: 2; width: 40px; height: 40px; color: var(--muted-strong); background: var(--glass); backdrop-filter: blur(10px); box-shadow: 0 0 0 1px var(--line); }
 .mix-arrow.left { left: calc(50% - var(--card-w) / 2 - 58px); }
 .mix-arrow.right { right: calc(50% - var(--card-w) / 2 - 58px); }

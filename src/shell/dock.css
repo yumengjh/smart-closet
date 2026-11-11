@@ -1,7 +1,7 @@
-/* 清新改版：底部悬浮胶囊导航（docs/design/2026-11-04-清新改版：胶囊导航与衣架衣柜设计.md §2）。
+/* 底部悬浮胶囊导航：清新改版 §2 的外形，ToC 改版（二）3.2 的内容。
    所有宽度共用 ClosetShell 里的 nav.mobile-nav.shell-dock；桌面是居中的一条胶囊（文字 + 图标，选中是深色胶囊），
-   手机是贴底留边的圆角条（图标在上、文字在下），只常驻 衣柜、搭配、＋、试穿、问鱼搭（--mobile-order 0/10/20/30/40）。
-   本文件在 style.css 之后加载，覆盖其中旧的手机底栏网格。 */
+   手机是贴底留边的圆角条（图标在上、文字在下）：今天、衣柜、＋、试穿、我的（--mobile-order 0/10/20/30/40）。
+   问鱼搭不在胶囊里，是右下角的悬浮表情 .assistant-fab-slot。本文件在 style.css 之后加载，覆盖其中旧的手机底栏网格。 */
 :root { --dock-space: 100px; }
 .main-area { margin-left: 0; min-height: 100vh; }
 .topbar { justify-content: space-between; gap: 16px; height: 68px; }
@@ -19,10 +19,17 @@
 .shell-dock .dock-count { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; font-size: 11px; font-weight: 600; line-height: 18px; text-align: center; color: #fff; background: var(--brand); }
 .shell-dock .mobile-nav-indicator { position: absolute; left: 0; top: 0; z-index: 0; border-radius: 999px; background: var(--action-bg); pointer-events: none; transition: transform .5s cubic-bezier(.34, 1.36, .64, 1), width .35s ease, height .35s ease, opacity .2s ease; }
 .shell-dock .mobile-nav-indicator.instant { transition: none; }
-.shell-dock .dock-sep { order: 900; flex: none; width: 1px; height: 26px; margin: 0 6px; background: var(--line); }
-.shell-dock .dock-assistant-slot { order: 910; display: flex; flex: none; align-items: center; }
-.shell-dock > a.dock-add { order: 920; width: 46px; padding: 0; margin: 0 2px 0 6px; color: var(--ink); background: var(--surface-alt); font-size: 17px; transition: transform .4s var(--spring), background .2s ease; }
-.shell-dock > a.dock-add:hover { background: var(--accent-soft); color: var(--accent-strong); transform: rotate(90deg); }
+.shell-dock > a.dock-add { order: 15; gap: 6px; padding: 0 18px 0 14px; margin: 0 4px; color: #fff; background: var(--brand); font-weight: 600; box-shadow: 0 8px 18px -8px color-mix(in srgb, var(--brand) 80%, transparent); transition: transform .3s var(--spring), background .2s ease; }
+.shell-dock > a.dock-add:hover { color: #fff; background: color-mix(in srgb, var(--brand) 88%, #000); }
+.shell-dock > a.dock-add:active { transform: scale(.94); }
+.shell-dock > a.dock-add .anticon { transition: transform .4s var(--spring); }
+.shell-dock > a.dock-add:hover .anticon { transform: rotate(90deg); }
+
+/* 问鱼搭悬浮入口：桌面在右下角，手机在胶囊上方右侧；向下阅读时跟胶囊一起让开。 */
+.assistant-fab-slot { position: fixed; z-index: 31; right: 24px; bottom: 24px; display: flex; transition: opacity .25s ease, transform .35s var(--ease-out); }
+.assistant-fab-slot.away { opacity: 0; transform: translateY(16px); pointer-events: none; }
+.assistant-fab-slot:empty { display: none; }
+html.closet-selecting .assistant-fab-slot, html.assistant-center-open .assistant-fab-slot, .tryon-camera-mode .assistant-fab-slot, .outfit-editing .assistant-fab-slot, html.add-menu-open .assistant-fab-slot { opacity: 0; pointer-events: none; }
 html .shell-dock .mobile-add.ant-btn { display: none; }
 
 /* 翻页条（FloatingPager）按 --dock-space 让出胶囊的高度。 */
@@ -37,16 +44,16 @@ html .shell-dock .mobile-add.ant-btn { display: none; }
   .shell-dock > a.active { color: var(--ink); }
   .shell-dock > a > i { display: block; position: absolute; top: 6px; right: 26%; width: 6px; height: 6px; border-radius: 50%; background: var(--brand); }
   .shell-dock > a .nav-glyph { width: 22px; height: 22px; }
-  .shell-dock .desktop-only, .shell-dock .dock-sep, .shell-dock > a.dock-add, .shell-dock .dock-count { display: none; }
+  .shell-dock > a.dock-add, .shell-dock .dock-count { display: none; }
+  .assistant-fab-slot { right: 14px; bottom: calc(var(--dock-space) + 6px); }
   .shell-dock .mobile-nav-indicator { background: var(--selection-bg); }
   html .shell-dock .mobile-add.ant-btn { order: 20; display: flex; flex: 1 1 0; width: auto; min-width: 0; height: 52px; grid-column: auto; font-size: 11px; }
-  .shell-dock .dock-assistant-slot { order: 40; flex: 1 1 0; justify-content: center; min-width: 0; }
   html[data-nav-labels='text'] .shell-dock { height: 56px; }
   html[data-nav-labels='text'] .shell-dock > a { height: 44px; min-height: 44px; font-size: 13px; }
   html[data-nav-labels='icon'] .shell-dock { height: 58px; }
 }
 @media (max-width: 767px) { .topbar { height: 56px; } }
-@media (prefers-reduced-motion: reduce) { .shell-dock, .shell-dock > a.dock-add, .shell-dock .mobile-nav-indicator { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .shell-dock, .shell-dock > a.dock-add, .shell-dock .mobile-nav-indicator, .assistant-fab-slot { transition: none; } }
 
 /* 衣柜批量处理时，底部的批量悬浮条接替导航胶囊的位置（WardrobePage .batch-float）。 */
 html.closet-selecting .shell-dock { opacity: 0; transform: translate(-50%, 16px); pointer-events: none; }

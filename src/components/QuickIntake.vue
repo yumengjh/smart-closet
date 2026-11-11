@@ -2,7 +2,7 @@
 import { createUuid } from '../domain/id'
 import { isAccountSwitched, mayPoll } from '../domain/accountSession'
 import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { App, message } from 'ant-design-vue'
 import { CameraOutlined, PictureOutlined, SettingOutlined, CheckCircleFilled, LoadingOutlined, ArrowRightOutlined, InboxOutlined, CloseOutlined, DownOutlined, MoreOutlined, QuestionCircleOutlined, ExclamationCircleFilled } from '@ant-design/icons-vue'
 import { useClosetStore } from '../stores/closet'
@@ -16,7 +16,7 @@ import { loadWantedLabel, wantedLabel } from '../wardrobe/wanted'
 import { savePhoto, setPhotoWanted, checkLocalStorage, updateSavedResult, refreshUploads, pumpUploads, uploadRows, uploadError, markPhoto, retryPhoto, removePhoto, removePhotos, quickApi, type LocalPhoto, type Hint } from '../services/quickIntake'
 
 const notifications = useNotificationStore()
-const closet = useClosetStore(), router = useRouter(), { modal } = App.useApp()
+const closet = useClosetStore(), router = useRouter(), route = useRoute(), { modal } = App.useApp()
 const compact = ref(window.matchMedia('(max-width: 1023px)').matches)
 const mode = ref('BASE_READY'), camera = ref(false), settings = ref(false), markerMode = ref(false)
 const marker = ref<LocalPhoto>(), input = ref<HTMLInputElement>(), nativeInput = ref<HTMLInputElement>()
@@ -30,7 +30,8 @@ const localCount = computed(() => rows.value.filter(row => row.state !== 'SAVED'
 const inCloset = (row: LocalPhoto) => row.result?.garment.status === 'ACTIVE' || row.result?.garment.status === 'WANTED'
 const admitted = computed(() => rows.value.filter(inCloset).length)
 // 种草（#197）：网上看中、还没买的衣服也从这里收进衣柜，入柜为 WANTED，不参与推荐与统计。只在本次打开页面期间有效，默认“我有这件”。
-const ownership = ref<'OWNED' | 'WANTED'>('OWNED')
+// 默认“我有这件”、不跨次记忆；只有从添加菜单的“存一件种草”进来（?wanted=1，本次明确选择）才预选种草（ToC 改版 P2）。
+const ownership = ref<'OWNED' | 'WANTED'>(route.query.wanted === '1' ? 'WANTED' : 'OWNED')
 void loadWantedLabel()
 const ownershipOptions = computed(() => [{ value: 'OWNED', label: '我有这件' }, { value: 'WANTED', label: `${wantedLabel.value}（还没买）` }])
 /** The row's current choice: the closet status once admitted, otherwise what was chosen for it. */
@@ -364,7 +365,7 @@ onBeforeUnmount(() => { alive = false; clearTimeout(timer); for (const url of th
 .quick-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:24px 18px}
 .quick-tile{min-width:0}
 .quick-image{position:relative;display:block;width:100%;aspect-ratio:4/5;padding:0;border:0;border-radius:24px;overflow:hidden;background:var(--surface-alt);cursor:pointer;transition:transform .35s var(--spring),box-shadow .35s ease}
-.quick-image:hover{transform:translateY(-3px);box-shadow:0 18px 30px -20px #0d3b3340}
+.quick-image:hover{transform:translateY(-3px);box-shadow:0 18px 30px -20px #3b241a40}
 .quick-image:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .quick-image img{width:100%;height:100%;object-fit:contain;padding:12px}
 .quick-tile.wanted .quick-image{outline:1.5px dashed var(--accent);outline-offset:-7px}

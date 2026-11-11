@@ -8,20 +8,20 @@ import { useClosetStore } from '../stores/closet'
  * 新手指引 (issue #81): a short tour over the main entrances in the bottom dock (desktop pill or mobile bar).
  * It starts by itself only for an account just registered here (issue #87).
  * Shown once, right after registering (the wardrobe page asks after it loads, or after the preset picker of an
- * empty closet closes); 设置 → 新手指引 replays it. Steps whose element is not on screen (OOTD on mobile, a hidden assistant) are left out.
+ * empty closet closes); 设置 → 新手指引 replays it. Steps whose element is not on screen (a hidden assistant) are left out.
  */
 const KEY = 'yuda.guide.v1:'
 const closet = useClosetStore(); const route = useRoute(); const router = useRouter()
 const open = ref(false), current = ref(0)
 type Step = { title: string; description: string; desktop: string; mobile: string }
+// ToC 改版（二）：跟随新导航（今天 / 衣柜 / ＋ / 试穿 / 我的 + 悬浮的问鱼搭）。P3 再缩成 0～2 个就地提示（#239）。
 const ALL: Step[] = [
-  { title: '添加衣物', description: '拍照或选几张照片就行。鱼搭会自动去背景、做成贴纸，并识别品类、颜色和季节。', desktop: '.dock-add', mobile: '.mobile-add' },
-  { title: '未入柜', description: '还在处理或需要你核对的衣物在这里，可以批量确认入柜。', desktop: '.shell-dock a[href$="/pending"]', mobile: '.mobile-add' },
-  { title: '我的衣柜', description: '全部衣物都在这里。可以直接搜“黑色西裤”“适合海边的上衣”，也能按品类、颜色、季节筛选。', desktop: '.shell-dock a[href$="/wardrobe"]', mobile: '.mobile-nav a[href$="/wardrobe"]' },
-  { title: '组合台', description: '把衣物拖到画板上自由搭配，也可以看“今天穿什么”的推荐，换一件、换一批都不消耗 AI 额度。', desktop: '.shell-dock a[href$="/outfits"]', mobile: '.mobile-nav a[href$="/outfits"]' },
-  { title: 'OOTD 试穿', description: '选好的搭配可以生成上身效果图。', desktop: '.shell-dock a[href$="/ootd"]', mobile: '.mobile-nav a[href$="/try-on"], .mobile-nav a[href$="/ootd"]' },
-  { title: '问鱼搭', description: '不知道怎么操作或想让它帮你找衣服、出搭配，直接问鱼搭助手。', desktop: '.assistant-dock-entry', mobile: '.assistant-dock-entry' },
-  { title: '我的', description: '主题、音效、推荐偏好、回收站和帮助都在这里，随时可以再看一遍这份指引。', desktop: '.shell-dock a[href$="/settings"]', mobile: '.topbar-profile' },
+  { title: '今天', description: '每天给你搭好一叠：左滑换一套，右滑就穿它。换多少次都不花点数。', desktop: '.shell-dock a[href$="/today"]', mobile: '.mobile-nav a[href$="/today"]' },
+  { title: '添加衣服', description: '拍一张就能走，鱼搭在后台帮你抠图、认品类；也可以从常见单品里直接挑。', desktop: '.dock-add', mobile: '.mobile-add' },
+  { title: '衣柜', description: '全部衣服都在这里，可以直接搜“黑色西裤”“适合海边的上衣”。正在整理的也在这里。', desktop: '.shell-dock a[href$="/wardrobe"]', mobile: '.mobile-nav a[href$="/wardrobe"]' },
+  { title: '试穿', description: '把搭配生成上身效果图，看看穿在身上的样子。', desktop: '.shell-dock a[href$="/try"]', mobile: '.mobile-nav a[href$="/try"]' },
+  { title: '问鱼搭', description: '想找衣服、要搭配，或者不知道怎么用，直接问它。', desktop: '.assistant-dock-entry', mobile: '.assistant-dock-entry' },
+  { title: '我的', description: '风格偏好、主题、回收站和帮助都在这里。', desktop: '.shell-dock a[href$="/settings"]', mobile: '.mobile-nav a[href$="/settings"]' },
 ]
 function visible(selector: string) { const el = selector ? document.querySelector<HTMLElement>(selector) : null; return el && el.getClientRects().length ? el : null }
 const steps = ref<{ title: string; description: string; placement?: 'top'; target: () => HTMLElement }[]>([])

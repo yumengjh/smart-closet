@@ -159,15 +159,15 @@ onUnmounted(() => window.removeEventListener('keydown', keys))
 /* Teleported to <body>, so not scoped. */
 .garment-quick-scrim { position: fixed; inset: 0; z-index: 940; background: color-mix(in srgb, var(--paper) 55%, transparent); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); opacity: 0; transition: opacity .35s ease; }
 .garment-quick-scrim.on { opacity: 1; }
-.garment-quick { position: fixed; left: 50%; top: 50%; z-index: 941; display: grid; grid-template-columns: 1.05fr 1fr; width: min(860px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); overflow: hidden; border-radius: 32px; background: var(--surface); box-shadow: 0 40px 90px -30px #0d3b3366, 0 0 0 1px var(--line); transform: translate(-50%, -50%); outline: none; }
+.garment-quick { position: fixed; left: 50%; top: 50%; z-index: 941; display: grid; grid-template-columns: 1.05fr 1fr; width: min(860px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); overflow: hidden; border-radius: 32px; background: var(--surface); box-shadow: 0 40px 90px -30px #3b241a66, 0 0 0 1px var(--line); transform: translate(-50%, -50%); outline: none; }
 .garment-quick-image { position: relative; display: grid; place-items: center; min-height: 460px; background: color-mix(in srgb, var(--tint) 18%, var(--surface-alt)); }
-.garment-quick-image img { position: relative; z-index: 1; max-width: 76%; max-height: 360px; object-fit: contain; filter: drop-shadow(0 18px 20px #0d3b3326); user-select: none; }
+.garment-quick-image img { position: relative; z-index: 1; max-width: 76%; max-height: 360px; object-fit: contain; filter: drop-shadow(0 18px 20px #3b241a26); user-select: none; }
 .garment-quick-image img.hidden { visibility: hidden; }
-.garment-quick-floor { position: absolute; left: 26%; right: 26%; bottom: 13%; height: 16px; border-radius: 50%; background: radial-gradient(closest-side, #0d3b3326, transparent); }
+.garment-quick-floor { position: absolute; left: 26%; right: 26%; bottom: 13%; height: 16px; border-radius: 50%; background: radial-gradient(closest-side, #3b241a26, transparent); }
 .garment-quick-pager { position: absolute; left: 50%; bottom: 16px; z-index: 2; display: flex; align-items: center; gap: 4px; padding: 3px; border-radius: 999px; transform: translateX(-50%); background: var(--glass); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 0 0 1px var(--line); }
 .garment-quick-pager small { min-width: 44px; font-size: 12px; text-align: center; color: var(--muted); font-variant-numeric: tabular-nums; }
 .garment-quick-pager .ant-btn { width: 32px; min-width: 32px; height: 32px; color: var(--muted-strong); }
-.garment-quick-ghost { position: fixed; z-index: 945; margin: 0; object-fit: contain; transform-origin: 0 0; pointer-events: none; filter: drop-shadow(0 18px 20px #0d3b3326); }
+.garment-quick-ghost { position: fixed; z-index: 945; margin: 0; object-fit: contain; transform-origin: 0 0; pointer-events: none; filter: drop-shadow(0 18px 20px #3b241a26); }
 .garment-quick-swap-enter-active, .garment-quick-swap-leave-active { transition: opacity .2s ease, transform .3s cubic-bezier(.2,.9,.15,1); }
 .garment-quick-swap-enter-from { opacity: 0; transform: translateX(16px) scale(.97); }
 .garment-quick-swap-leave-to { opacity: 0; transform: translateX(-16px) scale(.97); }

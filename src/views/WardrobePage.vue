@@ -479,7 +479,7 @@ watch(() => route.query.presets, value => { if (value !== '1') return; presetsOp
 .closet-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:8px 0 18px}
 .closet-search.ant-input-affix-wrapper{flex:0 1 340px;min-width:200px;height:42px;padding:0 8px 0 16px;border:0;border-radius:999px;background:var(--surface-alt);box-shadow:none;transition:background .2s,box-shadow .2s}
 .closet-search.ant-input-affix-wrapper:hover{background:color-mix(in srgb,var(--surface-alt) 60%,var(--selection-bg))}
-.closet-search.ant-input-affix-wrapper-focused{background:var(--surface);box-shadow:0 0 0 1.5px var(--brand),0 8px 24px -12px #0d3b3340}
+.closet-search.ant-input-affix-wrapper-focused{background:var(--surface);box-shadow:0 0 0 1.5px var(--brand),0 8px 24px -12px #3b241a40}
 .closet-search :deep(.ant-input){background:transparent}
 .closet-search :deep(.ant-input-prefix){margin-right:8px;color:var(--muted)}
 .closet-chip.ant-btn{display:inline-flex;align-items:center;gap:6px;height:42px;padding:0 16px;border:0;border-radius:999px;color:var(--muted-strong);background:transparent;box-shadow:inset 0 0 0 1px var(--line)}
@@ -552,7 +552,7 @@ watch(() => route.query.presets, value => { if (value !== '1') return; presetsOp
 </style>
 <style>
 /* 筛选面板（a-popover 挂在 body 下，容器样式不能 scoped）。 */
-.closet-filter-pop .ant-popover-inner { padding: 18px 18px 14px; border-radius: 20px; box-shadow: 0 24px 60px -20px #0d3b3340, 0 0 0 1px var(--line); }
+.closet-filter-pop .ant-popover-inner { padding: 18px 18px 14px; border-radius: 20px; box-shadow: 0 24px 60px -20px #3b241a40, 0 0 0 1px var(--line); }
 .closet-filter-panel { display: grid; grid-template-columns: auto 260px; align-items: center; gap: 10px 14px; }
 .closet-filter-panel > label { font-size: 13px; color: var(--muted); }
 .closet-filter-panel > .ant-select { width: 100%; }

@@ -5,8 +5,8 @@ import { useFloatingPosition } from './useFloatingPosition'
 import BloubAvatar from './BloubAvatar.vue'
 import { avatarPreferences, cueAllowed, duration, idleStates, type AvatarCue, type AvatarExpression } from './avatar'
 import type { StateId } from './bloub/states'
-// dock: 清新改版 §3 — the companion lives in the bottom dock as the 问鱼搭 pill (#assistant-dock-slot in ClosetShell)
-// instead of a draggable orb in the corner; the face animations stay the same.
+// dock: the companion is the 问鱼搭 button in #assistant-dock-slot (ClosetShell). Since ToC 改版（二）T5 that slot is a fixed
+// floating button at the bottom right (above the dock on phones), not part of the dock; the face animations stay the same.
 const props = defineProps<{ open: boolean; mood: string; busy: boolean; phase: string; tool: string; cue: AvatarCue | null; suppressed?: boolean; dock?: boolean }>()
 const emit = defineEmits<{ toggle: [] }>()
 const closet=useClosetStore(), hovered=ref(false), pressed=ref(false), nearby=ref(false)

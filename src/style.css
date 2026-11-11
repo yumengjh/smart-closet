@@ -1,28 +1,29 @@
-/* Keep numerically in sync with src/theme/tokens.ts */
+/* Keep numerically in sync with src/theme/tokens.ts. 色板：ToC 改版（二）T6（奶油 + 番茄红，薄荷作辅助色）。 */
 :root {
   font-family: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', system-ui, sans-serif;
   color-scheme: light; color: var(--ink); background: var(--paper); font-synthesis: none; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased;
-  --ink: #16201e; --muted: #5f6b68; --muted-copy: var(--muted); --muted-strong: #4f5b58; --muted-subtle: #86908d;
-  --line: #e6edeb; --accent: #0e8a76; --accent-strong: #0b6f5f; --surface: #fff; --surface-alt: #f1f6f4; --paper: #f7faf9;
-  --overlay: #ffffffed; --canvas: #fff; --board: #fff; --action-bg: #16201e; --action-hover: #2f3c39; --action-fg: #fff;
-  --selection-bg: #e6f1ed; --accent-soft: #e6f6f2; --info-bg: #f0f5ff; --info: #385eac;
+  --ink: #1f1b16; --muted: #6b6157; --muted-copy: var(--muted); --muted-strong: #554c43; --muted-subtle: #94897c;
+  --line: #e8dfd2; --accent: #b9432c; --accent-strong: #a83a26; --surface: #fffdf9; --surface-alt: #f3ece2; --paper: #f7f2eb;
+  --overlay: #fffdf9ed; --canvas: #fff; --board: #fff; --action-bg: #1f1b16; --action-hover: #3a332b; --action-fg: #fffdf9;
+  --selection-bg: #f7e4dc; --accent-soft: #fbe6de; --info-bg: #f0f5ff; --info: #385eac;
   --success-bg: #e9f6f1; --success: #1f8a6e; --warning-bg: #fff9ee; --warning: #956516; --danger-bg: #fff4f3; --danger: #bd4b4b;
-  --assistant-bg: #e6f6f2; --assistant-hover: #d6f0e9;
-  --focus-ring: #8fdccb; --info-line: #e1e7f7; --success-line: #d7ede4; --warning-line: #f1e6ce; --danger-line: #f5dfde;
+  --assistant-bg: #fbe6de; --assistant-hover: #f6d6ca;
+  --focus-ring: #f0a08f; --info-line: #e1e7f7; --success-line: #d7ede4; --warning-line: #f1e6ce; --danger-line: #f5dfde;
   --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 20px; --space-6: 24px; --space-7: 32px; --space-8: 40px; --space-9: 48px;
-  --brand: #1db39a; --glass: #ffffffe0; --dock-shadow: 0 14px 40px -14px #0d3b3340; --spring: cubic-bezier(.3, 1.45, .45, 1); --ease-out: cubic-bezier(.2, .8, .2, 1);
+  --brand: #e2553f; --mint: #1db39a; --glass: #fffdf9e0; --dock-shadow: 0 14px 40px -14px #3b241a40;
+  --display: 'DM Serif Display', 'Songti SC', 'Noto Serif SC', 'STSong', serif; --spring: cubic-bezier(.3, 1.45, .45, 1); --ease-out: cubic-bezier(.2, .8, .2, 1);
   --radius-sm: 8px; --radius-md: 10px; --radius-lg: 14px; --radius-xl: 20px;
 }
 :root[data-theme='dark'] {
   color-scheme: dark; color: var(--ink); background: var(--paper);
-  --ink: #ecf2f0; --muted: #a5b1ae; --muted-copy: var(--muted); --muted-strong: #c3cdca; --muted-subtle: #8b9895;
-  --line: #2a3633; --accent: #42d3b8; --accent-strong: #6fe0ca; --surface: #18201e; --surface-alt: #1f2927; --paper: #0f1413;
-  --overlay: #18201eed; --canvas: #fff; --board: #1f2927; --action-bg: #ecf2f0; --action-hover: #cbd6d3; --action-fg: #0f1413;
-  --selection-bg: #24322f; --accent-soft: #15302a; --info-bg: #25344d; --info: #a9c1ff;
+  --ink: #f5eee5; --muted: #b5a99a; --muted-copy: var(--muted); --muted-strong: #d3c8ba; --muted-subtle: #8d8274;
+  --line: #352d26; --accent: #f08a73; --accent-strong: #f6a693; --surface: #1f1a16; --surface-alt: #29231e; --paper: #15110e;
+  --overlay: #1f1a16ed; --canvas: #fff; --board: #29231e; --action-bg: #f5eee5; --action-hover: #ddd2c4; --action-fg: #15110e;
+  --selection-bg: #3a2a22; --accent-soft: #3b231a; --info-bg: #25344d; --info: #a9c1ff;
   --success-bg: #1d352c; --success: #5fd0a8; --warning-bg: #3e3320; --warning: #e7bf72; --danger-bg: #3c292d; --danger: #f19a9b;
-  --assistant-bg: #15302a; --assistant-hover: #1c3c35;
-  --focus-ring: #42d3b8; --info-line: #354b6b; --success-line: #2a4b3f; --warning-line: #665533; --danger-line: #684148;
-  --brand: #42d3b8; --glass: #18201eeb; --dock-shadow: 0 14px 40px -14px #00000080;
+  --assistant-bg: #3b231a; --assistant-hover: #47291f;
+  --focus-ring: #f08a73; --info-line: #354b6b; --success-line: #2a4b3f; --warning-line: #665533; --danger-line: #684148;
+  --brand: #f07a62; --mint: #42d3b8; --glass: #1f1a16eb; --dock-shadow: 0 14px 40px -14px #00000080;
 }
 * { box-sizing: border-box; }
 html, body, #app { min-height: 100%; margin: 0; }

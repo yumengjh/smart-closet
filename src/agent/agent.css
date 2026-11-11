@@ -142,41 +142,35 @@
 
 .assistant-ai-note { margin: 2px 0 0; text-align: center; font-size: 10px; color: var(--muted-subtle); }
 
-/* 清新改版 §3：问鱼搭胶囊（AssistantOrb dock 变体，位于底部导航）与下方居中的聊天窗口（center 布局）。
+/* 问鱼搭入口（AssistantOrb dock 变体）：ToC 改版（二）T5 起是右下角的悬浮表情（.assistant-fab-slot，ClosetShell），
+   不再放在底部导航里。桌面是“表情 + 轮换提问 + 快捷键”的玻璃胶囊，手机只留圆形表情。
    Inner parts are <em>/<b>/<i> so Ant Design's `.ant-btn > span` rules do not reach them. */
-.assistant-dock-entry.ant-btn { position: relative; display: flex; align-items: center; gap: 10px; width: 252px; height: 46px; padding: 0 16px 0 6px; border: 0; border-radius: 999px; color: var(--accent-strong); background: var(--accent-soft); box-shadow: none; overflow: hidden; transition: background .2s ease, transform .2s var(--spring); }
-html .assistant-dock-entry.ant-btn:hover, html .assistant-dock-entry.ant-btn:focus-visible { color: var(--accent-strong); background: color-mix(in srgb, var(--brand) 20%, var(--surface)); }
-.assistant-dock-entry.ant-btn:active { transform: scale(.97); }
-.assistant-dock-face { display: grid; place-items: center; flex: none; width: 34px; height: 34px; font-style: normal; }
+.assistant-dock-entry.ant-btn { position: relative; display: flex; align-items: center; gap: 10px; width: 260px; height: 54px; padding: 0 16px 0 8px; border: 0; border-radius: 999px; color: var(--accent-strong); background: var(--glass); backdrop-filter: blur(18px) saturate(140%); -webkit-backdrop-filter: blur(18px) saturate(140%); box-shadow: var(--dock-shadow), 0 0 0 1px var(--line); overflow: hidden; transition: background .2s ease, transform .2s var(--spring); }
+html .assistant-dock-entry.ant-btn:hover, html .assistant-dock-entry.ant-btn:focus-visible { color: var(--accent-strong); background: color-mix(in srgb, var(--brand) 12%, var(--surface)); }
+.assistant-dock-entry.ant-btn:active { transform: scale(.95); }
+.assistant-dock-face { display: grid; place-items: center; flex: none; width: 38px; height: 38px; border-radius: 50%; font-style: normal; background: var(--accent-soft); }
 .assistant-dock-entry.active .assistant-dock-face { visibility: hidden; }
 .assistant-dock-text { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; font-weight: 400; font-size: 14px; }
 .assistant-dock-text i { flex: 1; min-width: 0; overflow: hidden; font-style: normal; text-align: left; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
-.assistant-dock-text kbd { flex: none; padding: 1px 6px; border-radius: 6px; font: 11px/16px inherit; font-family: inherit; color: var(--accent-strong); background: var(--surface); }
+.assistant-dock-text kbd { flex: none; padding: 1px 6px; border-radius: 6px; font: 11px/16px inherit; font-family: inherit; color: var(--accent-strong); background: var(--surface-alt); }
 .assistant-dock-short { display: none; font-weight: 400; }
 .dock-hint-enter-active, .dock-hint-leave-active { transition: opacity .3s ease, transform .3s ease; }
 .dock-hint-enter-from { opacity: 0; transform: translateY(8px); }
 .dock-hint-leave-to { opacity: 0; transform: translateY(-8px); }
-@media (max-width: 1279px) { .assistant-dock-entry.ant-btn { width: auto; padding-right: 16px; } .assistant-dock-text i { display: none; } .assistant-dock-text { flex: none; } .assistant-dock-text::before { content: '问鱼搭'; color: var(--accent-strong); } }
+@media (max-width: 1279px) { .assistant-dock-entry.ant-btn { width: auto; padding-right: 16px; } .assistant-dock-text i { display: none; } .assistant-dock-text { flex: none; } .assistant-dock-text::before { content: '问鱼搭'; color: var(--accent-strong); font-weight: 500; } }
 @media (max-width: 1023px) {
-  .assistant-dock-entry.ant-btn { flex-direction: column; justify-content: center; gap: 2px; width: 100%; min-width: 0; height: 52px; padding: 0; border-radius: 18px; background: transparent; color: var(--muted-subtle); font-size: 11px; }
-  html .assistant-dock-entry.ant-btn:hover, html .assistant-dock-entry.ant-btn:focus-visible { background: transparent; color: var(--ink); }
-  .assistant-dock-face { width: 28px; height: 28px; border-radius: 50%; background: var(--accent-soft); }
-  .assistant-dock-face .bloub-orb-shape { --orb-size: 26px !important; }
-  .assistant-dock-face .bloub-orb-shape > svg { width: 32.5px; height: 32.5px; }
-  .assistant-dock-text { display: none; }
-  .assistant-dock-short { display: block; line-height: 1.2; }
-  html[data-nav-labels='icon'] .assistant-dock-short { display: none; }
-  html[data-nav-labels='text'] .assistant-dock-face { display: none; }
-  html[data-nav-labels='text'] .assistant-dock-short { font-size: 13px; }
+  .assistant-dock-entry.ant-btn { justify-content: center; width: 56px; min-width: 56px; height: 56px; padding: 0; }
+  .assistant-dock-face { width: 44px; height: 44px; }
+  .assistant-dock-text, .assistant-dock-short { display: none; }
 }
-.assistant-panel.center { bottom: calc(var(--dock-space, 100px) + 6px); border-radius: 20px; box-shadow: 0 30px 80px -24px #0d3b3340, 0 0 0 1px var(--line); border: 0; }
+.assistant-panel.center { bottom: calc(var(--dock-space, 100px) + 6px); border-radius: 20px; box-shadow: 0 30px 80px -24px #3b241a40, 0 0 0 1px var(--line); border: 0; }
 @media (prefers-reduced-motion: reduce) { .assistant-dock-entry.ant-btn, .dock-hint-enter-active, .dock-hint-leave-active { transition: none; } }
 
 /* ===== 清新改版 §3.1：助手窗口与对话重新设计 =====
    头部：记录开关 / 表情 + “鱼搭” + 会话名 / 新对话、更多（含窗口位置）、收起；无分隔线，大留白。
    主体：可选的聊天记录侧栏 + 对话；你的消息是右侧薄荷气泡，鱼搭的回复不加气泡、左侧一个小圆点，悬停出现复制和执行记录。
    输入：一张圆角卡片，文字在上，下面一行是“正在看的页面”、选项、剩余条数和圆形发送键。 */
-.assistant-panel { border: 0; background: var(--surface); box-shadow: 0 30px 80px -24px #0d3b3340, 0 0 0 1px var(--line); }
+.assistant-panel { border: 0; background: var(--surface); box-shadow: 0 30px 80px -24px #3b241a40, 0 0 0 1px var(--line); }
 .assistant-panel.overlay, .assistant-panel.floating { border-radius: 20px; }
 .assistant-panel .assistant-header { gap: 4px; padding: 12px 12px 8px; border-bottom: 0; background: transparent; }
 .assistant-panel .assistant-identity { flex: 1; gap: 8px; margin-left: 2px; }
@@ -190,7 +184,7 @@ html .assistant-dock-entry.ant-btn:hover, html .assistant-dock-entry.ant-btn:foc
 
 .assistant-body { position: relative; display: flex; flex: 1; min-height: 0; }
 .assistant-main { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }
-.assistant-rail { position: absolute; z-index: 4; inset: 0 auto 0 0; display: flex; flex-direction: column; width: 232px; max-width: 80%; padding: 4px 10px 12px 12px; background: var(--surface); box-shadow: 12px 0 30px -18px #0d3b3340; }
+.assistant-rail { position: absolute; z-index: 4; inset: 0 auto 0 0; display: flex; flex-direction: column; width: 232px; max-width: 80%; padding: 4px 10px 12px 12px; background: var(--surface); box-shadow: 12px 0 30px -18px #3b241a40; }
 .assistant-rail-scrim { position: absolute; z-index: 3; inset: 0; background: color-mix(in srgb, var(--paper) 55%, transparent); }
 .assistant-panel.wide-rail .assistant-rail { position: relative; flex: none; box-shadow: none; border-right: 1px solid var(--line); }
 .assistant-panel.wide-rail .assistant-rail-scrim { display: none; }
@@ -237,7 +231,7 @@ html .assistant-dock-entry.ant-btn:hover, html .assistant-dock-entry.ant-btn:foc
 
 .assistant-panel .assistant-composer { padding: 6px 16px 10px; border-top: 0; background: transparent; }
 .assistant-panel .assistant-input-box { flex-direction: column; align-items: stretch; gap: 4px; padding: 10px 10px 8px 14px; border: 0; border-radius: 22px; background: var(--surface-alt); transition: background .2s, box-shadow .2s; }
-.assistant-panel .assistant-input-box:focus-within { background: var(--surface); box-shadow: 0 0 0 1.5px var(--brand), 0 10px 30px -14px #0d3b3340; }
+.assistant-panel .assistant-input-box:focus-within { background: var(--surface); box-shadow: 0 0 0 1.5px var(--brand), 0 10px 30px -14px #3b241a40; }
 .assistant-panel .assistant-input-box .ant-input { padding: 2px 0; background: transparent; font-size: 14px; line-height: 1.7; }
 .assistant-input-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .assistant-context-chip { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 46%; height: 26px; padding: 0 10px; border-radius: 999px; font-size: 11px; color: var(--muted-strong); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); cursor: default; }
@@ -267,7 +261,7 @@ html .assistant-dock-entry.ant-btn:hover, html .assistant-dock-entry.ant-btn:foc
 
 /* 清新改版 §3.4：下方居中窗口打开时，导航胶囊让开（窗口占它的位置），收起后回来。 */
 html.assistant-center-open .shell-dock { opacity: 0; transform: translate(-50%, 16px); pointer-events: none; }
-.assistant-panel.center { border-radius: 24px; box-shadow: 0 40px 80px -30px #0d3b3366, 0 0 0 1px var(--line); }
+.assistant-panel.center { border-radius: 24px; box-shadow: 0 40px 80px -30px #3b241a66, 0 0 0 1px var(--line); }
 
 /* 清新改版 §3.3/3.4：背景模糊、边缘拖拽。 */
 .assistant-veil { position: fixed; z-index: 890; inset: 0; background: color-mix(in srgb, var(--paper) 38%, transparent); backdrop-filter: blur(10px) saturate(115%); -webkit-backdrop-filter: blur(10px) saturate(115%); }

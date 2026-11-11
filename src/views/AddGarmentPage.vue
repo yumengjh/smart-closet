@@ -183,6 +183,6 @@ async function submit() {
 .entry-switch.ant-segmented{flex:1;padding:4px;border:0;background:var(--surface-alt)}
 .entry-switch :deep(.ant-segmented-group){width:100%}.entry-switch :deep(.ant-segmented-item){flex:1}
 .entry-switch :deep(.ant-segmented-item-label){min-height:40px;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;padding:0 12px}
-.entry-switch :deep(.ant-segmented-item-selected),.entry-switch :deep(.ant-segmented-thumb){background:var(--surface);color:var(--ink);box-shadow:0 4px 12px -6px #0d3b3330}
+.entry-switch :deep(.ant-segmented-item-selected),.entry-switch :deep(.ant-segmented-thumb){background:var(--surface);color:var(--ink);box-shadow:0 4px 12px -6px #3b241a30}
 @media(max-width:767px){.entry-bar{margin-bottom:16px}.entry-switch :deep(.ant-segmented-item-label){font-size:14px;padding:0 8px}}
 </style>

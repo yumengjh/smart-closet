@@ -31,7 +31,7 @@ async function submit() {
   try {
     closet.user = await closetApi.login(username.value, password.value)
     notice.value = ''
-    await router.replace(closet.user.mustChangePassword ? '/settings?firstLogin=1' : '/wardrobe')
+    await router.replace(closet.user.mustChangePassword ? '/settings?firstLogin=1' : '/today')
   } catch (cause) { error.value = cause instanceof Error ? cause.message : '登录失败，请稍后重试。' }
   finally { busy.value = false }
 }

@@ -7,7 +7,9 @@ import { installRouteProgress } from './composables/useRouteProgress'
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
-    { path: '/', redirect: '/wardrobe' },
+    { path: '/', redirect: '/today' },
+    { path: '/today', component: () => import('./views/TodayPage.vue') },
+    { path: '/try', component: () => import('./views/TryHubPage.vue') },
     { path: '/login', component: () => import('./views/LoginPage.vue') },
     { path: '/register', component: () => import('./views/RegisterPage.vue') },
     { path: '/welcome', component: () => import('./views/WelcomePage.vue') },
@@ -32,7 +34,7 @@ export const router = createRouter({
     { path: '/garment/:id', component: () => import('./views/GarmentPage.vue') },
     { path: '/trash', component: () => import('./views/TrashPage.vue') },
     { path: '/review', component: () => import('./views/ReviewPage.vue') },
-    { path: '/:pathMatch(.*)*', redirect: '/wardrobe' },
+    { path: '/:pathMatch(.*)*', redirect: '/today' },
   ],
   // The wardrobe restores its own position after its list has loaded (issue #3); everything else starts at the top.
   scrollBehavior: (to) => to.path === '/wardrobe' ? false : { top: 0, behavior: 'smooth' },
