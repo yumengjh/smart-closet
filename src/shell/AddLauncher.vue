@@ -106,8 +106,8 @@ html[data-nav-labels='text'] .add-sheet-card { bottom: calc(70px + env(safe-area
 .add-sheet-tile.ant-btn:active { transform: scale(.92); background: var(--surface-alt); }
 .add-sheet-tile.ant-btn:active .add-sheet-icon { transform: scale(.9) rotate(-6deg); }
 .add-sheet-icon { transition: transform .2s cubic-bezier(.34, 1.56, .64, 1); }
-.add-sheet-icon { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 14px; font-style: normal; font-size: 20px; color: var(--action-fg); background: var(--action-bg); }
-.add-sheet-tile:first-child .add-sheet-icon { background: var(--accent); color: #fff; }
+.add-sheet-icon { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 14px; font-style: normal; font-size: 20px; color: var(--ink); background: var(--surface-alt); }
+.add-sheet-tile:first-child .add-sheet-icon { background: var(--action-bg); color: var(--action-fg); }
 .add-sheet-label { font-size: 12px; font-weight: 500; line-height: 1.3; white-space: nowrap; }
 .add-sheet[data-mode='icon'] .add-sheet-label { display: none; }
 .add-sheet[data-mode='icon'] .add-sheet-tile.ant-btn { min-height: 68px; }

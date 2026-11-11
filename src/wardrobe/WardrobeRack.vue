@@ -111,16 +111,16 @@ onUnmounted(() => observer?.disconnect())
 </template>
 
 <style scoped>
-.wardrobe-rack { --rail: #bfdcd3; --rail-end: #9fcfc1; --bayfill: #f3f7f6; --spring: cubic-bezier(.3, 1.45, .45, 1); --ease: cubic-bezier(.2, .8, .2, 1); }
-:root[data-theme='dark'] .wardrobe-rack { --rail: #2f4b44; --rail-end: #3e6a5e; --bayfill: #151c1a; }
+.wardrobe-rack { --rail: #d4d4d1; --rail-end: #b8b8b5; --bayfill: #f5f5f3; --spring: cubic-bezier(.3, 1.45, .45, 1); --ease: cubic-bezier(.2, .8, .2, 1); }
+:root[data-theme='dark'] .wardrobe-rack { --rail: #333331; --rail-end: #4a4a47; --bayfill: #151515; }
 
 /* 色谱：按颜色家族分段，宽度 = 件数 */
 .rack-palette { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 16px; margin: 30px 0 6px; font-size: 12px; color: var(--muted); }
 .rack-palette-title { white-space: nowrap; }
 .rack-spectrum { position: relative; display: flex; height: 12px; gap: 3px; }
-.rack-spectrum-tip { position: absolute; bottom: calc(100% + 12px); z-index: 3; padding: 4px 10px; border-radius: 999px; white-space: nowrap; font-size: 12px; color: var(--ink); pointer-events: none; opacity: 0; transform: translate(-50%, 4px); background: var(--glass); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 6px 18px -8px #3b241a55, 0 0 0 1px var(--line); transition: opacity .2s, transform .3s var(--spring), left .35s var(--spring); }
+.rack-spectrum-tip { position: absolute; bottom: calc(100% + 12px); z-index: 3; padding: 4px 10px; border-radius: 999px; white-space: nowrap; font-size: 12px; color: var(--ink); pointer-events: none; opacity: 0; transform: translate(-50%, 4px); background: var(--glass); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 6px 18px -8px #00000055, 0 0 0 1px var(--line); transition: opacity .2s, transform .3s var(--spring), left .35s var(--spring); }
 .rack-spectrum-tip.show { opacity: 1; transform: translate(-50%, 0); }
-.rack-spectrum i { display: block; height: 100%; border-radius: 4px; box-shadow: inset 0 0 0 1px #0d1f1b14; cursor: default; transform-origin: 50% 50%; animation: rack-grow .9s var(--ease) backwards; transition: transform .3s var(--spring), opacity .2s; }
+.rack-spectrum i { display: block; height: 100%; border-radius: 4px; box-shadow: inset 0 0 0 1px #00000014; cursor: default; transform-origin: 50% 50%; animation: rack-grow .9s var(--ease) backwards; transition: transform .3s var(--spring), opacity .2s; }
 .rack-spectrum i:first-child { border-radius: 999px 4px 4px 999px; }
 .rack-spectrum i:last-child { border-radius: 4px 999px 999px 4px; }
 .rack-spectrum i:only-child { border-radius: 999px; }
@@ -169,8 +169,8 @@ onUnmounted(() => observer?.disconnect())
 @media (hover: hover) { .rack-lane:hover .rack-cloth { transform: none; } }
 .rack-bay.holding .rack-cloth { transform: none; }
 .rack-fig { position: relative; display: block; }
-.rack-cloth img { display: block; max-width: 150px; max-height: 210px; object-fit: contain; user-select: none; filter: drop-shadow(0 10px 12px #3b241a18) drop-shadow(-6px 0 10px #3b241a0f); transition: filter .4s, transform .5s var(--spring); }
-.rack-hang:is(:hover, :focus-visible) .rack-cloth img { transform: scale(1.04); filter: drop-shadow(0 18px 18px #3b241a26); }
+.rack-cloth img { display: block; max-width: 150px; max-height: 210px; object-fit: contain; user-select: none; filter: drop-shadow(0 10px 12px #00000018) drop-shadow(-6px 0 10px #0000000f); transition: filter .4s, transform .5s var(--spring); }
+.rack-hang:is(:hover, :focus-visible) .rack-cloth img { transform: scale(1.04); filter: drop-shadow(0 18px 18px #00000026); }
 .rack-flag { position: absolute; top: 40px; left: 18px; z-index: 6; padding: 1px 7px; border-radius: 999px; font-size: 11px; color: var(--warning); background: var(--warning-bg); }
 .rack-flag.preset { color: var(--muted-strong); background: var(--surface-alt); }
 .rack-flag.wanted { color: var(--accent-strong); background: var(--accent-soft); }

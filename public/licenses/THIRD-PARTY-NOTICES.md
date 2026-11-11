@@ -9,4 +9,3 @@ Both are optional modules loaded by the realtime try-on/recording flow. The appl
 
 - canvas-confetti 1.9.3 — ISC. Notice in `canvas-confetti-ISC.txt`. Loaded on demand only when a real completion is celebrated. https://www.npmjs.com/package/canvas-confetti/v/1.9.3
 - motion 12.23.12 — MIT. Notice in `motion-MIT.txt`. Spring animations for the outfit cover cards. https://www.npmjs.com/package/motion/v/12.23.12
-- DM Serif Display (via @fontsource/dm-serif-display 5.2.8, latin 400 subset) — SIL Open Font License 1.1, reproduced in `dm-serif-display-OFL-1.1.txt`. Used for the date masthead numbers. https://www.npmjs.com/package/@fontsource/dm-serif-display/v/5.2.8

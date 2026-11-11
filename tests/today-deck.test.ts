@@ -1,14 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { appendUnique, collageSlots, coverTint, issueNo, masthead, outfitKey, stampOpacity, swipeOutcome, TODAY_OCCASIONS } from '../src/today/deck.ts'
+import { appendUnique, collageSlots, coverTint, outfitKey, stampOpacity, swipeOutcome, TODAY_OCCASIONS } from '../src/today/deck.ts'
 
 const url = (p: string) => `/media/${p}`
-
-test('today: masthead shows month.day and weekday; issue numbers are two digits', () => {
-  assert.deepEqual(masthead(new Date(2026, 10, 11)), { day: '11.11', week: '周三' })
-  assert.deepEqual(masthead(new Date(2026, 0, 4)), { day: '01.04', week: '周日' })
-  assert.equal(issueNo(3), 'NO.03')
-})
 
 test('today: occasions map to existing enum values only', () => {
   const known = new Set(['DAILY', 'COMMUTE', 'DATE', 'SPORT', 'OUTDOOR', 'FORMAL', 'TRAVEL', 'HOME'])

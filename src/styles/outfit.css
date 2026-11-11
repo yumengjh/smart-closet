@@ -287,7 +287,7 @@
 .outfit-library-actions .ant-btn { height: 40px; }
 .outfit-library-grid { gap: 28px 20px; }
 .outfit-card-preview { border: 0; border-radius: 24px; background: var(--surface-alt); transition: transform .35s var(--spring), box-shadow .35s ease; }
-.outfit-card-preview:hover { transform: translateY(-4px); box-shadow: 0 18px 30px -18px #3b241a40; }
+.outfit-card-preview:hover { transform: translateY(-4px); box-shadow: 0 18px 30px -18px #00000040; }
 .outfit-card-count { border: 0; border-radius: 999px; background: var(--glass); backdrop-filter: blur(8px); }
 .outfit-card-details { padding: 12px 6px 0; }
 .outfit-empty { border: 0; border-radius: 32px; background: var(--surface-alt); }

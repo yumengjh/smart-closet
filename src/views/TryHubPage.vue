@@ -38,9 +38,9 @@ const mode = computed<'image' | 'live'>({
 .try-hub-switch { max-width: 520px; margin: 4px auto 16px; padding: 0 16px; }
 .try-hub-switch :deep(.ant-segmented) { padding: 4px; border-radius: 999px; }
 .try-hub-switch :deep(.ant-segmented-item) { border-radius: 999px; }
-.try-live { position: relative; display: flex; flex-direction: column; justify-content: flex-end; gap: 8px; max-width: 560px; min-height: 420px; margin: 0 auto; padding: 24px; overflow: hidden; border-radius: 30px; color: #fff; background: linear-gradient(160deg, #3a2a22, #15110e); }
+.try-live { position: relative; display: flex; flex-direction: column; justify-content: flex-end; gap: 8px; max-width: 560px; min-height: 420px; margin: 0 auto; padding: 24px; overflow: hidden; border-radius: 30px; color: #fff; background: linear-gradient(160deg, #2a2a2a, #0d0d0d); }
 .try-live-frame { position: absolute; inset: 20px 20px 170px; display: grid; place-items: center; border: 2px dashed #ffffff40; border-radius: 22px; color: #ffffff4d; font-size: 56px; }
 .try-live h2 { position: relative; margin: 0; font-size: 22px; }
-.try-live-go.ant-btn, html .try-live-go.ant-btn:hover { position: relative; color: #fff; background: var(--brand); }
+.try-live-go.ant-btn, html .try-live-go.ant-btn:hover { position: relative; border: 0; color: #111; background: #fff; }
 .try-live p { position: relative; margin: 0 0 12px; color: #ffffffb3; font-size: 14px; }
 </style>

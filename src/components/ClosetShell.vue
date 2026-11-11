@@ -199,7 +199,7 @@ async function signOut() {
 </script>
 
 <template>
-  <a-config-provider :theme="closetTheme" :locale="zhCN">
+  <a-config-provider :theme="closetTheme" :locale="zhCN" :auto-insert-space-in-button="false">
     <a-app>
       <a-modal :open="accountStale" title="登录账号已切换" :closable="false" :mask-closable="false" :keyboard="false" centered :mask-style="{ backdropFilter: 'blur(14px)' }" :z-index="3000">
         <p>这个浏览器已在另一个窗口切换了登录账号。本页还停留在之前的账号，为避免照片或资料提交到新账号，已暂停所有操作。</p>

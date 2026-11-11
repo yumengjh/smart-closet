@@ -365,7 +365,7 @@ onBeforeUnmount(() => { alive = false; clearTimeout(timer); for (const url of th
 .quick-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:24px 18px}
 .quick-tile{min-width:0}
 .quick-image{position:relative;display:block;width:100%;aspect-ratio:4/5;padding:0;border:0;border-radius:24px;overflow:hidden;background:var(--surface-alt);cursor:pointer;transition:transform .35s var(--spring),box-shadow .35s ease}
-.quick-image:hover{transform:translateY(-3px);box-shadow:0 18px 30px -20px #3b241a40}
+.quick-image:hover{transform:translateY(-3px);box-shadow:0 18px 30px -20px #00000040}
 .quick-image:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .quick-image img{width:100%;height:100%;object-fit:contain;padding:12px}
 .quick-tile.wanted .quick-image{outline:1.5px dashed var(--accent);outline-offset:-7px}

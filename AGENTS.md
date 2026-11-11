@@ -3,7 +3,7 @@
 - 所有可见交互控件统一使用 Ant Design Vue：按钮、输入、选择、勾选、弹层、提示、确认、上传入口等。禁止混用原生 select、checkbox、textarea、浏览器 prompt/confirm。定制样式也以组件库为基础；隐藏文件输入及画布底层机制可以保留。
 - 沿用产品现有主题、间距与音效服务；不要为单个功能引入另一套控件风格。
 - 深浅主题开关使用 Ant Design Vue 控件，沿用产品语义色；默认浅色，保存在当前浏览器。主题只改变界面配色，不改变穿搭画板导出图。
-- 导航是底部悬浮胶囊（src/shell/dock.css，所有宽度共用），没有侧栏：今天 / 衣柜 / ＋ / 试穿 / 我的。配色是奶油底 + 番茄红强调、薄荷作辅助色（style.css 与 src/theme/tokens.ts 同步，文字强调色用 --accent-strong，对比度 ≥ 4.5:1）。依据 smart-closet-server 的 docs/design/2026-11-11-ToC改版（二）：今日封面方向与实现设计.md。
+- 导航是底部悬浮胶囊（src/shell/dock.css，所有宽度共用），没有侧栏：今天 / 衣柜 / ＋ / 试穿 / 我的。视觉是常规 ToC：中性灰白底、黑字、黑色主按钮，蓝色只做少量强调，颜色主要来自衣服本身；按钮是小圆角矩形、无阴影，不做彩色大圆钮和衬线刊头（style.css 与 src/theme/tokens.ts 同步，文字对比度 ≥ 4.5:1）。改界面后用 docs/redesign-concepts/shots/shoot.mjs（本地、git 忽略）截图自查。依据 smart-closet-server 的 docs/design/2026-11-11-ToC改版（二）：今日封面方向与实现设计.md。
 - 全局助手从右下角的“问鱼搭”悬浮表情唤起（#assistant-dock-slot，手机在胶囊上方），⌘K / Ctrl K 同样可用；默认在下方居中展开，不改变主布局；用户可切换为覆盖右侧、挤开页面的右侧停靠或可拖动的自由窗口，宽度可拖动调整。
 - 聊天列表应占面板主要高度。推荐组合在聊天中紧凑显示，详细预览与操作放入 Ant Design Vue 大模态框。
 - 音效使用 src/services/sound.ts，尊重已有开关；动效尊重 prefers-reduced-motion。

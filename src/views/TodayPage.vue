@@ -4,7 +4,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { App } from 'ant-design-vue'
 import { useRouter } from 'vue-router'
-import { AppstoreAddOutlined, CameraOutlined, RightOutlined, SkinOutlined, UndoOutlined, ReloadOutlined } from '@ant-design/icons-vue'
+import { AppstoreAddOutlined, CameraOutlined, CheckCircleFilled, RightOutlined, SkinOutlined, UndoOutlined, ReloadOutlined } from '@ant-design/icons-vue'
 import CoverDeck from '../today/CoverDeck.vue'
 import RecommendationDetailModal from '../recommend/RecommendationDetailModal.vue'
 import OutfitThumbnail from '../components/OutfitThumbnail.vue'
@@ -33,6 +33,7 @@ const savedIds = new Map<string, string>()
 const deck = ref<InstanceType<typeof CoverDeck> | null>(null)
 const user = computed(() => closet.user?.username || 'local')
 const weather = computed(() => view.value?.intent.description || '')
+const dateLine = new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'short' }).format(new Date())
 const greeting = computed(() => { const h = new Date().getHours(); return h < 5 ? '夜深了' : h < 11 ? '早上好' : h < 14 ? '中午好' : h < 18 ? '下午好' : '晚上好' })
 const name = computed(() => closet.user?.displayName || closet.user?.username || '')
 const remaining = computed(() => queue.value.length - index.value)
@@ -119,13 +120,13 @@ onMounted(() => {
   <div class="today-page">
     <h1 class="page-title-sr">今天</h1>
     <section class="today-main">
-      <header class="today-hello"><h2>{{ greeting }}<template v-if="name">，{{ name }}</template></h2></header>
+      <header class="today-hello"><h2>{{ greeting }}<template v-if="name">，{{ name }}</template></h2><p>{{ dateLine }}<template v-if="weather"> · {{ weather }}</template></p></header>
       <div class="today-occasions" role="radiogroup" aria-label="今天的场合">
         <a-button v-for="o in TODAY_OCCASIONS" :key="o.value" shape="round" class="today-chip" :class="{ on: occasion === o.value }" role="radio" :aria-checked="occasion === o.value" @click="occasion = o.value">{{ o.label }}</a-button>
       </div>
 
       <div v-if="worn && !showDeck" class="today-done" :style="{ '--tint': wornTint }">
-        <a-tag color="success" class="today-done-tag">已记下今天穿这套</a-tag>
+        <span class="today-done-tag"><CheckCircleFilled /> 已记下今天穿这套</span>
         <div class="today-done-collage"><img v-for="(slot, i) in wornSlots" :key="slot.id" :src="slot.url" alt="" :style="{ left: `${slot.left}%`, top: `${slot.top}%`, width: `${slot.width}%`, height: `${slot.height}%`, '--i': i }" /></div>
         <h3>今天就穿「{{ worn.name }}」</h3>
         <p>之后的推荐会参考你今天穿了什么。</p>
@@ -144,13 +145,13 @@ onMounted(() => {
         <div v-else-if="finished" class="today-state">
           <h3>这一批看完啦</h3><p>换个场合，或者再来一批。</p><a-button type="primary" size="large" @click="load"><ReloadOutlined /> 再来一批</a-button>
         </div>
-        <CoverDeck v-else ref="deck" :outfits="queue" :index="index" :weather="weather" :busy="busy" @skip="skip" @wear="wear" @save="o => save(o)" @open="open" />
+        <CoverDeck v-else ref="deck" :outfits="queue" :index="index" :busy="busy" @skip="skip" @wear="wear" @save="o => save(o)" @open="open" />
       </template>
       <Transition name="today-undo"><a-button v-if="undo" shape="round" class="today-undo" @click="takeBack"><UndoOutlined /> 撤回</a-button></Transition>
     </section>
 
     <aside class="today-side">
-      <button v-if="queue[index] || worn" type="button" class="today-strip" @click="worn && !showDeck ? tryOn(worn) : queue[index] && tryOn(queue[index]!)">
+      <button v-if="showDeck && queue[index]" type="button" class="today-strip" @click="tryOn(queue[index]!)">
         <span class="today-strip-icon"><SkinOutlined /></span><span><b>穿上看看</b><small>生成这套的上身效果图</small></span><RightOutlined />
       </button>
       <div class="today-sec"><h2>我的搭配</h2><RouterLink to="/outfits">全部 <RightOutlined /></RouterLink></div>
@@ -172,47 +173,50 @@ onMounted(() => {
 .today-page { display: grid; gap: 8px; max-width: 1180px; margin: 0 auto; padding: 4px 16px 0; }
 .page-title-sr { position: absolute; width: 1px; height: 1px; margin: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .today-main { position: relative; min-width: 0; }
-.today-hello h2 { margin: 4px 0 12px; font-size: 24px; font-weight: 700; letter-spacing: -.01em; }
+.today-hello { margin: 4px 0 14px; }
+.today-hello h2 { margin: 0; font-size: 22px; font-weight: 650; letter-spacing: -.01em; }
+.today-hello p { margin: 2px 0 0; overflow: hidden; font-size: 13px; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }
 .today-occasions { display: flex; gap: 8px; margin: 0 -16px 14px; padding: 2px 16px; overflow-x: auto; scrollbar-width: none; }
 .today-occasions::-webkit-scrollbar { display: none; }
-.today-chip.ant-btn { flex: none; height: 36px; padding: 0 16px; border: 0; color: var(--muted); background: var(--surface); box-shadow: 0 0 0 1px var(--line); }
-.today-chip.on.ant-btn { color: var(--action-fg); background: var(--action-bg); box-shadow: none; font-weight: 600; }
-.today-skeleton, .today-state { min-height: 440px; padding: 28px 24px; border-radius: 30px; background: var(--surface); }
+.today-chip.ant-btn { flex: none; height: 34px; padding: 0 16px; border: 0; border-radius: 999px; color: var(--muted-strong); background: var(--surface-alt); box-shadow: none; }
+html .today-chip.ant-btn:not(.on):hover { color: var(--ink); background: var(--selection-bg); }
+.today-chip.on.ant-btn, html .today-chip.on.ant-btn:hover { color: var(--action-fg); background: var(--action-bg); font-weight: 600; }
+.today-skeleton, .today-state { min-height: 420px; padding: 28px 24px; border-radius: 20px; background: var(--surface); box-shadow: 0 0 0 1px var(--line); }
 .today-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; text-align: center; }
-.today-state h3 { margin: 0; font-family: 'Songti SC', 'Noto Serif SC', var(--display); font-size: 22px; }
+.today-state h3 { margin: 0; font-size: 18px; font-weight: 600; }
 .today-state p { margin: 0 0 12px; color: var(--muted); }
 .today-state-actions, .today-done-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
-.today-done { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; min-height: 440px; padding: 22px; border-radius: 30px; text-align: center; background: color-mix(in srgb, var(--tint) 26%, var(--surface)); animation: today-rise .5s var(--ease-out); }
+.today-done { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; min-height: 420px; padding: 22px; border-radius: 20px; text-align: center; background: var(--surface); box-shadow: 0 0 0 1px var(--line); animation: today-rise .5s var(--ease-out); }
 @keyframes today-rise { from { opacity: 0; transform: translateY(14px) scale(.98); } }
-.today-done-tag { margin: 0; }
-.today-done-collage { position: relative; width: min(72%, 340px); aspect-ratio: 1; }
+.today-done-tag { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--success); }
+.today-done-collage { position: relative; width: min(72%, 320px); aspect-ratio: 1; border-radius: 14px; background: color-mix(in srgb, var(--tint) 12%, var(--surface-alt)); }
 .today-done-collage img { position: absolute; object-fit: contain; filter: drop-shadow(0 10px 14px #0000001f); }
-.today-done h3 { margin: 4px 0 0; font-family: 'Songti SC', 'Noto Serif SC', var(--display); font-size: 24px; }
+.today-done h3 { margin: 8px 0 0; font-size: 20px; font-weight: 600; }
 .today-done p { margin: 0 0 12px; color: var(--muted); font-size: 14px; }
-.today-undo.ant-btn { position: fixed; left: 50%; bottom: calc(var(--dock-space) + 12px); z-index: 40; height: 40px; padding: 0 18px; border: 0; color: var(--action-fg); background: var(--action-bg); box-shadow: 0 10px 24px -8px #0000004d; transform: translateX(-50%); }
+.today-undo.ant-btn { position: fixed; left: 50%; bottom: calc(var(--dock-space) + 12px); z-index: 40; height: 40px; padding: 0 18px; border: 0; border-radius: 999px; color: var(--action-fg); background: var(--action-bg); box-shadow: 0 10px 24px -8px #0000004d; transform: translateX(-50%); }
 .today-undo-enter-active, .today-undo-leave-active { transition: opacity .2s ease, transform .3s var(--spring); }
 .today-undo-enter-from, .today-undo-leave-to { opacity: 0; transform: translate(-50%, 12px); }
 .today-side { min-width: 0; padding-top: 18px; }
 .today-sec { display: flex; align-items: baseline; margin: 24px 0 10px; }
 .today-sec h2 { margin: 0; font-size: 17px; font-weight: 650; }
 .today-sec a { margin-left: auto; display: inline-flex; align-items: center; gap: 2px; font-size: 13px; color: var(--muted); }
-.today-strip { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 14px; border: 0; border-radius: 20px; background: var(--surface); color: var(--ink); text-align: left; cursor: pointer; font: inherit; }
+.today-strip { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 14px; border: 0; border-radius: 16px; background: var(--surface); box-shadow: 0 0 0 1px var(--line); color: var(--ink); text-align: left; cursor: pointer; font: inherit; }
 .today-strip > span:nth-child(2) { flex: 1; min-width: 0; }
 .today-strip b { display: block; font-size: 15px; font-weight: 600; }
 .today-strip small { display: block; color: var(--muted); font-size: 12px; }
 .today-strip > .anticon { color: var(--muted-subtle); font-size: 12px; }
-.today-strip-icon { display: grid; flex: none; place-items: center; width: 40px; height: 40px; border-radius: 14px; color: var(--accent-strong); background: var(--accent-soft); font-size: 18px; font-weight: 700; }
-.today-strip-icon.mint { color: #fff; background: var(--mint); font-size: 13px; }
+.today-strip-icon { display: grid; flex: none; place-items: center; width: 40px; height: 40px; border-radius: 12px; color: var(--ink); background: var(--surface-alt); font-size: 18px; font-weight: 600; }
+.today-strip-icon.mint { color: var(--accent-strong); background: var(--accent-soft); font-size: 13px; }
 .today-saved { display: flex; gap: 12px; margin: 0 -16px; padding: 0 16px 4px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; }
 .today-saved::-webkit-scrollbar { display: none; }
 .today-saved-item { flex: none; width: 132px; scroll-snap-align: start; }
-.today-saved-item :deep(canvas), .today-saved-item :deep(.outfit-thumbnail) { border-radius: 18px; overflow: hidden; }
+.today-saved-item :deep(canvas), .today-saved-item :deep(.outfit-thumbnail) { border-radius: 14px; overflow: hidden; }
 .today-saved-item b { display: block; margin: 6px 4px 0; overflow: hidden; font-size: 13px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .today-quiet { margin: 0; color: var(--muted); font-size: 13px; }
 @media (min-width: 1024px) {
   .today-page { grid-template-columns: minmax(0, 560px) minmax(0, 1fr); gap: 48px; align-items: start; padding-top: 12px; }
   .today-hello h2 { font-size: 30px; }
-  .today-side { padding-top: 104px; }
+  .today-side { padding-top: 112px; }
   .today-saved { flex-wrap: wrap; margin: 0; padding: 0; overflow: visible; }
 }
 @media (prefers-reduced-motion: reduce) { .today-done { animation: none; } .today-undo-enter-active, .today-undo-leave-active { transition: none; } }

@@ -13,13 +13,6 @@ export const MORE_BATCH = 4
 /** 剩下几张时去要下一批。 */
 export const REFILL_AT = 2
 
-const WEEK = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
-export function masthead(date: Date) {
-  const mm = String(date.getMonth() + 1).padStart(2, '0'), dd = String(date.getDate()).padStart(2, '0')
-  return { day: `${mm}.${dd}`, week: WEEK[date.getDay()]! }
-}
-export const issueNo = (n: number) => `NO.${String(n).padStart(2, '0')}`
-
 type Piece = { id: string; role: string; color?: string; displayUrl?: string | null }
 export type Slot = { id: string; url: string; left: number; top: number; width: number; height: number; z: number }
 

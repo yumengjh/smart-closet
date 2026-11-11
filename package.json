@@ -21,7 +21,6 @@
   "dependencies": {
     "@ant-design/icons-vue": "^7.0.1",
     "@foleyjs/core": "^2.9.0",
-    "@fontsource/dm-serif-display": "^5.2.8",
     "@mediapipe/tasks-vision": "1.1.0",
     "@xmaxai/web-sdk": "1.1.1",
     "ant-design-vue": "^4.2.6",

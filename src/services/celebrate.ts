@@ -5,7 +5,7 @@ import { playSound } from './sound'
 type Kind = 'wear' | 'milestone' | 'paid'
 type Origin = { x: number; y: number }
 
-const PALETTE = ['#e2553f', '#f6a693', '#1db39a', '#ffd76a', '#7fb5ff', '#fffdf9']
+const PALETTE = ['#111111', '#3b6cf6', '#9db5f7', '#f2c94c', '#d9d9d6']
 const reduced = () => typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
 type Confetti = typeof import('canvas-confetti')
 let loader: Promise<Confetti> | undefined
