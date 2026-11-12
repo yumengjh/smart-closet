@@ -26,6 +26,7 @@ import { readWorn, saveWorn, type WornToday } from '../today/worn'
 const router = useRouter(); const closet = useClosetStore(); const { message } = App.useApp()
 const intent = ref<IntentInput>({ occasion: 'DAILY' })
 const conditionsOpen = ref(false)
+const conditionDraft = ref<IntentInput>({})
 const occasion = computed<Occasion>({ get: () => intent.value.occasion || 'DAILY', set: value => { intent.value = { ...intent.value, occasion: value, activity: undefined } } })
 const requests = latestRequest()
 const view = ref<RecommendationView | null>(null)
@@ -69,8 +70,9 @@ async function refill() {
   finally { refilling.value = false }
 }
 watch(index, () => { void refill() })
-watch(occasion, () => { if (!conditionsOpen.value) { playSound('tick'); void load() } })
-function applyConditions() { conditionsOpen.value = false; void load() }
+watch(occasion, () => { if (!conditionsOpen.value) { playSound('tick'); void load() } }, { flush: 'sync' })
+function openConditions() { conditionDraft.value = { ...intent.value }; conditionsOpen.value = true }
+function applyConditions() { intent.value = { ...conditionDraft.value }; conditionsOpen.value = false; void load() }
 
 function skip() {
   dismissHint()
@@ -139,10 +141,10 @@ onMounted(() => {
       <header class="today-hello"><h2>{{ greeting }}<template v-if="name">，{{ name }}</template></h2><p>{{ dateLine }}<template v-if="weather"> · {{ weather }}</template></p></header>
       <div class="today-occasions" role="radiogroup" aria-label="今天的场合">
         <a-button v-for="o in TODAY_OCCASIONS" :key="o.value" shape="round" class="today-chip" :class="{ on: occasion === o.value }" role="radio" :aria-checked="occasion === o.value" @click="occasion = o.value">{{ o.label }}</a-button>
-        <a-button @click="conditionsOpen = true">日期与城市</a-button>
+        <a-button @click="openConditions">更多条件</a-button>
       </div>
       <SituationEcho :situation="view?.intent.situation" private-visible />
-      <a-modal v-model:open="conditionsOpen" title="穿搭条件" :footer="null"><RecommendIntentBar v-model="intent" :loading="loading" submit-label="查看搭配" @submit="applyConditions" /></a-modal>
+      <a-modal v-model:open="conditionsOpen" title="穿搭条件" :footer="null"><RecommendIntentBar v-model="conditionDraft" :loading="loading" submit-label="查看搭配" @submit="applyConditions" /></a-modal>
 
       <div v-if="worn && !showDeck" class="today-done" :style="{ '--tint': wornTint }">
         <span class="today-done-tag"><CheckCircleFilled /> 已记下今天穿这套</span>

@@ -12,7 +12,7 @@ import RecommendationDetailModal from './RecommendationDetailModal.vue'
 import RecommendNotices from './RecommendNotices.vue'
 import { recommendApi } from './api'
 import { openInWorkspace } from './workspace'
-import type { RecommendationView } from './types'
+import { OCCASIONS, type RecommendationView } from './types'
 
 /** Cards + detail modal + 换一批 for one recommendation run; the same block is used on the page and in the assistant. */
 const props = withDefaults(defineProps<{ view: RecommendationView; dense?: boolean }>(), { dense: false })
@@ -64,7 +64,7 @@ function replace(i: number, outfit: typeof outfits.value[number]) { outfits.valu
       </section>
       <a-spin v-if="grouped.pendingGroups && !groupError" size="small" tip="正在补齐其他场景" />
       <a-alert v-if="groupError" type="warning" :message="groupError"><template #action><a-button size="small" @click="loadGroups">重试</a-button></template></a-alert>
-      <p v-for="item in grouped.unsuitable || []" :key="item.occasion" class="muted">{{ item.occasion }} · {{ item.reason }}</p>
+      <p v-for="item in grouped.unsuitable || []" :key="item.occasion" class="muted">{{ OCCASIONS.find(option => option.value === item.occasion)?.label || '其他场景' }} · {{ item.reason }}</p>
     </template>
     <template v-else>
     <a-empty v-if="!outfits.length" :description="view.emptyReason || '当前条件下没有可靠组合。'"><a-button @click="router.push('/add')">去添加衣物</a-button></a-empty>
