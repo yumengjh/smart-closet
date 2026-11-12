@@ -4,6 +4,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { animate } from 'motion'
 import { CheckOutlined, StarOutlined, SwapOutlined } from '@ant-design/icons-vue'
+import { displayOuter } from '../recommend/situation'
 import type { RecommendedOutfit } from '../recommend/types'
 import { thumbUrl } from '../services/urls'
 import { haptic } from '../services/celebrate'
@@ -112,7 +113,7 @@ onUnmounted(() => window.removeEventListener('blur', cancel))
           <span class="cover-count">{{ card.no }} / {{ outfits.length }}</span>
         </div>
         <footer class="cover-copy">
-          <div><h3>{{ card.outfit.name }}</h3><p>{{ card.outfit.highlights[0] || card.outfit.garments.map(g => g.name).join(' · ') }}</p></div>
+          <div><h3>{{ card.outfit.name }}</h3><p>{{ card.outfit.highlights[0] || card.outfit.garments.map(g => g.name).join(' · ') }}</p><p v-if="displayOuter(card.outfit)">外套建议 · {{ displayOuter(card.outfit)?.name }}</p></div>
           <a-tooltip v-if="card.depth === 0" title="收进我的搭配"><a-button shape="circle" class="cover-save" aria-label="收进我的搭配" :disabled="busy" @click.stop="emit('save', card.outfit)"><StarOutlined /></a-button></a-tooltip>
         </footer>
       </article>
