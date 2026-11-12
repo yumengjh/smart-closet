@@ -8,10 +8,12 @@ import type { InspirationView } from './types'
 
 /** 今日灵感 (P4): reviewed 搭法 filled with the user's own clothes, plus "差一件就能穿" hints. Zero model calls. */
 const props = defineProps<{ temperatureC?: number | null }>()
+const date = ref<string>()
+const place = ref('')
 const data = ref<InspirationView | null>(null); const loading = ref(false); const error = ref('')
 async function load() {
   loading.value = true; error.value = ''
-  try { data.value = await recommendApi.inspiration(props.temperatureC) }
+  try { data.value = await recommendApi.inspiration(props.temperatureC, date.value, place.value || undefined) }
   catch (e) { error.value = e instanceof Error ? e.message : '今日灵感暂时不可用。' }
   finally { loading.value = false }
 }
@@ -20,6 +22,11 @@ onMounted(load)
 </script>
 <template>
   <div class="recommend-inspiration" aria-live="polite">
+    <a-space wrap class="recommend-inspiration-conditions">
+      <a-date-picker v-model:value="date" value-format="YYYY-MM-DD" placeholder="今天" aria-label="灵感日期" />
+      <a-input v-model:value="place" :maxlength="40" placeholder="城市（默认常住城市）" aria-label="本次灵感城市" allow-clear />
+      <a-button :loading="loading" @click="load">查看灵感</a-button>
+    </a-space>
     <a-alert v-if="error" type="warning" show-icon :message="error"><template #action><a-button size="small" @click="load">重试</a-button></template></a-alert>
     <div v-else-if="loading && !data" class="recommend-cards"><a-skeleton v-for="i in 3" :key="i" active /></div>
     <template v-else-if="data">

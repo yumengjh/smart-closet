@@ -66,6 +66,12 @@ function choosePreferred(value: unknown) {
   preferred.value = next
   void patch({ preferredStyles: next }, 'preferredStyles')
 }
+const HABITS = [
+  { key: 'constitution', label: '冷暖体质', feature: 'thermal', options: [{ value: '', label: '一般' }, { value: 'COLD', label: '怕冷' }, { value: 'HOT', label: '怕热' }] },
+  { key: 'commute', label: '通勤方式', feature: 'activity', options: [{ value: '', label: '不设' }, { value: 'WALK', label: '步行或骑车' }, { value: 'TRANSIT', label: '公交地铁' }, { value: 'DRIVE', label: '开车' }] },
+  { key: 'workDress', label: '工作着装要求', feature: 'activity', options: [{ value: '', label: '不设' }, { value: 'FORMAL', label: '正装' }, { value: 'SMART', label: '商务休闲' }, { value: 'CASUAL', label: '随意' }, { value: 'UNIFORM', label: '穿工服' }] },
+  { key: 'accessories', label: '配件偏好', feature: 'accessoryBudget', options: [{ value: '', label: '不设' }, { value: 'SIMPLE', label: '简洁' }, { value: 'BALANCED', label: '适中' }, { value: 'RICH', label: '丰富' }] },
+] as const
 const styleOptions = computed(() => STYLE_DIRECTIONS.map(o => ({ ...o, disabled: preferred.value.length >= 3 && !preferred.value.includes(o.value) })))
 </script>
 <template>
@@ -127,6 +133,28 @@ const styleOptions = computed(() => STYLE_DIRECTIONS.map(o => ({ ...o, disabled:
           <div class="style-row-label"><strong>图片画风混搭</strong><small class="muted">写实照片和卡通插画能否放在同一套</small></div>
           <a-segmented class="style-segmented" :value="profile.settings.styleMixing" :options="[{ value: 'AUTO', label: '自动学习' }, { value: 'ALLOW', label: '总是允许' }, { value: 'FORBID', label: '总是不混' }]" :disabled="saving === 'mixing'" @change="(v: string | number) => patch({ styleMixing: v }, 'mixing')" />
         </div>
+      </section>
+
+      <section class="settings-card">
+        <h3>生活习惯</h3>
+        <div v-for="habit in HABITS" :key="habit.key" class="style-row">
+          <div class="style-row-label"><strong>{{ habit.label }}</strong><small v-if="!profile.features?.[habit.feature]" class="muted">已保存的设置将在此能力开放后生效</small></div>
+          <a-select class="style-control" :aria-label="habit.label" :value="profile.settings[habit.key] || ''" :options="habit.options.map(option => ({ ...option }))" :loading="saving === habit.key" @change="(value: unknown) => choose(habit.key, value, habit.key)" />
+        </div>
+        <div class="style-row style-row-inline">
+          <div class="style-row-label"><strong>按身高微调衣物比例</strong><small class="muted">只在本地使用身高档<template v-if="!profile.features?.heightProportion">，能力开放后生效</template></small></div>
+          <a-switch :checked="profile.settings.heightProportion || false" :loading="saving === 'heightProportion'" aria-label="按身高微调衣物比例" @change="(value: boolean) => patch({ heightProportion: value }, 'heightProportion')" />
+        </div>
+      </section>
+      <section class="settings-card">
+        <h3>学到的场景说法</h3>
+        <a-empty v-if="!profile.learnedScenes?.length" description="还没有学到的说法" />
+        <ul v-else class="style-profile-list">
+          <li v-for="item in profile.learnedScenes" :key="item.phrase">
+            <span>{{ item.phrase }}<small v-if="item.understood" class="muted"> · {{ item.understood }}</small></span>
+            <a-popconfirm title="撤回后不再按这条说法理解场景？" ok-text="撤回" cancel-text="取消" @confirm="patch({ forgetScene: item.phrase }, item.phrase, '已撤回这条说法。')"><a-button size="small" :loading="saving === item.phrase">撤回</a-button></a-popconfirm>
+          </li>
+        </ul>
       </section>
 
       <section class="settings-card">

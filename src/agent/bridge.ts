@@ -8,7 +8,7 @@ import type { AgentContext, Candidate, Proposal } from './api'
 
 export const canvasBridge = shallowRef<null | {
   context: () => AgentContext;
-  apply: (scene: OutfitScene, name?: string) => void;
+  apply: (scene: OutfitScene, name?: string, source?: import('../recommend/situation').RecommendationSource) => void;
   save: (choice?: import('./save').SaveChoice) => Promise<void>;
 }>(null)
 export function pageContext(route: string): AgentContext {

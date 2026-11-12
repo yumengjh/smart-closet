@@ -99,12 +99,14 @@ function confirmApply(index: number, intoCurrent: boolean) {
         // All preview work succeeds before the one-time confirmation token is consumed.
         await agentRequest(`/proposals/${proposal.id}/accept`, 'POST', { context: pageContext(route.path), current: intoCurrent })
         used.value = true
+        const recommendation = proposal.payload.candidates?.[index]?.recommendation
+        const source = recommendation?.logId ? { recommendationLogId: recommendation.logId, accessoryStates: Object.fromEntries((recommendation.accessories || []).map(item => [item.id, false])) } : undefined
         if (proposal.kind === 'SAVE') await canvasBridge.value!.save(proposal.payload)
-        else if (intoCurrent) canvasBridge.value!.apply(scene, isOutfits.value ? proposal.payload.candidates![index].name : undefined)
+        else if (intoCurrent) canvasBridge.value!.apply(scene, isOutfits.value ? proposal.payload.candidates![index].name : undefined, source)
         else {
           const name = proposal.payload.candidates![index].name
           const key = `yixu.outfit-draft.v1:${closet.user!.username}:new:${proposal.id}`
-          localStorage.setItem(key, JSON.stringify({ name, revision: null, scene, savedAt: Date.now() }))
+          localStorage.setItem(key, JSON.stringify({ ...source, name, revision: null, scene, savedAt: Date.now() }))
           await router.push({ path: '/outfits/new', query: { draft: proposal.id } })
         }
         const logId = proposal.payload.candidates?.[index]?.recommendation?.logId

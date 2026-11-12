@@ -10,7 +10,7 @@ export type RecommendedOutfit = {
   highlights: string[]; warnings: string[]; tags: string[]
   garments: RecommendedGarment[]; dimensions: Dimension[]; outers: OuterSuggestion[]; template: string | null
   /** Absent on cards stored before the full-body enhancement. */
-  accessories?: AccessorySuggestion[]; tips?: string[]
+  accessories?: AccessorySuggestion[]; tips?: string[]; displayOuter?: OuterSuggestion | null
 }
 export type Verdict = 'UP' | 'DOWN'
 
@@ -18,6 +18,8 @@ export const FEEDBACK_REASONS = [
   { value: 'COLOR_CLASH', label: '颜色不搭' },
   { value: 'TOO_HOT', label: '太热' },
   { value: 'TOO_COLD', label: '太冷' },
+  { value: 'TOO_MANY_ACCESSORIES', label: '配件太多' },
+  { value: 'TOO_PLAIN', label: '太素了' },
   { value: 'TOO_FORMAL', label: '太正式' },
   { value: 'TOO_CASUAL', label: '太随意' },
   { value: 'DISLIKE_ITEM', label: '不喜欢某一件' },
@@ -38,12 +40,22 @@ export type Occasion = typeof OCCASIONS[number]['value']
 /** Body of POST /api/recommendations (design 5.1). */
 export type IntentInput = {
   occasion?: Occasion; temperatureC?: number | null; season?: string; wantStyles?: string[]; wantColors?: string[]; avoidCategories?: string[]; avoidColors?: string[]
+  date?: string; place?: string; activity?: string; groupBy?: 'OCCASION'
   freeText?: string; requiredGarmentIds?: string[]; excludedGarmentIds?: string[]; wantCategories?: string[]; count?: number
 }
 /** Intent echoed by the server: the input fields plus a plain-language description. */
-export type IntentEcho = IntentInput & { description: string; sources?: Record<string, string> }
+export type Situation = {
+  date: string; dateLabel: string; place: string | null; segment: string
+  weather: { feelsMin: number; feelsMax: number; rain: string; wind: string; uvHigh: boolean; forecastFar: boolean } | null
+  demands: string[]; notes: string[]; private?: string[]
+  activity?: { label: string | null; understood?: string; evidence?: string }
+}
+export type IntentEcho = IntentInput & { description: string; sources?: Record<string, string>; situation?: Situation }
+export type ActivityTags = { enabled: boolean; occasions: Partial<Record<Occasion, { id: string; label: string }[]>> }
+export type RecommendationScene = { occasion: Occasion; label: string; runId: string; outfits: RecommendedOutfit[] }
 export type RecommendationView = {
   runId: string; intent: IntentEcho; outfits: RecommendedOutfit[]; limits: string[]; notes: string[]; emptyReason: string; hasMore: boolean
+  groups?: RecommendationScene[] | null; pendingGroups?: boolean; unsuitable?: { occasion: string; reason: string }[]
 }
 export type SwapAlternative = { garment: RecommendedGarment; delta: number; outfit: RecommendedOutfit }
 export type SwapView = { runId: string; replaced: string; alternatives: SwapAlternative[] }
@@ -64,12 +76,19 @@ export type ProfileSettings = {
   ageBand: AgeBand | null; ageFeel: AgeFeel | null; dressExpression: DressExpression | null
   /** 常穿风格（2026-10-21）：最多 3 个风格词，没说风格时轻度影响排序。 */
   preferredStyles?: string[]
+  constitution?: 'COLD' | 'NORMAL' | 'HOT' | null
+  workDress?: 'FORMAL' | 'SMART' | 'CASUAL' | 'UNIFORM' | null
+  commute?: 'WALK' | 'TRANSIT' | 'DRIVE' | null
+  accessories?: 'SIMPLE' | 'BALANCED' | 'RICH' | null
+  heightProportion?: boolean
 }
 export type AgeBand = 'UNDER_18' | '18_24' | '25_34' | '35_44' | '45_54' | '55_PLUS'
 export type AgeFeel = 'YOUTH' | 'PRIME' | 'MATURE'
 export type DressExpression = 'FEMININE' | 'NEUTRAL' | 'MASCULINE'
 export type StrictnessLevel = { level: number; threshold: number; margin: number }
 export type StyleProfileView = {
+  features?: Record<'thermal' | 'activity' | 'accessoryBudget' | 'anchor' | 'contextProfile' | 'situationMemory' | 'heightProportion' | 'contextWeights', boolean>
+  learnedScenes?: { phrase: string; understood?: string; lastUsedAtMs: number }[]
   settings: ProfileSettings; statements: Statement[]; cooldowns: Cooldown[]
   offsets: { warmth: number; formality: number; warmthEvidence: number; formalityEvidence: number }; offsetCaps: { warmth: number; formality: number }
   strictness: StrictnessLevel & { recommended: number; levels: StrictnessLevel[] }

@@ -28,3 +28,10 @@ test('conflict reconciliation keeps edited values and adopts concurrent changes 
   assert.deepEqual(rebased.brand, ['另一端修改的品牌'])
   assert.deepEqual(metadataPatch(fields, rebased, current, []), { secondaryColors: ['白色'] })
 })
+
+test('D139 fields preserve edits, unknown clearing and automatic reset', () => {
+  const schema = ['warmthLevel', 'materialFamily', 'exposure', 'visualWeight'].map(key => ({ key, label: key, options: [], multiple: false, suggestion: true }))
+  const values = { warmthLevel: ['4'], materialFamily: ['针织'], exposure: [], visualWeight: ['中'] }
+  assert.deepEqual(metadataPatch(schema, values, {}, ['visualWeight']), { warmthLevel: ['4'], materialFamily: ['针织'] })
+  assert.deepEqual(metadataPatch(schema, { ...values, warmthLevel: [] }, { warmthLevel: ['4'] }, []), { warmthLevel: [], materialFamily: ['针织'], visualWeight: ['中'] })
+})

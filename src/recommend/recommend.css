@@ -124,3 +124,15 @@
 .recommend-gap-hint .ant-tag { margin-right: 6px; }
 
 .recommend-accessories { margin: 4px 0 0; font-size: 12px; line-height: 1.5; }
+
+/* Situation controls share the existing compact layout, with two usable columns on narrow screens. */
+.recommend-intent-extra { flex-wrap: wrap; }
+.recommend-scene-group { margin-block: 12px 20px; }
+.recommend-scene-group > h3 { margin: 0 0 10px; font-size: 15px; }
+.recommend-accessory-choice { margin-block: 12px; }
+.recommend-accessory-choice .ant-checkbox-group { display: flex; flex-wrap: wrap; gap: 8px 12px; }
+@media (max-width: 767px) {
+  .recommend-intent-bar .recommend-intent-extra { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .recommend-intent-extra > .ant-picker, .recommend-intent-extra > .ant-input-affix-wrapper, .recommend-intent-extra > .ant-input-number-group-wrapper, .recommend-intent-extra > .ant-select { width: 100% !important; min-width: 0; }
+  .recommend-intent-extra > .ant-btn { grid-column: 1 / -1; }
+}

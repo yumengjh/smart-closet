@@ -10,6 +10,7 @@ import OutfitReview from '../components/OutfitReview.vue'
 import BloubAvatar from '../agent/BloubAvatar.vue'
 import { useClosetStore } from '../stores/closet'
 import { isMissingOutfit } from '../domain/outfitErrors'
+import { syncAccessorySignals } from '../recommend/api'
 import { closetApi } from '../services/api'
 import { boardSignature, workspace, createBoard, addBoard, openSavedBoard, mutateBoard, storageWarning, discardWorkspace, findOpenOutfit, dedupeOpenOutfits, BOARD_LIMIT, type WorkspaceBoard } from '../domain/outfit-workspace'
 import { activeWorkspace, pruneAgentWorkspaces, createWorkspace, DEFAULT_WORKSPACE_ID, listWorkspaces, workspaceSummary, removeWorkspace, renameWorkspace, setActiveWorkspace, type WorkspaceInfo } from '../domain/workspace-registry'
@@ -150,11 +151,12 @@ async function writeBoard(board: WorkspaceBoard, overwrite = false, copy = false
   const revision = overwrite ? board.sourceRevision : board.revision
   // A board remembers the outfit it was saved as. If that outfit is gone from the server (deleted elsewhere, or a different
   // server), updating it fails with "not found": save the board as a new outfit instead of losing the work.
+  syncAccessorySignals(board, board.scene.elements.map(item => item.garmentId))
   let result, recreated = false
-  try { result = await closetApi.saveOutfit(id || null, id ? revision ?? null : null, board.name.trim(), board.scene) }
+  try { result = await closetApi.saveOutfit(id || null, id ? revision ?? null : null, board.name.trim(), board.scene, board.recommendationLogId) }
   catch (cause) {
     if (!id || !isMissingOutfit(cause)) throw cause
-    result = await closetApi.saveOutfit(null, null, board.name.trim(), board.scene); recreated = true
+    result = await closetApi.saveOutfit(null, null, board.name.trim(), board.scene, board.recommendationLogId); recreated = true
   }
   if (recreated) message.warning(`「${board.name}」原来的搭配在服务器上已不存在，已另存为新搭配，内容没有丢。`)
   board.outfitId = result.id; board.revision = result.revision; board.scene = normalizeScene(result.scene); board.contentVersion++
@@ -271,7 +273,11 @@ async function loadRoute() {
       const old = JSON.parse(localStorage.getItem(key) || 'null') as OutfitDraft | null
       const already = space.value.boards.find(b => b.id === (suffix ? `legacy${suffix}` : 'legacy:new'))
       if (already) space.value.activeId = already.id
-      else if (old?.scene) { addBoard(space.value, createBoard(old.name, old.scene, suffix ? `legacy${suffix}` : 'legacy:new')); localStorage.removeItem(key) }
+      else if (old?.scene) {
+        const board = createBoard(old.name, old.scene, suffix ? `legacy${suffix}` : 'legacy:new')
+        board.recommendationLogId = old.recommendationLogId; board.accessoryStates = old.accessoryStates
+        addBoard(space.value, board); localStorage.removeItem(key)
+      }
       else addBoard(space.value, createBoard())
       focus.value = true
     }
@@ -292,7 +298,7 @@ onMounted(() => {
   void loadRoute().then(async () => { await nextTick(); if (!focus.value) fitOverview() })
   canvasBridge.value = {
     context: () => { editor.value?.flush(); const board = active.value; const selected = board?.scene.elements.find(e => board.selectedIds.includes(e.elementId || e.garmentId) && e.kind !== 'PERSON_PART'); return { route: route.path, workspaceId: space.value.id, boardId: board?.id, boardCount: space.value.boards.length, contentVersion: board?.contentVersion, outfitId: board?.outfitId, sourceOutfitId: board?.sourceOutfitId, sourceRevision: board?.sourceRevision, revision: board?.revision, name: board?.name, selectedIds: board?.selectedIds || [], garmentId: selected?.garmentId, scene: board?.scene } },
-    apply: (scene, title) => { const board = active.value; if (!board || board.locked) throw new Error('请先选中可编辑搭配。'); mutateBoard(board, scene); if (title) board.name = title },
+    apply: (scene, title, source) => { const board = active.value; if (!board || board.locked) throw new Error('请先选中可编辑搭配。'); if (source) { board.recommendationLogId = source.recommendationLogId; board.accessoryStates = source.accessoryStates }; mutateBoard(board, scene); if (title) board.name = title },
     save: async (choice) => { if (!active.value) throw new Error('请先选中搭配。'); await confirmSave([active.value], choice) },
   }
 })

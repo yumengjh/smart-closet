@@ -39,7 +39,7 @@ export type OutfitElement = {
 }
 export type OutfitScene = { version: number; elements: OutfitElement[] }
 export type Outfit = { id: string; name: string; revision: number; createdAtMs: number; updatedAtMs: number; scene: OutfitScene }
-export type OutfitDraft = { name: string; revision: number | null; scene: OutfitScene; savedAt?: number }
+export type OutfitDraft = { recommendationLogId?: string | null; accessoryStates?: Record<string, boolean>; name: string; revision: number | null; scene: OutfitScene; savedAt?: number }
 export type OutfitWriteElement = Omit<OutfitElement, 'assetUrl' | 'imageWidth' | 'imageHeight' | 'assetKind' | 'garmentRevision' | 'garmentStatus' | 'garmentChanged' | 'imageChanged'>
 export type OutfitRoleOption = { value: OutfitRole; label: string }
 export type OutfitLayerMove = 'forward' | 'backward' | 'front' | 'back'

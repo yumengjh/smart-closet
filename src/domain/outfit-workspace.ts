@@ -6,6 +6,7 @@ import { normalizeScene, OUTFIT_VERSION, type Outfit, type OutfitElement, type O
 
 export const BOARD_LIMIT = 12
 export type WorkspaceBoard = {
+  recommendationLogId?: string | null; accessoryStates?: Record<string, boolean>
   id: string; name: string; scene: OutfitScene; contentVersion: number
   outfitId?: string; revision: number | null; sourceOutfitId?: string; sourceRevision?: number | null
   savedSignature: string; selectedIds: string[]; undo: OutfitElement[][]; redo: OutfitElement[][]; zoom: number

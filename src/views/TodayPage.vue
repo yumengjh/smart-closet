@@ -5,23 +5,29 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { App } from 'ant-design-vue'
 import { useRouter } from 'vue-router'
 import { AppstoreAddOutlined, CameraOutlined, CheckCircleFilled, CloseOutlined, RightOutlined, SkinOutlined, SwapOutlined, UndoOutlined, ReloadOutlined } from '@ant-design/icons-vue'
+import RecommendIntentBar from '../recommend/RecommendIntentBar.vue'
+import SituationEcho from '../recommend/SituationEcho.vue'
+import { latestRequest } from '../recommend/latest'
 import CoverDeck from '../today/CoverDeck.vue'
 import RecommendationDetailModal from '../recommend/RecommendationDetailModal.vue'
 import OutfitCollage from '../today/OutfitCollage.vue'
 import { recommendApi } from '../recommend/api'
 import { outfitScene } from '../recommend/sceneCache'
-import type { RecommendedOutfit, RecommendationView } from '../recommend/types'
+import type { IntentInput, Occasion, RecommendedOutfit, RecommendationView } from '../recommend/types'
 import { closetApi } from '../services/api'
 import type { Outfit } from '../domain/outfit'
 import { useClosetStore } from '../stores/closet'
 import { playSound } from '../services/sound'
 import { celebrate, originOf } from '../services/celebrate'
 import { thumbUrl } from '../services/urls'
-import { appendUnique, collageSlots, coverTint, FIRST_BATCH, MORE_BATCH, REFILL_AT, scenePieces, TODAY_OCCASIONS, type TodayOccasion } from '../today/deck'
+import { appendUnique, collageSlots, coverTint, FIRST_BATCH, MORE_BATCH, REFILL_AT, scenePieces, TODAY_OCCASIONS } from '../today/deck'
 import { readWorn, saveWorn, type WornToday } from '../today/worn'
 
 const router = useRouter(); const closet = useClosetStore(); const { message } = App.useApp()
-const occasion = ref<TodayOccasion>('DAILY')
+const intent = ref<IntentInput>({ occasion: 'DAILY' })
+const conditionsOpen = ref(false)
+const occasion = computed<Occasion>({ get: () => intent.value.occasion || 'DAILY', set: value => { intent.value = { ...intent.value, occasion: value, activity: undefined } } })
+const requests = latestRequest()
 const view = ref<RecommendationView | null>(null)
 const queue = ref<RecommendedOutfit[]>([]); const index = ref(0); let seen = new Set<string>()
 const loading = ref(true); const error = ref(''); const refilling = ref(false); const busy = ref(false)
@@ -45,22 +51,26 @@ const finished = computed(() => !loading.value && !error.value && queue.value.le
 const empty = computed(() => !loading.value && !error.value && queue.value.length === 0)
 
 async function load() {
+  const ticket = requests.next()
   loading.value = true; error.value = ''; index.value = 0; queue.value = []; seen = new Set(); undo.value = null
   try {
-    const result = await recommendApi.recommend({ occasion: occasion.value, requiredGarmentIds: [], count: FIRST_BATCH })
+    const result = await recommendApi.recommend({ ...intent.value, temperatureC: intent.value.temperatureC ?? undefined, requiredGarmentIds: [], count: FIRST_BATCH })
+    if (!requests.isLatest(ticket)) return
     view.value = result; queue.value = appendUnique([], seen, result.outfits)
-  } catch (cause) { error.value = cause instanceof Error ? cause.message : '暂时没拿到今天的搭配。' }
-  finally { loading.value = false }
+  } catch (cause) { if (requests.isLatest(ticket)) error.value = cause instanceof Error ? cause.message : '暂时没拿到今天的搭配。' }
+  finally { if (requests.isLatest(ticket)) loading.value = false }
 }
 async function refill() {
   if (refilling.value || !view.value?.hasMore || remaining.value > REFILL_AT) return
   refilling.value = true
-  try { const more = await recommendApi.more(view.value.runId, MORE_BATCH); view.value = { ...view.value, hasMore: more.hasMore }; queue.value = appendUnique(queue.value, seen, more.outfits) }
+  const runId = view.value.runId
+  try { const more = await recommendApi.more(runId, MORE_BATCH); if (view.value?.runId !== runId) return; view.value = { ...view.value, hasMore: more.hasMore }; queue.value = appendUnique(queue.value, seen, more.outfits) }
   catch { /* 续卡失败不打断：用户划完会看到“再来一批”。 */ }
   finally { refilling.value = false }
 }
 watch(index, () => { void refill() })
-watch(occasion, () => { playSound('tick'); void load() })
+watch(occasion, () => { if (!conditionsOpen.value) { playSound('tick'); void load() } })
+function applyConditions() { conditionsOpen.value = false; void load() }
 
 function skip() {
   dismissHint()
@@ -78,8 +88,8 @@ async function wear(outfit: RecommendedOutfit, el: HTMLElement | null) {
   dismissHint()
   busy.value = true
   try {
-    await recommendApi.wear({ garmentIds: outfit.garments.map(g => g.id) })
-    worn.value = { date: new Date().toDateString(), name: outfit.name, garments: outfit.garments }
+    await recommendApi.wear({ garmentIds: outfit.garments.map(g => g.id), recommendationLogId: outfit.logId })
+    worn.value = { date: new Date().toDateString(), name: outfit.name, garments: outfit.garments, logId: outfit.logId }
     saveWorn(user.value, worn.value); showDeck.value = false; undo.value = null
     void celebrate('wear', originOf(el))
   } catch (cause) {
@@ -89,13 +99,13 @@ async function wear(outfit: RecommendedOutfit, el: HTMLElement | null) {
 }
 /** 保存为“我的搭配”；已经存过的同一套直接复用，返回搭配 id。 */
 /** outfitScene 只用到名称和衣物 id，所以“今天穿了”的本机记录也能直接保存。 */
-type Savable = { name: string; garments: { id: string }[] }
+type Savable = { name: string; logId?: string | null; garments: { id: string }[] }
 async function save(outfit: Savable, quiet = false): Promise<string | null> {
   const key = outfit.garments.map(g => g.id).sort().join(',')
   const existing = savedIds.get(key); if (existing) { if (!quiet) message.info('这套已经在我的搭配里了。'); return existing }
   try {
     const scene = await outfitScene(outfit as unknown as RecommendedOutfit)
-    const created = await closetApi.saveOutfit(null, null, outfit.name, scene)
+    const created = await closetApi.saveOutfit(null, null, outfit.name, scene, outfit.logId)
     savedIds.set(key, created.id); saved.value = [created, ...saved.value]
     window.dispatchEvent(new CustomEvent('closet-outfit-saved'))
     if (!quiet) { playSound('pop'); message.success('已收进我的搭配') }
@@ -129,7 +139,10 @@ onMounted(() => {
       <header class="today-hello"><h2>{{ greeting }}<template v-if="name">，{{ name }}</template></h2><p>{{ dateLine }}<template v-if="weather"> · {{ weather }}</template></p></header>
       <div class="today-occasions" role="radiogroup" aria-label="今天的场合">
         <a-button v-for="o in TODAY_OCCASIONS" :key="o.value" shape="round" class="today-chip" :class="{ on: occasion === o.value }" role="radio" :aria-checked="occasion === o.value" @click="occasion = o.value">{{ o.label }}</a-button>
+        <a-button @click="conditionsOpen = true">日期与城市</a-button>
       </div>
+      <SituationEcho :situation="view?.intent.situation" private-visible />
+      <a-modal v-model:open="conditionsOpen" title="穿搭条件" :footer="null"><RecommendIntentBar v-model="intent" :loading="loading" submit-label="查看搭配" @submit="applyConditions" /></a-modal>
 
       <div v-if="worn && !showDeck" class="today-done" :style="{ '--tint': wornTint }">
         <span class="today-done-tag"><CheckCircleFilled /> 已记下今天穿这套</span>

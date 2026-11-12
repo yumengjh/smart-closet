@@ -123,7 +123,7 @@ async function setOwned(owned: boolean) {
 function askUnown() {
   modal.confirm({ title: `改回${wantedLabel.value}？`, content: `${wantedLabel.value}的衣物表示还没买：不参与推荐、搭配和衣柜统计。已保存的搭配不受影响。`, okText: `改回${wantedLabel.value}`, cancelText: '取消', onOk: () => setOwned(false) })
 }
-const basicKeys = ['category', 'subtype', 'primaryColor', 'patterns', 'seasons', 'genderFit']
+const basicKeys = ['warmthLevel', 'materialFamily', 'exposure', 'visualWeight', 'category', 'subtype', 'primaryColor', 'patterns', 'seasons', 'genderFit']
 const appearanceKeys = ['secondaryColors', 'neckline', 'sleeveLength', 'garmentLength', 'closure', 'texture', 'styles']
 const basicSchema = computed(() => schema.value.filter(field => basicKeys.includes(field.key)))
 const layeringSchema = computed(() => schema.value.filter(field => layeringFields.includes(field.key)))

@@ -36,7 +36,8 @@ import OutfitLayers from '../components/OutfitLayers.vue'
 import RecommendationStrip from '../recommend/RecommendationStrip.vue'
 import TodayTeaser from '../recommend/TodayTeaser.vue'
 import ExplainButton from '../recommend/ExplainButton.vue'
-import { recommendApi } from '../recommend/api'
+import type { RecommendationSource } from '../recommend/situation'
+import { recommendApi, syncAccessorySignals } from '../recommend/api'
 import { wornLabel as formatWorn } from '../recommend/format'
 import SoundToggle from '../components/SoundToggle.vue'
 import { arrangeOutfit } from '../domain/outfit-layout'
@@ -129,6 +130,7 @@ const outfitId = ref('')
 const revision = ref<number | null>(null)
 const name = ref('未命名搭配')
 const draftOwner = ref('')
+const recommendationSource = reactive<RecommendationSource>({})
 const editorContentVersion = ref(0)
 const elements = ref<OutfitElement[]>([])
 const undoStack = ref<OutfitElement[][]>([])
@@ -188,6 +190,7 @@ function persistDraft() {
   if (props.board) {
     if (synchronizingBoard || props.board.locked) return
     const board = props.board
+    syncAccessorySignals(board, elements.value.map(item => item.garmentId))
     board.undo = undoStack.value; board.redo = redoStack.value; board.selectedIds = [...selectedIds.value]; board.zoom = zoom.value
     if (JSON.stringify(board.scene.elements) !== JSON.stringify(elements.value) || board.name !== name.value) {
       const before = board.scene, beforeVersion = board.contentVersion
@@ -201,8 +204,9 @@ function persistDraft() {
     localDraftNotice.value = false
     return
   }
+  syncAccessorySignals(recommendationSource, elements.value.map(item => item.garmentId))
   try {
-    localStorage.setItem(draftKey.value, JSON.stringify({ name: name.value, revision: draftRevision, scene: scene.value, savedAt: Date.now() }))
+    localStorage.setItem(draftKey.value, JSON.stringify({ ...recommendationSource, name: name.value, revision: draftRevision, scene: scene.value, savedAt: Date.now() }))
     localDraftNotice.value = true
   } catch { /* The canvas remains usable if local storage is full or unavailable. */ }
 }
@@ -252,6 +256,8 @@ async function loadPage() {
     outfitId.value = ''
     revision.value = null
     draftRevision = null
+    recommendationSource.recommendationLogId = draft?.recommendationLogId
+    recommendationSource.accessoryStates = draft?.accessoryStates
     name.value = draft?.name || '未命名搭配'
     elements.value = draft?.scene && [1, OUTFIT_VERSION].includes(draft.scene.version) ? normalizeScene(draft.scene).elements : []
     undoStack.value = []; redoStack.value = []
@@ -271,6 +277,8 @@ async function loadPage() {
     undoStack.value = []; redoStack.value = []
     const draft = getDraft()
     const restored = restoreOutfitDraft(outfit, draft)
+    recommendationSource.recommendationLogId = restored.restored ? draft?.recommendationLogId : undefined
+    recommendationSource.accessoryStates = restored.restored ? draft?.accessoryStates : undefined
     name.value = restored.name
     elements.value = restored.scene.elements
     localDraftNotice.value = restored.restored
@@ -800,10 +808,10 @@ async function saveOutfit() {
   let recreated = false
   try {
     let result
-    try { result = await closetApi.saveOutfit(isNew.value ? null : outfitId.value, isNew.value ? null : revision.value, name.value.trim(), scene.value) }
+    try { result = await closetApi.saveOutfit(isNew.value ? null : outfitId.value, isNew.value ? null : revision.value, name.value.trim(), scene.value, recommendationSource.recommendationLogId) }
     catch (cause) {
       if (isNew.value || !isMissingOutfit(cause)) throw cause
-      result = await closetApi.saveOutfit(null, null, name.value.trim(), scene.value); recreated = true
+      result = await closetApi.saveOutfit(null, null, name.value.trim(), scene.value, recommendationSource.recommendationLogId); recreated = true
     }
     if (request !== loadRevision) { window.dispatchEvent(new Event('closet-outfit-saved')); return }
     // Edits made while the request was in flight stay on the canvas and in the draft, against the new revision.
@@ -971,7 +979,7 @@ onMounted(() => {
   if (closet.isSignedIn) { void loadGarments(); void loadPeople() }
   if (!props.board) canvasBridge.value = {
     context: () => ({ route: route.path, workspaceId: `editor:${draftKey.value}`, boardId: draftKey.value, contentVersion: editorContentVersion.value, outfitId: String(route.params.id || ''), name: name.value, revision: revision.value, selectedIds: [...selectedIds.value], ...(currentItem.value?.kind !== 'PERSON_PART' && currentItem.value?.garmentId ? { garmentId: currentItem.value.garmentId } : {}), ...(editing.value && !pageLoading.value ? { scene: scene.value } : {}) }),
-    apply: (next, title) => { if (!loaded || !editing.value) throw new Error('画布尚未就绪。'); const beforeVersion = editorContentVersion.value; recordChange(next.elements.map(item => ({ ...item }))); if (editorContentVersion.value === beforeVersion) editorContentVersion.value++; if (title) name.value = title; persistDraft() },
+    apply: (next, title, source) => { if (!loaded || !editing.value) throw new Error('画布尚未就绪。'); if (source) Object.assign(recommendationSource, source); const beforeVersion = editorContentVersion.value; recordChange(next.elements.map(item => ({ ...item }))); if (editorContentVersion.value === beforeVersion) editorContentVersion.value++; if (title) name.value = title; persistDraft() },
     save: async () => { error.value = ''; await saveOutfit(); if (error.value || remoteConflict.value) throw new Error(error.value || '搭配版本冲突。') },
   }
   window.addEventListener('keydown', handleKeyboard)

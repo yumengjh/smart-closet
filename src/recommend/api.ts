@@ -1,7 +1,8 @@
+import { accessoryChanges, type RecommendationSource } from './situation'
 import { request } from '../services/api'
-import type { Explanation, InspirationView, IntentInput, RecommendationStats, RecommendationView, RecommendedOutfit, StyleProfileView, SwapView, Verdict, WearSummary } from './types'
+import type { ActivityTags, Explanation, InspirationView, IntentInput, RecommendationStats, RecommendationView, RecommendedOutfit, StyleProfileView, SwapView, Verdict, WearSummary } from './types'
 
-type Signal = { kind: 'VIEW_DETAIL' | 'OPEN_WORKSPACE' | 'SWAP_OUT'; logId?: string; garmentId?: string }
+type Signal = { kind: 'VIEW_DETAIL' | 'OPEN_WORKSPACE' | 'SWAP_OUT' | 'ACCESSORY_REMOVED' | 'ACCESSORY_KEPT'; logId?: string; garmentId?: string }
 
 let pending: Signal[] = []
 let timer: number | undefined
@@ -25,8 +26,14 @@ export const recommendApi = {
   recommend(intent: IntentInput) {
     return request<RecommendationView>('/api/recommendations', { method: 'POST', body: JSON.stringify(intent) }).then(view => { rememberRun(view.runId); return view })
   },
-  inspiration(temperatureC?: number | null) {
-    const q = temperatureC === null || temperatureC === undefined ? '' : `?temperatureC=${temperatureC}`
+  activities() { return request<ActivityTags>('/api/recommendations/activities') },
+  groups(runId: string) { return request<RecommendationView>(`/api/recommendations/${runId}/groups`) },
+  inspiration(temperatureC?: number | null, date?: string, place?: string) {
+    const params = new URLSearchParams()
+    if (temperatureC != null) params.set('temperatureC', String(temperatureC))
+    if (date) params.set('date', date)
+    if (place) params.set('place', place)
+    const q = params.size ? `?${params}` : ''
     return request<InspirationView>(`/api/recommendations/inspiration${q}`)
   },
   stats(days = 30) { return request<RecommendationStats>(`/api/recommendations/stats?days=${days}`) },
@@ -46,7 +53,7 @@ export const recommendApi = {
       method: 'POST', body: JSON.stringify({ verdict, reasons, garmentId }),
     })
   },
-  wear(input: { outfitId?: string; garmentIds?: string[] }) {
+  wear(input: { outfitId?: string; garmentIds?: string[]; recommendationLogId?: string | null }) {
     return request<{ id: string; wornOn: string; garmentIds: string[] }>('/api/wear-logs', { method: 'POST', body: JSON.stringify(input) })
   },
   wearSummary(garmentId: string) { return request<WearSummary>(`/api/wear-logs/garments/${garmentId}`) },
@@ -61,4 +68,8 @@ export const recommendApi = {
     if (pending.length >= 10) flush()
     else if (timer === undefined) timer = window.setTimeout(flush, 5000)
   },
+}
+
+export function syncAccessorySignals(source: RecommendationSource, presentIds: string[]) {
+  for (const event of accessoryChanges(source, presentIds)) recommendApi.signal(event)
 }

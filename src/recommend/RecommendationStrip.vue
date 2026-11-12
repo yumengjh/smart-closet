@@ -22,7 +22,7 @@ async function run() {
   const ticket = runs.next()
   loading.value = true; error.value = ''
   try {
-    const next = await recommendApi.recommend({ ...intent.value, temperatureC: intent.value.temperatureC ?? undefined, requiredGarmentIds: required.value ? [required.value] : [], count: 3 })
+    const next = await recommendApi.recommend({ ...intent.value, temperatureC: intent.value.temperatureC ?? undefined, requiredGarmentIds: required.value ? [required.value] : [], groupBy: required.value && !intent.value.occasion ? 'OCCASION' : undefined, count: 3 })
     if (runs.isLatest(ticket)) view.value = next
   } catch (e) { if (runs.isLatest(ticket)) error.value = e instanceof Error ? e.message : '推荐暂时不可用。' }
   finally { if (runs.isLatest(ticket)) loading.value = false }
@@ -31,7 +31,7 @@ function clearRequired() { required.value = null; router.replace({ query: { ...r
 onMounted(() => {
   recommendApi.profile().catch(() => {})
   // "用它搭一套" from a garment page arrives as ?with=<garmentId>.
-  if (typeof route.query.with === 'string') { required.value = route.query.with; mode.value = 'recommend' }
+  if (typeof route.query.with === 'string') { required.value = route.query.with; intent.value.occasion = undefined; mode.value = 'recommend' }
   if (mode.value === 'recommend') run()
 })
 // Back/forward can change ?with without remounting; clearRequired() already nulls it first, so it does not re-run here.
@@ -39,7 +39,7 @@ watch(() => route.query.with, value => {
   const next = typeof value === 'string' ? value : null
   if (next === required.value) return
   required.value = next
-  if (next) mode.value = 'recommend'
+  if (next) { intent.value.occasion = undefined; mode.value = 'recommend' }
   if (mode.value === 'recommend') run()
 })
 watch(mode, m => { if (m === 'recommend' && !view.value && !loading.value) run() })
@@ -50,7 +50,7 @@ watch(mode, m => { if (m === 'recommend' && !view.value && !loading.value) run()
     <div v-if="mode === 'inspiration'" class="recommend-strip-body"><InspirationBlock /></div>
     <div v-show="mode === 'recommend'" class="recommend-strip-body">
       <div class="recommend-conditions">
-        <RecommendIntentBar v-model="intent" :loading="loading" submit-label="重新推荐" auto-run @submit="run" />
+        <RecommendIntentBar v-model="intent" :loading="loading" :allow-any="Boolean(required)" submit-label="重新推荐" auto-run @submit="run" />
         <div v-if="required" class="recommend-required"><span>围绕你选的那件衣物搭配</span><a-button type="link" size="small" @click="clearRequired">不指定</a-button></div>
       </div>
       <a-alert v-if="error" type="warning" show-icon :message="error"><template #action><a-button size="small" @click="run">重试</a-button></template></a-alert>

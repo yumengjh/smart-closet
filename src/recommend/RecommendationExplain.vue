@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { CheckCircleFilled, ExclamationCircleFilled } from '@ant-design/icons-vue'
+import { displayOuter } from './situation'
 import { ROLE_LABELS, scoreTone, type RecommendedOutfit } from './types'
 
 defineProps<{ outfit: RecommendedOutfit }>()
@@ -38,11 +39,11 @@ defineProps<{ outfit: RecommendedOutfit }>()
         </li>
       </ul>
     </section>
-    <section v-if="outfit.outers.length" aria-label="建议外层" class="recommend-outers">
+    <section v-if="displayOuter(outfit)" aria-label="建议外层" class="recommend-outers">
       <h4>建议外层</h4>
-      <a-alert type="info" show-icon message="天气偏凉，可以自行加一件外套。叠穿资料未核对，请自行确认，它不会放进这套搭配。" />
+      <a-alert type="info" show-icon message="可按实物核对后带上这件外套。" />
       <ul class="recommend-garments">
-        <li v-for="o in outfit.outers" :key="o.id"><div><strong>{{ o.name }}</strong></div><p v-if="o.reasons.length">{{ o.reasons.join(' · ') }}</p></li>
+        <li v-for="o in [displayOuter(outfit)!]" :key="o.id"><div><strong>{{ o.name }}</strong></div><p v-if="o.reasons.length">{{ o.reasons.join(' · ') }}</p></li>
       </ul>
     </section>
   </div>

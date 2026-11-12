@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
+import { sceneView } from './situation'
+import SituationEcho from './SituationEcho.vue'
 import { App } from 'ant-design-vue'
 import { useRouter } from 'vue-router'
 import { ReloadOutlined } from '@ant-design/icons-vue'
@@ -17,6 +19,21 @@ const props = withDefaults(defineProps<{ view: RecommendationView; dense?: boole
 const emit = defineEmits<{ expired: [] }>()
 const { message } = App.useApp()
 const router = useRouter(); const closet = useClosetStore()
+const grouped = ref(props.view)
+const groupError = ref('')
+let poll: ReturnType<typeof setTimeout> | undefined
+let disposed = false
+async function loadGroups() {
+  groupError.value = ''
+  try {
+    const next = await recommendApi.groups(props.view.runId)
+    if (disposed) return
+    grouped.value = next
+    if (next.pendingGroups) poll = setTimeout(loadGroups, 1000)
+  } catch (cause) { if (!disposed) groupError.value = cause instanceof Error ? cause.message : '其余场景暂时无法加载。' }
+}
+onMounted(() => { if (props.view.pendingGroups) poll = setTimeout(loadGroups, 1000) })
+onUnmounted(() => { disposed = true; clearTimeout(poll) })
 const outfits = ref([...props.view.outfits]); const hasMore = ref(props.view.hasMore)
 const detailOpen = ref(false); const detailIndex = ref(0); const loadingMore = ref(false)
 function openDetail(i: number) { detailIndex.value = i; detailOpen.value = true; playSound('rise') }
@@ -39,6 +56,17 @@ function replace(i: number, outfit: typeof outfits.value[number]) { outfits.valu
 </script>
 <template>
   <div class="recommend-group" :class="{ 'is-dense': dense }">
+    <SituationEcho :situation="view.intent.situation" private-visible />
+    <template v-if="grouped.groups?.length">
+      <section v-for="group in grouped.groups.slice(0, 3)" :key="group.runId" class="recommend-scene-group">
+        <h3>{{ group.label }}</h3>
+        <RecommendationGroup :view="sceneView(view, group)" :dense="dense" @expired="emit('expired')" />
+      </section>
+      <a-spin v-if="grouped.pendingGroups && !groupError" size="small" tip="正在补齐其他场景" />
+      <a-alert v-if="groupError" type="warning" :message="groupError"><template #action><a-button size="small" @click="loadGroups">重试</a-button></template></a-alert>
+      <p v-for="item in grouped.unsuitable || []" :key="item.occasion" class="muted">{{ item.occasion }} · {{ item.reason }}</p>
+    </template>
+    <template v-else>
     <a-empty v-if="!outfits.length" :description="view.emptyReason || '当前条件下没有可靠组合。'"><a-button @click="router.push('/add')">去添加衣物</a-button></a-empty>
     <div v-else class="recommend-cards" role="list">
       <RecommendationCard v-for="(o, i) in outfits" :key="o.key" role="listitem" :outfit="o" @open="openDetail(i)" @workspace="workspace(i)" />
@@ -46,5 +74,6 @@ function replace(i: number, outfit: typeof outfits.value[number]) { outfits.valu
     <div v-if="outfits.length" class="recommend-group-footer"><small class="muted">按“{{ view.intent.description }}”计算 · 规则打分，不调用大模型</small><a-button size="small" :loading="loadingMore" :disabled="!hasMore" @click="more"><ReloadOutlined />换一批</a-button></div>
     <RecommendNotices :items="[...view.limits, ...view.notes]" />
     <RecommendationDetailModal v-model:open="detailOpen" v-model:index="detailIndex" :run-id="view.runId" :outfits="outfits" :intent="view.intent.description" @replace="replace" />
+    </template>
   </div>
 </template>

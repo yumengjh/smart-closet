@@ -27,6 +27,8 @@ const { message } = App.useApp()
 const router = useRouter(); const closet = useClosetStore()
 const outfit = computed(() => props.outfits[Math.min(index.value, props.outfits.length - 1)])
 const scene = ref<OutfitScene | null>(null); const sceneError = ref('')
+const selectedAccessories = ref<string[]>([])
+watch(() => outfit.value?.key, () => { selectedAccessories.value = [] })
 const wearing = ref(false); const worn = ref<Set<string>>(new Set()); const opening = ref(false)
 const viewed = new Set<string>()
 const sceneLoads = latestRequest()
@@ -41,13 +43,13 @@ watch([open, outfit], async () => {
 async function wear() {
   const { key, garments } = outfit.value
   wearing.value = true
-  try { await recommendApi.wear({ garmentIds: garments.map(g => g.id) }); worn.value = new Set([...worn.value, key]); playSound('success'); message.success('已记下今天穿了这套，之后推荐会参考。') }
+  try { await recommendApi.wear({ garmentIds: garments.map(g => g.id), recommendationLogId: outfit.value.logId }); worn.value = new Set([...worn.value, key]); playSound('success'); message.success('已记下今天穿了这套，之后推荐会参考。') }
   catch (e) { playSound('error'); message.error(e instanceof Error ? e.message : '没有记录成功。') }
   finally { wearing.value = false }
 }
 async function workspace() {
   opening.value = true
-  try { await openInWorkspace(router, closet.user!.username, outfit.value, props.runId); open.value = false }
+  try { await openInWorkspace(router, closet.user!.username, outfit.value, props.runId, selectedAccessories.value); open.value = false }
   catch (e) { message.error(e instanceof Error ? e.message : '没能打开到搭配编辑。') }
   finally { opening.value = false }
 }
@@ -77,6 +79,10 @@ function adopted(next: RecommendedOutfit) { emit('replace', index.value, next); 
         </ul>
         <a-collapse ghost class="recommend-collapse"><a-collapse-panel key="why" header="各项得分与依据"><RecommendationExplain :outfit="outfit" /></a-collapse-panel></a-collapse>
         <RecommendationFeedback :key="'f' + outfit.key" :log-id="outfit.logId" :garments="outfit.garments" />
+        <div v-if="outfit.accessories?.length" class="recommend-accessory-choice">
+          <h4>编辑时带上</h4>
+          <a-checkbox-group v-model:value="selectedAccessories" :options="outfit.accessories.map(item => ({ value: item.id, label: item.name }))" aria-label="带入搭配的配件" />
+        </div>
         <div class="recommend-detail-actions">
           <a-button :loading="wearing" :disabled="worn.has(outfit.key)" @click="wear"><CheckOutlined />{{ worn.has(outfit.key) ? '已记录今天穿了' : '今天穿了这套' }}</a-button>
           <a-button type="primary" :loading="opening" @click="workspace">编辑这套</a-button>

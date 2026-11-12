@@ -4,6 +4,7 @@ import { WarningOutlined } from '@ant-design/icons-vue'
 import OutfitThumbnail from '../components/OutfitThumbnail.vue'
 import type { OutfitScene } from '../domain/outfit'
 import RecommendationFeedback from './RecommendationFeedback.vue'
+import { displayOuter } from './situation'
 import { outfitScene } from './sceneCache'
 import type { RecommendedOutfit } from './types'
 
@@ -23,6 +24,7 @@ onMounted(load); watch(() => props.outfit.key, load)
     <div v-if="outfit.tags.length || outfit.garments.some(g => g.preset)" class="recommend-tags"><a-tag v-for="tag in outfit.tags" :key="tag" :color="tag === '新尝试' ? 'blue' : tag.endsWith('没穿了') ? 'gold' : 'green'">{{ tag }}</a-tag><a-tag v-if="outfit.garments.some(g => g.preset)" title="这套里有预设衣物的示意图">含预设</a-tag></div>
     <ul class="recommend-highlights"><li v-for="h in outfit.highlights.slice(0, 3)" :key="h">{{ h }}</li></ul>
     <ul v-if="outfit.warnings.length" class="recommend-warnings"><li><WarningOutlined />{{ outfit.warnings[0] }}<template v-if="outfit.warnings.length > 1"> 等 {{ outfit.warnings.length }} 条</template></li></ul>
+    <p v-if="displayOuter(outfit)" class="recommend-accessories muted">外套建议 · {{ displayOuter(outfit)?.name }}</p>
     <p v-if="outfit.accessories?.length" class="recommend-accessories muted">可以搭配：{{ outfit.accessories.map(a => a.name).join('、') }}</p>
     <p v-else-if="outfit.tips?.length" class="recommend-accessories muted">{{ outfit.tips[0] }}</p>
     <footer class="recommend-card-actions">
