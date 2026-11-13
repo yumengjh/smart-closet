@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#f7faf9" />
+    <meta name="theme-color" content="#fafaf9" />
     <meta name="description" content="鱼搭，整理衣物、管理衣柜与组合穿搭。" />
     <link rel="icon" type="image/png" href="/yuda-logo-320.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
@@ -18,7 +18,7 @@
         const theme = localStorage.getItem('yuda.theme.v1') === 'dark' ? 'dark' : 'light'
         document.documentElement.dataset.theme = theme
         document.documentElement.style.colorScheme = theme
-        document.querySelector('meta[name="theme-color"]').setAttribute('content', theme === 'dark' ? '#0f1413' : '#f7faf9')
+        document.querySelector('meta[name="theme-color"]').setAttribute('content', theme === 'dark' ? '#0d0d0d' : '#fafaf9')
       } catch {}
     </script>
   </head>

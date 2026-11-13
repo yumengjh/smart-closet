@@ -48,7 +48,7 @@ async function changePassword() {
     await closetApi.changePassword(currentPassword.value, newPassword.value, signOutOthers.value)
     if (closet.user) closet.user.mustChangePassword = false
     success.value = '密码已更新。'; currentPassword.value = ''; newPassword.value = ''; repeatPassword.value = ''
-    if (wasFirstLogin) await router.replace('/wardrobe')
+    if (wasFirstLogin) await router.replace('/today')
     else await loadSessions()
   } catch (cause) { error.value = cause instanceof Error ? cause.message : '密码未能更新。' }
   finally { loading.value = false }

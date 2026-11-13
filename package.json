@@ -24,14 +24,17 @@
     "@mediapipe/tasks-vision": "1.1.0",
     "@xmaxai/web-sdk": "1.1.1",
     "ant-design-vue": "^4.2.6",
+    "canvas-confetti": "^1.9.3",
     "konva": "^10.7.0",
     "mediabunny": "1.65.0",
+    "motion": "^12.23.12",
     "pinia": "^3.0.3",
     "vue": "^3.5.13",
     "vue-konva": "^4.0.1",
     "vue-router": "^4.5.0"
   },
   "devDependencies": {
+    "@types/canvas-confetti": "^1.9.0",
     "@types/node": "^22.10.2",
     "@vitejs/plugin-vue": "^5.2.1",
     "typescript": "~5.7.2",

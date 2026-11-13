@@ -2,7 +2,7 @@
 import { createUuid } from '../domain/id'
 import { isAccountSwitched, mayPoll } from '../domain/accountSession'
 import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { App, message } from 'ant-design-vue'
 import { CameraOutlined, PictureOutlined, SettingOutlined, CheckCircleFilled, LoadingOutlined, ArrowRightOutlined, InboxOutlined, CloseOutlined, DownOutlined, MoreOutlined, QuestionCircleOutlined, ExclamationCircleFilled } from '@ant-design/icons-vue'
 import { useClosetStore } from '../stores/closet'
@@ -16,7 +16,7 @@ import { loadWantedLabel, wantedLabel } from '../wardrobe/wanted'
 import { savePhoto, setPhotoWanted, checkLocalStorage, updateSavedResult, refreshUploads, pumpUploads, uploadRows, uploadError, markPhoto, retryPhoto, removePhoto, removePhotos, quickApi, type LocalPhoto, type Hint } from '../services/quickIntake'
 
 const notifications = useNotificationStore()
-const closet = useClosetStore(), router = useRouter(), { modal } = App.useApp()
+const closet = useClosetStore(), router = useRouter(), route = useRoute(), { modal } = App.useApp()
 const compact = ref(window.matchMedia('(max-width: 1023px)').matches)
 const mode = ref('BASE_READY'), camera = ref(false), settings = ref(false), markerMode = ref(false)
 const marker = ref<LocalPhoto>(), input = ref<HTMLInputElement>(), nativeInput = ref<HTMLInputElement>()
@@ -30,7 +30,8 @@ const localCount = computed(() => rows.value.filter(row => row.state !== 'SAVED'
 const inCloset = (row: LocalPhoto) => row.result?.garment.status === 'ACTIVE' || row.result?.garment.status === 'WANTED'
 const admitted = computed(() => rows.value.filter(inCloset).length)
 // 种草（#197）：网上看中、还没买的衣服也从这里收进衣柜，入柜为 WANTED，不参与推荐与统计。只在本次打开页面期间有效，默认“我有这件”。
-const ownership = ref<'OWNED' | 'WANTED'>('OWNED')
+// 默认“我有这件”、不跨次记忆；只有从添加菜单的“存一件种草”进来（?wanted=1，本次明确选择）才预选种草（ToC 改版 P2）。
+const ownership = ref<'OWNED' | 'WANTED'>(route.query.wanted === '1' ? 'WANTED' : 'OWNED')
 void loadWantedLabel()
 const ownershipOptions = computed(() => [{ value: 'OWNED', label: '我有这件' }, { value: 'WANTED', label: `${wantedLabel.value}（还没买）` }])
 /** The row's current choice: the closet status once admitted, otherwise what was chosen for it. */
@@ -312,10 +313,10 @@ onBeforeUnmount(() => { alive = false; clearTimeout(timer); for (const url of th
       <a-button v-if="rows.length > 6" type="text" block class="show-more" @click="expanded = !expanded">{{ expanded ? '收起' : `还有 ${rows.length - 6} 张` }}</a-button>
     </section>
     <a-modal v-if="!compact" v-model:open="settings" title="录入设置" :footer="null" width="480px" centered>
-      <div class="quick-settings"><h3>什么时候入柜</h3><a-radio-group v-model:value="mode"><a-radio value="BASE_READY"><strong>贴纸做好后入柜</strong><small>推荐 · 去背景、加白边后即可查看使用</small></a-radio><a-radio value="UPLOAD_READY"><strong>原图保存后立即入柜</strong><small>先用原图，贴纸做好后自动更新</small></a-radio></a-radio-group><div class="marker-setting"><div><h3>拍摄后指定主视衣物</h3><p>照片里有多件衣物时，点选或框选目标。</p></div><a-switch v-model:checked="markerMode" aria-label="拍摄后指定主视衣物" /></div><p class="storage-note">照片先存在本机，上传完成前请保持网页打开。“{{ wantedLabel }}”的叫法可以在「我的 → 界面偏好」里改。</p><a-button type="primary" block size="large" @click="settings = false">完成</a-button></div>
+      <div class="quick-settings"><h3>什么时候入柜</h3><a-radio-group v-model:value="mode"><a-radio value="BASE_READY"><strong>贴纸做好后入柜</strong><small>推荐 · 去背景、加白边后即可查看使用</small></a-radio><a-radio value="UPLOAD_READY"><strong>原图保存后立即入柜</strong><small>先用原图，贴纸做好后自动更新</small></a-radio></a-radio-group><div class="marker-setting"><div><h3>拍摄后指定主视衣物</h3><p>照片里有多件衣物时，点选或框选目标。</p></div><a-switch v-model:checked="markerMode" aria-label="拍摄后指定主视衣物" /></div><p class="storage-note">照片先存在本机，上传完成前请保持网页打开。“{{ wantedLabel }}”的叫法可以在「我的 → 外观」里改。</p><a-button type="primary" block size="large" @click="settings = false">完成</a-button></div>
     </a-modal>
     <a-drawer v-else v-model:open="settings" title="录入设置" placement="bottom" height="auto" root-class-name="quick-settings-drawer">
-      <div class="quick-settings"><h3>什么时候入柜</h3><a-radio-group v-model:value="mode"><a-radio value="BASE_READY"><strong>贴纸做好后入柜</strong><small>推荐 · 去背景、加白边后即可查看使用</small></a-radio><a-radio value="UPLOAD_READY"><strong>原图保存后立即入柜</strong><small>先用原图，贴纸做好后自动更新</small></a-radio></a-radio-group><div class="marker-setting"><div><h3>拍摄后指定主视衣物</h3><p>照片里有多件衣物时，点选或框选目标。</p></div><a-switch v-model:checked="markerMode" aria-label="拍摄后指定主视衣物" /></div><p class="storage-note">照片先存在本机，上传完成前请保持网页打开。“{{ wantedLabel }}”的叫法可以在「我的 → 界面偏好」里改。</p><a-button type="primary" block size="large" @click="settings = false">完成</a-button></div>
+      <div class="quick-settings"><h3>什么时候入柜</h3><a-radio-group v-model:value="mode"><a-radio value="BASE_READY"><strong>贴纸做好后入柜</strong><small>推荐 · 去背景、加白边后即可查看使用</small></a-radio><a-radio value="UPLOAD_READY"><strong>原图保存后立即入柜</strong><small>先用原图，贴纸做好后自动更新</small></a-radio></a-radio-group><div class="marker-setting"><div><h3>拍摄后指定主视衣物</h3><p>照片里有多件衣物时，点选或框选目标。</p></div><a-switch v-model:checked="markerMode" aria-label="拍摄后指定主视衣物" /></div><p class="storage-note">照片先存在本机，上传完成前请保持网页打开。“{{ wantedLabel }}”的叫法可以在「我的 → 外观」里改。</p><a-button type="primary" block size="large" @click="settings = false">完成</a-button></div>
     </a-drawer>
   </section>
 </template>
@@ -364,7 +365,7 @@ onBeforeUnmount(() => { alive = false; clearTimeout(timer); for (const url of th
 .quick-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:24px 18px}
 .quick-tile{min-width:0}
 .quick-image{position:relative;display:block;width:100%;aspect-ratio:4/5;padding:0;border:0;border-radius:24px;overflow:hidden;background:var(--surface-alt);cursor:pointer;transition:transform .35s var(--spring),box-shadow .35s ease}
-.quick-image:hover{transform:translateY(-3px);box-shadow:0 18px 30px -20px #0d3b3340}
+.quick-image:hover{transform:translateY(-3px);box-shadow:0 18px 30px -20px #00000040}
 .quick-image:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .quick-image img{width:100%;height:100%;object-fit:contain;padding:12px}
 .quick-tile.wanted .quick-image{outline:1.5px dashed var(--accent);outline-offset:-7px}

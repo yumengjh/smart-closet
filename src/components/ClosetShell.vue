@@ -3,10 +3,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import zhCN from 'ant-design-vue/es/locale/zh_CN'
 import { theme as antTheme } from 'ant-design-vue'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
-import {
-  AppstoreOutlined, CheckCircleOutlined, PictureOutlined, PlusOutlined,
-  SettingOutlined, LogoutOutlined, SkinOutlined, VideoCameraOutlined, BgColorsOutlined, SoundOutlined, AudioMutedOutlined,
-} from '@ant-design/icons-vue'
+import { PlusOutlined, SettingOutlined, LogoutOutlined, BgColorsOutlined, SoundOutlined, AudioMutedOutlined } from '@ant-design/icons-vue'
 import { useClosetStore } from '../stores/closet'
 import { useThemeStore } from '../stores/theme'
 import { antTokens, antComponentTokens } from '../theme/tokens'
@@ -29,7 +26,7 @@ import { installInteractionSounds, soundEnabled, toggleSound, unlockSound } from
 import { pendingPath, prefetchRoute, prefetchWhenIdle } from '../composables/useRouteProgress'
 import { accountIsStale, markAccountStale, onAccountChange } from '../domain/accountSession'
 import { useNotificationStore } from '../stores/notifications'
-import { tryOnAccess, refreshTryOnAccess, resetTryOnAccess } from '../tryon/access'
+import { refreshTryOnAccess, resetTryOnAccess } from '../tryon/access'
 import { CAMERA_LAYOUT_QUERY } from '../tryon/stage'
 
 const route = useRoute()
@@ -69,31 +66,23 @@ let tryonAccessTimer = 0
 watch(() => closet.user && !closet.user.mustChangePassword ? closet.user.username : '', name => { resetTryOnAccess(); if (name) void refreshTryOnAccess() }, { immediate: true })
 onMounted(() => { tryonMediaQuery.addEventListener('change', updateTryonNarrow); tryonAccessTimer = window.setInterval(() => { if (closet.user && !closet.user.mustChangePassword && !document.hidden) void refreshTryOnAccess() }, 60000) })
 onUnmounted(() => { tryonMediaQuery.removeEventListener('change', updateTryonNarrow); clearInterval(tryonAccessTimer) })
-// 清新改版 §2.1：桌面胶囊放全部入口；手机只常驻 衣柜、搭配、＋、试穿、问鱼搭 五项（mobile = 手机上的排列位置），
-// 未入柜、OOTD、常见单品、新建搭配收进 ＋ 弹出的卡片，“我的”在顶栏头像菜单。试穿优先实时试穿，没有权限时用 OOTD。
-type NavItem = { path: string; label: string; short?: string; icon: unknown; glyph?: 'wardrobe' | 'pending' | 'outfits' | 'me'; mobile?: number }
+// ToC 改版（二）3.2：底部胶囊为 今天 / 衣柜 / ＋ / 试穿 / 我的，手机与桌面结构相同（mobile = 手机上的排列位置，＋ 在 20）。
+// 问鱼搭不在胶囊里，改为右下角悬浮表情（#assistant-dock-slot 移到 nav 外）。未入柜、OOTD、组合台不再是一级入口。
+type NavItem = { path: string; label: string; glyph: 'today' | 'wardrobe' | 'try' | 'me'; mobile: number }
 const navItems: NavItem[] = [
-  { path: '/wardrobe', label: '我的衣柜', short: '衣柜', icon: AppstoreOutlined, glyph: 'wardrobe', mobile: 0 },
-  { path: '/pending', label: '未入柜', icon: CheckCircleOutlined, glyph: 'pending' },
-  { path: '/outfits', label: '组合台', short: '搭配', icon: PictureOutlined, glyph: 'outfits', mobile: 10 },
-  { path: '/ootd', label: 'OOTD 试穿', short: '试穿', icon: SkinOutlined },
-  { path: '/try-on', label: '实时试穿', short: '试穿', icon: VideoCameraOutlined, mobile: 30 },
-  { path: '/settings', label: '我的', icon: SettingOutlined, glyph: 'me' },
+  { path: '/today', label: '今天', glyph: 'today', mobile: 0 },
+  { path: '/wardrobe', label: '衣柜', glyph: 'wardrobe', mobile: 10 },
+  { path: '/try', label: '试穿', glyph: 'try', mobile: 30 },
+  { path: '/settings', label: '我的', glyph: 'me', mobile: 40 },
 ]
-/** Where the item sits in the phone bar, or undefined when it lives elsewhere on phones. */
-function mobileSlot(item: NavItem) {
-  if (closet.user?.mustChangePassword) return item.path === '/settings' ? 0 : undefined
-  if (item.path === '/ootd') return tryOnAccess.value?.enabled ? undefined : 30
-  return item.mobile
-}
-const narrowNav = ref(!window.matchMedia('(min-width: 1024px)').matches)
+const ACTIVE_PREFIXES: Record<string, string[]> = { '/today': ['/today', '/outfits'], '/wardrobe': ['/wardrobe', '/garment', '/pending', '/review', '/batches', '/trash'], '/try': ['/try', '/ootd'], '/settings': ['/settings', '/help', '/admin'] }
 // Highlight the clicked destination immediately; on slow networks the route itself resolves later.
 const navPath = computed(() => pendingPath.value ?? route.path)
 function isNavActive(path: string) {
   const current = navPath.value
-  return current === path || (path === '/wardrobe' && current.startsWith('/garment')) || (path === '/outfits' && current.startsWith('/outfits'))
+  return (ACTIVE_PREFIXES[path] ?? [path]).some(prefix => current === prefix || current.startsWith(`${prefix}/`))
 }
-const visibleNavItems = computed(() => (closet.user?.mustChangePassword ? navItems.filter(item => item.path === '/settings') : navItems).filter(item => item.path !== '/try-on' || tryOnAccess.value?.enabled))
+const visibleNavItems = computed(() => closet.user?.mustChangePassword ? navItems.filter(item => item.path === '/settings') : navItems)
 const preferences = usePreferencesStore()
 const prefetch = (path: string) => prefetchRoute(router, path)
 // Dock: a pill behind the active tab that springs from tab to tab. On desktop it covers the whole tab (dark pill, light
@@ -102,9 +91,6 @@ const prefetch = (path: string) => prefetchRoute(router, path)
 const mobileNav = ref<HTMLElement | null>(null)
 const indicator = ref<{ x: number; y: number; w: number; h: number; instant: boolean } | null>(null)
 const wideQuery = window.matchMedia('(min-width: 1024px)')
-const updateNarrowNav = () => { narrowNav.value = !wideQuery.matches }
-onMounted(() => wideQuery.addEventListener('change', updateNarrowNav))
-onUnmounted(() => wideQuery.removeEventListener('change', updateNarrowNav))
 function placeIndicator() {
   const nav = mobileNav.value, link = nav?.querySelector<HTMLElement>(':scope > a.active')
   if (!nav || !link || !link.getBoundingClientRect().width) { indicator.value = null; return }
@@ -154,7 +140,7 @@ function routeEnter(el: Element, done: () => void) {
   const lift = !calm() && !isOutfitEditor.value
   el.animate([{ opacity: 0, transform: lift ? 'translateY(6px)' : 'none' }, { opacity: 1, transform: 'none' }], { duration: 200, easing: 'ease-out' }).finished.then(done, done)
 }
-watch(() => closet.isSignedIn && !closet.user?.mustChangePassword, ready => { if (ready) prefetchWhenIdle(router, [...navItems.map(item => item.path), '/add', '/tasks']) }, { immediate: true })
+watch(() => closet.isSignedIn && !closet.user?.mustChangePassword, ready => { if (ready) prefetchWhenIdle(router, [...navItems.map(item => item.path), '/add', '/tasks', '/outfits']) }, { immediate: true })
 // Show the progress bar only when navigation is noticeably slow, so fast switches stay calm.
 const showProgress = ref(false)
 let progressTimer = 0
@@ -213,7 +199,7 @@ async function signOut() {
 </script>
 
 <template>
-  <a-config-provider :theme="closetTheme" :locale="zhCN">
+  <a-config-provider :theme="closetTheme" :locale="zhCN" :auto-insert-space-in-button="false">
     <a-app>
       <a-modal :open="accountStale" title="登录账号已切换" :closable="false" :mask-closable="false" :keyboard="false" centered :mask-style="{ backdropFilter: 'blur(14px)' }" :z-index="3000">
         <p>这个浏览器已在另一个窗口切换了登录账号。本页还停留在之前的账号，为避免照片或资料提交到新账号，已暂停所有操作。</p>
@@ -227,7 +213,7 @@ async function signOut() {
           <div v-if="usingMocks" class="mock-banner"><span class="mock-pulse"></span><span>界面演示 · 示例数据不是 AI 结果，演示模式禁止提交模型任务</span><span class="mock-banner-end">{{ closet.user?.displayName || closet.user?.username }} 的衣橱</span></div>
           <header class="topbar">
             <div class="topbar-lead">
-              <RouterLink :to="closet.user?.mustChangePassword ? '/settings' : '/wardrobe'" class="brand-lockup" aria-label="鱼搭首页">
+              <RouterLink :to="closet.user?.mustChangePassword ? '/settings' : '/today'" class="brand-lockup" aria-label="鱼搭首页">
                 <span class="brand-mark"><img src="/yuda-logo-192.png" alt="" /></span>
                 <span class="brand-text"><strong>鱼搭</strong></span>
               </RouterLink>
@@ -235,7 +221,7 @@ async function signOut() {
               <div id="topbar-page" class="topbar-page"></div>
             </div>
             <div class="topbar-actions">
-              <span class="topbar-prefs"><ThemeToggle /><SoundToggle /></span><TaskInbox v-if="!closet.user?.mustChangePassword" />
+              <span class="topbar-prefs"><ThemeToggle /><SoundToggle /></span><span v-if="!closet.user?.mustChangePassword" id="assistant-top-slot" class="topbar-assistant-slot"></span><TaskInbox v-if="!closet.user?.mustChangePassword" />
               <a-dropdown :trigger="['click']" placement="bottomRight">
                 <a-button type="text" shape="circle" class="topbar-profile" :aria-label="`账号：${closet.user?.displayName || closet.user?.username}`"><span class="avatar">{{ (closet.user?.displayName || closet.user?.username)?.slice(0, 1).toUpperCase() }}</span></a-button>
                 <template #overlay>
@@ -259,20 +245,21 @@ async function signOut() {
           <AssistantPanel v-if="!closet.user?.mustChangePassword" :key="closet.user?.username" :suspended="tryonRoute && tryonNarrow" />
           <GuideTour v-if="!closet.user?.mustChangePassword" />
         </main>
-        <!-- 底部悬浮胶囊：所有宽度共用。桌面按 order 排，手机按 --mobile-order 排（＋ 在正中，问鱼搭在最右）。 -->
+        <!-- 底部悬浮胶囊：所有宽度共用。桌面按 order 排，手机按 --mobile-order 排（＋ 在正中）。 -->
         <nav ref="mobileNav" class="mobile-nav shell-dock" :class="{ away: dockAway }" aria-label="主导航">
-          <RouterLink v-for="(item, index) in visibleNavItems" :key="item.path" :to="item.path" :class="{ active: isNavActive(item.path), pending: pendingPath === item.path, 'desktop-only': mobileSlot(item) === undefined }" :style="{ order: index * 10, '--mobile-order': mobileSlot(item) ?? 99 }" :aria-current="isNavActive(item.path) ? 'page' : undefined" @pointerenter="prefetch(item.path)" @focus="prefetch(item.path)" @touchstart.passive="prefetch(item.path)">
-            <NavGlyph v-if="item.glyph" :name="item.glyph" :active="isNavActive(item.path)" /><em v-else class="nav-glyph-box"><component :is="item.icon" class="dock-icon" /></em><span>{{ narrowNav ? item.short || item.label : item.label }}</span>
-            <i v-if="item.path === '/pending' && closet.pendingCount"></i><b v-if="item.path === '/pending' && closet.pendingCount" class="dock-count">{{ closet.pendingCount > 99 ? '99+' : closet.pendingCount }}</b>
+          <RouterLink v-for="(item, index) in visibleNavItems" :key="item.path" :to="item.path" :class="{ active: isNavActive(item.path), pending: pendingPath === item.path }" :style="{ order: index * 10, '--mobile-order': closet.user?.mustChangePassword ? 0 : item.mobile }" :aria-current="isNavActive(item.path) ? 'page' : undefined" @pointerenter="prefetch(item.path)" @focus="prefetch(item.path)" @touchstart.passive="prefetch(item.path)">
+            <NavGlyph :name="item.glyph" :active="isNavActive(item.path)" /><span>{{ item.label }}</span>
+            <i v-if="item.path === '/wardrobe' && closet.pendingCount" :aria-label="`${closet.pendingCount} 件在整理`"></i>
           </RouterLink>
           <template v-if="!closet.user?.mustChangePassword">
             <AddLauncher />
+            <a-tooltip title="添加衣物"><RouterLink to="/add" class="dock-add" aria-label="添加衣物" @pointerenter="prefetch('/add')"><PlusOutlined /><span>添加</span></RouterLink></a-tooltip>
             <span class="dock-sep" aria-hidden="true"></span>
             <span id="assistant-dock-slot" class="dock-assistant-slot"></span>
-            <a-tooltip title="添加衣物"><RouterLink to="/add" class="dock-add" aria-label="添加衣物" @pointerenter="prefetch('/add')"><PlusOutlined /></RouterLink></a-tooltip>
           </template>
           <span v-if="indicator" class="mobile-nav-indicator" :class="{ instant: indicator.instant }" :style="{ width: `${indicator.w}px`, height: `${indicator.h}px`, transform: `translate(${indicator.x}px, ${indicator.y}px)` }" aria-hidden="true"></span>
         </nav>
+
       </div>
       <div v-else class="boot-screen"><img class="brand-logo boot-logo" src="/yuda-logo-320.png" alt="鱼搭" /><p>正在打开衣橱…</p></div>
     </a-app>
@@ -283,6 +270,8 @@ async function signOut() {
 /* Brand: the wide graffiti mark sits on a soft tile so it reads as a logo, not a stray sticker. */
 .topbar-lead { display: flex; flex: 1; align-items: center; gap: 14px; min-width: 0; margin-right: auto; }
 .topbar-prefs { display: contents; }
+.topbar-assistant-slot { display: none; }
+@media (max-width: 1023px) { .topbar-assistant-slot { display: flex; align-items: center; } }
 .brand-lockup { display: flex; flex: none; align-items: center; gap: 10px; color: var(--ink); }
 .topbar-page { display: flex; align-items: center; gap: 14px; min-width: 0; overflow: hidden; }
 .topbar-page:not(:empty)::before { content: ''; flex: none; width: 1px; height: 18px; background: var(--line); }

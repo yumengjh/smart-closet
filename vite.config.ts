@@ -45,6 +45,9 @@ export default defineConfig(({ mode }) => {
           if (id.includes('/@volcengine/')) return 'tryon-volc'
           if (id.includes('/trtc-sdk-v5/')) return 'tryon-trtc'
           if (id.includes('/cos-js-sdk-v5/') || id.includes('/fast-xml-parser/') || id.includes('/strnum/')) return 'tryon-storage'
+          // ToC 改版 P2：庆祝与弹簧动画只在“今天”页等处用到，单独成块，不进每页都加载的 vendor。
+          if (id.includes('/canvas-confetti/')) return 'delight-confetti'
+          if (/node_modules\/(motion|motion-dom|motion-utils|framer-motion)\//.test(id)) return 'delight-motion'
           if (id.includes('ant-design-vue') || id.includes('@ant-design/icons-vue')) return 'ui-kit'
           if (id.includes('/vue/') || id.includes('/vue-router/') || id.includes('/pinia/') || id.includes('/@vue/')) return 'vue-vendor'
           return 'vendor'

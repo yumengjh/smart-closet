@@ -1,10 +1,18 @@
 <script setup lang="ts">
 /** Bottom-bar icons: one line style (1.7 stroke, round joins); the active tab gets a soft fill instead of a different shape. */
-defineProps<{ name: 'wardrobe' | 'pending' | 'outfits' | 'me'; active?: boolean }>()
+defineProps<{ name: 'today' | 'wardrobe' | 'pending' | 'outfits' | 'try' | 'me'; active?: boolean }>()
 </script>
 <template>
   <em class="nav-glyph-box"><svg class="nav-glyph" :class="[`nav-glyph-${name}`, { active }]" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false">
-    <template v-if="name === 'wardrobe'">
+    <template v-if="name === 'today'">
+      <rect class="fill" x="5" y="4" width="14" height="16" rx="3" />
+      <rect x="5" y="4" width="14" height="16" rx="3" /><path d="M8.5 8.5h7M8.5 12h4" /><path d="m14.6 14.4.6 1.3 1.3.6-1.3.6-.6 1.3-.6-1.3-1.3-.6 1.3-.6z" />
+    </template>
+    <template v-else-if="name === 'try'">
+      <rect class="fill" x="6.5" y="3.5" width="11" height="17" rx="5.5" />
+      <rect x="6.5" y="3.5" width="11" height="17" rx="5.5" /><path d="m9.6 9.4 1.8-1.8M9.6 12.6l4.6-4.6" />
+    </template>
+    <template v-else-if="name === 'wardrobe'">
       <path class="fill" d="M3.5 18.5 12 12l8.5 6.5z" />
       <path d="M10 6.2a2 2 0 1 1 2.9 1.8c-.6.3-.9.8-.9 1.4V12M3.5 18.5 12 12l8.5 6.5z" />
     </template>

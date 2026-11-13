@@ -10,8 +10,8 @@ test('all business deep links are blocked before changing the initial password',
 test('authenticated users can use business pages after a successful password change', () => {
   const ready = { ...initial, mustChangePassword: false }
   assert.equal(sessionRedirect('/wardrobe', ready), undefined)
-  assert.equal(sessionRedirect('/login', ready), '/wardrobe')
-  assert.equal(sessionRedirect('/register', ready), '/wardrobe')
+  assert.equal(sessionRedirect('/login', ready), '/today')
+  assert.equal(sessionRedirect('/register', ready), '/today')
   assert.equal(canUseCloset(ready), true)
 })
 test('an expired or missing session goes to login and never loads business counts', () => {

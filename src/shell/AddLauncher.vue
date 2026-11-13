@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { AppstoreAddOutlined, CameraOutlined, SkinOutlined, UserOutlined, InboxOutlined, RightOutlined } from '@ant-design/icons-vue'
+import { AppstoreAddOutlined, CameraOutlined, HeartOutlined, InboxOutlined, RightOutlined } from '@ant-design/icons-vue'
+import { loadWantedLabel, wantedLabel } from '../wardrobe/wanted'
 import { useClosetStore } from '../stores/closet'
 import { playSound } from '../services/sound'
 import { usePreferencesStore } from '../stores/preferences'
@@ -17,13 +18,13 @@ import { revealNavigate } from './revealNavigate'
 const router = useRouter(); const route = useRoute(); const preferences = usePreferencesStore(); const closet = useClosetStore()
 const open = ref(false)
 const mode = computed(() => preferences.navLabels)
-const ACTIONS = [
-  { key: 'garment', label: '拍照上传', icon: CameraOutlined, to: '/add' },
+// ToC 改版（二）：＋ 只管“往衣柜里放东西”；新建搭配、OOTD 试穿移到“今天”和“试穿”。
+const ACTIONS = computed(() => [
+  { key: 'garment', label: '拍一件', icon: CameraOutlined, to: '/add' },
   { key: 'preset', label: '常见单品', icon: AppstoreAddOutlined, to: '/wardrobe?presets=1' },
-  { key: 'outfit', label: '新建搭配', icon: SkinOutlined, to: '/outfits/new' },
-  { key: 'ootd', label: 'OOTD 试穿', icon: UserOutlined, to: '/ootd' },
-]
-function toggle() { open.value = !open.value; playSound(open.value ? 'rise' : 'tick') }
+  { key: 'wanted', label: `存一件${wantedLabel.value}`, icon: HeartOutlined, to: '/add?wanted=1' },
+])
+function toggle() { open.value = !open.value; playSound(open.value ? 'rise' : 'tick'); if (open.value) loadWantedLabel() }
 function close() { if (open.value) { open.value = false; playSound('tick') } }
 function choose(to: string, event: MouseEvent) {
   playSound('tap')
@@ -59,7 +60,7 @@ onUnmounted(() => { window.removeEventListener('keydown', keys); document.docume
             <i class="add-sheet-icon"><component :is="action.icon" /></i><b class="add-sheet-label">{{ action.label }}</b>
           </a-button>
           <a-button class="add-sheet-row" role="menuitem" :style="{ '--i': ACTIONS.length }" @click="choose('/pending', $event)">
-            <InboxOutlined /><b>未入柜</b><small>{{ closet.pendingCount ? `${closet.pendingCount} 件在处理或待核对` : '没有待处理的衣物' }}</small><RightOutlined class="add-sheet-row-arrow" />
+            <InboxOutlined /><b>整理中</b><small>{{ closet.pendingCount ? `${closet.pendingCount} 件，做好会自动收进衣柜` : '没有正在整理的衣服' }}</small><RightOutlined class="add-sheet-row-arrow" />
           </a-button>
         </div>
       </div>
@@ -98,15 +99,15 @@ html.add-menu-open .mobile-nav { z-index: 930; }
 .add-sheet-enter-active .add-sheet-row { transition: opacity .24s ease calc(60ms + var(--i) * 35ms), transform .32s cubic-bezier(.22, 1.3, .36, 1) calc(60ms + var(--i) * 35ms); }
 .add-sheet-enter-from .add-sheet-row { opacity: 0; transform: translateY(14px); }
 .add-sheet { position: fixed; inset: 0; z-index: 920; background: color-mix(in srgb, var(--paper) 70%, transparent); backdrop-filter: blur(14px) saturate(1.1); -webkit-backdrop-filter: blur(14px) saturate(1.1); }
-.add-sheet-card { position: absolute; left: 12px; right: 12px; bottom: calc(84px + env(safe-area-inset-bottom)); display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; padding: 10px; border: 1px solid var(--line); border-radius: 22px; background: var(--surface); box-shadow: 0 18px 40px #0000002a, 0 2px 8px #00000012; transform-origin: 50% 100%; }
+.add-sheet-card { position: absolute; left: 12px; right: 12px; bottom: calc(84px + env(safe-area-inset-bottom)); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; padding: 10px; border: 1px solid var(--line); border-radius: 22px; background: var(--surface); box-shadow: 0 18px 40px #0000002a, 0 2px 8px #00000012; transform-origin: 50% 100%; }
 html[data-nav-labels='text'] .add-sheet-card { bottom: calc(70px + env(safe-area-inset-bottom)); }
 .add-sheet-tile.ant-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; height: auto; min-height: 84px; padding: 12px 4px 10px; border: 0; border-radius: 16px; color: var(--ink); background: transparent; box-shadow: none; transition: background .15s ease, transform .15s ease; }
 .add-sheet-tile.ant-btn:hover, .add-sheet-tile.ant-btn:focus-visible { color: var(--ink); background: var(--surface-alt); }
 .add-sheet-tile.ant-btn:active { transform: scale(.92); background: var(--surface-alt); }
 .add-sheet-tile.ant-btn:active .add-sheet-icon { transform: scale(.9) rotate(-6deg); }
 .add-sheet-icon { transition: transform .2s cubic-bezier(.34, 1.56, .64, 1); }
-.add-sheet-icon { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 14px; font-style: normal; font-size: 20px; color: var(--action-fg); background: var(--action-bg); }
-.add-sheet-tile:first-child .add-sheet-icon { background: var(--accent); color: #fff; }
+.add-sheet-icon { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 14px; font-style: normal; font-size: 20px; color: var(--ink); background: var(--surface-alt); }
+.add-sheet-tile:first-child .add-sheet-icon { background: var(--action-bg); color: var(--action-fg); }
 .add-sheet-label { font-size: 12px; font-weight: 500; line-height: 1.3; white-space: nowrap; }
 .add-sheet[data-mode='icon'] .add-sheet-label { display: none; }
 .add-sheet[data-mode='icon'] .add-sheet-tile.ant-btn { min-height: 68px; }

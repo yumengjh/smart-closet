@@ -98,6 +98,7 @@ const pinKey = computed(() => `yixu.assistant-pin.v1:${closet.user?.username || 
 const layoutKey = computed(() => `yixu.assistant-layout.v1:${closet.user?.username || 'local'}`)
 const panelKey = computed(() => `yixu.assistant-panel.v1:${closet.user?.username || 'local'}`)
 // The centre window takes the dock's place at the bottom (the dock steps away while it is open; 清新改版 §3.4).
+// ToC 改版（二）T5：入口是右下角的悬浮表情，窗口从它的轮廓展开（pillRect 取悬浮按钮）。
 const CENTER_BOTTOM = 20
 const centerPreferred = ref({ width: CENTER_WIDTH, height: CENTER_HEIGHT })
 const centerDockSpace = computed(() => CENTER_BOTTOM)
@@ -333,7 +334,7 @@ function nearBottom() { return !transcript.value || transcript.value.scrollHeigh
 
 const session = computed(() => sessions.value.find(s => s.id === selected.value))
 const context = computed(() => pageContext(route.path))
-const contextName = computed(() => context.value.scene ? `${context.value.name || '组合台'} · ${context.value.selectedIds?.length || 0} 项选中` : context.value.garmentId ? '当前衣物详情' : ({ '/wardrobe': '我的衣柜', '/outfits': '组合台', '/settings': '我的设置', '/help': '平台帮助', '/tasks': '任务记录', '/pending': '未入柜', '/add': '添加衣物', '/trash': '回收站' } as Record<string, string>)[route.path] || '当前页面')
+const contextName = computed(() => context.value.scene ? `${context.value.name || '组合台'} · ${context.value.selectedIds?.length || 0} 项选中` : context.value.garmentId ? '当前衣物详情' : ({ '/today': '今天', '/try': '试穿', '/wardrobe': '我的衣柜', '/outfits': '组合台', '/settings': '我的设置', '/help': '平台帮助', '/tasks': '任务记录', '/pending': '未入柜', '/add': '添加衣物', '/trash': '回收站' } as Record<string, string>)[route.path] || '当前页面')
 async function refreshSessions() { sessions.value = await agentRequest<AgentSession[]>('/sessions') }
 async function load() {
   void flushBoardTrace()

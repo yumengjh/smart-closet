@@ -17,7 +17,7 @@ export const useThemeStore = defineStore('theme', () => {
   watch(mode, (value) => {
     document.documentElement.dataset.theme = value
     document.documentElement.style.colorScheme = value
-    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', value === 'dark' ? '#0f1413' : '#f7faf9')
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', value === 'dark' ? '#0d0d0d' : '#fafaf9')
     try { localStorage.setItem(storageKey, value) }
     catch { /* Theme changes still apply when storage is unavailable. */ }
   }, { immediate: true })
