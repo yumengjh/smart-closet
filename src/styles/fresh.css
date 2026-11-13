@@ -71,5 +71,6 @@
 .settings-version { border-top: 0; }
 .settings-panel-icon { border: 0; border-radius: 16px; color: var(--accent-strong); background: var(--accent-soft); }
 .settings-panel-title h2 { font-size: 22px; }
-.settings-group { border: 0; border-radius: 28px; background: var(--surface-alt); }
+.settings-group { border: 0; border-radius: 16px; background: var(--surface); box-shadow: 0 0 0 1px var(--line); }
+.settings-group + .settings-group { margin-top: 14px; }
 @media (max-width: 1023px) { .settings-layout { gap: 20px; } .settings-nav { top: 0; } }

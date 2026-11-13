@@ -36,7 +36,7 @@ function finish() { open.value = false; emit('done', imported.value) }
   <a-modal v-model:open="open" title="开始使用鱼搭" :width="860" :footer="null" :mask-closable="false" destroy-on-close @cancel="finish">
     <a-steps :current="step" size="small" class="onboarding-steps" :items="[{ title: '推荐给谁' }, { title: '常见单品' }, { title: '完成' }]" />
     <section v-if="step === 0" class="onboarding-step">
-      <p class="muted">告诉鱼搭你喜欢的感觉，推荐会更合适。都可以不选，之后在“我的 → 穿搭画像”里也能改。</p>
+      <p class="muted">告诉鱼搭你喜欢的感觉，推荐会更合适。都可以不选，之后在“我的 → 我的风格”里也能改。</p>
       <div class="settings-row"><div><strong>风格年龄感</strong><small class="muted">想要的穿着感觉，不是实际年龄</small></div><a-segmented v-model:value="ageFeel" :options="AGE_FEELS" /></div>
       <div class="settings-row"><div><strong>常穿风格</strong><small class="muted">最多 3 个</small></div><a-select v-model:value="styles" mode="multiple" :options="STYLE_OPTIONS" :max-tag-count="3" allow-clear placeholder="不选" style="min-width: 240px" @change="(v: unknown) => { styles = (v as string[]).slice(0, 3) }" /></div>
       <footer class="onboarding-actions"><a-button @click="step = 1">跳过</a-button><a-button type="primary" :loading="saving" @click="saveTaste">下一步</a-button></footer>

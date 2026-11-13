@@ -7,7 +7,7 @@ import { useRouter } from 'vue-router'
 import { AppstoreAddOutlined, CameraOutlined, CheckCircleFilled, RightOutlined, SkinOutlined, UndoOutlined, ReloadOutlined } from '@ant-design/icons-vue'
 import CoverDeck from '../today/CoverDeck.vue'
 import RecommendationDetailModal from '../recommend/RecommendationDetailModal.vue'
-import OutfitThumbnail from '../components/OutfitThumbnail.vue'
+import OutfitCollage from '../today/OutfitCollage.vue'
 import { recommendApi } from '../recommend/api'
 import { outfitScene } from '../recommend/sceneCache'
 import type { RecommendedOutfit, RecommendationView } from '../recommend/types'
@@ -17,7 +17,7 @@ import { useClosetStore } from '../stores/closet'
 import { playSound } from '../services/sound'
 import { celebrate, originOf } from '../services/celebrate'
 import { thumbUrl } from '../services/urls'
-import { appendUnique, collageSlots, coverTint, FIRST_BATCH, MORE_BATCH, REFILL_AT, TODAY_OCCASIONS, type TodayOccasion } from '../today/deck'
+import { appendUnique, collageSlots, coverTint, FIRST_BATCH, MORE_BATCH, REFILL_AT, scenePieces, TODAY_OCCASIONS, type TodayOccasion } from '../today/deck'
 import { readWorn, saveWorn, type WornToday } from '../today/worn'
 
 const router = useRouter(); const closet = useClosetStore(); const { message } = App.useApp()
@@ -156,7 +156,7 @@ onMounted(() => {
       </button>
       <div class="today-sec"><h2>我的搭配</h2><RouterLink to="/outfits">全部 <RightOutlined /></RouterLink></div>
       <div v-if="saved.length" class="today-saved">
-        <RouterLink v-for="o in saved" :key="o.id" :to="`/outfits/${o.id}`" class="today-saved-item"><OutfitThumbnail :scene="o.scene" :title="o.name" /><b>{{ o.name }}</b></RouterLink>
+        <RouterLink v-for="o in saved" :key="o.id" :to="`/outfits/${o.id}`" class="today-saved-item"><span class="today-saved-media"><OutfitCollage :pieces="scenePieces(o.scene)" :title="o.name" :size="320" /></span><b>{{ o.name }}</b></RouterLink>
       </div>
       <p v-else class="today-quiet">遇到喜欢的，点 ☆ 收进来。</p>
       <template v-if="closet.pendingCount">
@@ -210,14 +210,15 @@ html .today-chip.ant-btn:not(.on):hover { color: var(--ink); background: var(--s
 .today-saved { display: flex; gap: 12px; margin: 0 -16px; padding: 0 16px 4px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; }
 .today-saved::-webkit-scrollbar { display: none; }
 .today-saved-item { flex: none; width: 132px; scroll-snap-align: start; }
-.today-saved-item :deep(canvas), .today-saved-item :deep(.outfit-thumbnail) { border-radius: 14px; overflow: hidden; }
+.today-saved-media { display: block; aspect-ratio: 1; overflow: hidden; border-radius: 14px; background: var(--surface-alt); }
 .today-saved-item b { display: block; margin: 6px 4px 0; overflow: hidden; font-size: 13px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .today-quiet { margin: 0; color: var(--muted); font-size: 13px; }
 @media (min-width: 1024px) {
   .today-page { grid-template-columns: minmax(0, 560px) minmax(0, 1fr); gap: 48px; align-items: start; padding-top: 12px; }
   .today-hello h2 { font-size: 30px; }
   .today-side { padding-top: 112px; }
-  .today-saved { flex-wrap: wrap; margin: 0; padding: 0; overflow: visible; }
+  .today-saved { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); margin: 0; padding: 0; overflow: visible; }
+  .today-saved-item { width: auto; }
 }
 @media (prefers-reduced-motion: reduce) { .today-done { animation: none; } .today-undo-enter-active, .today-undo-leave-active { transition: none; } }
 </style>

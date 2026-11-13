@@ -221,7 +221,7 @@ async function signOut() {
               <div id="topbar-page" class="topbar-page"></div>
             </div>
             <div class="topbar-actions">
-              <span class="topbar-prefs"><ThemeToggle /><SoundToggle /></span><TaskInbox v-if="!closet.user?.mustChangePassword" />
+              <span class="topbar-prefs"><ThemeToggle /><SoundToggle /></span><span v-if="!closet.user?.mustChangePassword" id="assistant-top-slot" class="topbar-assistant-slot"></span><TaskInbox v-if="!closet.user?.mustChangePassword" />
               <a-dropdown :trigger="['click']" placement="bottomRight">
                 <a-button type="text" shape="circle" class="topbar-profile" :aria-label="`账号：${closet.user?.displayName || closet.user?.username}`"><span class="avatar">{{ (closet.user?.displayName || closet.user?.username)?.slice(0, 1).toUpperCase() }}</span></a-button>
                 <template #overlay>
@@ -254,11 +254,12 @@ async function signOut() {
           <template v-if="!closet.user?.mustChangePassword">
             <AddLauncher />
             <a-tooltip title="添加衣物"><RouterLink to="/add" class="dock-add" aria-label="添加衣物" @pointerenter="prefetch('/add')"><PlusOutlined /><span>添加</span></RouterLink></a-tooltip>
+            <span class="dock-sep" aria-hidden="true"></span>
+            <span id="assistant-dock-slot" class="dock-assistant-slot"></span>
           </template>
           <span v-if="indicator" class="mobile-nav-indicator" :class="{ instant: indicator.instant }" :style="{ width: `${indicator.w}px`, height: `${indicator.h}px`, transform: `translate(${indicator.x}px, ${indicator.y}px)` }" aria-hidden="true"></span>
         </nav>
-        <!-- 问鱼搭悬浮入口（ToC 改版（二）T5）：AssistantOrb 传送到这里。 -->
-        <div v-if="!closet.user?.mustChangePassword" id="assistant-dock-slot" class="assistant-fab-slot" :class="{ away: dockAway }"></div>
+
       </div>
       <div v-else class="boot-screen"><img class="brand-logo boot-logo" src="/yuda-logo-320.png" alt="鱼搭" /><p>正在打开衣橱…</p></div>
     </a-app>
@@ -269,6 +270,8 @@ async function signOut() {
 /* Brand: the wide graffiti mark sits on a soft tile so it reads as a logo, not a stray sticker. */
 .topbar-lead { display: flex; flex: 1; align-items: center; gap: 14px; min-width: 0; margin-right: auto; }
 .topbar-prefs { display: contents; }
+.topbar-assistant-slot { display: none; }
+@media (max-width: 1023px) { .topbar-assistant-slot { display: flex; align-items: center; } }
 .brand-lockup { display: flex; flex: none; align-items: center; gap: 10px; color: var(--ink); }
 .topbar-page { display: flex; align-items: center; gap: 14px; min-width: 0; overflow: hidden; }
 .topbar-page:not(:empty)::before { content: ''; flex: none; width: 1px; height: 18px; background: var(--line); }

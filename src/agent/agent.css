@@ -142,24 +142,24 @@
 
 .assistant-ai-note { margin: 2px 0 0; text-align: center; font-size: 10px; color: var(--muted-subtle); }
 
-/* 问鱼搭入口（AssistantOrb dock 变体）：ToC 改版（二）T5 起是右下角的悬浮表情（.assistant-fab-slot，ClosetShell），
-   不再放在底部导航里。桌面是“表情 + 轮换提问 + 快捷键”的玻璃胶囊，手机只留圆形表情。
+/* 问鱼搭入口（AssistantOrb dock 变体）：电脑上在底部胶囊最右侧（“表情 + 轮换提问 + 快捷键”的浅灰胶囊，窗口从它展开），
+   手机上在顶栏右侧，只留圆形表情（ToC 改版（二）T17）。
    Inner parts are <em>/<b>/<i> so Ant Design's `.ant-btn > span` rules do not reach them. */
-.assistant-dock-entry.ant-btn { position: relative; display: flex; align-items: center; gap: 10px; width: 260px; height: 52px; padding: 0 16px 0 8px; border: 0; border-radius: 999px; color: var(--ink); background: var(--glass); backdrop-filter: blur(18px) saturate(140%); -webkit-backdrop-filter: blur(18px) saturate(140%); box-shadow: var(--dock-shadow), 0 0 0 1px var(--line); overflow: hidden; transition: background .2s ease, transform .2s var(--spring); }
-html .assistant-dock-entry.ant-btn:hover, html .assistant-dock-entry.ant-btn:focus-visible { color: var(--ink); background: var(--surface); }
+.assistant-dock-entry.ant-btn { position: relative; display: flex; align-items: center; gap: 10px; width: 252px; height: 46px; padding: 0 14px 0 5px; border: 0; border-radius: 999px; color: var(--ink); background: var(--surface-alt); box-shadow: none; overflow: hidden; transition: background .2s ease, transform .2s var(--spring); }
+html .assistant-dock-entry.ant-btn:hover, html .assistant-dock-entry.ant-btn:focus-visible { color: var(--ink); background: var(--selection-bg); }
 .assistant-dock-entry.ant-btn:active { transform: scale(.95); }
-.assistant-dock-face { display: grid; place-items: center; flex: none; width: 36px; height: 36px; border-radius: 50%; font-style: normal; background: var(--surface-alt); }
+.assistant-dock-face { display: grid; place-items: center; flex: none; width: 36px; height: 36px; border-radius: 50%; font-style: normal; background: var(--surface); }
 .assistant-dock-entry.active .assistant-dock-face { visibility: hidden; }
 .assistant-dock-text { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; font-weight: 400; font-size: 14px; }
 .assistant-dock-text i { flex: 1; min-width: 0; overflow: hidden; font-style: normal; text-align: left; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
-.assistant-dock-text kbd { flex: none; padding: 1px 6px; border-radius: 6px; font: 11px/16px inherit; font-family: inherit; color: var(--muted); background: var(--surface-alt); }
+.assistant-dock-text kbd { flex: none; padding: 1px 6px; border-radius: 6px; font: 11px/16px inherit; font-family: inherit; color: var(--muted); background: var(--surface); }
 .assistant-dock-short { display: none; font-weight: 400; }
 .dock-hint-enter-active, .dock-hint-leave-active { transition: opacity .3s ease, transform .3s ease; }
 .dock-hint-enter-from { opacity: 0; transform: translateY(8px); }
 .dock-hint-leave-to { opacity: 0; transform: translateY(-8px); }
 @media (max-width: 1279px) { .assistant-dock-entry.ant-btn { width: auto; padding-right: 16px; } .assistant-dock-text i { display: none; } .assistant-dock-text { flex: none; } .assistant-dock-text::before { content: '问鱼搭'; color: var(--ink); font-weight: 500; } }
 @media (max-width: 1023px) {
-  .assistant-dock-entry.ant-btn { justify-content: center; width: 44px; min-width: 44px; height: 44px; padding: 0; background: transparent; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
+  .assistant-dock-entry.ant-btn { justify-content: center; width: 44px; min-width: 44px; height: 44px; padding: 0; background: transparent; }
   .assistant-dock-face { width: 34px; height: 34px; }
   .assistant-dock-text, .assistant-dock-short { display: none; }
 }

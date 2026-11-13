@@ -5,8 +5,8 @@ import { useFloatingPosition } from './useFloatingPosition'
 import BloubAvatar from './BloubAvatar.vue'
 import { avatarPreferences, cueAllowed, duration, idleStates, type AvatarCue, type AvatarExpression } from './avatar'
 import type { StateId } from './bloub/states'
-// dock: the companion is the 问鱼搭 button in #assistant-dock-slot (ClosetShell). Since ToC 改版（二）T5 that slot is a fixed
-// floating button at the bottom right (above the dock on phones), not part of the dock; the face animations stay the same.
+// dock: the companion is the 问鱼搭 button in ClosetShell: inside the bottom dock on desktop (#assistant-dock-slot, the window unfolds
+// from it) and in the top bar on phones (#assistant-top-slot); the face animations stay the same.
 const props = defineProps<{ open: boolean; mood: string; busy: boolean; phase: string; tool: string; cue: AvatarCue | null; suppressed?: boolean; dock?: boolean }>()
 const emit = defineEmits<{ toggle: [] }>()
 const closet=useClosetStore(), hovered=ref(false), pressed=ref(false), nearby=ref(false)
@@ -18,6 +18,8 @@ let hintTimer:ReturnType<typeof setInterval>|undefined
 const key=computed(()=>`yixu.assistant-orb.v1:${closet.user?.username||'local'}`)
 // Smaller on desktop so it reads as a quiet companion; the touch size stays comfortable on phones.
 const compact=ref(window.innerWidth<1024), orbSize=computed(()=>compact.value?46:52)
+// 电脑上问鱼搭在底部胶囊里（窗口从胶囊展开）；手机放在顶栏右侧（ToC 改版（二）T17）。两个位置都常驻在页面里，按宽度切换传送目标。
+const slot=computed(()=>compact.value?'#assistant-top-slot':'#assistant-dock-slot')
 const position=useFloatingPosition(key,computed(()=>({width:orbSize.value,height:orbSize.value})),()=>compact.value?156:24,{snap:true})
 // On phones the companion tucks into its edge while reading downward and returns on the way back up.
 const scrollTucked=ref(false)
@@ -94,7 +96,7 @@ onMounted(()=>{schedule();if(props.dock&&!reduced.value)hintTimer=setInterval(()
 onUnmounted(()=>{clearTimeout(idleTimer);clearInterval(hintTimer);clearTimeout(actionTimer);document.removeEventListener('visibilitychange',hide);window.removeEventListener('pointermove',pointer);document.removeEventListener('pointerout',leave);window.removeEventListener('blur',resetGaze);media.removeEventListener('change',preference);window.removeEventListener('closet-outfit-saved',saved);document.removeEventListener('scroll',scrolled,{capture:true});window.removeEventListener('resize',resizeOrb)})
 </script>
 <template>
-<Teleport v-if="dock" defer to="#assistant-dock-slot">
+<Teleport v-if="dock" defer :to="slot">
 <a-tooltip :title="open?'':`问鱼搭（${shortcut}）`" placement="top">
 <a-button v-show="!suppressed" ref="control" class="assistant-dock-entry" :class="{active:open}" :data-avatar-state="state" :data-avatar-mode="avatarPreferences.mode" data-sound="off" aria-label="问鱼搭助手" :aria-expanded="open" aria-controls="closet-assistant" @click="activate" @pointerenter="hovered=true" @pointerleave="hovered=false">
 <em ref="face" class="assistant-dock-face"><span class="bloub-orb-shape" :class="{'bloub-responding':responding}" style="--orb-size:34px"><BloubAvatar v-bind="appearance" :size="42.5" /></span></em>

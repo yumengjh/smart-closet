@@ -16,7 +16,7 @@ import { DEFAULT_WANTED_LABEL, WANTED_LABEL_MAX, loadWantedLabel, saveWantedLabe
 const preferences = usePreferencesStore()
 const appearance = useThemeStore()
 const BAR_STYLES: { value: NavLabels; label: string }[] = [{ value: 'both', label: '图标 + 文字' }, { value: 'icon', label: '只要图标' }, { value: 'text', label: '只要文字' }]
-const MINI = [{ glyph: 'wardrobe', label: '衣柜' }, { glyph: 'outfits', label: '搭配' }, { glyph: 'me', label: '我的' }] as const
+const MINI = [{ glyph: 'today', label: '今天' }, { glyph: 'wardrobe', label: '衣柜' }, { glyph: 'me', label: '我的' }] as const
 const THEMES: { value: ThemeMode; label: string }[] = [{ value: 'light', label: '浅色' }, { value: 'dark', label: '深色' }]
 function pickBar(value: NavLabels) { if (preferences.navLabels !== value) { preferences.navLabels = value; playSound('tick') } }
 function pickTheme(value: ThemeMode) { if (appearance.mode !== value) { appearance.mode = value; playSound('tick') } }
@@ -95,15 +95,15 @@ async function saveLabel(value = labelDraft.value) {
 @keyframes look-pop { 0% { transform: scale(.7); } 60% { transform: scale(1.18); } 100% { transform: none; } }
 
 /* Mini theme swatch: page, card, accent. */
-.look-theme { position: relative; display: block; height: 56px; overflow: hidden; border-radius: 10px; font-style: normal; background: #f7f8fa; }
+.look-theme { position: relative; display: block; height: 56px; overflow: hidden; border-radius: 10px; font-style: normal; background: #f3f3f1; }
 .look-theme em { position: absolute; display: block; border-radius: 6px; }
 .look-theme em:nth-child(1) { left: 10px; top: 10px; width: 46%; height: 36px; background: #fff; box-shadow: 0 1px 3px #0000001a; }
 .look-theme em:nth-child(2) { right: 10px; top: 12px; width: 28%; height: 8px; background: #d9dce3; }
-.look-theme em:nth-child(3) { right: 10px; top: 26px; width: 18%; height: 18px; border-radius: 9px; background: #1f5c45; }
-.look-theme[data-theme-preview='dark'] { background: #191c23; }
-.look-theme[data-theme-preview='dark'] em:nth-child(1) { background: #242832; box-shadow: none; }
-.look-theme[data-theme-preview='dark'] em:nth-child(2) { background: #3b404b; }
-.look-theme[data-theme-preview='dark'] em:nth-child(3) { background: #5fcb9d; }
+.look-theme em:nth-child(3) { right: 10px; top: 26px; width: 18%; height: 18px; border-radius: 6px; background: #111111; }
+.look-theme[data-theme-preview='dark'] { background: #0d0d0d; }
+.look-theme[data-theme-preview='dark'] em:nth-child(1) { background: #1e1e1d; box-shadow: none; }
+.look-theme[data-theme-preview='dark'] em:nth-child(2) { background: #3a3a38; }
+.look-theme[data-theme-preview='dark'] em:nth-child(3) { background: #f2f2f0; }
 
 
 @media (max-width: 767px) {
