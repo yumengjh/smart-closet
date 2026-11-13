@@ -27,11 +27,21 @@ import { pendingPath, prefetchRoute, prefetchWhenIdle } from '../composables/use
 import { accountIsStale, markAccountStale, onAccountChange } from '../domain/accountSession'
 import { useNotificationStore } from '../stores/notifications'
 import { refreshTryOnAccess, resetTryOnAccess } from '../tryon/access'
+import BillingSummary from '../billing/BillingSummary.vue'
+import PurchaseDrawer from '../billing/PurchaseDrawer.vue'
+import { useBillingStore } from '../billing/store'
 import { CAMERA_LAYOUT_QUERY } from '../tryon/stage'
 
 const route = useRoute()
 const router = useRouter()
 const closet = useClosetStore()
+const billing = useBillingStore()
+watch(() => closet.user && !closet.user.mustChangePassword ? closet.user.username : '', name => { billing.reset(); if (name) void billing.refresh() }, { immediate: true })
+const refreshBilling = () => { if (closet.user && !closet.user.mustChangePassword && !document.hidden) void billing.refresh() }
+watch(() => route.fullPath, refreshBilling)
+let billingTimer: ReturnType<typeof setInterval> | undefined
+onMounted(() => { window.addEventListener('focus', refreshBilling); billingTimer = setInterval(refreshBilling, 60000) })
+onUnmounted(() => { window.removeEventListener('focus', refreshBilling); clearInterval(billingTimer) })
 const appearance = useThemeStore()
 const processing = useProcessingStore()
 watch(() => closet.user && !closet.user.mustChangePassword ? closet.user.username : '', (user, _previous, onCleanup) => {
@@ -75,7 +85,7 @@ const navItems: NavItem[] = [
   { path: '/try', label: '试穿', glyph: 'try', mobile: 30 },
   { path: '/settings', label: '我的', glyph: 'me', mobile: 40 },
 ]
-const ACTIVE_PREFIXES: Record<string, string[]> = { '/today': ['/today', '/outfits'], '/wardrobe': ['/wardrobe', '/garment', '/pending', '/review', '/batches', '/trash'], '/try': ['/try', '/ootd'], '/settings': ['/settings', '/help', '/admin'] }
+const ACTIVE_PREFIXES: Record<string, string[]> = { '/today': ['/today', '/outfits'], '/wardrobe': ['/wardrobe', '/garment', '/pending', '/review', '/batches', '/trash'], '/try': ['/try', '/ootd'], '/settings': ['/settings', '/help', '/admin', '/vip'] }
 // Highlight the clicked destination immediately; on slow networks the route itself resolves later.
 const navPath = computed(() => pendingPath.value ?? route.path)
 function isNavActive(path: string) {
@@ -221,7 +231,7 @@ async function signOut() {
               <div id="topbar-page" class="topbar-page"></div>
             </div>
             <div class="topbar-actions">
-              <span class="topbar-prefs"><ThemeToggle /><SoundToggle /></span><span v-if="!closet.user?.mustChangePassword" id="assistant-top-slot" class="topbar-assistant-slot"></span><TaskInbox v-if="!closet.user?.mustChangePassword" />
+              <BillingSummary v-if="!closet.user?.mustChangePassword" compact /><span class="topbar-prefs"><ThemeToggle /><SoundToggle /></span><span v-if="!closet.user?.mustChangePassword" id="assistant-top-slot" class="topbar-assistant-slot"></span><TaskInbox v-if="!closet.user?.mustChangePassword" />
               <a-dropdown :trigger="['click']" placement="bottomRight">
                 <a-button type="text" shape="circle" class="topbar-profile" :aria-label="`账号：${closet.user?.displayName || closet.user?.username}`"><span class="avatar">{{ (closet.user?.displayName || closet.user?.username)?.slice(0, 1).toUpperCase() }}</span></a-button>
                 <template #overlay>
@@ -240,6 +250,7 @@ async function signOut() {
             </div>
           </header>
           <section class="route-content" :aria-busy="!!pendingPath"><TaskToast /><RouterView v-slot="{ Component }"><Transition mode="out-in" :css="false" @enter="routeEnter" @leave="routeLeave"><div :key="viewKey(Component)" class="route-view"><component :is="Component" /></div></Transition></RouterView></section>
+          <PurchaseDrawer v-if="!closet.user?.mustChangePassword" />
           <WaitingGame v-if="!closet.user?.mustChangePassword" />
           <WaitingStarted v-if="!closet.user?.mustChangePassword" /><RenderSendOff v-if="!closet.user?.mustChangePassword" />
           <AssistantPanel v-if="!closet.user?.mustChangePassword" :key="closet.user?.username" :suspended="tryonRoute && tryonNarrow" />

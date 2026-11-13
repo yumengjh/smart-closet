@@ -1,3 +1,4 @@
+import { createPinia, setActivePinia } from 'pinia'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createServer } from 'vite'
@@ -6,7 +7,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createRenderer, defineComponent, h } from 'vue'
 
-test('实时试穿额度兼容旧后端并显示点数时长与兑换入口', async t => {
+test('实时试穿报价遵守开关与隐藏单价并显示充值入口', async t => {
   // Compile the real client template, as in billing-render.test.ts.
   const virtualId = '/src/tryon/quota-test.ts'
   const server = await createServer({
@@ -25,6 +26,9 @@ test('实时试穿额度兼容旧后端并显示点数时长与兑换入口', as
   })
   try {
     const { default: TryOnQuota } = await server.ssrLoadModule(virtualId)
+    const { useBillingStore } = await server.ssrLoadModule('/src/billing/store.ts')
+    const pinia = createPinia(); setActivePinia(pinia)
+    const billing = useBillingStore()
     type Node = { text: string; props: Record<string, unknown>; children: Node[]; parent?: Node }
     const node = (text = ''): Node => ({ text, props: {}, children: [] })
     const renderer = createRenderer<Node, Node>({
@@ -37,12 +41,13 @@ test('实时试穿额度兼容旧后端并显示点数时长与兑换入口', as
     })
     const collect = (n: Node): string => [n.text, ...n.children.map(collect)].join(' ').replace(/\s+/g, ' ').trim()
     const links = (n: Node): unknown[] => [...(n.props.href ? [n.props.href] : []), ...n.children.flatMap(links)]
-    function render(remaining: number, points?: { paidSeconds: number; milliPointsPerSecond: number }) {
+    function render(remaining: number, points?: { paidSeconds: number; milliPointsPerSecond: number }, enabled = true, showPrices = true) {
+      billing.realtime = enabled ? { enabled: true, showPrices, freeRemainingToday: remaining, dailyLimit: 600, balance: 25, entitlementEndsAtMs: null, ...(points ? { unitPoints: points.milliPointsPerSecond / 1000 } : {}) } : { enabled: false }
       const root = node(), app = renderer.createApp(TryOnQuota, { remaining, points })
       // Keep Ant component slots and link attributes without needing a browser DOM.
       const Stub = defineComponent({ setup: (_, { slots }) => () => h('stub', slots.default?.()) })
       app.component('a-typography-text', Stub); app.component('a-button', Stub)
-      app.mount(root)
+      app.use(pinia); app.mount(root)
       const result = { text: collect(root), links: links(root) }
       app.unmount()
       return result
@@ -51,6 +56,10 @@ test('实时试穿额度兼容旧后端并显示点数时长与兑换入口', as
       for (const remaining of [0, 125]) {
         assert.deepEqual(render(remaining), { text: remaining ? '今日剩余 02:05' : '今日剩余 00:00', links: [] })
       }
+    })
+    await t.test('收费关闭或隐藏单价时不读 capabilities 的单价', () => {
+      assert.equal(render(125, { paidSeconds: 90, milliPointsPerSecond: 25 }, false).text, '今日剩余 02:05')
+      assert.equal(render(125, { paidSeconds: 90, milliPointsPerSecond: 25 }, true, false).text, '今日剩余 02:05')
     })
     await t.test('价格为 0 时即使余额可用也保持原有行为', () => {
       for (const remaining of [0, 125]) {
@@ -62,21 +71,21 @@ test('实时试穿额度兼容旧后端并显示点数时长与兑换入口', as
     await t.test('免费有剩余时显示可用分钟与每分钟点数，最多两位小数且无多余 0', () => {
       for (const [milliPointsPerSecond, price] of [[1000, '60'], [25, '1.5'], [21, '1.26']] as const) {
         assert.deepEqual(render(125, { paidSeconds: 90, milliPointsPerSecond }), {
-          text: `今日剩余 02:05 另可用点数试穿约 1.5 分钟（每分钟 ${price} 点）`, links: [],
+          text: `今日剩余 02:05 每分钟 ${price} 点 · 另可试穿约 1.5 分钟`, links: [],
         })
       }
-      assert.equal(render(125, { paidSeconds: 0, milliPointsPerSecond: 25 }).text, '今日剩余 02:05')
+      assert.equal(render(125, { paidSeconds: 0, milliPointsPerSecond: 25 }).text, '今日剩余 02:05 每分钟 1.5 点')
     })
     await t.test('免费用完但点数够时提示将使用点数，分钟由可支付秒数换算', () => {
       for (const [paidSeconds, minutes] of [[600, '10'], [30, '0.5'], [100, '1.67']] as const) {
         assert.deepEqual(render(0, { paidSeconds, milliPointsPerSecond: 25 }), {
-          text: `今日剩余 00:00 免费时长已用完，将使用点数，约可试穿 ${minutes} 分钟`, links: [],
+          text: `今日剩余 00:00 将使用点数，约可试穿 ${minutes} 分钟 · 每分钟 1.5 点`, links: [],
         })
       }
     })
-    await t.test('免费用完且点数不足时显示提示及现有点数兑换页链接', () => {
+    await t.test('免费用完且点数不足时显示充值抽屉入口', () => {
       assert.deepEqual(render(0, { paidSeconds: 0, milliPointsPerSecond: 25 }), {
-        text: '今日剩余 00:00 免费时长已用完，点数不足 点数与兑换', links: ['/settings?section=quota'],
+        text: '今日剩余 00:00 免费时长已用完，点数不足 · 每分钟 1.5 点 充值点数', links: [],
       })
       const routes = readFileSync('src/router.ts', 'utf8')
       assert.match(routes, /path: '\/settings'/)

@@ -10,6 +10,7 @@ import { setTryOnAccess } from '../tryon/access'
 import { onAccountChange, accountIsStale } from '../domain/accountSession'
 import MediaPreview from '../tryon/MediaPreview.vue'
 import TryOnPicker from '../tryon/TryOnPicker.vue'
+import { useBillingStore } from '../billing/store'
 import TryOnQuota from '../tryon/TryOnQuota.vue'
 import { framingHint, WEAR_GROUPS } from '../tryon/context'
 import { stageLabel, type StartupStage } from '../tryon/diagnostic'
@@ -358,7 +359,14 @@ const selectedChips = computed<SelectedChip[]>(() => selected.value.map(s => {
   const temp = s.type === 'TEMPORARY' ? temporary.value.find(t => t.id === s.id) : undefined
   return { id: s.id, name: selectionName(s), image: garment ? thumbUrl(garment.imageUrl, 160) : temp ? mediaUrl(temp.imageUrl) : undefined, selection: s }
 }))
-function fail(cause: unknown) { if (!disposed) error.value = cause instanceof Error ? cause.message : '操作暂时未完成，请稍后再试。' }
+const billing = useBillingStore()
+function fail(cause: unknown) {
+  if (disposed) return
+  error.value = cause instanceof Error ? cause.message : '操作暂时未完成，请稍后再试。'
+  if ((cause as { code?: string })?.code === 'TRYON_QUOTA_EXCEEDED') {
+    void billing.refresh().then(() => { if (!disposed && billing.realtime?.enabled && (cap.value?.points?.milliPointsPerSecond || 0) > 0) billing.purchase = 'tryon' })
+  }
+}
 // 同一时刻的几次刷新（结束试穿与心跳同时发现会话结束）合并成一个请求。
 let refreshing: Promise<void> | undefined
 function refresh() {

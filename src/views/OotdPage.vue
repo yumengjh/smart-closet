@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useBillingStore } from '../billing/store'
+import { imageActionLabel } from '../billing/model'
 import PageTitle from '../shell/PageTitle.vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -22,6 +24,7 @@ import { adviceFor, failureReason, groupRecords, routeTarget } from '../ootd/job
 import { useProcessingStore } from '../stores/processing'
 import { useSendOffStore } from '../stores/sendOff'
 
+const billing = useBillingStore()
 const route = useRoute(), router = useRouter(); const { message, modal } = App.useApp(); const processing = useProcessingStore(), sendOff = useSendOffStore()
 const outfits = ref<Outfit[]>([]); const baselines = ref<Baseline[]>([]); const capabilities = ref<Capability[]>([]); const jobs = ref<RenderJob[]>([]); const poseCatalog = ref<PoseCatalog | null>(null)
 const outfitId = ref(String(route.query.outfit || '')); const baselineId = ref(''); const model = ref(''); const selected = ref<string[]>([]); const pose = ref<PoseChoice>({ mode: 'AUTO' })
@@ -95,14 +98,24 @@ async function prepare(useOlderBaseline = false) {
   if (!current.value || !person.value || !capability.value) return
   busy.value = true
   try {
+    await billing.refresh()
+    if (billing.image?.enabled && billing.image.freeRemainingToday <= 0) { billing.purchase = 'image'; return }
     await check(true)
     if (!review.value || review.value.blockers.length) return
     preparation.value = await platformRequest<Preparation>('/api/ootd/preparations', 'POST', body(useOlderBaseline)); key.value = createUuid(); confirmOpen.value = true
   } catch (e) {
     if (e instanceof PlatformRequestError && e.code === 'BASELINE_PROFILE_STALE') {
       modal.confirm({ title: '这位形象是按旧资料生成的', content: '个人资料改过之后，形象不会自动更新。仍用这位形象生成吗？', okText: '仍然使用', cancelText: '换一位', onOk: () => prepare(true) })
-    } else error.value = e instanceof Error ? e.message : String(e)
+    } else if (!await offerSubscription(e)) error.value = e instanceof Error ? e.message : String(e)
   } finally { busy.value = false }
+}
+async function offerSubscription(cause: unknown) {
+  if (!(cause instanceof PlatformRequestError) || !['IMAGE_QUOTA_EXCEEDED', 'AI_DAILY_QUOTA_EXCEEDED'].includes(cause.code || '')) return false
+  await billing.refresh()
+  if (!billing.image?.enabled) return false
+  confirmOpen.value = false
+  billing.purchase = 'image'
+  return true
 }
 // Instead of a spinner on this page, the outfit is handed off with a short ritual and tracked in the processing centre.
 function handOff(job: RenderJob) {
@@ -121,7 +134,7 @@ function rehearse() {
   sendOff.launch({ title: `模拟演示 · ${cards.length} 件衣物 · ${poseCard?.name || '自动动作'}`, cards, person: person.value?.mediaUrl || undefined, pose: poseCard })
   processing.simulateRender(jobs.value.find(j => j.mediaUrl)?.mediaUrl || person.value?.mediaUrl || undefined)
 }
-async function accepted(job: RenderJob) { handOff(job); confirmOpen.value = false; preparation.value = null; error.value = ''; await refresh() }
+async function accepted(job: RenderJob) { handOff(job); confirmOpen.value = false; preparation.value = null; error.value = ''; await Promise.all([refresh(), billing.refresh()]) }
 async function generate() {
   if (!preparation.value || busy.value) return
   busy.value = true; error.value = ''
@@ -133,7 +146,7 @@ async function generate() {
         if (original.found && original.job) { await accepted(original.job); return }
         error.value = '暂未查到这次任务。再点一次会复用原提交编号，不会重复生成。'
       } catch { error.value = '连接仍未恢复，暂时无法确认是否已提交。请先看看下方生成记录，不要关闭这个窗口重新准备。' }
-    } else error.value = e instanceof Error ? e.message : String(e)
+    } else if (!await offerSubscription(e)) error.value = e instanceof Error ? e.message : String(e)
   } finally { busy.value = false }
 }
 async function cancel(job: RenderJob) { try { await platformRequest(`/api/ootd/jobs/${job.id}/cancel`, 'POST', {}); await refresh(); message.info('已请求停止；无法保证上游停止或退还额度。') } catch (e) { message.error(String(e)) } }
@@ -171,7 +184,7 @@ function retry(job: RenderJob) {
       // One key per job until it is accepted, so a double click or a retried request never submits twice.
       const retryKey = retryKeys.get(job.id) || createUuid(); retryKeys.set(job.id, retryKey); retrying.value = job.id
       try { const created = await platformRequest<RenderJob>(`/api/ootd/jobs/${job.id}/retry`, 'POST', {}, retryKey); retryKeys.delete(job.id); statusId.value = ''; await accepted(created) }
-      catch (e) { message.error(e instanceof Error ? e.message : String(e)); throw e }
+      catch (e) { if (!await offerSubscription(e)) { message.error(e instanceof Error ? e.message : String(e)); throw e } }
       finally { retrying.value = '' }
     },
   })
@@ -236,7 +249,7 @@ onUnmounted(() => { clearInterval(timer); wideQuery.removeEventListener('change'
     </section>
 
     <aside class="studio-cta">
-      <a-button type="primary" size="large" block :loading="busy" :disabled="!current || !person || !capability" @click="prepare()">生成上身图</a-button>
+      <a-button type="primary" size="large" block :loading="busy" :disabled="!current || !person || !capability" @click="prepare()">{{ imageActionLabel(billing.image) }}</a-button>
       <div class="studio-cta-foot">
         <span>{{ hint || '每张用 1 次图像额度 · 约 30 秒，可以先离开' }}</span>
         <a-dropdown :trigger="['click']" placement="topRight">

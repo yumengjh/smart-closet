@@ -2,6 +2,7 @@
 // “我的”（ToC 改版 P2 重新设计）：分组的单行列表 + 子页面。手机先看列表、点进子页面（顶部返回）；
 // 电脑左侧是同一份列表，右侧是内容，默认打开“我的风格”。各分区组件不变，只换外壳与叫法（词表见设计（一）第五节）。
 // 管理员功能不在“我的”里：/admin（管理后台）复用同一个外壳，只列管理员分区（P4，#240）。
+import BillingSummary from '../billing/BillingSummary.vue'
 import PageTitle from '../shell/PageTitle.vue'
 import { computed, defineAsyncComponent, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -115,6 +116,7 @@ onUnmounted(() => wideQuery.removeEventListener('change', onWide))
         <RouterLink to="/outfits"><b>{{ counts.outfits ?? '–' }}</b><small>套搭配</small></RouterLink>
         <RouterLink to="/try"><b><SkinOutlined /></b><small>去试穿</small></RouterLink>
       </div>
+      <BillingSummary v-if="!adminMode" />
       <nav class="me-groups" aria-label="我的">
         <section v-for="g in grouped" :key="g.key" class="me-group">
           <h2>{{ g.label }}</h2>

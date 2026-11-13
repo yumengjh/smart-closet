@@ -5,6 +5,8 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { BulbOutlined, CameraOutlined, HistoryOutlined, LockOutlined, VideoCameraOutlined } from '@ant-design/icons-vue'
+import { useBillingStore } from '../billing/store'
+import { realtimePrice } from '../billing/model'
 import OotdPage from './OotdPage.vue'
 import PageTitle from '../shell/PageTitle.vue'
 import OutfitCollage from '../today/OutfitCollage.vue'
@@ -15,6 +17,7 @@ import { tryOnApi, type Candidate } from '../tryon/api'
 import type { Outfit } from '../domain/outfit'
 import { mediaUrl } from '../services/urls'
 
+const billing = useBillingStore()
 const route = useRoute(), router = useRouter()
 const liveAvailable = computed(() => Boolean(tryOnAccess.value?.enabled))
 const mode = computed<'image' | 'live'>({
@@ -34,7 +37,11 @@ async function loadChoices() {
 watch(mode, value => { if (value === 'live') void loadChoices() }, { immediate: true })
 function choose(kind: 'garment' | 'outfit', id: string) { pick.value = pick.value?.kind === kind && pick.value.id === id ? null : { kind, id } }
 const isPicked = (kind: 'garment' | 'outfit', id: string) => pick.value?.kind === kind && pick.value.id === id
-function start() { void router.push({ path: '/try-on', query: pick.value ? { [pick.value.kind]: pick.value.id } : {} }) }
+const needsPoints = computed(() => billing.realtime?.enabled && cap.value?.enabled && cap.value.quota.remaining <= 0 && (cap.value.points?.milliPointsPerSecond || 0) > 0 && (cap.value.points?.paidSeconds || 0) <= 0)
+function start() {
+  if (needsPoints.value) { billing.purchase = 'tryon'; return }
+  void router.push({ path: '/try-on', query: pick.value ? { [pick.value.kind]: pick.value.id } : {} })
+}
 const TIPS = [
   { icon: BulbOutlined, text: '站在光线均匀的地方，背景越简单越好' },
   { icon: CameraOutlined, text: '离镜头远一点，让要试的部位完整入镜' },
@@ -56,7 +63,7 @@ const TIPS = [
         </div>
         <div class="try-live-copy">
           <h2>对着镜头，直接换上</h2>
-          <p v-if="cap?.ready"><TryOnQuota :remaining="cap.quota.remaining" :points="cap.points" /></p>
+          <p v-if="cap?.ready || needsPoints"><TryOnQuota :remaining="cap?.quota.remaining || 0" :points="cap?.points" /></p>
           <p v-else-if="cap" class="try-live-warn">{{ cap.reason || '实时试穿暂时不可用' }}</p>
         </div>
       </section>
@@ -86,7 +93,7 @@ const TIPS = [
       </ul>
 
       <div class="try-live-cta">
-        <a-button type="primary" size="large" block :disabled="!cap?.ready" @click="start"><VideoCameraOutlined /> 打开镜头</a-button>
+        <a-button type="primary" size="large" block :disabled="!cap?.ready && !needsPoints" @click="start"><VideoCameraOutlined /> {{ needsPoints ? '充值点数' : `打开镜头${realtimePrice(billing.realtime) ? ` · ${realtimePrice(billing.realtime)}` : ''}` }}</a-button>
         <a-button v-if="cap?.hasHistory" type="text" @click="router.push('/try-on?history=1')"><HistoryOutlined /> 拍摄记录</a-button>
       </div>
     </div>

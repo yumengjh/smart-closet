@@ -41,10 +41,34 @@ test('金额按最小货币单位换算，日元没有小数', () => {
 })
 test('商品摘要区分点数包与订阅，订单状态都有中文', () => {
   assert.equal(productSummary({ kind: 'POINTS', points: 1200, entDays: null, imageDailyLimit: null, agentDailyLimit: null }), '1,200 点')
-  assert.equal(productSummary({ kind: 'SUBSCRIPTION', points: 0, entDays: 30, imageDailyLimit: 40, agentDailyLimit: 60 }), '30 天 · 生图每日 40 次，助手每日 60 次')
+  assert.equal(productSummary({ kind: 'SUBSCRIPTION', points: 0, entDays: 30, imageDailyLimit: 40, agentDailyLimit: 60 }), '30 天 · 上身图等图片每日 40 次，助手每日 60 次')
   assert.equal(productSummary({ kind: 'SUBSCRIPTION', points: 0, entDays: 7, imageDailyLimit: null, agentDailyLimit: 20 }), '7 天 · 助手每日 20 次')
   for (const status of ['CREATED', 'PAID', 'FULFILLED', 'CLOSED', 'FAILED', 'DISPUTED']) assert.ok(orderStatusLabels[status])
 })
 test('下单错误优先用服务器的话，否则按代码给出固定提示', () => {
   assert.equal(orderError({ code: 'TOO_MANY_OPEN_ORDERS' }), '未支付的订单太多，请先完成或等待超时关闭。'); assert.equal(orderError({ message: '自定义' }), '自定义'); assert.equal(orderError(null), '下单未能完成，请稍后重试。')
+})
+
+import { imageActionLabel, realtimePrice, subscriptionsForImages, ledgerLabels, type Quote, type Product } from '../src/billing/model.ts'
+test('收费关闭和报价不可用时保留原按钮，隐藏价格时不泄漏单价', () => {
+  assert.equal(imageActionLabel(undefined), '生成上身图')
+  assert.equal(imageActionLabel({ enabled: false }), '生成上身图')
+  assert.equal(realtimePrice({ enabled: false }), '')
+  const quote: Quote = { enabled: true, showPrices: true, freeRemainingToday: 3, dailyLimit: 20, balance: 25, entitlementEndsAtMs: null }
+  assert.equal(imageActionLabel(quote), '生成上身图 · 今天还能 3 次')
+  assert.equal(imageActionLabel({ ...quote, freeRemainingToday: 0 }), '生成上身图 · 今天还能 0 次')
+  assert.equal(realtimePrice({ ...quote, unitPoints: 0.125 }), '每分钟 7.5 点')
+  assert.equal(realtimePrice({ ...quote, showPrices: false, unitPoints: 0.125 }), '')
+  assert.equal(realtimePrice(quote), '')
+})
+test('上身图次数用完只推荐含图片次数的订阅', () => {
+  const products = [
+    { id: 'points', kind: 'POINTS', imageDailyLimit: null },
+    { id: 'image', kind: 'SUBSCRIPTION', imageDailyLimit: 40 },
+    { id: 'agent', kind: 'SUBSCRIPTION', imageDailyLimit: null },
+  ] as Product[]
+  assert.deepEqual(subscriptionsForImages(products).map(p => p.id), ['image'])
+  assert.equal(ledgerLabels.RESERVE, '使用中')
+  assert.equal(ledgerLabels.SETTLE, '已使用')
+  assert.equal(ledgerLabels.RELEASE, '已退回')
 })
