@@ -4,7 +4,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { App } from 'ant-design-vue'
 import { useRouter } from 'vue-router'
-import { AppstoreAddOutlined, CameraOutlined, CheckCircleFilled, RightOutlined, SkinOutlined, UndoOutlined, ReloadOutlined } from '@ant-design/icons-vue'
+import { AppstoreAddOutlined, CameraOutlined, CheckCircleFilled, CloseOutlined, RightOutlined, SkinOutlined, SwapOutlined, UndoOutlined, ReloadOutlined } from '@ant-design/icons-vue'
 import CoverDeck from '../today/CoverDeck.vue'
 import RecommendationDetailModal from '../recommend/RecommendationDetailModal.vue'
 import OutfitCollage from '../today/OutfitCollage.vue'
@@ -32,6 +32,10 @@ const saved = ref<Outfit[]>([])
 const savedIds = new Map<string, string>()
 const deck = ref<InstanceType<typeof CoverDeck> | null>(null)
 const user = computed(() => closet.user?.username || 'local')
+// 首次就地提示（P3，取代自动播放的新手指引）：第一次看到卡片时提示可以左右滑，划过一次或点 × 就不再出现。
+const HINT_KEY = () => `yuda.today.hint.v1:${user.value}`
+const hintOpen = ref((() => { try { return localStorage.getItem(HINT_KEY()) !== 'done' } catch { return false } })())
+function dismissHint() { if (!hintOpen.value) return; hintOpen.value = false; try { localStorage.setItem(HINT_KEY(), 'done') } catch { /* storage blocked */ } }
 const weather = computed(() => view.value?.intent.description || '')
 const dateLine = new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'short' }).format(new Date())
 const greeting = computed(() => { const h = new Date().getHours(); return h < 5 ? '夜深了' : h < 11 ? '早上好' : h < 14 ? '中午好' : h < 18 ? '下午好' : '晚上好' })
@@ -59,6 +63,7 @@ watch(index, () => { void refill() })
 watch(occasion, () => { playSound('tick'); void load() })
 
 function skip() {
+  dismissHint()
   playSound('tick')
   clearTimeout(undoTimer); undo.value = { index: index.value }
   undoTimer = window.setTimeout(() => { undo.value = null }, 4000)
@@ -70,6 +75,7 @@ function takeBack() {
   void deck.value?.returnFromLeft()
 }
 async function wear(outfit: RecommendedOutfit, el: HTMLElement | null) {
+  dismissHint()
   busy.value = true
   try {
     await recommendApi.wear({ garmentIds: outfit.garments.map(g => g.id) })
@@ -145,7 +151,10 @@ onMounted(() => {
         <div v-else-if="finished" class="today-state">
           <h3>这一批看完啦</h3><p>换个场合，或者再来一批。</p><a-button type="primary" size="large" @click="load"><ReloadOutlined /> 再来一批</a-button>
         </div>
-        <CoverDeck v-else ref="deck" :outfits="queue" :index="index" :busy="busy" @skip="skip" @wear="wear" @save="o => save(o)" @open="open" />
+        <template v-else>
+          <div v-if="hintOpen" class="today-hint" role="note"><SwapOutlined /><b class="today-hint-text">左滑换一套，右滑就穿它</b><a-button type="text" size="small" aria-label="知道了" @click="dismissHint"><CloseOutlined /></a-button></div>
+          <CoverDeck ref="deck" :outfits="queue" :index="index" :busy="busy" @skip="skip" @wear="wear" @save="o => save(o)" @open="open" />
+        </template>
       </template>
       <Transition name="today-undo"><a-button v-if="undo" shape="round" class="today-undo" @click="takeBack"><UndoOutlined /> 撤回</a-button></Transition>
     </section>
@@ -173,6 +182,10 @@ onMounted(() => {
 .today-page { display: grid; gap: 8px; max-width: 1180px; margin: 0 auto; padding: 4px 16px 0; }
 .page-title-sr { position: absolute; width: 1px; height: 1px; margin: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .today-main { position: relative; min-width: 0; }
+.today-hint { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; padding: 4px 4px 4px 14px; text-align: left; border-radius: 12px; color: var(--accent-strong); background: var(--accent-soft); font-size: 13px; animation: today-rise .4s var(--ease-out); }
+.today-hint-text { flex: 1; min-width: 0; overflow: hidden; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.today-hint .ant-btn { color: inherit; }
+.today-main :deep(.today-hint + .cover-deck .cover-stack) { height: clamp(320px, calc(100dvh - 422px), 520px); }
 .today-hello { margin: 4px 0 14px; }
 .today-hello h2 { margin: 0; font-size: 22px; font-weight: 650; letter-spacing: -.01em; }
 .today-hello p { margin: 2px 0 0; overflow: hidden; font-size: 13px; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }

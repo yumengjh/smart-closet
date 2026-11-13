@@ -444,7 +444,7 @@ watch(() => route.query.presets, value => { if (value !== '1') return; presetsOp
   </section>
   <section v-else class="empty-wardrobe">
     <span class="empty-spark"><PlusOutlined /></span><p class="eyebrow">从一件衣服开始</p><h2>{{ hasFilters ? '没有找到这件衣物' : ownership === 'WANTED' ? `还没有${wantedLabel}的衣服` : ownership === 'OWNED' ? '还没有已拥有的衣物' : '你的衣柜还没有衣物' }}</h2><p>{{ hasFilters ? (searchResult?.emptyHint || '试试换一个关键词，或清除筛选条件。') : ownership === 'WANTED' ? `网上看中、还没买的衣服，可以把商品图或截图上传，确认入柜时选“${wantedLabel}”。买到后在详情里标为已拥有。` : '上传单件衣物照片，处理后核对并确认，它就会出现在这里。' }}</p>
-    <a-button v-if="hasFilters" class="outline-button" @click="clearFilters">清除筛选</a-button><button v-else class="outline-button" @click="router.push('/add')"><PlusOutlined /> 添加第一件衣物</button><a-button v-if="!hasFilters" type="link" @click="presetsOpen = true"><AppstoreAddOutlined /> 先从常见单品里挑几件</a-button>
+    <a-button v-if="hasFilters" class="outline-button" @click="clearFilters">清除筛选</a-button><a-button v-else type="primary" size="large" @click="router.push('/add')"><PlusOutlined /> 拍一件衣服</a-button><a-button v-if="!hasFilters" type="link" @click="presetsOpen = true"><AppstoreAddOutlined /> 先从常见单品里挑几件</a-button>
   </section>
   <PresetOnboarding v-model:open="onboardingOpen" @done="onboardingDone" />
   <a-drawer v-model:open="presetsOpen" title="从常见单品添加" :width="narrow ? '100%' : 720" placement="right" destroy-on-close>
