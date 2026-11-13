@@ -64,7 +64,7 @@ const todayVisited = ref(libraryTab.value === 'today')
 watch(() => actualRoute.query.with, value => { if (typeof value === 'string') libraryTab.value = 'today' }, { immediate: true })
 // 衣物详情卡的“用它搭一套”带 ?mix=id：进快速搭并锁住这件。
 watch(() => actualRoute.query.mix, value => { if (typeof value === 'string') libraryTab.value = 'mix' }, { immediate: true })
-watch(libraryTab, tab => { if (tab === 'today') todayVisited.value = true; try { localStorage.setItem(TAB_KEY, tab) } catch { /* storage blocked */ } })
+watch(libraryTab, tab => { if (tab === 'today') todayVisited.value = true; try { localStorage.setItem(TAB_KEY, tab) } catch { /* storage blocked */ } }, { immediate: true })
 const appearance = useThemeStore()
 const accentColor = computed(() => tokens[appearance.isDark ? 'dark' : 'light'].accent)
 const boardColor = computed(() => tokens[appearance.isDark ? 'dark' : 'light'].board)
