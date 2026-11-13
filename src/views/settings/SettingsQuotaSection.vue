@@ -26,8 +26,8 @@ onMounted(loadQuota)
     <a-alert v-if="error" type="error" :message="error" show-icon />
     <section class="settings-group">
       <header class="settings-group-head">
-        <h3>今日 AI 额度</h3>
-        <p>识别和图片整理合计算一次；本地贴纸不计入额度。</p>
+        <h3>今日 次数</h3>
+        <p>识别和图片整理合计算一次；本地透明图不计入额度。</p>
       </header>
       <p class="quota-numbers">
         <strong>{{ remaining }}</strong>

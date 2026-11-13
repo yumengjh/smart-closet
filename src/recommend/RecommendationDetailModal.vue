@@ -48,7 +48,7 @@ async function wear() {
 async function workspace() {
   opening.value = true
   try { await openInWorkspace(router, closet.user!.username, outfit.value, props.runId); open.value = false }
-  catch (e) { message.error(e instanceof Error ? e.message : '没能打开到搭台。') }
+  catch (e) { message.error(e instanceof Error ? e.message : '没能打开到搭配编辑。') }
   finally { opening.value = false }
 }
 function adopted(next: RecommendedOutfit) { emit('replace', index.value, next); message.success('已换好，整套重新打了分。') }
@@ -79,7 +79,7 @@ function adopted(next: RecommendedOutfit) { emit('replace', index.value, next); 
         <RecommendationFeedback :key="'f' + outfit.key" :log-id="outfit.logId" :garments="outfit.garments" />
         <div class="recommend-detail-actions">
           <a-button :loading="wearing" :disabled="worn.has(outfit.key)" @click="wear"><CheckOutlined />{{ worn.has(outfit.key) ? '已记录今天穿了' : '今天穿了这套' }}</a-button>
-          <a-button type="primary" :loading="opening" @click="workspace">在搭台打开</a-button>
+          <a-button type="primary" :loading="opening" @click="workspace">编辑这套</a-button>
         </div>
       </div>
     </div>

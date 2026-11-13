@@ -77,7 +77,7 @@ export type ClosetTask = {
   parentJobId?: string
   title: string
   status: NonNullable<Garment['taskStatus']>
-  mode: '识别并整理' | '仅识别' | '本地贴纸' | '图片整理'
+  mode: '识别并整理' | '仅识别' | '本地透明图' | '图片整理'
   createdAt: string
   steps: TaskStep[]
   note?: string
@@ -211,16 +211,16 @@ const initialGarments = [
   garment('7', '开衫', '燕麦色', '#c8baa3', { category: ['针织开衫'], neckline: ['V领'], closure: ['纽扣'], seasons: ['秋季', '冬季'] }),
   garment('8', '半身裙', '炭灰', '#666761', { category: ['半身裙'], garmentLength: ['中长'], seasons: ['春季', '秋季'] }),
   garment('9', '卫衣', '雾紫', '#a19aaa', { category: ['卫衣'], sleeveLength: ['长袖'], seasons: ['秋季', '冬季'] }),
-  garment('10', '衬衫', '白色', '#e3e2dc', { status: 'DRAFT', taskStatus: 'NEEDS_REVIEW', reviewMessage: '图片已整理完成，请确认衣物细节后入柜。', taskId: 'task-10' }),
+  garment('10', '衬衫', '白色', '#e3e2dc', { status: 'DRAFT', taskStatus: 'NEEDS_REVIEW', reviewMessage: '图片已整理完成，请确认衣物细节后收进衣柜。', taskId: 'task-10' }),
   garment('11', '风衣', '卡其色', '#b3a081', { status: 'DRAFT', taskStatus: 'RUNNING', reviewMessage: '图片整理进行中，请稍候。', taskId: 'task-11' }),
   garment('12', '背心', '深棕', '#746052', { status: 'TRASHED' }),
 ]
 
 const initialTasks: ClosetTask[] = [
-  { id: 'task-10', garmentId: '10', title: '白色衬衫', status: 'NEEDS_REVIEW', mode: '识别并整理', createdAt: now(0), steps: [{ name: '识别衣物', status: 'completed' }, { name: '整理图片', status: 'completed' }, { name: '透明背景', status: 'completed' }, { name: '制作贴纸', status: 'completed' }], note: '已完成，正在等待你核对。' },
-  { id: 'task-11', garmentId: '11', title: '卡其色风衣', status: 'RUNNING', mode: '识别并整理', createdAt: now(1), steps: [{ name: '识别衣物', status: 'completed' }, { name: '整理图片', status: 'running' }, { name: '透明背景', status: 'waiting' }, { name: '制作贴纸', status: 'waiting' }] },
-  { id: 'task-09', garmentId: '9', title: '雾紫卫衣', status: 'SUCCEEDED', mode: '识别并整理', createdAt: now(2), steps: [{ name: '识别衣物', status: 'completed' }, { name: '整理图片', status: 'completed' }, { name: '透明背景', status: 'completed' }, { name: '制作贴纸', status: 'completed' }] },
-  { id: 'task-08', garmentId: '8', title: '炭灰半身裙', status: 'FAILED', mode: '识别并整理', createdAt: now(4), steps: [{ name: '识别衣物', status: 'completed' }, { name: '整理图片', status: 'failed' }, { name: '透明背景', status: 'waiting' }, { name: '制作贴纸', status: 'waiting' }], note: '图片服务暂时不可用，可以之后主动重试。' },
+  { id: 'task-10', garmentId: '10', title: '白色衬衫', status: 'NEEDS_REVIEW', mode: '识别并整理', createdAt: now(0), steps: [{ name: '识别衣物', status: 'completed' }, { name: '整理图片', status: 'completed' }, { name: '透明背景', status: 'completed' }, { name: '做透明图', status: 'completed' }], note: '已完成，正在等待你核对。' },
+  { id: 'task-11', garmentId: '11', title: '卡其色风衣', status: 'RUNNING', mode: '识别并整理', createdAt: now(1), steps: [{ name: '识别衣物', status: 'completed' }, { name: '整理图片', status: 'running' }, { name: '透明背景', status: 'waiting' }, { name: '做透明图', status: 'waiting' }] },
+  { id: 'task-09', garmentId: '9', title: '雾紫卫衣', status: 'SUCCEEDED', mode: '识别并整理', createdAt: now(2), steps: [{ name: '识别衣物', status: 'completed' }, { name: '整理图片', status: 'completed' }, { name: '透明背景', status: 'completed' }, { name: '做透明图', status: 'completed' }] },
+  { id: 'task-08', garmentId: '8', title: '炭灰半身裙', status: 'FAILED', mode: '识别并整理', createdAt: now(4), steps: [{ name: '识别衣物', status: 'completed' }, { name: '整理图片', status: 'failed' }, { name: '透明背景', status: 'waiting' }, { name: '做透明图', status: 'waiting' }], note: '图片服务暂时不可用，可以之后主动重试。' },
 ]
 
 type MockState = { garments: Garment[]; tasks: ClosetTask[]; quotaUsed: number }
@@ -328,7 +328,7 @@ type WorkflowResponse = {
   steps: { type: string; status: string; startedAt?: string; finishedAt?: string; inputUrl?: string; outputUrl?: string; error?: { message: string }; transparency?: TaskStep['transparency']; recognition?: TaskStep['recognition'] }[];
   assets: Garment['images']; attempts?: ClosetTask['attempts'];
 }
-export const stepLabels: Record<string, string> = { RECOGNIZE: 'AI 识别衣物', GENERATE: 'AI 整理图片', SEGMENT: '本地抠图', ENSURE_TRANSPARENCY: '检查透明背景', STICKER: '制作贴纸' }
+export const stepLabels: Record<string, string> = { RECOGNIZE: 'AI 识别衣物', GENERATE: 'AI 整理图片', SEGMENT: '本地抠图', ENSURE_TRANSPARENCY: '检查透明背景', STICKER: '做透明图' }
 
 const colors: Record<string, string> = { '白色': '#e3e2dc', '奶油白': '#e6e0d5', '黑色': '#383a38', '浅蓝': '#a8c2d1', '海军蓝': '#3e5368', '橄榄绿': '#737e60', '陶土红': '#b76e55', '鼠尾草绿': '#9cae98', '卡其色': '#b3a081', '燕麦色': '#c8baa3', '炭灰': '#666761' }
 function fromView(view: GarmentView): Garment {
@@ -354,7 +354,7 @@ function fromView(view: GarmentView): Garment {
 function fromJob(job: WorkflowResponse): ClosetTask {
   const status: ClosetTask['status'] = ['QUEUED', 'RUNNING', 'CANCEL_REQUESTED', 'SUCCEEDED', 'NEEDS_REVIEW', 'FAILED', 'CANCELLED', 'UNKNOWN'].includes(job.status)
     ? job.status as ClosetTask['status'] : 'UNKNOWN'
-  const mode = job.steps.some((step) => step.type === 'GENERATE') ? job.steps.some((step) => step.type === 'RECOGNIZE') ? '识别并整理' : '图片整理' : job.steps.some((step) => step.type === 'RECOGNIZE') ? '仅识别' : '本地贴纸'
+  const mode = job.steps.some((step) => step.type === 'GENERATE') ? job.steps.some((step) => step.type === 'RECOGNIZE') ? '识别并整理' : '图片整理' : job.steps.some((step) => step.type === 'RECOGNIZE') ? '仅识别' : '本地透明图'
   return { id: job.id, parentJobId: job.parentJobId, garmentId: job.request.garmentId || '', title: '衣物图片处理', status, mode, createdAt: job.createdAt, updatedAt: job.updatedAt,
     inputUrl: job.inputUrl, outputUrl: job.outputUrl, assets: job.assets || [], attempts: job.attempts || [],
     steps: job.steps.map((step) => ({ name: stepLabels[step.type] || step.type, type: step.type,
@@ -500,7 +500,7 @@ export const closetApi = {
     throw new Error('当前是界面演示模式，未连接 AI。请关闭 VITE_USE_MOCKS 并登录真实账号后提交。')
   },
   /** 预设衣物“换成我的照片”：同一件衣物换上自己的照片，资料保留（只允许预设副本）。 */
-  async replacePresetPhoto(garmentId: string, file: File, mode: Exclude<ClosetTask['mode'], '图片整理'> = '本地贴纸'): Promise<ClosetTask> {
+  async replacePresetPhoto(garmentId: string, file: File, mode: Exclude<ClosetTask['mode'], '图片整理'> = '本地透明图'): Promise<ClosetTask> {
     if (usingMocks) throw new Error('演示模式不执行图片处理。')
     const form = new FormData()
     form.append('file', file)
@@ -516,7 +516,7 @@ export const closetApi = {
 
   async continueSticker(taskId: string, assetId: string, policy: 'FORCE' | 'REVIEWED', key: string): Promise<ClosetTask> {
     if (usingMocks) throw new Error('演示模式不执行图片处理。')
-    if (policy === 'REVIEWED') await request(`/api/workflows/${taskId}/assets/${assetId}/review`, { method: 'POST', body: JSON.stringify({ decision: 'APPROVED', note: '人工核对透明背景与完整衣物后继续制作贴纸' }) })
+    if (policy === 'REVIEWED') await request(`/api/workflows/${taskId}/assets/${assetId}/review`, { method: 'POST', body: JSON.stringify({ decision: 'APPROVED', note: '人工核对透明背景与完整衣物后继续做透明图' }) })
     return fromJob(await request<WorkflowResponse>(`/api/workflows/${taskId}/continue`, { method: 'POST', headers: { 'Idempotency-Key': key }, body: JSON.stringify({ assetId, policy, method: 'U2NET' }) }))
   },
 
@@ -578,7 +578,7 @@ export const closetApi = {
     const state = readMock()
     const item = state.garments.find((candidate) => candidate.id === id)
     if (!item) throw new Error('找不到这件衣物。')
-    if (!['ACTIVE', 'WANTED'].includes(item.status)) throw new Error('请先确认入柜。')
+    if (!['ACTIVE', 'WANTED'].includes(item.status)) throw new Error('请先收进衣柜。')
     item.status = owned ? 'ACTIVE' : 'WANTED'; item.revision += 1; item.updatedAt = now(); writeMock(state)
     return item
   },

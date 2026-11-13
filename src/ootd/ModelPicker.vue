@@ -10,14 +10,14 @@ defineEmits<{ 'update:modelValue': [string] }>()
 </script>
 
 <template>
-  <div class="model-strip" role="radiogroup" aria-label="选择模特">
+  <div class="model-strip" role="radiogroup" aria-label="选择形象">
     <button v-for="b in models" :key="b.id" type="button" role="radio" class="model-option" :class="{ selected: modelValue === b.id }" :aria-checked="modelValue === b.id" @click="$emit('update:modelValue', b.id)">
       <span class="model-photo"><img v-if="b.mediaUrl" :src="mediaUrl(b.mediaUrl)" :alt="modelLabel(b)" loading="lazy" /><UserOutlined v-else /><AiBadge v-if="b.mediaUrl" small /></span>
       <span class="model-name">{{ modelLabel(b) }}</span>
       <span v-if="b.currentDefault" class="model-default">默认</span>
       <span v-if="modelValue === b.id" class="model-check"><CheckOutlined /></span>
     </button>
-    <RouterLink to="/settings?section=personal" class="model-option model-add"><PlusOutlined /><span class="model-name">新模特</span></RouterLink>
+    <RouterLink to="/settings?section=personal" class="model-option model-add"><PlusOutlined /><span class="model-name">新形象</span></RouterLink>
   </div>
 </template>
 

@@ -37,7 +37,7 @@ async function load() {
     done.value = {}
     // A local picture guess preselects the category of a garment recognition left without one.
     for (const n of r.items) if (n.kind === 'MISSING_CATEGORY' && n.suggestion && !picked.value[n.garmentId]) picked.value[n.garmentId] = n.suggestion
-  } catch (cause) { error.value = cause instanceof Error ? cause.message : '待核对列表暂时无法加载。' }
+  } catch (cause) { error.value = cause instanceof Error ? cause.message : '等你确认列表暂时无法加载。' }
   finally { loading.value = false }
   await restoreScroll()
 }
@@ -49,7 +49,7 @@ const tabs = computed(() => [
   { value: 'all', label: `全部 ${rows.value.length}` },
   { value: 'CONFLICT', label: `品类可能不对 ${rows.value.filter(r => r.kind === 'CONFLICT').length}` },
   { value: 'MISSING_CATEGORY', label: `没有品类 ${rows.value.filter(r => r.kind === 'MISSING_CATEGORY').length}` },
-  { value: 'DRAFT', label: `未入柜 ${rows.value.filter(r => r.status === 'DRAFT').length}` },
+  { value: 'DRAFT', label: `整理中 ${rows.value.filter(r => r.status === 'DRAFT').length}` },
 ])
 const visible = computed(() => rows.value.filter(r => tab.value === 'all' || (tab.value === 'DRAFT' ? r.status === 'DRAFT' : r.kind === tab.value)))
 const adoptable = computed(() => pending.value.filter(r => r.suggestion && r.garment))
@@ -135,7 +135,7 @@ const options = (key: string) => (fields.value[key]?.options || []).map((value: 
 
 <template>
   <header class="page-heading">
-    <div><h1>待核对</h1><p class="page-subtitle">识图拿不准的衣物都在这里：一键采纳建议，或在侧栏里快速改几项资料，不用逐件打开详情。处理后记为你确认过的资料，不再提示。</p></div>
+    <div><h1>等你确认</h1><p class="page-subtitle">识图拿不准的衣物都在这里：一键采纳建议，或在侧栏里快速改几项资料，不用逐件打开详情。处理后记为你确认过的资料，不再提示。</p></div>
     <span class="heading-count">还剩 {{ pending.length }} 件<template v-if="handled"> · 已处理 {{ handled }}</template></span>
   </header>
   <a-alert v-if="error" type="error" :message="error" show-icon class="page-alert"><template #action><a-button size="small" @click="load">重试</a-button></template></a-alert>
@@ -163,7 +163,7 @@ const options = (key: string) => (fields.value[key]?.options || []).map((value: 
           </a-space>
         </div>
         <div v-else class="review-copy">
-          <strong>{{ title(row.garment) }}<a-tag v-if="row.status === 'DRAFT'" class="review-draft">未入柜</a-tag></strong>
+          <strong>{{ title(row.garment) }}<a-tag v-if="row.status === 'DRAFT'" class="review-draft">整理中</a-tag></strong>
           <small>现在：{{ nowText(row.garment) }}</small>
           <p>{{ row.message }}</p>
           <a-space wrap>

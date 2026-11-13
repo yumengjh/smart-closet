@@ -82,7 +82,7 @@ export const useProcessingStore = defineStore('processing', () => {
   /** Rehearsal of the whole hand-off for the OOTD page's preview button: nothing is sent and no quota is used. */
   function simulateRender(thumb?: string, seconds = 8) {
     const id = `demo-${Date.now()}`, startedAt = Date.now()
-    const base: WaitingEntry = { key: `render:${id}`, kind: 'render', id, title: 'OOTD 穿搭图 · 模拟演示', startedAt, state: 'processing', stage: '正在上身绘制', note: '模拟演示，不消耗额度', href: '/ootd', read: false, childIds: [] }
+    const base: WaitingEntry = { key: `render:${id}`, kind: 'render', id, title: '上身图 · 模拟演示', startedAt, state: 'processing', stage: '正在上身绘制', note: '模拟演示，不消耗额度', href: '/ootd', read: false, childIds: [] }
     receive(base, true)
     setTimeout(() => receive({ ...base, state: 'ready', stage: '穿搭图好了，去看看', note: '模拟演示，未真正生成', thumb }), seconds * 1000)
   }

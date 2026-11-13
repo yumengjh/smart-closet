@@ -114,7 +114,7 @@ onUnmounted(() => clearInterval(clock))
       </section>
       <p v-if="historyError" class="inbox-history-error">任务记录暂时无法读取</p>
     </div>
-    <footer class="inbox-foot"><a-button size="small" @click="emit('go', '/pending')">未入柜<span v-if="closet.pendingCount" class="inbox-count">{{ closet.pendingCount }}</span></a-button><a-button type="link" size="small" class="inbox-all" @click="emit('go', '/tasks')">全部任务记录<RightOutlined /></a-button></footer>
+    <footer class="inbox-foot"><a-button size="small" @click="emit('go', '/pending')">整理中<span v-if="closet.pendingCount" class="inbox-count">{{ closet.pendingCount }}</span></a-button><a-button type="link" size="small" class="inbox-all" @click="emit('go', '/tasks')">全部任务记录<RightOutlined /></a-button></footer>
     <small class="inbox-footnote">站内提醒仅在网站打开时生效，处理不受页面关闭影响</small>
   </div>
 </template>

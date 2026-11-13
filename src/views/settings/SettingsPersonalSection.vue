@@ -18,7 +18,7 @@ const attempt = ref<{request:{profileRevision:number;provider:string;model:strin
 const modelSex = ref<'MALE'|'FEMALE'>('FEMALE'); const editSex = ref<'MALE'|'FEMALE'>('FEMALE')
 const sexOptions = [{value:'MALE',label:'男'},{value:'FEMALE',label:'女'}]
 const newName = ref(''); const renaming = ref<Baseline|null>(null); const renameValue = ref('')
-const states:Record<string,string>={QUEUED:'排队中',WAITING_RESOURCE:'等待资源',RUNNING:'生成中',SUCCEEDED:'待确认',FAILED:'生成失败',UNKNOWN:'生成结果待核对',CANCEL_REQUESTED:'正在取消',CANCELLED:'已取消'}
+const states:Record<string,string>={QUEUED:'排队中',WAITING_RESOURCE:'等待资源',RUNNING:'生成中',SUCCEEDED:'待确认',FAILED:'生成失败',UNKNOWN:'生成结果等你确认',CANCEL_REQUESTED:'正在取消',CANCELLED:'已取消'}
 function jobFor(b:Baseline){return renderJobs.value.find(j=>j.baselineId===b.id&&j.purpose==='BASELINE')}
 const error = ref(''); const loading = ref(true); const saving = ref(false); const generating = ref(false); const generateOpen = ref(false)
 const preview = ref<ProfileSnapshot | null>(null); const selectedModel = ref<string>(); const photo = ref<File | null>(null); const selectedPhoto = ref<string | undefined>(); const photoPreview = ref(''); const key = ref(createUuid())
@@ -35,7 +35,7 @@ function choosePhoto(file:File){if(!['image/png','image/jpeg'].includes(file.typ
 function handOff(job:RenderJob){
   const stored=photos.value.find(p=>p.id===attempt.value?.request.photoId)?.url,local=attempt.value?.file?URL.createObjectURL(attempt.value.file):undefined
   if(local)setTimeout(()=>URL.revokeObjectURL(local),8000)
-  sendOff.launch({title:'正在画你的专属模特',cards:stored||local?[{image:stored||local,label:'参考照片'}]:[{label:attempt.value?.request.name||'按个人资料生成'}]})
+  sendOff.launch({title:'正在画你的专属形象',cards:stored||local?[{image:stored||local,label:'参考照片'}]:[{label:attempt.value?.request.name||'按个人资料生成'}]})
   processing.trackRender(job,true)
 }
 async function accepted(job:RenderJob){
@@ -72,12 +72,12 @@ async function generate(){
     else{pending.value=false;attempt.value=null;const text=e instanceof Error?e.message:String(e);error.value=text;submissionNotice.value={type:'error',text};message.error(text)}
   }finally{generating.value=false}
 }
-async function confirm(b:Baseline,makeDefault:boolean){try{await platformRequest(`/api/me/person-baselines/${b.id}/confirm`,'POST',{revision:b.revision,makeDefault});await refreshResults();if(makeDefault){const wasDirty=dirty.value;profile.value.defaultBaselineId=b.id;if(!wasDirty)savedProfile.value=JSON.stringify(profile.value)}message.success(makeDefault?'已设为默认模特。':'模特已确认，可在 OOTD 中使用。')}catch(e){message.error(e instanceof Error?e.message:String(e))}}
+async function confirm(b:Baseline,makeDefault:boolean){try{await platformRequest(`/api/me/person-baselines/${b.id}/confirm`,'POST',{revision:b.revision,makeDefault});await refreshResults();if(makeDefault){const wasDirty=dirty.value;profile.value.defaultBaselineId=b.id;if(!wasDirty)savedProfile.value=JSON.stringify(profile.value)}message.success(makeDefault?'已设为默认形象。':'形象已确认，可在 上身图 中使用。')}catch(e){message.error(e instanceof Error?e.message:String(e))}}
 function startRename(b:Baseline){renaming.value=b;renameValue.value=b.name||'';editSex.value=b.profile.sex==='MALE'?'MALE':'FEMALE'}
 async function rename(){if(!renaming.value)return;try{await platformRequest(`/api/me/person-baselines/${renaming.value.id}`,'PATCH',{name:renameValue.value.trim()||undefined,sex:editSex.value,revision:renaming.value.revision});renaming.value=null;await refreshResults()}catch(e){message.error(e instanceof Error?e.message:String(e))}}
 function isStale(b:Baseline){const p=profile.value;const h=p.heightCm??(b.profile.sex==='MALE'?170:160);const w=p.weightKg??Math.round(22*(h/100)**2*10)/10;return h!==b.profile.heightCm||w!==b.profile.weightKg||(p.bodyShape?.trim()||'标准身材')!==b.profile.bodyShape}
-function remove(b:Baseline){modal.confirm({title:`删除模特「${modelLabel(b)}」？`,content:'已生成的 OOTD 和参考照片会保留；正在用这位模特生成的任务会停止。',okText:'删除',cancelText:'取消',async onOk(){await platformRequest(`/api/me/person-baselines/${b.id}`,'DELETE',{revision:b.revision});await load()}})}
-function deletePhoto(id:string){modal.confirm({title:'仅删除这张原始参考照片？',content:'这张上传照片会永久清理，已经生成的基准人物和 OOTD 保留。正在直接使用此照片生成人物的任务会停止发布。',okText:'删除原照',cancelText:'取消',async onOk(){await platformRequest(`/api/me/reference-photos/${id}`,'DELETE');await load()}})}
+function remove(b:Baseline){modal.confirm({title:`删除形象「${modelLabel(b)}」？`,content:'已生成的 上身图 和参考照片会保留；正在用这位形象生成的任务会停止。',okText:'删除',cancelText:'取消',async onOk(){await platformRequest(`/api/me/person-baselines/${b.id}`,'DELETE',{revision:b.revision});await load()}})}
+function deletePhoto(id:string){modal.confirm({title:'仅删除这张原始参考照片？',content:'这张上传照片会永久清理，已经生成的基准人物和 上身图 保留。正在直接使用此照片生成人物的任务会停止发布。',okText:'删除原照',cancelText:'取消',async onOk(){await platformRequest(`/api/me/reference-photos/${id}`,'DELETE');await load()}})}
 onMounted(()=>{void load();timer=setInterval(refreshResults,5000)})
 onUnmounted(()=>{clearInterval(timer);if(photoPreview.value)URL.revokeObjectURL(photoPreview.value)})
 </script>
@@ -90,7 +90,7 @@ onUnmounted(()=>{clearInterval(timer);if(photoPreview.value)URL.revokeObjectURL(
     <section v-else class="settings-group">
       <header class="settings-group-head">
         <h3>个人资料</h3>
-        <p>个人资料的性别只用于推荐。生成模特时单独选择模特性别，其余资料可以不填。</p>
+        <p>个人资料的性别只用于推荐。生成形象时单独选择形象性别，其余资料可以不填。</p>
       </header>
       <a-form :model="profile" layout="vertical" @finish="save">
         <a-form-item label="性别"><a-radio-group v-model:value="profile.sex" :options="[{value:'MALE',label:'男'},{value:'FEMALE',label:'女'}]" /></a-form-item>
@@ -119,7 +119,7 @@ onUnmounted(()=>{clearInterval(timer);if(photoPreview.value)URL.revokeObjectURL(
     <section class="settings-group">
       <header class="settings-group-head">
         <h3>参考照片（可选）</h3>
-        <p>上传一张全身照或半身照，模特会更像你；不传也能生成。照片只用于生成模特，不会直接用于 OOTD。</p>
+        <p>上传一张全身照或半身照，形象会更像你；不传也能生成。照片只用于生成形象，不会直接用于 上身图。</p>
       </header>
       <div class="reference-pick">
         <a-upload :disabled="pending || generating" :before-upload="choosePhoto" :max-count="1" :show-upload-list="false" accept="image/png,image/jpeg"><a-button>选择全身照或半身照</a-button></a-upload>
@@ -148,19 +148,19 @@ onUnmounted(()=>{clearInterval(timer);if(photoPreview.value)URL.revokeObjectURL(
     <section class="settings-group">
       <header class="settings-group-head settings-group-head-row">
         <div>
-          <h3>我的模特</h3>
-          <p>可以保留多位模特（例如不同发型、不同照片），OOTD 时任选一位。未填的资料按示意默认值生成（男 170 cm、女 160 cm、BMI 22），不写回资料。</p>
+          <h3>我的形象</h3>
+          <p>可以保留多位形象（例如不同发型、不同照片），上身图 时任选一位。未填的资料按示意默认值生成（男 170 cm、女 160 cm、BMI 22），不写回资料。</p>
         </div>
-        <RouterLink class="settings-group-link" to="/ootd">去 OOTD 试穿 ↗</RouterLink>
+        <RouterLink class="settings-group-link" to="/ootd">去 上身效果图 ↗</RouterLink>
       </header>
       <a-alert v-if="pending" type="warning" message="上一次提交结果尚未核对，请继续核对原任务，避免重复生成。" style="margin-bottom:12px" />
       <a-alert v-if="!choices.length" type="info" message="暂时没有可用的生成模型，资料可以先保存。" style="margin-bottom:12px" />
-      <a-form-item label="新模特的性别"><a-radio-group v-model:value="modelSex" :options="sexOptions" :disabled="pending || generating" /></a-form-item>
+      <a-form-item label="新形象的性别"><a-radio-group v-model:value="modelSex" :options="sexOptions" :disabled="pending || generating" /></a-form-item>
       <a-space wrap>
-        <a-button type="primary" :disabled="!choices.length && !pending" @click="prepare">{{ pending ? '核对上次提交' : photo ? '用照片生成新模特' : '生成新模特' }}</a-button>
+        <a-button type="primary" :disabled="!choices.length && !pending" @click="prepare">{{ pending ? '核对上次提交' : photo ? '用照片生成新形象' : '生成新形象' }}</a-button>
         <a-button @click="refreshResults">刷新</a-button>
       </a-space>
-      <a-empty v-if="!baselines.length" description="还没有模特，生成后在这里确认" />
+      <a-empty v-if="!baselines.length" description="还没有形象，生成后在这里确认" />
       <div v-else class="baseline-list">
         <article v-for="b in baselines" :key="b.id" class="baseline-card" :class="{ 'is-default': b.currentDefault }">
           <div class="baseline-media"><img v-if="b.mediaUrl" :src="mediaUrl(b.mediaUrl)" :alt="modelLabel(b)" /><AiBadge v-if="b.mediaUrl" /></div>
@@ -168,7 +168,7 @@ onUnmounted(()=>{clearInterval(timer);if(photoPreview.value)URL.revokeObjectURL(
             <strong class="baseline-name">{{ modelLabel(b) }}</strong>
             <div class="baseline-meta">
               <a-tag :color="b.currentDefault ? 'success' : b.status === 'CANDIDATE' ? 'warning' : 'default'">{{ b.currentDefault ? '默认' : b.status === 'CANDIDATE' ? '待确认' : b.status === 'CONFIRMED' ? '已确认' : states[jobFor(b)?.status || ''] || (b.status === 'GENERATING' ? '生成中' : b.status) }}</a-tag>
-              <span>{{ b.profile.sex === 'MALE' ? '男模特' : '女模特' }}</span><span class="muted">资料版本 {{ b.profile.profileRevision }}</span>
+              <span>{{ b.profile.sex === 'MALE' ? '男性形象' : '女性形象' }}</span><span class="muted">资料版本 {{ b.profile.profileRevision }}</span>
             </div>
             <a-alert v-if="jobFor(b)?.error" type="error" :message="jobFor(b)?.error || '生成未完成'" show-icon />
             <a-alert v-if="isStale(b)" type="warning" message="基于旧资料生成" />
@@ -183,11 +183,11 @@ onUnmounted(()=>{clearInterval(timer);if(photoPreview.value)URL.revokeObjectURL(
       </div>
     </section>
   </div>
-  <a-modal v-model:open="generateOpen" title="生成新模特" :footer="null" :closable="!generating" :mask-closable="!generating" :keyboard="!generating"><template v-if="preview"><a-input v-model:value="newName" :maxlength="20" :disabled="generating || pending" placeholder="给模特起个名字（可选），例如：长发的我" aria-label="模特名称" style="margin-bottom:16px" /><a-alert v-if="submissionNotice" :type="submissionNotice.type" :message="submissionNotice.text" show-icon role="status" aria-live="polite" style="margin-bottom:16px" /><a-descriptions :column="1"><a-descriptions-item label="性别">{{ preview.sex==='MALE'?'男':'女' }}</a-descriptions-item><a-descriptions-item label="身高">{{ preview.heightCm }} cm · {{ preview.sources.heightCm==='USER_REPORTED'?'已填写':'生成默认值' }}</a-descriptions-item><a-descriptions-item label="体重">{{ preview.weightKg }} kg · {{ preview.sources.weightKg==='USER_REPORTED'?'已填写':'示意计算值' }}</a-descriptions-item><a-descriptions-item label="身材">{{ preview.bodyShape }}</a-descriptions-item></a-descriptions>
+  <a-modal v-model:open="generateOpen" title="生成新形象" :footer="null" :closable="!generating" :mask-closable="!generating" :keyboard="!generating"><template v-if="preview"><a-input v-model:value="newName" :maxlength="20" :disabled="generating || pending" placeholder="给形象起个名字（可选），例如：长发的我" aria-label="形象名称" style="margin-bottom:16px" /><a-alert v-if="submissionNotice" :type="submissionNotice.type" :message="submissionNotice.text" show-icon role="status" aria-live="polite" style="margin-bottom:16px" /><a-descriptions :column="1"><a-descriptions-item label="性别">{{ preview.sex==='MALE'?'男':'女' }}</a-descriptions-item><a-descriptions-item label="身高">{{ preview.heightCm }} cm · {{ preview.sources.heightCm==='USER_REPORTED'?'已填写':'生成默认值' }}</a-descriptions-item><a-descriptions-item label="体重">{{ preview.weightKg }} kg · {{ preview.sources.weightKg==='USER_REPORTED'?'已填写':'示意计算值' }}</a-descriptions-item><a-descriptions-item label="身材">{{ preview.bodyShape }}</a-descriptions-item></a-descriptions>
     <p>全身自然站姿，素色短袖、及膝短裤与平底鞋。每次一张，使用 1 个图像额度。</p><a-select v-model:value="selectedModel" :disabled="generating || pending" aria-label="人物生成模型" style="width:100%" :options="choices.map(c=>({value:c.provider+':'+c.model,label:c.provider+' / '+c.model}))" placeholder="选择已验证模型" />
-    <p v-if="photo || selectedPhoto">本次使用{{ photo ? photo.name : '已上传参考照片' }}。照片仅用于建立基准人物，不直接用于 OOTD。</p><p v-else>本次不使用照片，根据资料与模板生成人物。</p><img v-if="photoPreview" :src="photoPreview" alt="本次照片预览" style="max-height:200px;max-width:100%" />
+    <p v-if="photo || selectedPhoto">本次使用{{ photo ? photo.name : '已上传参考照片' }}。照片仅用于建立基准人物，不直接用于 上身图。</p><p v-else>本次不使用照片，根据资料与模板生成人物。</p><img v-if="photoPreview" :src="photoPreview" alt="本次照片预览" style="max-height:200px;max-width:100%" />
     <a-button type="primary" block style="margin-top:20px" :loading="generating" :disabled="!capability || generating || (pending && lookupUncertain)" @click="generate">{{ generating ? '正在提交 / 核对，请稍候' : pending ? '重新提交同一任务' : photo ? '上传照片并生成' : '生成（1 个图像额度）' }}</a-button><a-button v-if="pending" block style="margin-top:12px" :disabled="generating" @click="checkSubmission">核对提交结果</a-button><RouterLink v-if="pending" to="/tasks" style="display:block;margin-top:12px" @click="generateOpen=false">查看任务记录</RouterLink></template></a-modal>
-  <a-modal :open="!!renaming" title="编辑模特" ok-text="保存" cancel-text="取消" width="360px" @ok="rename" @cancel="renaming=null"><a-form layout="vertical"><a-form-item label="模特名称"><a-input v-model:value="renameValue" :maxlength="20" /></a-form-item><a-form-item label="模特性别"><a-radio-group v-model:value="editSex" :options="sexOptions" /></a-form-item><p class="muted">修改性别会更新模特资料，不会重画已有图片。</p></a-form></a-modal>
+  <a-modal :open="!!renaming" title="编辑形象" ok-text="保存" cancel-text="取消" width="360px" @ok="rename" @cancel="renaming=null"><a-form layout="vertical"><a-form-item label="形象名称"><a-input v-model:value="renameValue" :maxlength="20" /></a-form-item><a-form-item label="形象性别"><a-radio-group v-model:value="editSex" :options="sexOptions" /></a-form-item><p class="muted">修改性别会更新形象资料，不会重画已有图片。</p></a-form></a-modal>
 </template>
 <style scoped>
 .settings-field-note { margin: 0 0 var(--space-2); font-size: 13px; color: var(--muted-copy); }

@@ -19,7 +19,7 @@ export function createBoard(name = '未命名搭配', scene: OutfitScene = { ver
   return { id, name, scene: normalizeScene(scene), contentVersion: 0, revision: null, savedSignature: '', selectedIds: [], undo: [], redo: [], zoom: 1, status: '草稿' }
 }
 export function addBoard(space: OutfitWorkspace, board: WorkspaceBoard) {
-  if (space.boards.length >= BOARD_LIMIT) throw new Error('工作区最多十二个组合台，请先保存并关闭部分组合台。')
+  if (space.boards.length >= BOARD_LIMIT) throw new Error('工作区最多十二套搭配，请先保存并关闭部分搭配。')
   space.boards.push(board); space.activeId = board.id
 }
 export function workspace(owner: string, id = 'main'): OutfitWorkspace {

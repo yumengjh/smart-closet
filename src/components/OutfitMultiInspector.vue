@@ -6,8 +6,8 @@ const angle = ref(0), percent = ref(100), dx = ref(0), dy = ref(0)
 </script>
 <template>
   <div class="outfit-inspector-content">
-    <strong>已选中 {{ props.count }} 张贴纸</strong>
-    <p class="outfit-panel-description">画布选框可整体缩放、旋转；以下属性应用到每张选中贴纸，可一次撤销。</p>
+    <strong>已选中 {{ props.count }} 件单品</strong>
+    <p class="outfit-panel-description">画布选框可整体缩放、旋转；以下属性应用到每件选中单品，可一次撤销。</p>
     <a-form layout="vertical" class="outfit-property-form">
       <a-form-item label="统一旋转角度"><a-input-number v-model:value="angle" :min="0" :max="360" aria-label="批量旋转角度" addon-after="°" /><a-button block @click="emit('rotate', angle ?? 0, false)">应用角度</a-button><div class="outfit-layer-buttons"><a-button @click="emit('rotate', -15, true)">各自 −15°</a-button><a-button @click="emit('rotate', 15, true)">各自 +15°</a-button></div></a-form-item>
       <a-form-item label="各自等比缩放"><a-input-number v-model:value="percent" :min="10" :max="500" aria-label="批量缩放百分比" addon-after="%" /><a-button block @click="emit('scale', (percent ?? 100) / 100)">应用缩放</a-button></a-form-item>

@@ -7,7 +7,7 @@ type Permission = { purpose: string; revision: number; expiresAt: number }
 const { message } = App.useApp()
 const documents = ref<Document[]>([]); const drafts = ref<Record<string, string>>({}); const permissions = ref<Permission[]>([])
 const busy = ref(''); const error = ref(''); const loading = ref(true)
-const purposes = [{ value: 'OUTFIT', label: '个性化搭配' }, { value: 'BASELINE', label: '基准人物' }, { value: 'OOTD', label: 'OOTD 穿搭图' }]
+const purposes = [{ value: 'OUTFIT', label: '个性化搭配' }, { value: 'BASELINE', label: '基准人物' }, { value: '上身图', label: '上身图' }]
 async function load(preserve = false) {
   try {
     const [docs, grants] = await Promise.all([agentRequest<Document[]>('/memory-documents'), agentRequest<Permission[]>('/memory-permissions')])

@@ -92,7 +92,7 @@ function confirmApply(index: number, intoCurrent: boolean) {
       busy.value = true
       try {
         const proposal = props.proposal
-        if (proposal.kind === 'SAVE' && !canvasBridge.value) throw new Error('请先打开生成建议时的组合台。')
+        if (proposal.kind === 'SAVE' && !canvasBridge.value) throw new Error('请先打开生成建议时的搭配。')
         let scene = scenes.value[index]
         if (isOutfits.value && intoCurrent) scene = await candidateScene(proposal.payload.candidates![index], proposal.context.scene?.elements.filter(e => e.kind === 'PERSON_PART') || [])
         if (proposal.kind === 'SAVE') assertSaveTarget(proposal.payload, pageContext(route.path))
@@ -162,7 +162,7 @@ function confirmApply(index: number, intoCurrent: boolean) {
             <p v-else>{{ candidate.reason }}</p><div class="agent-candidate-actions"><a-button :disabled="used || !scenes[index] || busy" @click="confirmApply(index, false)">新建草稿</a-button><a-button v-if="current" type="primary" :disabled="used || !scenes[index] || busy" @click="confirmApply(index, true)">应用当前</a-button></div>
           </article>
         </div>
-        <div v-else class="agent-edit-preview"><OutfitThumbnail v-if="scenes[0]" :resolution="640" :scene="scenes[0]" title="修改后画布" /><div><h3>调整后的效果</h3><p>{{ proposal.payload.summary }}</p><a-button type="primary" :disabled="used || !current || !scenes[0] || busy" @click="confirmApply(0, true)">确认应用修改</a-button><p v-if="!current" class="assistant-dialog-note">请先回到生成建议时的组合台。</p></div></div>
+        <div v-else class="agent-edit-preview"><OutfitThumbnail v-if="scenes[0]" :resolution="640" :scene="scenes[0]" title="修改后画布" /><div><h3>调整后的效果</h3><p>{{ proposal.payload.summary }}</p><a-button type="primary" :disabled="used || !current || !scenes[0] || busy" @click="confirmApply(0, true)">确认应用修改</a-button><p v-if="!current" class="assistant-dialog-note">请先回到生成建议时的搭配。</p></div></div>
       </a-modal>
       <RecommendationDetailModal v-if="isRecommendation && proposal.payload.runId" v-model:open="detailOpen" v-model:index="detailIndex" :run-id="proposal.payload.runId" :outfits="recommended" :intent="proposal.payload.intent" @replace="replaceOutfit" />
     </template>

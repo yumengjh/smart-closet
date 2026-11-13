@@ -56,7 +56,7 @@ export function loadOutfitImage(url: string, readable = true): Promise<HTMLImage
     const image = new Image()
     if (readable) image.crossOrigin = isApiMedia(url) ? 'use-credentials' : 'anonymous'
     image.onload = () => resolve(image)
-    image.onerror = () => reject(new Error('贴纸图片暂时无法加载，请重试。'))
+    image.onerror = () => reject(new Error('透明图暂时无法加载，请重试。'))
     image.src = mediaUrl(url)!
   })
   imagePromises.set(cacheKey, promise)

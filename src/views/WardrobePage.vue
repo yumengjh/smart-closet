@@ -15,6 +15,7 @@ import FloatingPager from '../components/FloatingPager.vue'
 import GarmentCardSkeleton from '../components/GarmentCardSkeleton.vue'
 import PresetPicker from '../presets/PresetPicker.vue'
 import PresetOnboarding from '../presets/PresetOnboarding.vue'
+import SortingStrip from '../wardrobe/SortingStrip.vue'
 import { isProcessing } from '../domain/workflow'
 import { DEFAULT_SORT, SORT_OPTIONS, readSort, saveSort, sortLabel } from '../wardrobe/sort'
 import { readView, saveView } from '../wardrobe/viewMemory'
@@ -129,7 +130,7 @@ async function selectEverything() {
   } catch (cause) { message.error(cause instanceof Error ? cause.message : '读取全部结果失败，请重试。') }
   finally { gathering.value = false }
 }
-const batchLabels = { recognize: '重新识别资料', reprocess: '重新增强图片', enhance: 'AI 增强图片' } as const
+const batchLabels = { recognize: '再认一次资料', reprocess: '重新增强图片', enhance: 'AI 增强图片' } as const
 type BatchMode = keyof typeof batchLabels
 async function confirmBatch(mode: BatchMode) {
   const targets = [...selected.value.values()]
@@ -141,7 +142,7 @@ async function confirmBatch(mode: BatchMode) {
   const skipped = targets.length - runnable.length
   modal.confirm({
     title: `${batchLabels[mode]}（${runnable.length} 件）？`,
-    content: `${mode === 'recognize' ? '每件调用一次识别模型，使用 1 次 AI 额度。' : mode === 'enhance' ? '按快速入柜的增强规则重新整理图片（例如丝袜只保留袜子本身），每件使用 1 次 AI 额度；不是快速入柜的衣物会跳过。' : '每件分别调用识别和整理模型，使用 2 次 AI 额度。'}共需 ${runnable.length * unit} 次。${quotaLine}${mode === 'recognize' ? '提交后由服务器逐件处理，可以关闭页面，进度在右上角的处理中心。' : '提交过程中请保持页面打开。'}${skipped ? `另有 ${skipped} 件正在处理，将跳过。` : ''}已有人工修改和图片会保留。`,
+    content: `${mode === 'recognize' ? '每件调用一次识别模型，使用 1 次。' : mode === 'enhance' ? '按快速添加的增强规则重新整理图片（例如丝袜只保留袜子本身），每件使用 1 次；不是快速添加的衣物会跳过。' : '每件分别调用识别和整理模型，使用 2 次。'}共需 ${runnable.length * unit} 次。${quotaLine}${mode === 'recognize' ? '提交后由服务器逐件处理，可以关闭页面，进度在右上角的处理中心。' : '提交过程中请保持页面打开。'}${skipped ? `另有 ${skipped} 件正在处理，将跳过。` : ''}已有人工修改和图片会保留。`,
     okText: '提交真实任务', cancelText: '取消',
     onOk: () => { void (mode === 'recognize' ? runServerBatch(runnable, skipped) : runBatch(mode, runnable, skipped)) },
   })
@@ -149,7 +150,7 @@ async function confirmBatch(mode: BatchMode) {
 // Issue #77: 'enhance' re-runs the quick-intake enhancement (its prompt carries rules such as tights without legs).
 async function enhanceOne(item: Garment) {
   const { intakeId } = await quickApi.provenance(item.id)
-  if (!intakeId) throw new Error('不是快速入柜的衣物，请在详情里重新处理')
+  if (!intakeId) throw new Error('不是快速添加的衣物，请在详情里重新处理')
   await quickApi.enhance(intakeId, createUuid(), '')
 }
 /** Re-recognition: the server takes the whole list and submits it itself; progress is one entry in the processing centre. */
@@ -158,10 +159,10 @@ async function runServerBatch(targets: Garment[], skipped: number) {
   try {
     const batch = await closetApi.batchRecognize(targets.map(item => item.id))
     processing.trackBulk(batch, true)
-    batchResult.value = { type: 'success', message: `重新识别资料：已交给服务器处理 ${targets.length} 件，可以关闭页面。`, description: [skipped ? `${skipped} 件处理中已跳过。` : '', '进度在右上角的处理中心，每件的结果可在任务页查看。'].filter(Boolean).join('\n') }
+    batchResult.value = { type: 'success', message: `再认一次资料：已交给服务器处理 ${targets.length} 件，可以关闭页面。`, description: [skipped ? `${skipped} 件处理中已跳过。` : '', '进度在右上角的处理中心，每件的结果可在任务页查看。'].filter(Boolean).join('\n') }
     exitSelecting(); await Promise.all([load(), closet.refreshCounts()])
   } catch (cause) {
-    batchResult.value = { type: 'error', message: '重新识别资料：提交失败', description: cause instanceof Error ? cause.message : '请稍后重试。' }
+    batchResult.value = { type: 'error', message: '再认一次资料：提交失败', description: cause instanceof Error ? cause.message : '请稍后重试。' }
   } finally { batchBusy.value = '' }
 }
 async function runBatch(mode: BatchMode, targets: Garment[], skipped: number) {
@@ -371,7 +372,7 @@ watch(() => route.query.presets, value => { if (value !== '1') return; presetsOp
     <span class="closet-toolbar-gap"></span>
     <span class="closet-break" aria-hidden="true"></span>
     <a-segmented v-if="total || hasFilters || ownership !== 'ALL'" class="closet-ownership" :value="ownership" :options="ownershipOptions" :aria-label="`显示全部、已拥有或${wantedLabel}的衣物`" @change="chooseOwnership($event as Ownership)" />
-    <a-button v-if="reviewCount" class="closet-chip warn" @click="router.push('/review')"><ExclamationCircleOutlined />待核对 {{ reviewCount }}</a-button>
+    <a-button v-if="reviewCount" class="closet-chip warn" @click="router.push('/review')"><ExclamationCircleOutlined />等你确认 {{ reviewCount }}</a-button>
     <a-segmented v-if="items.length && !selecting && !searching" class="closet-layout" :value="layout" :options="[{ value: 'rack', label: '衣架' }, { value: 'grid', label: '平铺' }]" aria-label="衣柜展示方式" @change="chooseLayout($event as 'rack' | 'grid')" />
     <div v-if="items.length && rackView" class="closet-spread" role="group" aria-label="衣架松紧">
       <svg class="closet-spread-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="9" height="14" rx="2" /><rect x="8" y="5" width="9" height="14" rx="2" /><rect x="11" y="5" width="9" height="14" rx="2" /></svg>
@@ -385,7 +386,7 @@ watch(() => route.query.presets, value => { if (value !== '1') return; presetsOp
         <a-menu-item @click="picker?.click()"><CameraOutlined /> 用图片搜</a-menu-item>
         <a-menu-item :disabled="!items.length" @click="selecting = true; batchResult = null"><CheckSquareOutlined /> 批量处理</a-menu-item>
         <a-menu-item @click="presetsOpen = true"><AppstoreAddOutlined /> 从常见单品添加</a-menu-item>
-        <a-menu-item v-if="reviewCount" @click="router.push('/review')"><ExclamationCircleOutlined /> 待核对 {{ reviewCount }} 件</a-menu-item>
+        <a-menu-item v-if="reviewCount" @click="router.push('/review')"><ExclamationCircleOutlined /> 等你确认 {{ reviewCount }} 件</a-menu-item>
       </a-menu></template>
     </a-dropdown>
   </section>
@@ -411,17 +412,17 @@ watch(() => route.query.presets, value => { if (value !== '1') return; presetsOp
           <a-button v-if="selected.size" type="link" size="small" :disabled="Boolean(batchBusy)" @click="selected = new Map()">清空</a-button>
         </div>
         <div class="batch-float-actions">
-          <a-button shape="round" :disabled="!selected.size || Boolean(batchBusy)" :loading="batchBusy === 'recognize'" @click="confirmBatch('recognize')">重新识别</a-button>
+          <a-button shape="round" :disabled="!selected.size || Boolean(batchBusy)" :loading="batchBusy === 'recognize'" @click="confirmBatch('recognize')">再认一次</a-button>
           <a-button shape="round" :disabled="!selected.size || Boolean(batchBusy)" :loading="batchBusy === 'enhance'" @click="confirmBatch('enhance')">AI 增强</a-button>
           <a-button shape="round" type="primary" :disabled="!selected.size || Boolean(batchBusy)" :loading="batchBusy === 'reprocess'" @click="confirmBatch('reprocess')">重新增强图片</a-button>
           <a-popover trigger="click" placement="topRight" title="三种处理有什么不同" overlay-class-name="batch-explain">
             <template #content>
               <dl class="batch-explain-list">
-                <dt>重新识别 <small>每件 1 次额度</small></dt><dd>重新读取品类、颜色、季节、图案等资料；不改图片，手动改过的字段会保留。由服务器逐件处理，可以关闭页面。</dd>
-                <dt>AI 增强 <small>每件 1 次额度</small></dt><dd>按快速入柜的规则重新整理展示图：去掉残留背景、人物和腿部。只对快速入柜的衣物有效。</dd>
-                <dt>重新增强图片 <small>每件 2 次额度</small></dt><dd>先重新识别，再用生图模型摆正、减轻褶皱、去背景。原图和历史图片保留，AI 生成可能含推测细节。</dd>
+                <dt>再认一次 <small>每件 1 次额度</small></dt><dd>重新读取品类、颜色、季节、图案等资料；不改图片，手动改过的字段会保留。由服务器逐件处理，可以关闭页面。</dd>
+                <dt>AI 增强 <small>每件 1 次额度</small></dt><dd>按快速添加的规则重新整理展示图：去掉残留背景、人物和腿部。只对快速添加的衣物有效。</dd>
+                <dt>重新增强图片 <small>每件 2 次额度</small></dt><dd>先再认一次，再用生图模型摆正、减轻褶皱、去背景。原图和历史图片保留，AI 生成可能含推测细节。</dd>
               </dl>
-              <p class="batch-explain-note">AI 额度每天 0 点重置；处理中的衣物自动跳过，额度不足时剩下的不提交。</p>
+              <p class="batch-explain-note">次数每天 0 点重置；处理中的衣物自动跳过，额度不足时剩下的不提交。</p>
             </template>
             <a-button type="text" shape="circle" aria-label="三种处理的说明"><QuestionCircleOutlined /></a-button>
           </a-popover>
@@ -432,6 +433,7 @@ watch(() => route.query.presets, value => { if (value !== '1') return; presetsOp
   </Teleport>
   <a-alert v-if="batchResult" :type="batchResult.type" :message="batchResult.message" :description="batchResult.description || undefined" show-icon closable class="page-alert batch-result" @close="batchResult = null"><template #action><a-button size="small" @click="router.push('/tasks')">查看任务</a-button></template></a-alert>
   <a-alert v-if="error" type="error" :message="error" show-icon closable class="page-alert" />
+  <SortingStrip v-if="!selecting && !searching && ownership !== 'WANTED'" @changed="load" />
   <div ref="listTop" class="list-top"></div>
   <GarmentCardSkeleton v-if="loading && !items.length" label="正在加载衣柜…" />
   <WardrobeRack v-else-if="items.length && rackView" :items="items" :reviews="pictureChecks" :spread="spread / 100" :aria-busy="loading" :class="{ busy: loading }" />
@@ -440,10 +442,10 @@ watch(() => route.query.presets, value => { if (value !== '1') return; presetsOp
       <GarmentCard :review="pictureChecks[item.id]?.message" :garment="item" :selectable="selecting" :selected="selected.has(item.id)" @toggle="toggle(item)" />
       <p v-if="searching && searchResult?.reasons[item.id]?.length" class="search-reasons" :title="searchResult.reasons[item.id].join(' · ')">{{ searchResult.reasons[item.id].join(' · ') }}</p>
     </div>
-    <button v-if="!selecting" class="add-card" @click="router.push('/add')"><span class="add-card-icon"><PlusOutlined /></span><strong>添加衣物</strong><small>上传 → 处理 → 核对入柜</small></button>
+    <button v-if="!selecting" class="add-card" @click="router.push('/add')"><span class="add-card-icon"><PlusOutlined /></span><strong>添加衣物</strong><small>上传 → 处理 → 核对收进衣柜</small></button>
   </section>
   <section v-else class="empty-wardrobe">
-    <span class="empty-spark"><PlusOutlined /></span><p class="eyebrow">从一件衣服开始</p><h2>{{ hasFilters ? '没有找到这件衣物' : ownership === 'WANTED' ? `还没有${wantedLabel}的衣服` : ownership === 'OWNED' ? '还没有已拥有的衣物' : '你的衣柜还没有衣物' }}</h2><p>{{ hasFilters ? (searchResult?.emptyHint || '试试换一个关键词，或清除筛选条件。') : ownership === 'WANTED' ? `网上看中、还没买的衣服，可以把商品图或截图上传，确认入柜时选“${wantedLabel}”。买到后在详情里标为已拥有。` : '上传单件衣物照片，处理后核对并确认，它就会出现在这里。' }}</p>
+    <span class="empty-spark"><PlusOutlined /></span><p class="eyebrow">从一件衣服开始</p><h2>{{ hasFilters ? '没有找到这件衣物' : ownership === 'WANTED' ? `还没有${wantedLabel}的衣服` : ownership === 'OWNED' ? '还没有已拥有的衣物' : '你的衣柜还没有衣物' }}</h2><p>{{ hasFilters ? (searchResult?.emptyHint || '试试换一个关键词，或清除筛选条件。') : ownership === 'WANTED' ? `网上看中、还没买的衣服，可以把商品图或截图上传，收进衣柜时选“${wantedLabel}”。买到后在详情里标为已拥有。` : '上传单件衣物照片，处理后核对并确认，它就会出现在这里。' }}</p>
     <a-button v-if="hasFilters" class="outline-button" @click="clearFilters">清除筛选</a-button><a-button v-else type="primary" size="large" @click="router.push('/add')"><PlusOutlined /> 拍一件衣服</a-button><a-button v-if="!hasFilters" type="link" @click="presetsOpen = true"><AppstoreAddOutlined /> 先从常见单品里挑几件</a-button>
   </section>
   <PresetOnboarding v-model:open="onboardingOpen" @done="onboardingDone" />

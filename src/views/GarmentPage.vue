@@ -108,7 +108,7 @@ const originalOpen = ref(false), completed = ref(false)
 const confirmAsWanted = ref(false)
 void loadWantedLabel()
 const kept = computed(() => garment.value?.status === 'ACTIVE' || garment.value?.status === 'WANTED')
-const statusText = computed(() => garment.value?.status === 'ACTIVE' ? '已入柜' : garment.value?.status === 'WANTED' ? `${wantedLabel.value} · 还没买` : garment.value?.status === 'TRASHED' ? '回收站' : '尚未入柜')
+const statusText = computed(() => garment.value?.status === 'ACTIVE' ? '已收进衣柜' : garment.value?.status === 'WANTED' ? `${wantedLabel.value} · 还没买` : garment.value?.status === 'TRASHED' ? '回收站' : '还没收进衣柜')
 const statusClass = computed(() => garment.value?.status === 'ACTIVE' ? 'active' : garment.value?.status === 'WANTED' ? 'wanted' : garment.value?.status === 'TRASHED' ? '' : 'needs_review')
 async function setOwned(owned: boolean) {
   if (!garment.value || busy.value) return
@@ -129,8 +129,8 @@ const basicSchema = computed(() => schema.value.filter(field => basicKeys.includ
 const layeringSchema = computed(() => schema.value.filter(field => layeringFields.includes(field.key)))
 const advancedSchema = computed(() => schema.value.filter(field => !basicKeys.includes(field.key) && !layeringFields.includes(field.key) && (advanced.value === 'appearance' ? appearanceKeys.includes(field.key) : !appearanceKeys.includes(field.key))))
 const previewUrl = computed(() => !quickIntakeId.value && (processing.value || blocked.value) ? garment.value?.sourceUrl : selectedImage.value?.url || latestResult.value?.url || garment.value?.displayUrl || garment.value?.sourceUrl)
-const pageTitle = computed(() => completed.value ? (garment.value?.status === 'WANTED' ? `已存为${wantedLabel.value}` : '已放进衣柜') : panel.value === 'metadata' ? '编辑衣物资料' : panel.value === 'images' ? '调整展示图片' : panel.value === 'history' ? '处理记录' : processing.value ? '正在识别与整理' : blocked.value ? '先解决照片问题，再继续入柜' : stickerPending.value ? '图片已保留，贴纸还差一步' : garment.value?.status === 'ACTIVE' ? title.value : garment.value?.status === 'TRASHED' ? '衣物已移入回收站' : '识别与整理结果')
-const pageSubtitle = computed(() => panel.value === 'metadata' ? '按需修改，未知可留空。保存后返回结果，无需重新识别。' : panel.value === 'images' ? '对照原图选择展示图片，需要时重新处理衣物边缘。' : panel.value === 'history' ? '任务与图片保留，展示服务端的实际处理状态。' : completed.value ? '图片与衣物信息已保存，之后仍可继续修改。' : processing.value ? '处理在后台继续，你可以先离开，回来后继续。' : blocked.value ? '当前照片无法确认单件衣物，已填写的信息与原图都保留。' : stickerPending.value ? '可继续本地处理，也可以明确选择暂用原图入柜。' : quickIntakeId.value ? '图片保存后自动入柜，可随时调整展示图或编辑资料。' : '确认入柜即可，需要时再调整图片或编辑资料。')
+const pageTitle = computed(() => completed.value ? (garment.value?.status === 'WANTED' ? `已存为${wantedLabel.value}` : '已放进衣柜') : panel.value === 'metadata' ? '编辑衣物资料' : panel.value === 'images' ? '调整展示图片' : panel.value === 'history' ? '处理记录' : processing.value ? '正在识别与整理' : blocked.value ? '先解决照片问题，再继续收进衣柜' : stickerPending.value ? '图片已保留，透明图还差一步' : garment.value?.status === 'ACTIVE' ? title.value : garment.value?.status === 'TRASHED' ? '衣物已移入回收站' : '识别与整理结果')
+const pageSubtitle = computed(() => panel.value === 'metadata' ? '按需修改，未知可留空。保存后返回结果，无需再认一次。' : panel.value === 'images' ? '对照原图选择展示图片，需要时重新处理衣物边缘。' : panel.value === 'history' ? '任务与图片保留，展示服务端的实际处理状态。' : completed.value ? '图片与衣物信息已保存，之后仍可继续修改。' : processing.value ? '处理在后台继续，你可以先离开，回来后继续。' : blocked.value ? '当前照片无法确认单件衣物，已填写的信息与原图都保留。' : stickerPending.value ? '可继续本地处理，也可以明确选择暂用原图收进衣柜。' : quickIntakeId.value ? '图片保存后自动收进衣柜，可随时调整展示图或编辑资料。' : '收进衣柜即可，需要时再调整图片或编辑资料。')
 // Settled garments (not processing, not blocked, sticker done) get the redesigned detail view.
 // Opened from the closet list: 上一件 / 下一件 walk through the page you were looking at (ids saved when leaving the list).
 // Opened from the review page (?from=review): back and 上一件 / 下一件 stay in that list, drafts included.
@@ -273,7 +273,7 @@ async function save(confirming = false, originalFallback = false) {
       ? await closetApi.confirm(garment.value.id, { revision: baseline.value.revision, assetId: originalFallback ? garment.value.images.find(image => image.url === garment.value?.sourceUrl)?.id : selectedAssetId.value, allowIncompleteSticker: originalFallback, fields: patchFromForm(), resetFields: [...resetFields.value], ...(garment.value.status === 'DRAFT' ? { wanted: confirmAsWanted.value } : {}) })
       : await closetApi.update(garment.value.id, { revision: baseline.value.revision, fields: patchFromForm(), resetFields: [...resetFields.value] })
     if (!confirming && (selectedAssetId.value !== record.displayAssetId || quickIntakeId.value && panel.value === 'images')) record = await closetApi.chooseDisplay(record.id, selectedAssetId.value, record.revision)
-    garment.value = record; syncForm(record); success.value = confirming ? originalFallback ? '已暂用原图入柜，贴纸仍未完成，可稍后继续制作。' : record.status === 'WANTED' ? `已存为${wantedLabel.value}，买到后在这里点“标为已拥有”。` : '已确认入柜，图片和信息已保存。' : '修改已保存。'
+    garment.value = record; syncForm(record); success.value = confirming ? originalFallback ? '已暂用原图收进衣柜，透明图仍未完成，可稍后继续制作。' : record.status === 'WANTED' ? `已存为${wantedLabel.value}，买到后在这里点“标为已拥有”。` : '已收进衣柜，图片和信息已保存。' : '修改已保存。'
     playSound('success')
     if (confirming && !originalFallback) { completed.value = true; panel.value = 'result' }
     await closet.refreshCounts()
@@ -281,7 +281,7 @@ async function save(confirming = false, originalFallback = false) {
   finally { busy.value = '' }
 }
 function useOriginal() {
-  modal.confirm({ title: '暂用上传原图入柜？', content: '贴纸尚未完成。本次保存原图和信息，不会把中间结果标记成贴纸。以后可从衣物详情继续制作。', okText: '暂用原图入柜', cancelText: '继续制作贴纸', onOk: () => save(true, true) })
+  modal.confirm({ title: '暂用上传原图收进衣柜？', content: '透明图尚未完成。本次保存原图和信息，不会把中间结果标记成透明图。以后可从衣物详情继续制作。', okText: '暂用原图收进衣柜', cancelText: '继续做透明图', onOk: () => save(true, true) })
 }
 async function continueSticker(policy: 'FORCE' | 'REVIEWED') {
   const run = imageTask.value || task.value; const asset = policy === 'FORCE' ? forceAsset.value : recoveryAsset.value
@@ -299,7 +299,7 @@ async function continueSticker(policy: 'FORCE' | 'REVIEWED') {
   finally { busy.value = '' }
 }
 function approveTransparency() {
-  modal.confirm({ title: '已核对这张透明图片？', content: '请先对照原图，确认衣物完整、背景已去除、没有明显杂物。继续后会实际制作白边贴纸，不再调用 AI。', okText: '确认并制作贴纸', cancelText: '返回检查', onOk: () => continueSticker('REVIEWED') })
+  modal.confirm({ title: '已核对这张透明图片？', content: '请先对照原图，确认衣物完整、背景已去除、没有明显杂物。继续后会实际制作白边透明图，不再调用 AI。', okText: '确认并做透明图', cancelText: '返回检查', onOk: () => continueSticker('REVIEWED') })
 }
 function reconcile() {
   modal.confirm({ title: '核对当前服务端版本', content: '保留你修改过的字段，更新未修改的字段。请核对服务端当前值后再主动保存。', okText: '保留输入并核对', cancelText: '返回编辑', onOk: async () => {
@@ -326,7 +326,7 @@ async function startRun(mode: 'recognize' | 'reprocess') {
   if (!garment.value || busy.value || processing.value || usingMocks) return
   if (dirty.value) { error.value = '请先保存当前修改，再提交新的处理任务。'; return }
   if (mode === 'recognize') { recognitionOpen.value = true; return }
-  modal.confirm({ title: '重新整理图片？', content: '会分别调用识别和整理模型，各使用 1 次 AI 额度，共 2 次。已有人工修改和图片会保留。', okText: '提交真实任务', cancelText: '取消', onOk: async () => {
+  modal.confirm({ title: '重新整理图片？', content: '会分别调用识别和整理模型，各使用 1 次，共 2 次。已有人工修改和图片会保留。', okText: '提交真实任务', cancelText: '取消', onOk: async () => {
     busy.value = 'retry'; error.value = ''; success.value = ''
     try { const next = await closetApi[mode](garment.value!.id); task.value = next; returnResult(); await router.replace({ path: route.path, query: { ...route.query, task: next.id } }); await load(); await closet.refreshCounts(); schedulePoll() }
     catch (cause) { error.value = cause instanceof Error ? cause.message : '任务提交失败。' }
@@ -379,7 +379,7 @@ async function replacePresetPhoto(file: File) {
 </script>
 
 <template>
-  <a-modal v-model:open="recognitionOpen" title="重新识别衣物信息" ok-text="提交识别 · 1 次额度" cancel-text="取消" :confirm-loading="busy === 'retry'" @ok="submitRecognition">
+  <a-modal v-model:open="recognitionOpen" title="再认一次衣物信息" ok-text="提交识别 · 1 次额度" cancel-text="取消" :confirm-loading="busy === 'retry'" @ok="submitRecognition">
     <p class="modal-intro">只更新自动识别资料，人工修改和展示图片会保留。</p>
     <a-form layout="vertical"><a-form-item label="这次识别哪件衣物（可选）"><a-textarea v-model:value="recognitionHint" :maxlength="200" show-count :rows="3" placeholder="例如：这是一件黑白拼接连衣裙；或只识别左侧外套。" /></a-form-item></a-form>
     <p class="quiet-copy">可以补充实物结构，帮助区分拼色、假两件和分开的衣物；看不清的标签信息仍会留空。</p>
@@ -387,7 +387,7 @@ async function replacePresetPhoto(file: File) {
   <a-modal v-model:open="enhanceOpen" title="独立增强图片" ok-text="开始增强" cancel-text="取消" :confirm-loading="busy === 'enhance'" @ok="enhanceQuick"><p>使用一次增强额度。原图、基础图和历史结果保留，成功后会采用新图；可在展示图片中回退。AI 生成可能包含推测细节。</p><a-textarea v-model:value="enhanceFeedback" :maxlength="1000" :rows="4" placeholder="可选：描述人物残留、边缘损坏、文字错误等问题" /></a-modal>
   <div class="detail-page garment-workspace" @touchstart.passive="swipeStart" @touchend.passive="swipeEnd">
     <div class="workspace-toolbar">
-      <a-button type="text" @click="panel === 'result' ? leaveWorkspace() : returnResult(true)"><ArrowLeftOutlined /> {{ panel !== 'result' ? '返回处理结果' : fromReview ? '返回待核对' : source.batchId ? '返回本批次' : garment?.status === 'ACTIVE' ? '返回衣柜' : '所有未入柜衣物' }}</a-button>
+      <a-button type="text" @click="panel === 'result' ? leaveWorkspace() : returnResult(true)"><ArrowLeftOutlined /> {{ panel !== 'result' ? '返回处理结果' : fromReview ? '返回等你确认' : source.batchId ? '返回本批次' : garment?.status === 'ACTIVE' ? '返回衣柜' : '所有整理中衣物' }}</a-button>
       <a-tooltip title="处理记录与后台处理状态"><a-button v-if="garment && panel !== 'history' && !completed && !detailMode" type="text" aria-label="查看处理记录与后台处理状态" @click="openPanel('history')"><HistoryOutlined /></a-button></a-tooltip>
     </div>
     <FloatingPager v-if="neighbours && detailMode && !dirty" :label="`${neighbours.position} / ${neighbours.count}`" :has-previous="Boolean(neighbours.previous) && canStep" :has-next="Boolean(neighbours.next) && canStep"
@@ -403,7 +403,7 @@ async function replacePresetPhoto(file: File) {
         <template v-if="pictureHint.conflict && garment?.status !== 'TRASHED'" #action><a-space wrap><a-button size="small" type="primary" :loading="pictureBusy" @click="settleCategory([pictureHint.suggestion])">改成{{ pictureHint.suggestion }}</a-button><a-button size="small" :disabled="pictureBusy" @click="settleCategory(pictureHint.recorded)">资料没错</a-button></a-space></template>
       </a-alert>
       <section v-if="completed" class="workspace-complete">
-        <CheckOutlined class="complete-icon" /><img :src="thumbUrl(garment.displayUrl || previewUrl, 960)" alt="已入柜的衣物展示图" decoding="async" /><h2>{{ title }}</h2><a-alert v-if="garment.images.find(image => image.id === garment?.displayAssetId)?.aiGenerated" type="info" message="AI 生成，可能包含推测细节" show-icon /><p>{{ fieldValue('patterns') }} · {{ fieldValue('seasons') }}</p>
+        <CheckOutlined class="complete-icon" /><img :src="thumbUrl(garment.displayUrl || previewUrl, 960)" alt="已收进衣柜的衣物展示图" decoding="async" /><h2>{{ title }}</h2><a-alert v-if="garment.images.find(image => image.id === garment?.displayAssetId)?.aiGenerated" type="info" message="AI 生成，可能包含推测细节" show-icon /><p>{{ fieldValue('patterns') }} · {{ fieldValue('seasons') }}</p>
         <div><a-button type="primary" @click="router.push('/wardrobe')">查看衣柜</a-button><a-button @click="router.push('/add')">继续添加衣物</a-button><a-button type="text" @click="completed=false">查看衣物详情</a-button></div>
       </section>
       <template v-else>
@@ -421,15 +421,15 @@ async function replacePresetPhoto(file: File) {
           </section>
         </div>
         <div v-else-if="panel === 'images'" class="garment-layout image-layout">
-          <section class="garment-surface"><div class="section-heading"><h2>图片对照</h2><a-tag :color="stickerPending ? 'warning' : 'success'">{{ stickerPending ? '尚未贴纸化' : '当前可用图片' }}</a-tag></div>
+          <section class="garment-surface"><div class="section-heading"><h2>图片对照</h2><a-tag :color="stickerPending ? 'warning' : 'success'">{{ stickerPending ? '尚未透明图化' : '当前可用图片' }}</a-tag></div>
             <a-segmented v-if="results.length > 1" :value="latestResult?.id" :options="results.map(image => ({label:imageLabels[image.kind] || '处理图片',value:image.id}))" @update:value="viewedResultId=String($event)" class="image-stage-picker" />
             <div class="comparison-grid"><figure><figcaption>{{ imageLabels[latestResult?.kind || ''] || '处理结果' }}</figcaption><div class="garment-canvas"><img v-if="latestResult" :src="thumbUrl(latestResult.url, 960)" alt="衣物处理结果" decoding="async" /><a-empty v-else description="本次没有生成图片" /></div></figure><figure><figcaption>上传原图</figcaption><div class="garment-canvas"><img :src="thumbUrl(garment.sourceUrl, 960)" alt="上传原图" decoding="async" /></div></figure></div>
             <a-alert v-if="latestResult?.aiGenerated" type="info" message="AI 生成，可能包含推测细节" show-icon /><a-button @click="originalOpen=true"><EyeOutlined /> 放大对照</a-button>
           </section>
           <section class="garment-surface image-options"><h2>衣柜展示图</h2><a-radio-group v-model:value="selectedAssetId" :disabled="processing && !quickIntakeId || Boolean(busy) || garment.status === 'TRASHED'" class="display-options"><a-radio v-for="image in imageOptions" :key="image.id" :value="image.id"><img :src="thumbUrl(image.url, 160)" :alt="imageLabels[image.kind] || '处理图片'" loading="lazy" decoding="async" /><span>{{ imageLabels[image.kind] || '处理图片' }}<small v-if="image.aiGenerated">AI 生成，可能包含推测细节</small><small>{{ selectedAssetId === image.id ? '已选' : '选择这张图片' }}</small></span></a-radio></a-radio-group>
             <div class="section-divider"><h3>检查这些细节</h3><p>衣物轮廓完整；颜色、花纹与原图一致；背景没有明显杂物。</p><GarmentEdgeHelp /></div>
-            <a-button v-if="forceAsset && !stickerPending" :disabled="processing || Boolean(busy) || usingMocks || blocked || Boolean(connectionError) || garment.status === 'TRASHED'" :loading="busy === 'continue'" @click="continueSticker('FORCE')"><ReloadOutlined /> 边缘不满意，重新去背景</a-button><small v-if="forceAsset && !stickerPending">本地处理，不使用 AI 额度</small>
-            <a-collapse :bordered="false"><a-collapse-panel key="rework" header="重新处理"><div class="advanced-actions"><a-button :disabled="processing || dirty || usingMocks || garment.status === 'TRASHED'" @click="startRun('reprocess')">重新整理图片 · 1 次</a-button><a-button :disabled="processing || dirty || usingMocks || garment.status === 'TRASHED'" @click="startRun('recognize')">重新识别信息 · 1 次</a-button></div></a-collapse-panel></a-collapse>
+            <a-button v-if="forceAsset && !stickerPending" :disabled="processing || Boolean(busy) || usingMocks || blocked || Boolean(connectionError) || garment.status === 'TRASHED'" :loading="busy === 'continue'" @click="continueSticker('FORCE')"><ReloadOutlined /> 边缘不满意，重新去背景</a-button><small v-if="forceAsset && !stickerPending">本地处理，不使用 次数</small>
+            <a-collapse :bordered="false"><a-collapse-panel key="rework" header="重新处理"><div class="advanced-actions"><a-button :disabled="processing || dirty || usingMocks || garment.status === 'TRASHED'" @click="startRun('reprocess')">重新整理图片 · 1 次</a-button><a-button :disabled="processing || dirty || usingMocks || garment.status === 'TRASHED'" @click="startRun('recognize')">再认一次信息 · 1 次</a-button></div></a-collapse-panel></a-collapse>
           </section>
         </div>
         <div v-else-if="panel === 'history'" class="task-history"><GarmentProcessingStatus :garment-id="garment.id" :revision="garment.revision" /><section v-for="(run, index) in historyTasks" :key="run.id"><h2>{{ index === 0 ? '当前任务' : '较早处理记录' }}</h2><TaskProgress :task="run" :now="now" /></section><a-empty v-if="!historyTasks.length" description="本次没有处理任务" /></div>
@@ -472,10 +472,10 @@ async function replacePresetPhoto(file: File) {
               <div class="info-block">
                 <h2>智能工具</h2>
                 <div class="tool-grid">
-                  <a-button class="tool-card" :disabled="toolsLocked" :loading="busy === 'retry'" @click="startRun('recognize')"><ScanOutlined class="tool-icon" /><span class="tool-copy"><strong>重新识别信息</strong><small>重新识别品类、颜色等资料，可补充说明；你改过的资料会保留</small></span><em>1 次额度</em></a-button>
+                  <a-button class="tool-card" :disabled="toolsLocked" :loading="busy === 'retry'" @click="startRun('recognize')"><ScanOutlined class="tool-icon" /><span class="tool-copy"><strong>再认一次信息</strong><small>再认一次品类、颜色等资料，可补充说明；你改过的资料会保留</small></span><em>1 次额度</em></a-button>
                   <a-button v-if="quickIntakeId" class="tool-card" :disabled="toolsLocked" :loading="busy === 'enhance'" @click="enhanceOpen = true"><ThunderboltOutlined class="tool-icon" /><span class="tool-copy"><strong>增强图片</strong><small>AI 修复边缘、人物残留等问题，原图保留可回退</small></span><em>1 次额度</em></a-button>
-                  <a-button v-else class="tool-card" :disabled="toolsLocked" @click="startRun('reprocess')"><ThunderboltOutlined class="tool-icon" /><span class="tool-copy"><strong>重新整理图片</strong><small>重新识别并用 AI 整理展示图，已有图片保留</small></span><em>2 次额度</em></a-button>
-                  <a-button v-if="forceAsset" class="tool-card" :disabled="toolsLocked || Boolean(connectionError)" :loading="busy === 'continue'" @click="continueSticker('FORCE')"><ScissorOutlined class="tool-icon" /><span class="tool-copy"><strong>重新去背景</strong><small>边缘不满意时重新抠图并制作贴纸，本地完成</small></span><em class="free">免费</em></a-button>
+                  <a-button v-else class="tool-card" :disabled="toolsLocked" @click="startRun('reprocess')"><ThunderboltOutlined class="tool-icon" /><span class="tool-copy"><strong>重新整理图片</strong><small>再认一次并用 AI 整理展示图，已有图片保留</small></span><em>2 次额度</em></a-button>
+                  <a-button v-if="forceAsset" class="tool-card" :disabled="toolsLocked || Boolean(connectionError)" :loading="busy === 'continue'" @click="continueSticker('FORCE')"><ScissorOutlined class="tool-icon" /><span class="tool-copy"><strong>重新去背景</strong><small>边缘不满意时重新抠图并做透明图，本地完成</small></span><em class="free">免费</em></a-button>
                 </div>
                 <p v-if="dirty" class="quiet-copy">先保存当前修改，再使用这些工具。</p>
               </div>
@@ -497,28 +497,28 @@ async function replacePresetPhoto(file: File) {
             <p v-if="processing" class="quiet-copy">完成后会在这里展示结果。</p>
           </section>
           <section v-if="processing" class="garment-surface live-progress"><TaskProgress v-if="displayTask" :task="displayTask" :now="now" /><a-button @click="openPanel('history')"><HistoryOutlined /> 查看任务记录</a-button><a-button :disabled="busy !== '' || displayTask?.status === 'CANCEL_REQUESTED'" :loading="busy === 'cancel'" @click="cancel"><StopOutlined /> 取消本次处理</a-button><WaitingActivities /></section>
-          <section v-else-if="blocked" class="garment-surface recovery-options"><a-alert type="warning" show-icon message="还不能确定要入柜哪一件" /><h3>照片里有多件衣物</h3><p>使用多件整理，分别处理每件衣物。</p><a-button @click="router.push({path:'/add',query:{mode:'multiple'}})">转到多件录入</a-button><div class="section-divider"><h3>只有一件，但模糊或被遮挡</h3><p>重新录入清楚、完整的照片。原草稿与资料会保留。</p><a-button type="primary" @click="router.push('/add')">更换照片</a-button></div><GarmentEdgeHelp /><a-button @click="openPanel('metadata')">编辑已填写的资料</a-button></section>
-          <section v-else-if="stickerPending" class="garment-surface recovery-options"><h2>继续这件衣物</h2><div><h3>推荐：完成贴纸</h3><p>重新去背景与制作白边。本地处理，不使用 AI 额度。</p></div><a-alert v-if="transparency?.reasons.length" type="warning" show-icon :message="transparency.reasons.map(reason => checkReasons[reason] || '透明背景需要检查').join('；')" />
-            <a-button type="primary" :disabled="!forceAsset || Boolean(busy) || usingMocks || blocked || Boolean(connectionError) || garment.status === 'TRASHED'" :loading="busy === 'continue'" @click="continueSticker('FORCE')">重新抠图并制作贴纸</a-button><a-button v-if="canApproveTransparency" :disabled="Boolean(busy) || usingMocks || blocked || Boolean(connectionError) || garment.status === 'TRASHED'" @click="approveTransparency">已核对透明图，继续制作</a-button>
-            <div v-if="garment.status === 'DRAFT'" class="section-divider"><h3>稍后再做贴纸</h3><p>本次使用上传原图入柜，以后仍可继续制作。</p><a-button :disabled="Boolean(busy) || blocked || Boolean(connectionError) || !schema.length" @click="useOriginal">暂用上传原图入柜</a-button></div><a-button @click="openPanel('metadata')">编辑衣物资料</a-button><GarmentEdgeHelp />
+          <section v-else-if="blocked" class="garment-surface recovery-options"><a-alert type="warning" show-icon message="还不能确定要收进衣柜哪一件" /><h3>照片里有多件衣物</h3><p>使用多件整理，分别处理每件衣物。</p><a-button @click="router.push({path:'/add',query:{mode:'multiple'}})">转到多件录入</a-button><div class="section-divider"><h3>只有一件，但模糊或被遮挡</h3><p>重新录入清楚、完整的照片。原草稿与资料会保留。</p><a-button type="primary" @click="router.push('/add')">更换照片</a-button></div><GarmentEdgeHelp /><a-button @click="openPanel('metadata')">编辑已填写的资料</a-button></section>
+          <section v-else-if="stickerPending" class="garment-surface recovery-options"><h2>继续这件衣物</h2><div><h3>推荐：完成透明图</h3><p>重新去背景与制作白边。本地处理，不使用 次数。</p></div><a-alert v-if="transparency?.reasons.length" type="warning" show-icon :message="transparency.reasons.map(reason => checkReasons[reason] || '透明背景需要检查').join('；')" />
+            <a-button type="primary" :disabled="!forceAsset || Boolean(busy) || usingMocks || blocked || Boolean(connectionError) || garment.status === 'TRASHED'" :loading="busy === 'continue'" @click="continueSticker('FORCE')">重新抠图并做透明图</a-button><a-button v-if="canApproveTransparency" :disabled="Boolean(busy) || usingMocks || blocked || Boolean(connectionError) || garment.status === 'TRASHED'" @click="approveTransparency">已核对透明图，继续制作</a-button>
+            <div v-if="garment.status === 'DRAFT'" class="section-divider"><h3>稍后再做透明图</h3><p>本次使用上传原图收进衣柜，以后仍可继续制作。</p><a-button :disabled="Boolean(busy) || blocked || Boolean(connectionError) || !schema.length" @click="useOriginal">暂用上传原图收进衣柜</a-button></div><a-button @click="openPanel('metadata')">编辑衣物资料</a-button><GarmentEdgeHelp />
           </section>
-          <a-alert v-if="garment.sourceOrigin === 'PRESET'" type="info" show-icon class="preset-notice" message="这是预设衣物的示意图" description="资料可以照常修改；换成自己的照片后，推荐和组合台里会显示你的照片。"><template #action><a-upload accept="image/*" :show-upload-list="false" :before-upload="replacePresetPhoto" :disabled="replacingPhoto || garment.status === 'TRASHED'"><a-button type="primary" :loading="replacingPhoto">换成我的照片</a-button></a-upload></template></a-alert>
+          <a-alert v-if="garment.sourceOrigin === 'PRESET'" type="info" show-icon class="preset-notice" message="这是预设衣物的示意图" description="资料可以照常修改；换成自己的照片后，推荐和搭配里会显示你的照片。"><template #action><a-upload accept="image/*" :show-upload-list="false" :before-upload="replacePresetPhoto" :disabled="replacingPhoto || garment.status === 'TRASHED'"><a-button type="primary" :loading="replacingPhoto">换成我的照片</a-button></a-upload></template></a-alert>
           <section v-else class="garment-surface garment-summary"><div class="section-heading"><h2>衣物资料</h2><a-button :disabled="garment.status === 'TRASHED'" @click="openPanel('metadata')"><EditOutlined /> 编辑资料</a-button></div><dl class="summary-fields"><div v-for="key in basicKeys" :key="key"><dt>{{ fieldLabels[key as keyof typeof fieldLabels] }}</dt><dd>{{ fieldValue(key) }}</dd></div></dl>
             <div class="section-heading section-divider"><h3>穿着建议</h3><a-popover :trigger="['hover','click']" title="可按实物修改"><template #content><p class="help-copy">照片建议尚未核实时，不能保证实际叠穿。点击编辑资料可核对或修改，也可保持未知。</p></template><a-button type="text" aria-label="穿着建议说明"><InfoCircleOutlined /></a-button></a-popover></div><dl class="summary-fields"><div v-for="key in layeringFields" :key="key"><dt>{{ key === 'fit' ? '版型' : key === 'thickness' ? '厚薄' : '用途' }}</dt><dd>{{ fieldValue(key) }}</dd></div></dl><p class="quiet-copy">{{ layeringVerified ? '穿着建议已根据实物核对。' : '照片建议尚未根据实物核对，之后仍可修改。' }}<a-button v-if="!layeringVerified && garment.status === 'ACTIVE'" type="link" size="small" @click="openPanel('metadata')">厚薄、版型、用途是推测，核对后推荐更准</a-button></p>
-            <a-alert v-if="summary && ['warning','error'].includes(summary.tone)" :type="summary.tone === 'error' ? 'error' : 'warning'" :message="summary.title" show-icon><template #description><span>{{ summary.description }}</span><a-button type="link" :disabled="processing || dirty || garment.status === 'TRASHED'" @click="startRun('recognize')">补充说明并重新识别</a-button><a-button type="link" @click="openPanel('history')">查看当前任务</a-button></template></a-alert>
+            <a-alert v-if="summary && ['warning','error'].includes(summary.tone)" :type="summary.tone === 'error' ? 'error' : 'warning'" :message="summary.title" show-icon><template #description><span>{{ summary.description }}</span><a-button type="link" :disabled="processing || dirty || garment.status === 'TRASHED'" @click="startRun('recognize')">补充说明并再认一次</a-button><a-button type="link" @click="openPanel('history')">查看当前任务</a-button></template></a-alert>
             <a-alert v-for="(issue,index) in garment.issues" :key="index" type="warning" :message="issue.message" show-icon />
-            <a-popover :trigger="['hover','click']" title="资料可以之后补充"><template #content><p class="help-copy">品牌、尺码、成分等资料未知可以留空，不影响入柜。</p></template><a-button type="text" class="summary-help"><InfoCircleOutlined /> 还有资料未知？也可以入柜</a-button></a-popover>
+            <a-popover :trigger="['hover','click']" title="资料可以之后补充"><template #content><p class="help-copy">品牌、尺码、成分等资料未知可以留空，不影响收进衣柜。</p></template><a-button type="text" class="summary-help"><InfoCircleOutlined /> 还有资料未知？也可以收进衣柜</a-button></a-popover>
           </section>
           <GarmentRecommendPanel v-if="garment.status === 'ACTIVE' && !processing" :garment-id="garment.id" />
           <SimilarGarmentsPanel v-if="['ACTIVE', 'WANTED', 'DRAFT'].includes(garment.status) && !processing" :garment-id="garment.id" :draft="garment.status === 'DRAFT'" :wanted="garment.status === 'WANTED'" />
           </template>
         </div>
         <footer v-if="showActionbar" class="workspace-actionbar">
-          <div class="actionbar-status"><span>{{ dirty ? '有未保存修改' : processing ? '任务已提交，结果会自动保留' : garment.status === 'ACTIVE' ? '图片与资料已保存' : garment.status === 'WANTED' ? `已存为${wantedLabel}，不参与推荐与统计` : '处理结果已保留，尚未入柜' }}</span><a-popover title="图片和处理说明" :trigger="['hover','click']"><template #content><p class="help-copy">{{ summary?.description }} 原图与已完成图片始终保留。贴纸暂停时可继续本地处理；重新识别或整理图片需要 AI 额度。</p></template><a-button type="text" aria-label="查看当前处理说明"><InfoCircleOutlined /></a-button></a-popover></div>
+          <div class="actionbar-status"><span>{{ dirty ? '有未保存修改' : processing ? '任务已提交，结果会自动保留' : garment.status === 'ACTIVE' ? '图片与资料已保存' : garment.status === 'WANTED' ? `已存为${wantedLabel}，不参与推荐与统计` : '处理结果已保留，还没收进衣柜' }}</span><a-popover title="图片和处理说明" :trigger="['hover','click']"><template #content><p class="help-copy">{{ summary?.description }} 原图与已完成图片始终保留。透明图暂停时可继续本地处理；再认一次或整理图片需要 次数。</p></template><a-button type="text" aria-label="查看当前处理说明"><InfoCircleOutlined /></a-button></a-popover></div>
           <div class="actionbar-buttons">
             <template v-if="panel === 'metadata' || panel === 'images'"><a-button :disabled="Boolean(busy)" @click="returnResult(true)">取消修改</a-button><a-button type="primary" :disabled="processing && !quickIntakeId || Boolean(busy) || Boolean(connectionError) || garment.status === 'TRASHED'" :loading="busy === 'save'" @click="saveAndReturn">{{ panel === 'images' ? '应用图片' : '保存并返回' }}</a-button></template>
             <template v-else-if="panel === 'history'"><a-button @click="returnResult()">返回处理结果</a-button></template>
-            <template v-else><a-tooltip title="移入回收站"><a-button v-if="garment.status !== 'TRASHED'" type="text" danger aria-label="移入回收站" :disabled="Boolean(busy)" @click="remove"><DeleteOutlined /></a-button></a-tooltip><a-button v-if="dirty && garment.status !== 'TRASHED'" :disabled="processing || Boolean(busy)" :loading="busy === 'save'" @click="save(false)">保存草稿</a-button><a-button @click="router.push('/add')">继续添加</a-button><a-tooltip v-if="garment.status === 'DRAFT'" :title="`网上看中、还没买的衣服选${wantedLabel}：存进衣柜，但不参与推荐和统计，买到后可标为已拥有`"><a-checkbox v-model:checked="confirmAsWanted" class="confirm-wanted" :disabled="Boolean(busy)">存为{{ wantedLabel }}（还没买）</a-checkbox></a-tooltip><a-button v-if="garment.status === 'DRAFT'" type="primary" :disabled="!canConfirm || Boolean(busy)" :loading="busy === 'confirm'" @click="save(true)"><CheckOutlined /> {{ processing ? '处理中，请稍候' : blocked ? '先处理照片问题' : stickerPending ? '贴纸尚未完成' : '确认入柜' }}</a-button><a-button v-else-if="kept" type="primary" @click="router.push(fromReview ? '/review' : '/wardrobe')">{{ fromReview ? '返回待核对' : '返回衣柜' }}</a-button><a-button v-else type="primary" :loading="busy === 'restore'" @click="restore">恢复衣物</a-button></template>
+            <template v-else><a-tooltip title="移入回收站"><a-button v-if="garment.status !== 'TRASHED'" type="text" danger aria-label="移入回收站" :disabled="Boolean(busy)" @click="remove"><DeleteOutlined /></a-button></a-tooltip><a-button v-if="dirty && garment.status !== 'TRASHED'" :disabled="processing || Boolean(busy)" :loading="busy === 'save'" @click="save(false)">保存草稿</a-button><a-button @click="router.push('/add')">继续添加</a-button><a-tooltip v-if="garment.status === 'DRAFT'" :title="`网上看中、还没买的衣服选${wantedLabel}：存进衣柜，但不参与推荐和统计，买到后可标为已拥有`"><a-checkbox v-model:checked="confirmAsWanted" class="confirm-wanted" :disabled="Boolean(busy)">存为{{ wantedLabel }}（还没买）</a-checkbox></a-tooltip><a-button v-if="garment.status === 'DRAFT'" type="primary" :disabled="!canConfirm || Boolean(busy)" :loading="busy === 'confirm'" @click="save(true)"><CheckOutlined /> {{ processing ? '处理中，请稍候' : blocked ? '先处理照片问题' : stickerPending ? '透明图尚未完成' : '收进衣柜' }}</a-button><a-button v-else-if="kept" type="primary" @click="router.push(fromReview ? '/review' : '/wardrobe')">{{ fromReview ? '返回等你确认' : '返回衣柜' }}</a-button><a-button v-else type="primary" :loading="busy === 'restore'" @click="restore">恢复衣物</a-button></template>
           </div>
         </footer>
       </template>

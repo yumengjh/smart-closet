@@ -50,7 +50,7 @@ async function saveFeedback() {
 <template>
   <a-modal :open="!!job" :footer="null" width="min(920px, 96vw)" class="result-viewer" :title="null" @cancel="emit('close')">
     <div v-if="job" class="viewer">
-      <div class="viewer-media"><span v-if="job.mediaUrl" class="viewer-frame"><img :src="mediaUrl(job.mediaUrl)" alt="OOTD 生成结果大图（AI 生成）" /><AiBadge /></span></div>
+      <div class="viewer-media"><span v-if="job.mediaUrl" class="viewer-frame"><img :src="mediaUrl(job.mediaUrl)" alt="上身图 生成结果大图（AI 生成）" /><AiBadge /></span></div>
       <div class="viewer-side">
         <div class="viewer-meta">
           <a-tag v-if="job.summary?.kind === 'ADJUST'" color="purple">身材调整</a-tag>

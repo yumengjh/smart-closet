@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // “我的”（ToC 改版 P2 重新设计）：分组的单行列表 + 子页面。手机先看列表、点进子页面（顶部返回）；
 // 电脑左侧是同一份列表，右侧是内容，默认打开“我的风格”。各分区组件不变，只换外壳与叫法（词表见设计（一）第五节）。
+// 管理员功能不在“我的”里：/admin（管理后台）复用同一个外壳，只列管理员分区（P4，#240）。
 import PageTitle from '../shell/PageTitle.vue'
 import { computed, defineAsyncComponent, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -54,13 +55,15 @@ const links: LinkRow[] = [
   { key: 'trash', group: 'closet', label: '回收站', icon: DeleteOutlined, to: '/trash' },
   { key: 'guide', group: 'more', label: '新手指引', icon: CompassOutlined, action: replayGuide },
   { key: 'help', group: 'more', label: '帮助', icon: QuestionCircleOutlined, to: '/help' },
+  { key: 'admin', group: 'more', label: '管理后台', icon: DashboardOutlined, to: '/admin' },
 ]
-const GROUPS: { key: Group; label: string }[] = [{ key: 'style', label: '穿搭' }, { key: 'closet', label: '衣柜' }, { key: 'account', label: '账号' }, { key: 'more', label: '更多' }, { key: 'admin', label: '管理员' }]
-const visible = computed(() => sections.filter(s => !s.hidden?.()))
+const GROUPS: { key: Group; label: string }[] = [{ key: 'style', label: '穿搭' }, { key: 'closet', label: '衣柜' }, { key: 'account', label: '账号' }, { key: 'more', label: '更多' }, { key: 'admin', label: '管理功能' }]
+const adminMode = computed(() => route.path === '/admin')
+const visible = computed(() => sections.filter(s => !s.hidden?.() && (adminMode.value ? s.group === 'admin' : s.group !== 'admin')))
 type Row = { key: string; label: string; icon: unknown; value?: string; section?: Section; link?: LinkRow }
 const grouped = computed(() => GROUPS.map(g => ({ ...g, rows: [
   ...visible.value.filter(s => s.group === g.key).map<Row>(s => ({ key: s.key, label: s.label, icon: s.icon, value: s.value?.(), section: s })),
-  ...(firstLogin.value ? [] : links.filter(l => l.group === g.key).map<Row>(l => ({ key: l.key, label: l.label, icon: l.icon, link: l }))),
+  ...(firstLogin.value || adminMode.value ? [] : links.filter(l => l.group === g.key && (l.key !== 'admin' || isAdmin.value)).map<Row>(l => ({ key: l.key, label: l.label, icon: l.icon, link: l }))),
 ] })).filter(g => g.rows.length))
 
 // 电脑两栏；手机单栏（先列表，?section= 时显示子页面）。
@@ -74,6 +77,9 @@ function open(row: Row) {
   if (row.section) { void router.replace({ query: { ...route.query, section: row.key } }); return }
   if (row.link?.to) void router.push(row.link.to); else row.link?.action?.()
 }
+// 旧链接 /settings?section=users 等管理员分区：转到管理后台的同一分区。
+const ADMIN_KEYS = new Set(sections.filter(s => s.group === 'admin').map(s => s.key))
+if (!adminMode.value && isAdmin.value && typeof route.query.section === 'string' && ADMIN_KEYS.has(route.query.section)) void router.replace({ path: '/admin', query: { section: route.query.section } })
 function back() { void router.replace({ query: { ...route.query, section: undefined } }) }
 async function signOut() { await closet.signOut(); await router.replace('/login') }
 
@@ -83,12 +89,12 @@ async function loadCounts() {
   counts.value = { garments: g.status === 'fulfilled' ? g.value.total : null, outfits: o.status === 'fulfilled' ? o.value.length : null }
 }
 const name = computed(() => closet.user?.displayName || closet.user?.username || '')
-onMounted(async () => { wideQuery.addEventListener('change', onWide); if (!firstLogin.value) void loadCounts(); server.value = await serverBuild() })
+onMounted(async () => { wideQuery.addEventListener('change', onWide); if (!firstLogin.value && !adminMode.value) void loadCounts(); server.value = await serverBuild() })
 onUnmounted(() => wideQuery.removeEventListener('change', onWide))
 </script>
 
 <template>
-  <PageTitle :title="firstLogin ? '欢迎使用鱼搭' : active && !wide ? active.label : '我的'" />
+  <PageTitle :title="firstLogin ? '欢迎使用鱼搭' : active && !wide ? active.label : adminMode ? '管理后台' : '我的'" />
 
   <div v-if="firstLogin" class="me-first">
     <LockOutlined />
@@ -98,12 +104,13 @@ onUnmounted(() => wideQuery.removeEventListener('change', onWide))
 
   <div class="me" :class="{ 'me-wide': wide && !firstLogin }">
     <aside v-if="showList" class="me-side">
-      <header class="me-profile">
+      <header v-if="adminMode" class="me-admin-head"><a-button type="text" class="me-back" aria-label="返回我的" @click="router.push('/settings')"><ArrowLeftOutlined /></a-button><div><strong>管理后台</strong><small>只有管理员能看到。正式管理请用独立管理平台。</small></div></header>
+      <header v-else class="me-profile">
         <span class="me-avatar">{{ name.slice(0, 1).toUpperCase() }}</span>
         <div class="me-profile-text"><strong>{{ name }}</strong><small>@{{ closet.user?.username }}<a-tag v-if="isAdmin" :bordered="false" class="me-admin">管理员</a-tag></small></div>
         <a-button v-if="!isPortableLogin" size="small" @click="open({ key: 'account', label: '', icon: null, section: sections.find(s => s.key === 'account') })">编辑资料</a-button>
       </header>
-      <div class="me-stats">
+      <div v-if="!adminMode" class="me-stats">
         <RouterLink to="/wardrobe"><b>{{ counts.garments ?? '–' }}</b><small>件衣服</small></RouterLink>
         <RouterLink to="/outfits"><b>{{ counts.outfits ?? '–' }}</b><small>套搭配</small></RouterLink>
         <RouterLink to="/try"><b><SkinOutlined /></b><small>去试穿</small></RouterLink>
@@ -117,7 +124,7 @@ onUnmounted(() => wideQuery.removeEventListener('change', onWide))
             </a-button>
           </div>
         </section>
-        <a-button type="text" danger class="me-row me-signout" @click="signOut"><LogoutOutlined class="me-row-icon" /><span class="me-row-label">退出登录</span></a-button>
+        <a-button v-if="!adminMode" type="text" danger class="me-row me-signout" @click="signOut"><LogoutOutlined class="me-row-icon" /><span class="me-row-label">退出登录</span></a-button>
       </nav>
       <footer class="me-version"><span :title="webBuiltAt ? `构建于 ${webBuiltAt}` : undefined">前端 {{ webVersion }}</span><span>服务端 {{ serverVersion }}</span></footer>
     </aside>
@@ -144,6 +151,9 @@ onUnmounted(() => wideQuery.removeEventListener('change', onWide))
 .me-wide { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 32px; max-width: 1180px; align-items: start; }
 .me-side { min-width: 0; }
 .me-wide .me-side { position: sticky; top: 16px; max-height: calc(100dvh - 140px); overflow-y: auto; scrollbar-width: thin; padding-bottom: 8px; }
+.me-admin-head { display: flex; align-items: center; gap: 6px; padding: 0 0 16px; }
+.me-admin-head strong { display: block; font-size: 18px; font-weight: 650; }
+.me-admin-head small { color: var(--muted); font-size: 12px; }
 .me-profile { display: flex; align-items: center; gap: 12px; padding: 4px 2px 16px; }
 .me-avatar { display: grid; flex: none; place-items: center; width: 56px; height: 56px; border-radius: 50%; color: var(--action-fg); background: var(--action-bg); font-size: 22px; font-weight: 600; }
 .me-profile-text { display: flex; flex: 1; flex-direction: column; min-width: 0; }

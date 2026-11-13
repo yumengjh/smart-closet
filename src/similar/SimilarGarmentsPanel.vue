@@ -13,9 +13,9 @@ const duplicate = computed(() => view.value?.items.find(i => i.level === 'DUPLIC
 // 种草（#197）：重复的是已有衣物还是另一件种草，说法不同；下单前查重是主要用途。
 const duplicateMessage = computed(() => {
   const other = duplicate.value; if (!other) return ''
-  if (other.status === 'WANTED') return props.draft ? `你已经${wantedLabel.value}过一件几乎一样的，确认不是重复再入柜` : `另一件${wantedLabel.value}的衣服和它几乎一样，可能重复存了`
+  if (other.status === 'WANTED') return props.draft ? `你已经${wantedLabel.value}过一件几乎一样的，确认不是重复再收进衣柜` : `另一件${wantedLabel.value}的衣服和它几乎一样，可能重复存了`
   if (props.wanted) return '你已经有一件几乎一样的了，下单前看看是否还需要'
-  return props.draft ? '衣柜里已有一件几乎一样的，确认不是重复再入柜' : '衣柜里有一件几乎一样的，可能重复录入了'
+  return props.draft ? '衣柜里已有一件几乎一样的，确认不是重复再收进衣柜' : '衣柜里有一件几乎一样的，可能重复录入了'
 })
 async function load() {
   loading.value = true; error.value = ''

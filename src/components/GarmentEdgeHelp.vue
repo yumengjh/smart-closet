@@ -21,7 +21,7 @@ const guides = [
           <h3>{{ guide.title }}</h3><p>{{ guide.body }}</p><small>示意图 · 非模型处理结果</small>
         </section>
       </div>
-      <a-alert class="edge-review-alert" type="warning" :show-icon="false" message="处理完成后，先看边缘，再确认入柜" description="对照原图放大检查：领口、袖口、裙摆、鞋带和细肩带是否完整；蕾丝孔洞、薄纱透感是否保留；四周有没有背景残留或白边。" />
+      <a-alert class="edge-review-alert" type="warning" :show-icon="false" message="处理完成后，先看边缘，再收进衣柜" description="对照原图放大检查：领口、袖口、裙摆、鞋带和细肩带是否完整；蕾丝孔洞、薄纱透感是否保留；四周有没有背景残留或白边。" />
       <section class="edge-next"><h3>如果边缘不理想</h3><p>仅背景残留：重新去背景。<br />细节被遮住或融进背景：换背景、补拍一张，再处理。</p></section>
       <div class="edge-help-footer"><span>原图保留，核对时随时可以对照。</span><a-button type="primary" @click="open = false">我知道了</a-button></div>
     </a-modal>

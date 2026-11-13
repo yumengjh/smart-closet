@@ -47,7 +47,7 @@ const groupOf = (item: AdminPreset) => presetGroup(item)
   <div class="settings-presets">
     <section class="settings-card">
       <h3>导入草稿</h3>
-      <p class="muted">从指定账号的已入柜衣物生成草稿。图片只复制一份；可见文字、尺码、洗护、品牌、成分不会带走，穿着记录和反馈也不会。已上架的不会被覆盖。</p>
+      <p class="muted">从指定账号的已收进衣柜衣物生成草稿。图片只复制一份；可见文字、尺码、洗护、品牌、成分不会带走，穿着记录和反馈也不会。已上架的不会被覆盖。</p>
       <div class="settings-row"><a-input v-model:value="username" :maxlength="80" style="max-width: 220px" placeholder="账号" />
         <a-popconfirm :title="`从 ${username || 'demo'} 的衣柜导入草稿？`" ok-text="导入" cancel-text="取消" @confirm="importDrafts"><a-button type="primary" :loading="busy === 'import'">导入草稿</a-button></a-popconfirm></div>
     </section>

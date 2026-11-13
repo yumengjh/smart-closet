@@ -38,3 +38,13 @@ test('remembers the garment order of the page for previous / next', () => {
   s.setItem('yixu.wardrobe-view.v1', JSON.stringify({ ids: ['x', 5, null, 'y'], savedAt: 1000 }))
   assert.deepEqual(readView(s, 1000)?.ids, ['x', 'y'], 'Non-text ids are dropped')
 })
+
+test('sorting: drafts read as processing, needs a look, failed, or ready to keep', async () => {
+  const { sortingState } = await import('../src/wardrobe/sorting.ts')
+  assert.equal(sortingState({ taskStatus: 'RUNNING' }), 'processing')
+  assert.equal(sortingState({ taskStatus: 'NEEDS_REVIEW' }), 'review')
+  assert.equal(sortingState({ taskStatus: 'SUCCEEDED', imageProcessing: { stickerRequired: true, stickerReady: false } }), 'review')
+  assert.equal(sortingState({ taskStatus: 'FAILED' }), 'failed')
+  assert.equal(sortingState({ taskStatus: 'SUCCEEDED' }), 'ready')
+  assert.equal(sortingState({}), 'ready')
+})

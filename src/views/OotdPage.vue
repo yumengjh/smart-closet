@@ -55,7 +55,7 @@ const preparation = ref<Preparation | null>(null); const confirmOpen = ref(false
 const viewing = ref<RenderJob | null>(null); let timer: ReturnType<typeof setInterval> | undefined
 const accessoryOptions = [{ value: 'ACCESSORY:EAR', label: '耳部' }, { value: 'ACCESSORY:NECK', label: '颈部' }, { value: 'ACCESSORY:WRIST', label: '手腕' }, { value: 'ACCESSORY:HAND_LEFT', label: '左手' }, { value: 'ACCESSORY:HAND_RIGHT', label: '右手' }, { value: 'ACCESSORY:TIE', label: '领带' }]
 const current = computed(() => outfits.value.find(o => o.id === outfitId.value)); const person = computed(() => baselines.value.find(b => b.id === baselineId.value))
-const available = computed(() => capabilities.value.filter(c => c.verified && c.purpose === 'OOTD'))
+const available = computed(() => capabilities.value.filter(c => c.verified && c.purpose === '上身图'))
 const capability = computed(() => available.value.find(c => c.provider + ':' + c.model === model.value))
 const filledSlots = computed(() => review.value?.slots.filter(slot => slot.items.length || slot.state === 'CONFLICT' || slot.state === 'UNKNOWN') || [])
 const garments = computed(() => [...new Map((current.value?.scene.elements || []).filter(e => e.kind !== 'PERSON_PART').map(e => [e.garmentId, e])).values()])
@@ -100,7 +100,7 @@ async function prepare(useOlderBaseline = false) {
     preparation.value = await platformRequest<Preparation>('/api/ootd/preparations', 'POST', body(useOlderBaseline)); key.value = createUuid(); confirmOpen.value = true
   } catch (e) {
     if (e instanceof PlatformRequestError && e.code === 'BASELINE_PROFILE_STALE') {
-      modal.confirm({ title: '这位模特是按旧资料生成的', content: '个人资料改过之后，模特不会自动更新。仍用这位模特生成吗？', okText: '仍然使用', cancelText: '换一位', onOk: () => prepare(true) })
+      modal.confirm({ title: '这位形象是按旧资料生成的', content: '个人资料改过之后，形象不会自动更新。仍用这位形象生成吗？', okText: '仍然使用', cancelText: '换一位', onOk: () => prepare(true) })
     } else error.value = e instanceof Error ? e.message : String(e)
   } finally { busy.value = false }
 }
@@ -138,7 +138,7 @@ async function generate() {
 }
 async function cancel(job: RenderJob) { try { await platformRequest(`/api/ootd/jobs/${job.id}/cancel`, 'POST', {}); await refresh(); message.info('已请求停止；无法保证上游停止或退还额度。') } catch (e) { message.error(String(e)) } }
 function remove(job: RenderJob) {
-  modal.confirm({ title: '永久删除这张图？', content: '删除后无法恢复；搭配、模特和其他图片不受影响。', okText: '删除', okType: 'danger', cancelText: '取消', async onOk() { await platformRequest(`/api/ootd/jobs/${job.id}`, 'DELETE'); viewing.value = null; await refresh() } })
+  modal.confirm({ title: '永久删除这张图？', content: '删除后无法恢复；搭配、形象和其他图片不受影响。', okText: '删除', okType: 'danger', cancelText: '取消', async onOk() { await platformRequest(`/api/ootd/jobs/${job.id}`, 'DELETE'); viewing.value = null; await refresh() } })
 }
 async function adjusted(job: RenderJob) {
   const source = viewingJob.value
@@ -166,7 +166,7 @@ function retry(job: RenderJob) {
   if (groups.value.retryState.get(job.id) !== 'open') { message.info(groups.value.retryState.get(job.id) === 'retrying' ? '这条已经在重新生成，请稍等。' : '这条已经重新生成成功了。'); return }
   modal.confirm({
     title: '重新生成这张图？', okText: '重新生成（1 个额度）', cancelText: '先不了',
-    content: job.status === 'UNKNOWN' ? '上一次请求可能已经在服务商那边出图并扣了额度，重新生成会再用 1 个图像额度。' : '会按原来的搭配、模特和动作再生成一张，再用 1 个图像额度。',
+    content: job.status === 'UNKNOWN' ? '上一次请求可能已经在服务商那边出图并扣了额度，重新生成会再用 1 个图像额度。' : '会按原来的搭配、形象和动作再生成一张，再用 1 个图像额度。',
     async onOk() {
       // One key per job until it is accepted, so a double click or a retried request never submits twice.
       const retryKey = retryKeys.get(job.id) || createUuid(); retryKeys.set(job.id, retryKey); retrying.value = job.id
@@ -325,7 +325,7 @@ onUnmounted(() => { clearInterval(timer); wideQuery.removeEventListener('change'
     <template v-if="preparation">
       <a-alert v-if="error" type="error" :message="error" show-icon role="status" aria-live="polite" style="margin-bottom:12px" />
       <div class="confirm-summary">
-        <span v-if="person?.mediaUrl" class="confirm-photo"><img :src="mediaUrl(person.mediaUrl)" :alt="person ? modelLabel(person) : '模特'" /><AiBadge small /></span>
+        <span v-if="person?.mediaUrl" class="confirm-photo"><img :src="mediaUrl(person.mediaUrl)" :alt="person ? modelLabel(person) : '形象'" /><AiBadge small /></span>
         <dl>
           <dt>谁来穿</dt><dd>{{ person ? modelLabel(person) : '' }}</dd>
           <dt>姿势</dt><dd>{{ preparation.pose?.name || '自动' }}</dd>

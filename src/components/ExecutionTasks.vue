@@ -41,13 +41,13 @@ const summary = computed(() => [counts.value.running && `${counts.value.running}
 const byId = computed(() => new Map(props.tasks.map(task => [task.id, task])))
 const owner = (task: ExecutionTask) => byId.value.get(task.businessId)
 const thumb = (task: ExecutionTask) => owner(task)?.outputUrl || owner(task)?.inputUrl || ''
-const kindLabel = (task: ExecutionTask) => task.kind === 'BATCH' ? '多件整理' : task.kind === 'QUICK' ? '快速入柜' : '单件处理'
+const kindLabel = (task: ExecutionTask) => task.kind === 'BATCH' ? '多件整理' : task.kind === 'QUICK' ? '快速添加' : '单件处理'
 const stateView: Record<string, { label: string; tone: string }> = {
   QUEUED: { label: '排队中', tone: 'waiting' }, WAITING_QUOTA: { label: '等额度', tone: 'quota' }, RUNNING: { label: '处理中', tone: 'running' },
   CANCEL_REQUESTED: { label: '正在取消', tone: 'running' }, FAILED: { label: '未完成', tone: 'failed' }, UNKNOWN: { label: '结果待核实', tone: 'quota' },
 }
 function explain(task: ExecutionTask) {
-  if (task.status === 'WAITING_QUOTA') return '今天的 AI 额度用完了，明天会自动继续；额度调整后也可以立即重试。'
+  if (task.status === 'WAITING_QUOTA') return '今天的 次数用完了，明天会自动继续；额度调整后也可以立即重试。'
   if (task.status === 'QUEUED') return task.waitReason?.includes('暂停') ? '管理员暂停了这类处理，恢复后自动继续。' : task.waitReason?.includes('容量') ? '前面还有别的衣物在处理，轮到后自动开始。' : '轮到后自动开始，不用一直开着页面。'
   if (task.status === 'RUNNING') return '正在处理，完成后右上角会提醒你。'
   if (task.status === 'CANCEL_REQUESTED') return '正在停止，已完成的步骤会保留。'
@@ -62,7 +62,7 @@ const canRetry = (task: ExecutionTask) => failed(task) && Boolean(task.reconcila
 const canEnhance = (task: ExecutionTask) => failed(task) && !task.reconcilable && task.kind === 'QUICK' && task.pool === 'GENERATION'
 const garmentLink = (task: ExecutionTask) => task.garmentId ? { path: `/garment/${task.garmentId}`, query: { task: task.businessId } } : null
 const rejected = (task: ExecutionTask) => /HTTP 4\d\d/.test(task.error || '')
-function enhanceHint(task: ExecutionTask) { return `使用 1 次 AI 额度重新增强这件衣物；原图和基础图保留。${rejected(task) ? '上次被服务商拒绝，原样重试可能仍失败，也可以进详情描述问题后再增强。' : ''}` }
+function enhanceHint(task: ExecutionTask) { return `使用 1 次重新增强这件衣物；原图和基础图保留。${rejected(task) ? '上次被服务商拒绝，原样重试可能仍失败，也可以进详情描述问题后再增强。' : ''}` }
 async function enhance(task: ExecutionTask) {
   busy.value = task.id
   try { await quickApi.enhance(task.businessId, createUuid(), ''); message.success('已重新发起增强，完成后右上角会提醒你'); await load() }

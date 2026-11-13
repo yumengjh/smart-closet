@@ -54,23 +54,6 @@
 }
 @media (max-width: 767px) { .card-image-wrap { border-radius: 20px; } .garment-grid { gap: 20px 12px; } }
 
-/* 我的（设置）：左侧个人卡片 + 无边框菜单，右侧分组卡片浅底大圆角。 */
-.settings-layout { gap: 40px; margin-top: 6px; }
-.settings-nav { top: 84px; gap: 4px; padding: 10px; border: 0; border-radius: 28px; background: var(--surface-alt); }
-.settings-profile { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; padding: 14px 12px 16px; border-bottom: 1px solid var(--line); }
-.settings-profile .settings-avatar { width: 52px; height: 52px; border-radius: 50%; color: var(--accent-strong); background: var(--accent-soft); font-size: 22px; }
-.settings-profile-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.settings-profile-text strong { overflow: hidden; font-size: 16px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.settings-profile-text small { overflow: hidden; font-size: 12px; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }
-.settings-nav .settings-nav-item { min-height: 54px; border-radius: 18px; }
-.settings-nav .settings-nav-item:hover { background: var(--surface); }
-.settings-nav .settings-nav-item.active, .settings-nav .settings-nav-item.active:hover { background: var(--surface); box-shadow: 0 6px 18px -12px #00000040; }
-.settings-nav-item > .settings-nav-icon { border-radius: 12px; background: var(--surface); color: var(--muted-strong); }
-.settings-nav-item.active > .settings-nav-icon { color: var(--accent-strong); background: var(--accent-soft); }
-.settings-nav .settings-nav-link::before { border-top-color: var(--line); }
-.settings-version { border-top: 0; }
-.settings-panel-icon { border: 0; border-radius: 16px; color: var(--accent-strong); background: var(--accent-soft); }
-.settings-panel-title h2 { font-size: 22px; }
+/* 我的：分区卡片白底细边框（外壳在 SettingsPage.vue）。 */
 .settings-group { border: 0; border-radius: 16px; background: var(--surface); box-shadow: 0 0 0 1px var(--line); }
 .settings-group + .settings-group { margin-top: 14px; }
-@media (max-width: 1023px) { .settings-layout { gap: 20px; } .settings-nav { top: 0; } }

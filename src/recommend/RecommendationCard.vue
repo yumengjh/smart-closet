@@ -28,7 +28,7 @@ onMounted(load); watch(() => props.outfit.key, load)
     <footer class="recommend-card-actions">
       <RecommendationFeedback :log-id="outfit.logId" :garments="outfit.garments" />
       <a-button size="small" @click="emit('open')">详情</a-button>
-      <a-button size="small" type="primary" @click="emit('workspace')">在搭台打开</a-button>
+      <a-button size="small" type="primary" @click="emit('workspace')">编辑这套</a-button>
     </footer>
   </article>
 </template>

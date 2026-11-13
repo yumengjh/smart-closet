@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { workflowSummary, generatedImages, blocksConfirmation, isProcessing, processingSeconds, orderedTasks } from '../src/domain/workflow.ts'
 import type { ClosetTask } from '../src/services/api'
 const draft = { status: 'DRAFT' as const, taskStatus: 'SUCCEEDED' as const }
-test('processing completion never means garment confirmed', () => assert.match(workflowSummary(draft).title, /尚未入柜/))
+test('processing completion never means garment confirmed', () => assert.match(workflowSummary(draft).title, /还没收进衣柜/))
 test('cancelling remains an active processing state', () => assert.equal(isProcessing('CANCEL_REQUESTED'), true))
 test('only recognition explicitly retains original photograph', () => assert.match(workflowSummary(draft, { mode: '仅识别' } as ClosetTask).description, /保留原图/))
 test('original and masks never appear as generated results', () => {
@@ -24,8 +24,8 @@ test('adopting a result later never inflates the processing duration', () => {
 
 test('unfinished sticker remains actionable even for an already confirmed garment', () => {
   const imageProcessing = { jobId: 'image-job', status: 'NEEDS_REVIEW', stickerRequired: true, stickerReady: false, stickerAssetId: null }
-  assert.match(workflowSummary({ ...draft, imageProcessing }).title, /贴纸尚未完成/)
-  assert.match(workflowSummary({ ...draft, status: 'ACTIVE', imageProcessing }).title, /已入柜，贴纸尚未完成/)
+  assert.match(workflowSummary({ ...draft, imageProcessing }).title, /透明图尚未完成/)
+  assert.match(workflowSummary({ ...draft, status: 'ACTIVE', imageProcessing }).title, /已收进衣柜，透明图尚未完成/)
   assert.match(workflowSummary({ ...draft, imageProcessing: { ...imageProcessing, stickerReady: true } }).title, /核对结果/)
 })
 

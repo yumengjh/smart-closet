@@ -33,7 +33,7 @@ async function more() {
 }
 async function workspace(i: number) {
   try { await openInWorkspace(router, closet.user!.username, outfits.value[i], props.view.runId) }
-  catch (e) { message.error(e instanceof Error ? e.message : '没能打开到搭台。') }
+  catch (e) { message.error(e instanceof Error ? e.message : '没能打开到搭配编辑。') }
 }
 function replace(i: number, outfit: typeof outfits.value[number]) { outfits.value.splice(i, 1, outfit) }
 </script>
