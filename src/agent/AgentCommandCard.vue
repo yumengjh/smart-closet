@@ -7,7 +7,7 @@ import { mediaUrl } from '../services/urls'
 type Command = { id: string; kind: string; parameters: Record<string, any>; status: string; requiresConfirmation: boolean; expiresAt: number; result: any; canUndo: boolean }
 const props = defineProps<{ command: Command }>(); const current = ref({ ...props.command }); const busy = ref(false)
 const { message } = App.useApp(); watch(() => props.command, v => { current.value = { ...v } })
-const labels: Record<string, string> = { GARMENT_BASIC: '修改衣物', GARMENT_METADATA: '修改衣物资料', GARMENT_TRASH: '回收衣物', GARMENT_RESTORE: '恢复衣物', MEMORY_PATCH: '维护长期记忆', BASELINE_GENERATION: '生成个人基准人物', OOTD_GENERATION: '生成 OOTD 穿搭图',GARMENT_BATCH:'批量修改衣物',GARMENT_WORKFLOW:'启动衣物处理',TASK_CANCEL:'取消任务',PROFILE_EDIT:'修改个人资料',BASELINE_DELETE:'删除基准人物',OOTD_DELETE:'永久删除 OOTD' }
+const labels: Record<string, string> = { GARMENT_BASIC: '修改衣物', GARMENT_METADATA: '修改衣物资料', GARMENT_TRASH: '回收衣物', GARMENT_RESTORE: '恢复衣物', MEMORY_PATCH: '维护长期记忆', BASELINE_GENERATION: '生成个人基准人物', OOTD_GENERATION: '生成上身图',GARMENT_BATCH:'批量修改衣物',GARMENT_WORKFLOW:'启动衣物处理',TASK_CANCEL:'取消任务',PROFILE_EDIT:'修改个人资料',BASELINE_DELETE:'删除基准人物',OOTD_DELETE:'永久删除 上身图' }
 const isGeneration = computed(() => current.value.kind.endsWith('_GENERATION'))
 const sourceLabels: Record<string,string> = {USER_REPORTED:'已填写',TEMPLATE_DEFAULT:'模板默认',DERIVED_DEFAULT:'按 BMI 22 计算的示意值'}
 const statusText = computed(() => ({PREPARED:'等待确认，尚未执行',SUCCEEDED:isGeneration.value?'已提交任务，离开聊天后继续处理':current.value.canUndo?'已执行，可撤销':'已执行',UNDONE:'已撤销',CANCELLED:'已取消'}[current.value.status] || current.value.status))

@@ -13,7 +13,7 @@ watch(() => props.open, v => { if (v) { selected.value = items.value.map(i => i.
 </script>
 <template>
   <a-modal :open="open" title="全身穿搭检查" :footer="null" :width="760" @cancel="emit('update:open', false)">
-    <p>选出本次一名人物穿的一套衣物。复制贴纸只计穿一次，展示素材可排除。检查使用已有资料，不消耗 AI 图像额度。</p>
+    <p>选出本次一名人物穿的一套衣物。复制单品只计穿一次，展示素材可排除。检查使用已有资料，不消耗 AI 图像额度。</p>
     <a-checkbox-group v-model:value="selected" style="display:flex;flex-direction:column;gap:8px"><a-checkbox v-for="item in items" :key="item.garmentId" :value="item.garmentId">{{ item.garmentLabel }}</a-checkbox></a-checkbox-group>
     <a-space wrap style="margin:16px 0"><a-checkbox v-model:checked="multiLayer">明确使用多层穿法</a-checkbox><a-button :loading="loading" @click="check">重新检查</a-button></a-space>
     <p v-if="multiLayer">最多打底＋主体＋外搭，双外套禁止。两层之间都需核对版型、厚薄和穿着用途。</p>
@@ -23,7 +23,7 @@ watch(() => props.open, v => { if (v) { selected.value = items.value.map(i => i.
       <a-alert v-for="issue in review.blockers" :key="issue.message" type="error" :message="issue.message" :description="issue.action" show-icon style="margin-bottom:8px" />
       <a-alert v-for="issue in review.warnings" :key="issue.code" type="warning" :message="issue.message" show-icon style="margin-bottom:8px" />
       <div class="wear-distribution"><svg viewBox="0 0 120 260" role="img" aria-label="全身穿搭区域示意"><circle cx="60" cy="28" r="18" /><path d="M35 58 Q60 48 85 58 L92 143 H28 Z M35 143 L30 235 H51 L60 160 L69 235 H90 L85 143 M35 63 L12 135 M85 63 L108 135" /></svg><dl><div v-for="slot in review.slots" :key="slot.role" class="wear-slot"><dt>{{ slot.label }} <a-tag :color="slot.state === 'CONFLICT' || slot.state === 'UNKNOWN' ? 'error' : slot.state === 'PRESENT' ? 'success' : undefined">{{ { PRESENT: '已有', MISSING: '缺少', CONFLICT: '冲突', UNKNOWN: '资料未确认' }[slot.state] }}</a-tag></dt><dd v-if="!slot.items.length">{{ slot.role === 'TOP' || slot.role === 'BOTTOM' ? '连体主体可替代上下装' : '可按需添加' }}</dd><dd v-for="item in slot.items" :key="item.garmentId">{{ item.label }} <a-select v-if="multiLayer && ['TOP','INNER'].includes(item.role)" v-model:value="roles[item.garmentId]" style="min-width:110px" :options="[{value:'TOP',label:'主体上装'},{value:'INNER',label:'打底内层'}]" placeholder="选择穿法" /><a-select v-if="item.role==='ACCESSORY'" v-model:value="roles[item.garmentId]" style="min-width:120px" :options="accessoryOptions" placeholder="确认佩戴位置" /> <RouterLink :to="`/garment/${item.garmentId}`" @click="emit('update:open', false)">核对资料</RouterLink></dd></div></dl></div>
-      <p class="muted">{{ review.blockers.length ? '请修正后再生成 OOTD。自由画板仍可继续编辑。' : '结构检查通过；实际合身程度与生成效果仍需核对。' }}</p>
+      <p class="muted">{{ review.blockers.length ? '请修正后再生成上身图。自由画板仍可继续编辑。' : '结构检查通过；实际合身程度与生成效果仍需核对。' }}</p>
     </template>
   </a-modal>
 </template>

@@ -334,7 +334,7 @@ function nearBottom() { return !transcript.value || transcript.value.scrollHeigh
 
 const session = computed(() => sessions.value.find(s => s.id === selected.value))
 const context = computed(() => pageContext(route.path))
-const contextName = computed(() => context.value.scene ? `${context.value.name || '组合台'} · ${context.value.selectedIds?.length || 0} 项选中` : context.value.garmentId ? '当前衣物详情' : ({ '/today': '今天', '/try': '试穿', '/wardrobe': '我的衣柜', '/outfits': '组合台', '/settings': '我的设置', '/help': '平台帮助', '/tasks': '任务记录', '/pending': '未入柜', '/add': '添加衣物', '/trash': '回收站' } as Record<string, string>)[route.path] || '当前页面')
+const contextName = computed(() => context.value.scene ? `${context.value.name || '搭配'} · ${context.value.selectedIds?.length || 0} 项选中` : context.value.garmentId ? '当前衣物详情' : ({ '/today': '今天', '/try': '试穿', '/wardrobe': '我的衣柜', '/outfits': '搭配', '/settings': '我的设置', '/help': '平台帮助', '/tasks': '任务记录', '/pending': '整理中', '/add': '添加衣物', '/trash': '回收站' } as Record<string, string>)[route.path] || '当前页面')
 async function refreshSessions() { sessions.value = await agentRequest<AgentSession[]>('/sessions') }
 async function load() {
   void flushBoardTrace()
@@ -548,7 +548,7 @@ onUnmounted(() => { abort?.abort(); endResize(); floating.end(); document.docume
                   <span class="assistant-sr">{{ item.role === 'user' ? '你说' : '鱼搭说' }}</span>
                   <p v-if="item.content" class="assistant-text">{{ item.role === 'user' ? userMessageText(item.content) : item.content }}</p>
                   <span v-if="item.status === 'FAILED'" class="assistant-interrupted">回复未完成</span><span v-else-if="item.status === 'CANCELLED'" class="assistant-interrupted">已停止生成</span>
-                  <a-collapse v-if="item.events.some(e => e.event === 'operation_result')" ghost class="assistant-operation-record"><a-collapse-panel key="steps" header="搭台操作记录"><ol><li v-for="event in item.events.filter(e => e.event === 'operation_result')" :key="event.data.operationId">{{ event.data.success ? '✓' : '!' }} {{ event.data.label }}<small v-if="event.data.message"> · {{ event.data.message }}</small></li></ol></a-collapse-panel></a-collapse>
+                  <a-collapse v-if="item.events.some(e => e.event === 'operation_result')" ghost class="assistant-operation-record"><a-collapse-panel key="steps" header="搭配编辑操作记录"><ol><li v-for="event in item.events.filter(e => e.event === 'operation_result')" :key="event.data.operationId">{{ event.data.success ? '✓' : '!' }} {{ event.data.label }}<small v-if="event.data.message"> · {{ event.data.message }}</small></li></ol></a-collapse-panel></a-collapse>
                   <template v-for="(event, index) in item.events" :key="index">
                     <AgentWorkspaceResult v-if="event.event === 'workspace_result'" :result="event.data" @open="showPage" />
                     <AgentCommandCard v-else-if="event.event === 'command'" :command="event.data" />

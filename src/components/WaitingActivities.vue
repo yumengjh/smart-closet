@@ -12,7 +12,7 @@ function wardrobe() { emit('chosen'); void router.push('/wardrobe') }
   <section class="waiting-activities" :class="{ invitation }" aria-label="等待时做点什么">
     <div class="waiting-activities-heading"><strong>{{ invitation ? '这会儿，你想做点什么？' : '照片交给鱼搭，你可以先歇一会儿' }}</strong><p>处理在后台继续，完成后会在站内提醒你。</p></div>
     <div class="waiting-activities-buttons"><a-button :type="invitation ? 'primary' : 'default'" @click="chat"><MessageOutlined /> 和鱼搭助手聊聊</a-button><a-button @click="game"><AppstoreOutlined /> 衣物记忆翻牌</a-button><a-button type="text" @click="wardrobe">先去逛衣柜 <ArrowRightOutlined /></a-button></div>
-    <small>小游戏不消耗 AI 额度 · 聊天发送后使用现有消息额度</small>
+    <small>小游戏不花次数 · 聊天发送后使用现有消息额度</small>
   </section>
 </template>
 <style scoped>

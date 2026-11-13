@@ -9,7 +9,7 @@ test('running picture stays in the processing centre with an expectation of the 
   const entry = renderEntry(job({ status: 'RUNNING' }))
   assert.equal(entry.key, 'render:j1')
   assert.equal(entry.state, 'processing')
-  assert.equal(entry.title, 'OOTD 穿搭图 · 叉腰站姿')
+  assert.equal(entry.title, '上身图 · 叉腰站姿')
   assert.match(entry.note, /1 分钟/)
   assert.equal(entry.thumb, undefined)
 })

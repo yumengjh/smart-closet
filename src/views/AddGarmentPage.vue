@@ -13,7 +13,7 @@ const intake = ref(useRoute().query.mode === 'multiple')
 const preferQuick = useRoute().query.mode !== 'multiple' && useRoute().query.mode !== 'single' && useRoute().query.from !== 'tryon'
 const quick = ref(false); const quickEnabled = ref(false)
 const entryMode = computed({ get: () => quick.value ? 'quick' : intake.value ? 'multiple' : 'single', set: (value: string) => { quick.value = value === 'quick'; intake.value = value === 'multiple' } })
-const entryOptions = computed(() => [...(quickEnabled.value ? [{ label: '快速入柜', value: 'quick' }] : []), { label: '单件处理', value: 'single' }, { label: '多件整理', value: 'multiple' }])
+const entryOptions = computed(() => [...(quickEnabled.value ? [{ label: '快速添加', value: 'quick' }] : []), { label: '单件处理', value: 'single' }, { label: '多件整理', value: 'multiple' }])
 import { hasCamera, prefersNativeCamera } from '../services/camera'
 import { closetApi, request, usingMocks, type ClosetTask, type ProcessingChoice } from '../services/api'
 
@@ -44,12 +44,12 @@ const generationChoices = ref<ProcessingChoice[]>([])
 const recognitionChoices = ref<ProcessingChoice[]>([])
 const generationChoice = ref('')
 const recognitionChoice = ref('')
-const isAI = computed(() => mode.value !== '本地贴纸')
+const isAI = computed(() => mode.value !== '本地透明图')
 const configured = computed(() => !isAI.value || (recognitionChoices.value.length > 0 && (mode.value === '仅识别' || generationChoices.value.length > 0)))
 const modes = [
-  { value: '识别并整理', title: '识别并整理', body: '填写信息，整理照片并制作透明贴纸。', suitable: '适合自拍、穿着照或需要整理外观的单件。', cost: '识别 1 次 + 整理 1 次 AI 额度 · 需要等待模型' },
+  { value: '识别并整理', title: '识别并整理', body: '填写信息，整理照片并制作透明图。', suitable: '适合自拍、穿着照或需要整理外观的单件。', cost: '识别 1 次 + 整理 1 次 · 需要等待模型' },
   { value: '仅识别', title: '仅识别信息', body: '自动填写信息，保留原照片。', suitable: '照片已拍得满意，无需改变外观。', cost: '1 次 AI 任务额度 · 不生成新图片' },
-  { value: '本地贴纸', title: '本地去背景', body: '保留照片里的外观，衣物信息自己填写。', suitable: '适合平铺或悬挂；穿着照可能保留人物。', cost: '0 次 AI 额度 · 不发送云端' },
+  { value: '本地透明图', title: '本地去背景', body: '保留照片里的外观，衣物信息自己填写。', suitable: '适合平铺或悬挂；穿着照可能保留人物。', cost: '0 次 · 不发送云端' },
 ]
 const selectedMode = computed(() => modes.find(option => option.value === mode.value)!)
 
@@ -146,16 +146,16 @@ async function submit() {
               <label v-if="generationChoices.length" class="choice-line"><span>图片模型<small>负责整理衣物照片</small></span><a-select v-model:value="generationChoice" :options="generationChoices" :disabled="busy" class="choice-select" aria-label="图片模型" /></label>
               <label class="choice-line"><span>摆正并适度整理<small>减轻随机褶皱，保留衣物原款</small></span><a-switch v-model:checked="restage" :disabled="busy" aria-label="摆正并适度整理" /></label>
               <label class="choice-line"><span>先去掉原背景<small>适合复杂背景的单件照片；穿着照会自动跳过</small></span><a-switch v-model:checked="precut" :disabled="busy" aria-label="先去掉原背景" /></label>
-              <label class="choice-line"><span>制作透明贴纸<small>方便之后放进穿搭画板</small></span><a-switch v-model:checked="postcut" :disabled="busy" aria-label="制作透明贴纸" /></label>
+              <label class="choice-line"><span>制作透明图<small>方便之后放进穿搭画板</small></span><a-switch v-model:checked="postcut" :disabled="busy" aria-label="制作透明图" /></label>
             </template>
-            <label v-if="mode === '本地贴纸'" class="choice-line"><span>背景已经透明，直接制作贴纸<small>仅适用于已经去干净背景的衣物图；截图的透明圆角不算</small></span><a-switch v-model:checked="reuseTransparency" :disabled="busy" aria-label="背景已经透明，直接制作贴纸" /></label>
+            <label v-if="mode === '本地透明图'" class="choice-line"><span>背景已经透明，直接做透明图<small>仅适用于已经去干净背景的衣物图；截图的透明圆角不算</small></span><a-switch v-model:checked="reuseTransparency" :disabled="busy" aria-label="背景已经透明，直接做透明图" /></label>
           </div>
         </a-collapse-panel></a-collapse>
         <a-alert v-if="usingMocks" type="warning" message="演示模式禁止提交 AI 任务。请连接真实后端使用。" show-icon class="form-alert" />
         <a-alert v-if="isAI && (configError || quotaError || !configured)" type="warning" :message="configError || quotaError || '当前模式需要的模型未配置。你可以先使用本地去背景，或联系管理员。'" show-icon class="form-alert" />
         <a-alert v-if="error" type="error" :message="error" show-icon class="form-alert" />
-        <div class="single-submit-row"><div class="cost-note"><p>当前：{{ selectedMode.title }} · {{ isAI ? '1 次 AI 任务额度' : '0 次 AI 额度' }}<small v-if="isAI">今日剩余 {{ quotaLeft === null ? '—' : quotaLeft }} / {{ quotaLimit ?? '—' }} 次</small></p></div>
-        <a-button type="primary" block :loading="busy" :disabled="!file || usingMocks || !configured || isAI && (Boolean(configError || quotaError) || quotaLeft === null || quotaLeft === 0)" class="submit-garment" @click="submit">{{ busy ? '正在上传并提交…' : isAI && quotaLeft === 0 ? '今日 AI 额度已用完' : !file ? '选择照片后开始处理' : mode === '仅识别' ? '开始识别衣物信息' : mode === '本地贴纸' ? '开始本地去背景' : '识别并整理' }}<ArrowRightOutlined v-if="!busy" /></a-button>
+        <div class="single-submit-row"><div class="cost-note"><p>当前：{{ selectedMode.title }} · {{ isAI ? '1 次 AI 任务额度' : '0 次' }}<small v-if="isAI">今日剩余 {{ quotaLeft === null ? '—' : quotaLeft }} / {{ quotaLimit ?? '—' }} 次</small></p></div>
+        <a-button type="primary" block :loading="busy" :disabled="!file || usingMocks || !configured || isAI && (Boolean(configError || quotaError) || quotaLeft === null || quotaLeft === 0)" class="submit-garment" @click="submit">{{ busy ? '正在上传并提交…' : isAI && quotaLeft === 0 ? '今日 次数已用完' : !file ? '选择照片后开始处理' : mode === '仅识别' ? '开始识别衣物信息' : mode === '本地透明图' ? '开始本地去背景' : '识别并整理' }}<ArrowRightOutlined v-if="!busy" /></a-button>
         </div>
         <p class="privacy-note">{{ isAI ? '照片将发送到已配置的模型服务。处理时长由模型决定，结果返回后请检查衣物细节。' : '照片由你的衣柜服务本地处理，不发送到云端模型。衣物信息可以稍后慢慢填写。' }}</p>
     </section>

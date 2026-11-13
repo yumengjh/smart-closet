@@ -69,7 +69,7 @@ function pickRole(id: string, value: unknown) { emit('role', id, value === AUTO 
       </article></div>
     </template>
     <template v-else>
-      <p class="picker-note">上传会先停止试穿。你可以选择入柜，或仅在当前页面使用。</p>
+      <p class="picker-note">上传会先停止试穿。你可以选择收进衣柜，或仅在当前页面使用。</p>
       <div class="picker-upload-row">
         <a-upload :accept="UPLOAD_ACCEPT" :show-upload-list="false" :before-upload="chooseUpload" :disabled="uploading"><a-button block :loading="uploading"><PlusOutlined v-if="!uploading" /> {{ uploading && uploadPhase ? uploadPhase : '上传衣物照片' }}</a-button></a-upload>
         <a-upload accept="image/*" capture="environment" :show-upload-list="false" :before-upload="chooseUpload" :disabled="uploading"><a-button block :disabled="uploading"><CameraOutlined /> 拍一张</a-button></a-upload>

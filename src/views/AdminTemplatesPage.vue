@@ -124,7 +124,7 @@ const columns = [
     <a-alert v-if="previewError" type="error" show-icon :message="previewError" />
     <a-skeleton v-else-if="previewLoading" active />
     <template v-else-if="preview && previewEntry">
-      <a-alert v-if="!preview.closetSize" type="info" show-icon message="你的衣柜还没有已入柜的衣物，无法预览。" />
+      <a-alert v-if="!preview.closetSize" type="info" show-icon message="你的衣柜还没有已收进衣柜的衣物，无法预览。" />
       <template v-else>
         <div class="template-try-grid">
           <div v-for="(slot, i) in preview.slots" :key="i" class="template-try-slot" :class="{ empty: !slot.candidates.length }">

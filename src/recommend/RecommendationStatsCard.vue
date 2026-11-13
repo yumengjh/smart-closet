@@ -26,7 +26,7 @@ onMounted(load)
         <a-descriptions-item label="推荐出的搭配">{{ stats.effect.shown }} 套</a-descriptions-item>
         <a-descriptions-item label="采用">{{ stats.effect.adopted }} 套（{{ pct(stats.effect.adoptionRate) }}）</a-descriptions-item>
         <a-descriptions-item label="点赞 / 点踩">{{ stats.effect.liked }} / {{ stats.effect.disliked }}（好评 {{ pct(stats.effect.likeRate) }}）</a-descriptions-item>
-        <a-descriptions-item label="在搭台打开">{{ stats.effect.openedInWorkspace }} 套</a-descriptions-item>
+        <a-descriptions-item label="编辑这套">{{ stats.effect.openedInWorkspace }} 套</a-descriptions-item>
         <a-descriptions-item label="3 天内穿了">{{ stats.effect.wornWithin3Days }} 套</a-descriptions-item>
         <a-descriptions-item label="换一件">{{ stats.effect.swaps }} 次</a-descriptions-item>
       </a-descriptions>

@@ -19,8 +19,8 @@ const title = computed(() => props.garment.name || (props.garment.category[0] &&
   : '未分类衣物'))
 const aiGenerated = computed(() => Boolean(props.garment.images.find(image => image.id === props.garment.displayAssetId)?.aiGenerated))
 // Issue #1: a picture still waiting in the queue looks like a finished (possibly broken) result; say so on the card.
-const queueLabel = computed(() => props.garment.taskStatus === 'QUEUED' ? '排队中' : props.garment.taskStatus === 'RUNNING' ? '处理中' : props.garment.taskStatus === 'CANCEL_REQUESTED' ? '正在取消' : '')
-const pendingLabel = computed(() => `${stickerPending.value ? '贴纸待继续' : props.garment.taskStatus ? taskLabels[props.garment.taskStatus] : '待核对'} · 未入柜`)
+const queueLabel = computed(() => props.garment.taskStatus === 'QUEUED' ? '排队中' : props.garment.taskStatus === 'RUNNING' ? '正在整理' : props.garment.taskStatus === 'CANCEL_REQUESTED' ? '正在取消' : '')
+const pendingLabel = computed(() => `${stickerPending.value ? '透明图待继续' : props.garment.taskStatus ? taskLabels[props.garment.taskStatus] : '等你确认'} · 整理中`)
 function openGarment() { if (props.selectable) { emit('toggle'); return }
   if (!props.pending && !props.trashed) playSound('tap'); void router.push(`/garment/${props.garment.id}`) }
 </script>
@@ -44,8 +44,8 @@ function openGarment() { if (props.selectable) { emit('toggle'); return }
             <a-tooltip v-if="pending" :title="pendingLabel" :trigger="['hover', 'focus']">
               <span class="card-badge pending" tabindex="0" role="img" :aria-label="pendingLabel"><ClockCircleOutlined /></span>
             </a-tooltip>
-            <a-tooltip v-else-if="!trashed && stickerPending" title="已入柜 · 贴纸未完成" :trigger="['hover', 'focus']">
-              <span class="card-badge done" tabindex="0" role="img" aria-label="已入柜 · 贴纸未完成"><CheckCircleFilled /></span>
+            <a-tooltip v-else-if="!trashed && stickerPending" title="已收进衣柜 · 透明图未完成" :trigger="['hover', 'focus']">
+              <span class="card-badge done" tabindex="0" role="img" aria-label="已收进衣柜 · 透明图未完成"><CheckCircleFilled /></span>
             </a-tooltip>
             <a-tooltip v-if="review" :title="`需核对：${review}`" :trigger="['hover', 'focus']">
               <span class="card-badge review" tabindex="0" role="img" :aria-label="`需核对：${review}`"><ExclamationCircleOutlined /></span>
@@ -55,7 +55,7 @@ function openGarment() { if (props.selectable) { emit('toggle'); return }
             </a-tooltip>
           </span>
         </div>
-        <p>{{ garment.patterns[0] || '信息待补充' }}<span v-if="garment.seasons.length"> · {{ garment.seasons.slice(0, 2).join(' / ') }}</span></p>
+        <p>{{ garment.patterns[0] || '资料还没填' }}<span v-if="garment.seasons.length"> · {{ garment.seasons.slice(0, 2).join(' / ') }}</span></p>
       </div>
       <span class="card-swatch" :style="{ background: garment.imageColor }" :aria-label="garment.primaryColor[0] || '未知颜色'"></span>
     </div>

@@ -26,7 +26,7 @@ function open(info: WorkspaceInfo) {
   else { setActiveWorkspace(owner, info.id); void router.push('/outfits/workspace') }
 }
 function detail(summary: WorkspaceSummary) {
-  return summary.boards ? `${summary.boards} 个组合台${summary.unsaved ? `，${summary.unsaved} 个未保存` : ''}` : '空'
+  return summary.boards ? `${summary.boards} 套搭配${summary.unsaved ? `，${summary.unsaved} 个未保存` : ''}` : '空'
 }
 </script>
 

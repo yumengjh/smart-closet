@@ -195,104 +195,7 @@ h3 { font-size: 15px; line-height: 1.5; font-weight: 600; }
 .edge-help-modal .ant-modal-body { max-height: calc(100dvh - 180px); overflow-y: auto; overscroll-behavior: contain; }
 @media (max-width: 767px) { .edge-help-modal { top: 20px; padding-bottom: 20px; } .edge-help-modal .ant-modal-body { max-height: calc(100dvh - 130px); } }
 
-/* ===== Settings：左侧分类 + 右侧分组卡片 ===== */
-.settings-layout {
-  display: grid;
-  grid-template-columns: 264px minmax(0, 1fr);
-  gap: var(--space-7);
-  align-items: start;
-}
-.first-login-layout { grid-template-columns: 1fr; max-width: 560px; }
-.first-login-layout .settings-nav { display: none; }
-.settings-version {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin-top: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  border-top: 1px solid var(--line);
-  color: var(--muted-subtle);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-  user-select: text;
-}
-.settings-portable-alert { margin-bottom: var(--space-5); }
-/* 左侧导航 */
-.settings-nav {
-  position: sticky;
-  top: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: var(--space-2);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
-}
-/* Keep the two-line navigation independent of Ant Button's fixed height and
-   inline layout, including when its styles are injected after this sheet. */
-.settings-nav .settings-nav-item {
-  display: flex;
-  width: 100%;
-  height: auto;
-  min-height: 56px;
-  flex-shrink: 0;
-  align-items: center;
-  gap: var(--space-3);
-  padding: 10px 12px;
-  border: 0;
-  border-radius: var(--radius-md);
-  background: none;
-  cursor: pointer;
-  text-align: left;
-  color: var(--ink);
-  transition: background .15s;
-  text-decoration: none;
-}
-.settings-nav .settings-nav-link { margin-top: 6px; position: relative; }
-.settings-nav .settings-nav-link::before { content: ''; position: absolute; top: -4px; left: 12px; right: 12px; border-top: 1px solid var(--line); }
-.settings-nav .settings-nav-item:hover { background: var(--surface-alt); }
-.settings-nav .settings-nav-item:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
-.settings-nav .settings-nav-item.active,
-.settings-nav .settings-nav-item.active:hover { background: var(--selection-bg); color: var(--ink); }
-.settings-nav-item > .settings-nav-icon {
-  display: grid;
-  flex-shrink: 0;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  border-radius: var(--radius-sm);
-  background: var(--surface-alt);
-  color: var(--muted-strong);
-  font-size: 17px;
-}
-.settings-nav-item.active > .settings-nav-icon { background: var(--surface); color: var(--ink); }
-.settings-nav-item > .settings-nav-text { display: block; flex: 1; min-width: 0; }
-.settings-nav-text strong { display: block; font-size: 14px; font-weight: 500; line-height: 1.4; }
-.settings-nav-text small { display: block; margin-top: 2px; font-size: 12px; line-height: 1.4; color: var(--muted-copy); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.settings-nav .settings-nav-item > .settings-nav-arrow { margin-inline-start: 0; color: var(--muted-subtle); font-size: 12px; flex-shrink: 0; opacity: 0; transition: opacity .15s; }
-.settings-nav .settings-nav-item:hover > .settings-nav-arrow,
-.settings-nav .settings-nav-item.active > .settings-nav-arrow { opacity: 1; color: var(--ink); }
-/* 右侧面板：标题 + 若干分组卡片 */
-.settings-panel { min-width: 0; max-width: 880px; }
-.settings-panel-head { display: flex; align-items: center; gap: var(--space-4); margin-bottom: var(--space-5); }
-.settings-panel-icon {
-  display: grid;
-  flex-shrink: 0;
-  place-items: center;
-  width: 44px;
-  height: 44px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
-  color: var(--muted-strong);
-  font-size: 20px;
-}
-.settings-panel-title { min-width: 0; }
-.settings-panel-title .eyebrow { margin-bottom: 2px; font-size: 12px; }
-.settings-panel-title h2 { margin: 0; font-size: 20px; font-weight: 600; line-height: 1.35; }
-.settings-panel-title > p:last-child { margin-top: 4px; font-size: 13px; color: var(--muted-copy); line-height: 1.6; }
-.settings-panel .settings-panel-back { display: none; flex-shrink: 0; width: 40px; height: 40px; padding: 0; color: var(--muted-strong); }
+/* ===== 我的：分区卡片（外壳在 SettingsPage.vue，ToC 改版 P2/P4） ===== */
 .settings-section-content { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
 /* 分组卡片 */
 .settings-group {
@@ -318,27 +221,7 @@ h3 { font-size: 15px; line-height: 1.5; font-weight: 600; }
 .settings-group .ant-form-item:last-child { margin-bottom: 0; }
 .settings-group .password-form { max-width: 440px; }
 .settings-group .quota-numbers { margin: 0 0 var(--space-4); }
-/* 移动端返回 */
-@media (max-width: 1023px) {
-  .settings-layout { grid-template-columns: 1fr; gap: 0; }
-  .settings-nav { position: static; }
-  .settings-panel { max-width: none; }
-  .settings-nav.mobile-hidden, .settings-heading.mobile-hidden { display: none; }
-  .settings-panel { display: none; }
-  .settings-panel.mobile-shown { display: block; }
-  .settings-panel .settings-panel-back { display: inline-flex; align-items: center; justify-content: center; margin-left: -10px; }
-  .settings-panel-head { position: sticky; top: 0; z-index: 5; margin: 0 -28px var(--space-4); padding: 12px 28px; background: var(--paper); gap: var(--space-3); }
-  .settings-panel-icon { display: none; }
-  .settings-nav .settings-nav-item > .settings-nav-arrow { opacity: 1; }
-}
-@media (min-width: 1024px) {
-  .settings-panel { display: block !important; }
-}
 @media (max-width: 767px) {
-  .settings-nav .settings-nav-item { min-height: 60px; }
-  .settings-panel-head { margin: 0 -18px var(--space-3); padding: 10px 18px; }
-  .settings-panel-title h2 { font-size: 18px; }
-  .settings-panel-title .eyebrow { display: none; }
   .settings-section-content { gap: var(--space-3); }
   .settings-group { padding: 18px; }
   .settings-group-head { margin-bottom: var(--space-4); }
@@ -419,7 +302,6 @@ h3 { font-size: 15px; line-height: 1.5; font-weight: 600; }
 .auth-hint { margin: 4px 0 0; color: var(--warning); font-size: 12px; line-height: 1.7; }
 
 /* Real-time camera focus retains assistant state while hiding mobile chrome. */
-.tryon-settings-links { display:flex;gap:12px;flex-wrap:wrap;grid-column:1/-1;margin-bottom:16px; }
 /* 实时试穿：取景框顶满内容区，去掉外壳顶栏和页面留白（相机页有自己的顶栏）。 */
 .tryon-camera-mode .topbar { display: none; }
 .tryon-camera-mode .route-content { width: 100%; max-width: none; padding: 0; }

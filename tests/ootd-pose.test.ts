@@ -41,5 +41,5 @@ test('adjustment summary reads naturally', () => {
 
 test('unnamed models fall back to a dated label', () => {
   assert.equal(modelLabel({ name: '长发的我', createdAt: 0 }), '长发的我')
-  assert.match(modelLabel({ name: null, createdAt: Date.UTC(2026, 9, 12) }), /^模特 · /)
+  assert.match(modelLabel({ name: null, createdAt: Date.UTC(2026, 9, 12) }), /^形象 · /)
 })

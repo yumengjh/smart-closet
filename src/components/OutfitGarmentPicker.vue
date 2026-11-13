@@ -36,7 +36,7 @@ const roles = [{ value: 'ALL', label: '全部分类' }, ...outfitRoleOptions]
         <component :is="replacing ? SwapOutlined : pickedIds.has(garment.id) ? CheckOutlined : PlusOutlined" class="outfit-garment-add" />
       </a-button>
     </div>
-    <div v-else class="outfit-picker-empty"><a-empty :image="Empty.PRESENTED_IMAGE_SIMPLE" description="没有符合条件的衣物" /><p>换个搜索词或分类，也可以先将衣物确认入柜。</p><RouterLink to="/wardrobe"><a-button>打开我的衣柜</a-button></RouterLink></div>
+    <div v-else class="outfit-picker-empty"><a-empty :image="Empty.PRESENTED_IMAGE_SIMPLE" description="没有符合条件的衣物" /><p>换个搜索词或分类，也可以先将衣物收进衣柜。</p><RouterLink to="/wardrobe"><a-button>打开我的衣柜</a-button></RouterLink></div>
     <div class="outfit-picker-footer"><span>{{ pickedIds.size }} 件已加入</span><span>{{ mobile ? '点选加入，再到画板调整' : '点击加入 · 拖到画板指定位置' }}</span></div>
   </div>
 </template>

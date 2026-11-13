@@ -20,14 +20,14 @@ function when(value: string) {
   const date = new Date(value), time = date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })
   return date.toDateString() === new Date().toDateString() ? `今天 ${time}` : `${date.getMonth() + 1}月${date.getDate()}日 ${time}`
 }
-const stepNote = (step: ClosetTask['steps'][number]) => step.status === 'skipped' ? step.name === '制作贴纸' ? '尚未制作' : '已跳过' : step.status === 'review' ? '需检查' : ''
+const stepNote = (step: ClosetTask['steps'][number]) => step.status === 'skipped' ? step.name === '做透明图' ? '尚未制作' : '已跳过' : step.status === 'review' ? '需检查' : ''
 async function load() { try { const response = await closetApi.tasks(); if (!alive) return; tasks.value = response; error.value = ''; delay = 2000 } catch (cause) { error.value = cause instanceof Error ? cause.message : '任务暂时无法加载。'; delay = Math.min(delay * 2, 30000) } finally { loading.value = false } }
 function cancel(task: ClosetTask) { modal.confirm({ title: '取消这次处理？', content: '原图与已完成步骤的图片会保留，需要等待服务端终止任务。', okText: '取消处理', cancelText: '继续等待', onOk: async () => { cancelling.value = task.id; try { await closetApi.cancel(task.id); await load() } catch (cause) { error.value = String(cause) } finally { cancelling.value = ''; poll() } } }) }
 function poll() { window.clearTimeout(timer); if (alive && (runningCount.value || error.value)) timer = window.setTimeout(async () => { await load(); poll() }, delay) }
 onMounted(async () => { alive = true; await load(); poll() }); onUnmounted(() => { alive = false; window.clearTimeout(timer) })
 </script>
 <template>
-  <header class="page-heading"><div><h1>任务记录</h1><p class="page-subtitle">每件衣物从上传到入柜的处理步骤和结果。快速入柜会自动完成，其他整理方式可以逐件核对。</p></div><span v-if="runningCount" class="state-badge running"><LoadingOutlined spin /> {{ runningCount }} 项处理中</span></header>
+  <header class="page-heading"><div><h1>任务记录</h1><p class="page-subtitle">每件衣物从上传到收进衣柜的处理步骤和结果。快速添加会自动完成，其他整理方式可以逐件核对。</p></div><span v-if="runningCount" class="state-badge running"><LoadingOutlined spin /> {{ runningCount }} 项处理中</span></header>
   <ExecutionTasks :tasks="tasks" />
   <RenderTasksOverview />
   <div class="list-toolbar tasks-toolbar"><a-segmented v-model:value="filter" :options="filters" /><span class="muted">显示最近 50 项</span></div>

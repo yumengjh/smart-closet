@@ -57,19 +57,19 @@ function aiImage(row: LocalPhoto) { return row.result?.garment.images?.find(imag
 function status(row: LocalPhoto) {
   if (row.state === 'MARKING') return { title: '选一下这张的主角', detail: '指定目标后上传，其他照片继续处理', tone: 'waiting' }
   if (row.state === 'ERROR') return { title: '上传未完成', detail: row.error || '照片仍在本机，可以重试', tone: 'warning' }
-  if (row.state === 'UPLOADING') return { title: '正在上传照片', detail: '收到保存确认后，会自动制作贴纸', tone: 'processing' }
+  if (row.state === 'UPLOADING') return { title: '正在上传照片', detail: '收到保存确认后，会自动做透明图', tone: 'processing' }
   if (row.state === 'PENDING') return { title: '照片已保存在本机', detail: row.error ? '连接恢复后自动重试上传' : '等待上传，可以继续拍下一件', tone: 'waiting' }
   const view = row.result
   if (!view) return { title: '照片已保存', detail: '正在读取处理状态', tone: 'waiting' }
   if (view.garment.status === 'TRASHED') return { title: '衣物已移入回收站', detail: '可以在衣柜回收站查看', tone: 'waiting' }
   const base = view.task.steps.find(step => step.type === 'SEGMENT')
   const sticker = view.garment.imageProcessing?.stickerReady || view.garment.images?.some(image => image.kind === 'BASE_STICKER')
-  if (['FAILED', 'UNKNOWN', 'NEEDS_REVIEW'].includes(view.task.status)) return { title: sticker ? '贴纸已保留，后续处理需查看' : '照片已保留，处理需查看', detail: view.task.status === 'UNKNOWN' ? '云端结果待确认，请到衣物详情查看' : '可先使用衣物，或在详情中重新处理', tone: 'warning' }
+  if (['FAILED', 'UNKNOWN', 'NEEDS_REVIEW'].includes(view.task.status)) return { title: sticker ? '透明图已保留，后续处理需查看' : '照片已保留，处理需查看', detail: view.task.status === 'UNKNOWN' ? '云端结果待确认，请到衣物详情查看' : '可先使用衣物，或在详情中重新处理', tone: 'warning' }
   if (view.task.status === 'CANCELLED') return { title: '后续处理已取消', detail: '已保存的衣物和图片仍然保留', tone: 'waiting' }
   const wantedNow = view.garment.status === 'WANTED'
-  if (sticker) return { title: wantedNow ? `贴纸已存为${wantedLabel.value}` : '贴纸已入柜', detail: active(row) ? '现在就能查看使用，资料在后台补齐' : '整理完成，可以查看或修改衣物信息', tone: 'success' }
-  if (base?.status === 'SKIPPED') return { title: wantedNow ? `原图已存为${wantedLabel.value}` : '原图已入柜', detail: '去背景未完成，资料识别继续进行', tone: 'warning' }
-  return { title: view.garment.status === 'ACTIVE' ? '原图已入柜，贴纸制作中' : wantedNow ? `原图已存为${wantedLabel.value}，贴纸制作中` : '照片已保存，正在准备贴纸', detail: base?.status === 'RUNNING' ? '正在去背景、加白边，做好后自动显示' : '已排队，无需再次提交', tone: base?.status === 'RUNNING' ? 'processing' : 'waiting' }
+  if (sticker) return { title: wantedNow ? `透明图已存为${wantedLabel.value}` : '透明图已收进衣柜', detail: active(row) ? '现在就能查看使用，资料在后台补齐' : '整理完成，可以查看或修改衣物信息', tone: 'success' }
+  if (base?.status === 'SKIPPED') return { title: wantedNow ? `原图已存为${wantedLabel.value}` : '原图已收进衣柜', detail: '去背景未完成，资料识别继续进行', tone: 'warning' }
+  return { title: view.garment.status === 'ACTIVE' ? '原图已收进衣柜，透明图制作中' : wantedNow ? `原图已存为${wantedLabel.value}，透明图制作中` : '照片已保存，正在准备透明图', detail: base?.status === 'RUNNING' ? '正在去背景、加白边，做好后自动显示' : '已排队，无需再次提交', tone: base?.status === 'RUNNING' ? 'processing' : 'waiting' }
 }
 function takePhoto() { if (nativeCamera) nativeInput.value?.click(); else camera.value = true }
 async function capture(file: File, specify = false, quiet = false) {
@@ -172,7 +172,7 @@ function manage({ key }: { key: string | number }) {
   const lost = targets.filter(unsent).length
   modal.confirm({
     title: key === 'finished' ? `清除 ${targets.length} 条已完成记录？` : `清空 ${targets.length} 条最近录入？`,
-    content: `只删除本机的录入记录，已入柜的衣物不受影响。${lost ? `其中 ${lost} 张照片还没上传，会一起删除且无法找回。` : ''}`,
+    content: `只删除本机的录入记录，已收进衣柜的衣物不受影响。${lost ? `其中 ${lost} 张照片还没上传，会一起删除且无法找回。` : ''}`,
     okText: key === 'finished' ? '清除' : '清空', okButtonProps: { danger: true }, cancelText: '取消',
     onOk: async () => { await removePhotos(targets.map(row => row.id), account); if (marker.value && targets.some(row => row.id === marker.value?.id)) marker.value = undefined; expanded.value = false },
   })
@@ -185,7 +185,7 @@ function chip(row: LocalPhoto) {
   if (row.state === 'UPLOADING') return '上传中'
   if (row.state === 'PENDING') return '在本机'
   if (row.result?.garment.status === 'TRASHED') return '已删除'
-  if (tone === 'success') return rowWanted(row) ? wantedLabel.value : '已入柜'
+  if (tone === 'success') return rowWanted(row) ? wantedLabel.value : '已收进衣柜'
   if (tone === 'warning') return '需查看'
   return tone === 'processing' ? '处理中' : '排队中'
 }
@@ -237,7 +237,7 @@ onBeforeUnmount(() => { alive = false; clearTimeout(timer); for (const url of th
 </script>
 
 <template>
-  <section class="quick-intake" aria-label="快速拍照入柜">
+  <section class="quick-intake" aria-label="快速拍照收进衣柜">
     <div class="capture-panel" :class="{ dragging, wanted: ownership === 'WANTED' }" @dragenter.prevent="dragEnter" @dragover.prevent @dragleave="dragLeave" @drop.prevent="dropped">
       <div v-if="dragging" class="drop-veil" aria-hidden="true"><InboxOutlined /><strong>{{ ownership === 'WANTED' ? `松手，存为${wantedLabel}` : '松手，收进衣柜' }}</strong></div>
       <a-button type="text" shape="circle" class="settings-button" aria-label="录入设置" @click="settings = true"><SettingOutlined /></a-button>
@@ -255,7 +255,7 @@ onBeforeUnmount(() => { alive = false; clearTimeout(timer); for (const url of th
         <div v-if="saving || sessionRows.length" class="capture-receipt" role="status" aria-live="polite" aria-atomic="true">
           <template v-if="saving"><LoadingOutlined spin /><span>正在保存…</span></template>
           <template v-else>
-            <span class="session-copy">本次 {{ sessionRows.length }} 件<template v-if="sessionReady"> · {{ sessionReady }} 件已入柜</template></span>
+            <span class="session-copy">本次 {{ sessionRows.length }} 件<template v-if="sessionReady"> · {{ sessionReady }} 件已收进衣柜</template></span>
             <a-progress :percent="sessionPercent" :show-info="false" size="small" :stroke-color="'var(--accent)'" :status="sessionPercent === 100 ? 'normal' : 'active'" class="session-progress" />
           </template>
         </div>
@@ -313,10 +313,10 @@ onBeforeUnmount(() => { alive = false; clearTimeout(timer); for (const url of th
       <a-button v-if="rows.length > 6" type="text" block class="show-more" @click="expanded = !expanded">{{ expanded ? '收起' : `还有 ${rows.length - 6} 张` }}</a-button>
     </section>
     <a-modal v-if="!compact" v-model:open="settings" title="录入设置" :footer="null" width="480px" centered>
-      <div class="quick-settings"><h3>什么时候入柜</h3><a-radio-group v-model:value="mode"><a-radio value="BASE_READY"><strong>贴纸做好后入柜</strong><small>推荐 · 去背景、加白边后即可查看使用</small></a-radio><a-radio value="UPLOAD_READY"><strong>原图保存后立即入柜</strong><small>先用原图，贴纸做好后自动更新</small></a-radio></a-radio-group><div class="marker-setting"><div><h3>拍摄后指定主视衣物</h3><p>照片里有多件衣物时，点选或框选目标。</p></div><a-switch v-model:checked="markerMode" aria-label="拍摄后指定主视衣物" /></div><p class="storage-note">照片先存在本机，上传完成前请保持网页打开。“{{ wantedLabel }}”的叫法可以在「我的 → 外观」里改。</p><a-button type="primary" block size="large" @click="settings = false">完成</a-button></div>
+      <div class="quick-settings"><h3>什么时候收进衣柜</h3><a-radio-group v-model:value="mode"><a-radio value="BASE_READY"><strong>透明图做好后收进衣柜</strong><small>推荐 · 去背景、加白边后即可查看使用</small></a-radio><a-radio value="UPLOAD_READY"><strong>原图保存后立即收进衣柜</strong><small>先用原图，透明图做好后自动更新</small></a-radio></a-radio-group><div class="marker-setting"><div><h3>拍摄后指定主视衣物</h3><p>照片里有多件衣物时，点选或框选目标。</p></div><a-switch v-model:checked="markerMode" aria-label="拍摄后指定主视衣物" /></div><p class="storage-note">照片先存在本机，上传完成前请保持网页打开。“{{ wantedLabel }}”的叫法可以在「我的 → 外观」里改。</p><a-button type="primary" block size="large" @click="settings = false">完成</a-button></div>
     </a-modal>
     <a-drawer v-else v-model:open="settings" title="录入设置" placement="bottom" height="auto" root-class-name="quick-settings-drawer">
-      <div class="quick-settings"><h3>什么时候入柜</h3><a-radio-group v-model:value="mode"><a-radio value="BASE_READY"><strong>贴纸做好后入柜</strong><small>推荐 · 去背景、加白边后即可查看使用</small></a-radio><a-radio value="UPLOAD_READY"><strong>原图保存后立即入柜</strong><small>先用原图，贴纸做好后自动更新</small></a-radio></a-radio-group><div class="marker-setting"><div><h3>拍摄后指定主视衣物</h3><p>照片里有多件衣物时，点选或框选目标。</p></div><a-switch v-model:checked="markerMode" aria-label="拍摄后指定主视衣物" /></div><p class="storage-note">照片先存在本机，上传完成前请保持网页打开。“{{ wantedLabel }}”的叫法可以在「我的 → 外观」里改。</p><a-button type="primary" block size="large" @click="settings = false">完成</a-button></div>
+      <div class="quick-settings"><h3>什么时候收进衣柜</h3><a-radio-group v-model:value="mode"><a-radio value="BASE_READY"><strong>透明图做好后收进衣柜</strong><small>推荐 · 去背景、加白边后即可查看使用</small></a-radio><a-radio value="UPLOAD_READY"><strong>原图保存后立即收进衣柜</strong><small>先用原图，透明图做好后自动更新</small></a-radio></a-radio-group><div class="marker-setting"><div><h3>拍摄后指定主视衣物</h3><p>照片里有多件衣物时，点选或框选目标。</p></div><a-switch v-model:checked="markerMode" aria-label="拍摄后指定主视衣物" /></div><p class="storage-note">照片先存在本机，上传完成前请保持网页打开。“{{ wantedLabel }}”的叫法可以在「我的 → 外观」里改。</p><a-button type="primary" block size="large" @click="settings = false">完成</a-button></div>
     </a-drawer>
   </section>
 </template>

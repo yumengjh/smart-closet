@@ -116,7 +116,7 @@ async function openBoard() {
   const name = `${title(top)} + ${title(bottom)}`
   const scene = await candidateScene({ name, reason: '', garmentIds: [top.id, bottom.id] })
   const id = createUuid()
-  try { localStorage.setItem(`yixu.outfit-draft.v1:${closet.user.username}:new:${id}`, JSON.stringify({ name, revision: null, scene, savedAt: Date.now() })) } catch { message.error('浏览器存储不可用，无法带到组合台。'); return }
+  try { localStorage.setItem(`yixu.outfit-draft.v1:${closet.user.username}:new:${id}`, JSON.stringify({ name, revision: null, scene, savedAt: Date.now() })) } catch { message.error('浏览器存储不可用，无法带到搭配。'); return }
   playSound('tap')
   await router.push({ path: '/outfits/new', query: { draft: id, from: 'mix' } })
 }
@@ -164,7 +164,7 @@ onUnmounted(() => window.removeEventListener('keydown', keys))
       <footer class="mix-bar">
         <a-button type="text" size="small" :loading="scoring" :disabled="Boolean(score)" class="mix-rate" @click="rate"><StarOutlined /> {{ score ? '已评' : '评一评' }}</a-button>
         <a-button type="text" size="small" class="mix-shuffle" @click="shuffle"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M3 7h3.5c2 0 3.2 1 4.3 2.6l2.4 3.8C14.3 15 15.5 16 17.5 16H21M17 13l3 3-3 3M3 16h3.5c1.2 0 2-.3 2.7-1M21 7h-3.5c-1.2 0-2 .4-2.7 1M17 4l3 3-3 3" /></svg> 随机一套</a-button>
-        <a-button type="primary" size="small" class="mix-open" @click="openBoard">在搭台打开</a-button>
+        <a-button type="primary" size="small" class="mix-open" @click="openBoard">编辑这套</a-button>
       </footer>
     </template>
   </section>

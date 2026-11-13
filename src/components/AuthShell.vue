@@ -12,9 +12,9 @@ defineProps<{ eyebrow?: string; title: string; intro?: string; compactArt?: bool
 const appearance = useThemeStore()
 const illustration = computed(() => appearance.isDark ? '/illustrations/yuda-login-dark.svg' : '/illustrations/yuda-login-light.svg')
 const features = [
-  { icon: CameraOutlined, title: '拍一下就入柜', text: '自动去背景、做成贴纸，识别品类和颜色' },
+  { icon: CameraOutlined, title: '拍一下就收进衣柜', text: '自动去背景、做成透明图，识别品类和颜色' },
   { icon: ThunderboltOutlined, title: '今天穿什么', text: '按天气、场合和你的风格搭好几套' },
-  { icon: SkinOutlined, title: 'OOTD 试穿', text: '选好的搭配一键看上身效果' },
+  { icon: SkinOutlined, title: '上身效果图', text: '选好的搭配一键看上身效果' },
 ]
 </script>
 

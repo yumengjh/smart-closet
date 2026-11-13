@@ -176,7 +176,7 @@ export function restoreOutfitDraft(outfit: Pick<Outfit, 'name' | 'revision' | 's
 }
 
 export function stickerLimit(elements: OutfitElement[], kind: 'GARMENT' | 'PERSON_PART'): string | null {
-  if (elements.length >= 64) return '画板最多放入 64 张贴纸。'
+  if (elements.length >= 64) return '画板最多放入 64 件单品。'
   if (kind === 'GARMENT' && elements.filter(item => item.kind !== 'PERSON_PART').length >= 32) return '画板最多放入 32 件衣物。'
   return null
 }

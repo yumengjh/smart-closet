@@ -12,8 +12,8 @@ const labels = { completed: '已结束', running: '执行中', failed: '失败',
 const icons = { completed: CheckCircleOutlined, running: LoadingOutlined, failed: CloseCircleOutlined, waiting: ClockCircleOutlined, review: ExclamationCircleOutlined, skipped: ClockCircleOutlined }
 function duration(start?: string, end?: string) { if (!start || !end) return ''; return `${Math.max(0, Math.round((Date.parse(end) - Date.parse(start)) / 1000))} 秒` }
 const hasBaseSticker = computed(() => props.task.assets?.some(asset => asset.kind === 'BASE_STICKER'))
-function stepName(step: ClosetTask['steps'][number]) { return hasBaseSticker.value && step.type === 'SEGMENT' ? '基础贴纸（去背景与描边）' : hasBaseSticker.value && step.type === 'STICKER' ? '增强后的贴纸' : step.name }
-function stepMessage(message: string) { return message.replace('透明图需要检查；可选用此图继续本地处理，不会重新生图。', '背景检查未通过，等待核对或重新抠图；下一步贴纸尚未制作。') }
+function stepName(step: ClosetTask['steps'][number]) { return hasBaseSticker.value && step.type === 'SEGMENT' ? '基础透明图（去背景与描边）' : hasBaseSticker.value && step.type === 'STICKER' ? '增强后的透明图' : step.name }
+function stepMessage(message: string) { return message.replace('透明图需要检查；可选用此图继续本地处理，不会重新生图。', '背景检查未通过，等你确认或重新抠图；下一步透明图尚未制作。') }
 </script>
 <template>
   <section class="progress-panel">

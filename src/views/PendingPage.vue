@@ -19,7 +19,7 @@ async function load() {
   try { const response = await closetApi.list({ status: 'DRAFT', q: '', category: '', color: '', season: '', page: page.value, size: 24 }); if (!alive) return; items.value = response.items; total.value = response.total; error.value = ''; delay = 2000
     // Hint only (design 相似衣物 S2): drafts that look like something already in the closet.
     similarApi.flags(response.items.filter(i => !isProcessing(i.taskStatus)).map(i => i.id)).then(r => { if (alive) duplicates.value = r.flags }).catch(() => {}) }
-  catch (cause) { error.value = cause instanceof Error ? cause.message : '未入柜衣物暂时无法加载。'; delay = Math.min(30000, delay * 2) }
+  catch (cause) { error.value = cause instanceof Error ? cause.message : '整理中的衣服暂时无法加载。'; delay = Math.min(30000, delay * 2) }
   finally { loading.value = false }
 }
 // Issue #84: act on several drafts at once (admit, re-recognise, trash). Each garment is submitted on its own, so one
@@ -31,7 +31,7 @@ watch(selecting, on => document.documentElement.classList.toggle('closet-selecti
 onUnmounted(() => document.documentElement.classList.remove('closet-selecting'))
 const batchResult = ref<{ type: 'success' | 'warning' | 'error'; message: string; description: string } | null>(null)
 type BatchMode = 'confirm' | 'recognize' | 'trash'
-const batchLabels: Record<BatchMode, string> = { confirm: '确认入柜', recognize: '重新识别资料', trash: '移入回收站' }
+const batchLabels: Record<BatchMode, string> = { confirm: '收进衣柜', recognize: '再认一次', trash: '移入回收站' }
 const allSelected = computed(() => filtered.value.length > 0 && filtered.value.every(item => selected.value.has(item.id)))
 function toggle(id: string) { const next = new Set(selected.value); if (next.has(id)) next.delete(id); else next.add(id); selected.value = next }
 function toggleAll() { selected.value = allSelected.value ? new Set() : new Set(filtered.value.map(item => item.id)) }
@@ -40,8 +40,8 @@ function startBatch(mode: BatchMode) {
   const targets = items.value.filter(item => selected.value.has(item.id))
   const runnable = mode === 'trash' ? targets : targets.filter(item => !isProcessing(item.taskStatus))
   const skipped = targets.length - runnable.length
-  if (!runnable.length) { batchResult.value = { type: 'warning', message: '没有可提交的衣物', description: '所选衣物都在处理中，请等处理结束后再试。' }; return }
-  const content = { confirm: '按当前展示图和资料直接入柜，之后仍可在衣物详情里修改。贴纸没做完或资料需要核对的衣物会被退回，请逐件处理。', recognize: '每件调用一次识别模型，使用 1 次 AI 额度；已手动改过的字段会保留。', trash: '移入回收站后不再显示在这里，可在回收站恢复。' }[mode]
+  if (!runnable.length) { batchResult.value = { type: 'warning', message: '没有可提交的衣物', description: '选中的衣服都还在整理，请等整理好再试。' }; return }
+  const content = { confirm: '按现在的图片和资料收进衣柜，之后仍可在衣服详情里修改。图片还没做好或资料要确认的衣服会被退回，请逐件看一下。', recognize: '每件重新认一次品类、颜色等资料，用 1 次图像额度；你改过的地方会保留。', trash: '移入回收站后不再显示在这里，可在回收站恢复。' }[mode]
   modal.confirm({ title: `${batchLabels[mode]}（${runnable.length} 件）？`, content: content + (skipped ? `另有 ${skipped} 件正在处理，将跳过。` : ''), okText: batchLabels[mode], cancelText: '取消', okButtonProps: { danger: mode === 'trash' }, onOk: () => { void runBatch(mode, runnable, skipped) } })
 }
 async function runBatch(mode: BatchMode, targets: Garment[], skipped: number) {
@@ -59,7 +59,7 @@ async function runBatch(mode: BatchMode, targets: Garment[], skipped: number) {
       failures.push(`${item.name || item.category[0] || '未命名衣物'}：${message}`)
     } finally { batchProgress.value = { done: index + 1, total: targets.length } }
   }
-  const notes = [stoppedByQuota ? `额度不足，${stoppedByQuota} 件未提交。` : '', skipped ? `${skipped} 件处理中已跳过。` : '', ...failures].filter(Boolean)
+  const notes = [stoppedByQuota ? `次数不够了，${stoppedByQuota} 件没有提交。` : '', skipped ? `${skipped} 件还在整理，已跳过。` : '', ...failures].filter(Boolean)
   batchResult.value = { type: done === 0 ? 'error' : notes.length ? 'warning' : 'success', message: `${batchLabels[mode]}：完成 ${done} / ${targets.length + skipped} 件${mode === 'recognize' && done ? '，可在任务页查看进度' : ''}。`, description: notes.join('\n') }
   batchBusy.value = ''
   if (done) { exitSelecting(); loading.value = true; await load(); await closet.refreshCounts(); poll() }
@@ -69,17 +69,17 @@ async function turnPage(change: number) { page.value += change; loading.value = 
 onMounted(async () => { alive = true; void loadPictureChecks(); await load(); await closet.refreshCounts(); poll() }); onUnmounted(() => { alive = false; window.clearTimeout(timer) })
 </script>
 <template>
-  <PageTitle title="未入柜" :count="total" unit="件" hint="处理中的照片和待核对结果都在这里。确认入柜后，它们会移到“我的衣柜”。" />
-  <div class="list-toolbar pending-toolbar"><a-segmented v-model:value="filter" :options="['全部', '处理中', '待核对', '需处理']" aria-label="按状态筛选当前页" /><span class="pending-gap"></span><a-button v-if="items.length && !selecting" class="pending-batch" @click="selecting = true; batchResult = null"><CheckSquareOutlined /> 批量处理</a-button></div>
-  <p v-if="selecting" class="pending-hint">点衣物勾选；选好后在下方确认入柜、重新识别或移入回收站。</p>
+  <PageTitle title="整理中" :count="total" unit="件" hint="刚拍的衣服在这里整理：正在整理的稍等，等你确认的点开看一下，做好的收进衣柜。" />
+  <div class="list-toolbar pending-toolbar"><a-segmented v-model:value="filter" :options="[{ value: '全部', label: '全部' }, { value: '处理中', label: '正在整理' }, { value: '等你确认', label: '做好了' }, { value: '需处理', label: '要看一下' }]" aria-label="按状态筛选当前页" /><span class="pending-gap"></span><a-button v-if="items.length && !selecting" class="pending-batch" @click="selecting = true; batchResult = null"><CheckSquareOutlined /> 批量处理</a-button></div>
+  <p v-if="selecting" class="pending-hint">点衣服勾选；选好后在下方收进衣柜、再认一次或移入回收站。</p>
   <Teleport to="body">
     <Transition name="batch-float">
       <section v-if="selecting" class="batch-float" aria-label="批量处理">
         <div class="batch-float-count"><b>{{ selected.size }}</b><span>件已选<small v-if="batchBusy">正在处理 {{ batchProgress.done }} / {{ batchProgress.total }}</small></span></div>
         <div class="batch-float-pick"><a-checkbox :checked="allSelected" :indeterminate="selected.size > 0 && !allSelected" :disabled="Boolean(batchBusy)" @change="toggleAll">全选</a-checkbox></div>
         <div class="batch-float-actions">
-          <a-button type="primary" :disabled="!selected.size || Boolean(batchBusy)" :loading="batchBusy === 'confirm'" @click="startBatch('confirm')">确认入柜</a-button>
-          <a-button :disabled="!selected.size || Boolean(batchBusy)" :loading="batchBusy === 'recognize'" @click="startBatch('recognize')">重新识别</a-button>
+          <a-button type="primary" :disabled="!selected.size || Boolean(batchBusy)" :loading="batchBusy === 'confirm'" @click="startBatch('confirm')">收进衣柜</a-button>
+          <a-button :disabled="!selected.size || Boolean(batchBusy)" :loading="batchBusy === 'recognize'" @click="startBatch('recognize')">再认一次</a-button>
           <a-button danger :disabled="!selected.size || Boolean(batchBusy)" :loading="batchBusy === 'trash'" @click="startBatch('trash')">移入回收站</a-button>
         </div>
         <a-tooltip title="退出批量处理"><a-button class="batch-float-close" type="text" shape="circle" aria-label="退出批量处理" :disabled="Boolean(batchBusy)" @click="exitSelecting"><CloseOutlined /></a-button></a-tooltip>
@@ -88,9 +88,9 @@ onMounted(async () => { alive = true; void loadPictureChecks(); await load(); aw
   </Teleport>
   <a-alert v-if="batchResult" :type="batchResult.type" :message="batchResult.message" :description="batchResult.description || undefined" show-icon closable class="page-alert batch-result" @close="batchResult = null" />
   <a-alert v-if="error" type="error" :message="error" show-icon class="page-alert" />
-  <GarmentCardSkeleton v-if="loading" label="正在加载未入柜衣物…" />
+  <GarmentCardSkeleton v-if="loading" label="正在加载整理中的衣服…" />
   <section v-else-if="filtered.length" class="garment-grid"><div v-for="item in filtered" :key="item.id" class="pending-card"><GarmentCard :review="pictureChecks[item.id]?.message" :garment="item" pending :selectable="selecting" :selected="selected.has(item.id)" @toggle="toggle(item.id)" /><RouterLink v-if="duplicates[item.id]" :to="`/garment/${item.id}`" class="pending-duplicate"><a-tag color="orange">可能重复：{{ duplicates[item.id].name }}</a-tag></RouterLink></div></section>
-  <section v-else class="empty-wardrobe compact-empty"><span class="empty-spark"><CheckCircleOutlined /></span><h2>{{ total ? '当前页没有此状态的衣物' : '没有未入柜的衣物' }}</h2><p>上传后可查看处理进度，处理结束后在工作台核对结果。</p><RouterLink to="/add" class="outline-button"><PlusOutlined /> 添加衣物</RouterLink></section>
+  <section v-else class="empty-wardrobe compact-empty"><span class="empty-spark"><CheckCircleOutlined /></span><h2>{{ total ? '这一页没有这种状态的衣服' : '没有正在整理的衣服' }}</h2><p>拍下的衣服会先在这里整理，做好后收进衣柜。</p><RouterLink to="/add" class="outline-button"><PlusOutlined /> 添加衣物</RouterLink></section>
   <footer v-if="total > 24" class="pagination-row"><span>第 {{ page }} / {{ Math.ceil(total / 24) }} 页</span><div><a-button :disabled="page === 1" @click="turnPage(-1)">上一页</a-button><a-button :disabled="page * 24 >= total" @click="turnPage(1)">下一页</a-button></div></footer>
 </template>
 <style scoped>

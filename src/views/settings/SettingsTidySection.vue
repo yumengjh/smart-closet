@@ -57,7 +57,7 @@ onUnmounted(() => clearTimeout(poll))
 </script>
 <template>
   <div class="settings-section-content tidy-section">
-    <p class="muted">按图像、颜色、轮廓、外观和描述比对出的“可能重复录入”的衣物。只是提示，不会自动合并或删除；确认是重复的，可以打开其中一件移入回收站。新衣物入柜后会自动检查一次，发现可能重复会在右上角提醒你。</p>
+    <p class="muted">按图像、颜色、轮廓、外观和描述比对出的“可能重复录入”的衣物。只是提示，不会自动合并或删除；确认是重复的，可以打开其中一件移入回收站。新衣物收进衣柜后会自动检查一次，发现可能重复会在右上角提醒你。</p>
     <div class="tidy-scan">
       <a-button type="primary" :loading="starting || scanning" @click="startScan"><ScanOutlined v-if="!starting && !scanning" /> {{ scanning ? '扫描中' : '一键扫描整个衣柜' }}</a-button>
       <span class="muted">{{ scanSummary || '扫描在后台进行，完成后会在右上角提醒。' }}</span>

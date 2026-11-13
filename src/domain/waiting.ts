@@ -55,10 +55,10 @@ const renderStages: Record<string, string> = { QUEUED: '排队中，马上开始
 export function renderEntry(job: RenderJob): WaitingEntry {
   const state = renderRunning.includes(job.status) ? 'processing' : job.status === 'SUCCEEDED' ? 'ready'
     : ['CANCELLED', 'DELETED', 'DELETE_PENDING'].includes(job.status) ? 'cancelled' : 'attention'
-  const title = job.purpose === 'BASELINE' ? '模特形象' : job.summary?.kind === 'ADJUST' ? '身材调整图'
-    : ['OOTD 穿搭图', job.summary?.pose].filter(Boolean).join(' · ')
+  const title = job.purpose === 'BASELINE' ? '形象' : job.summary?.kind === 'ADJUST' ? '身材调整图'
+    : ['上身图', job.summary?.pose].filter(Boolean).join(' · ')
   const stage = state === 'processing' ? renderStages[job.status] || '正在生成'
-    : state === 'ready' ? (job.purpose === 'BASELINE' ? '模特画好了，去确认' : '穿搭图好了，去看看')
+    : state === 'ready' ? (job.purpose === 'BASELINE' ? '形象画好了，去确认' : '穿搭图好了，去看看')
     : state === 'cancelled' ? '已停止生成' : job.status === 'UNKNOWN' ? '结果待核实，不会自动重发' : '生成未完成'
   return { key: `render:${job.id}`, kind: 'render', id: job.id, title, startedAt: job.createdAt, state, stage,
     note: state === 'processing' ? '通常 1 分钟左右，好了会提醒你' : job.error || '', read: false, childIds: [],
@@ -76,7 +76,7 @@ export function bulkEntry(batch: BatchRecognize): WaitingEntry {
     : batch.failed || failedTasks ? `完成 ${batch.succeeded} 件，${batch.failed + failedTasks} 件未成功，请检查`
     : `${batch.succeeded} 件都识别完了`
   const note = batch.failures.slice(0, 3).map(item => item.message).join('；')
-  return { key: `bulk:${batch.id}`, kind: 'bulk', id: batch.id, title: `批量重新识别资料（${batch.total} 件）`, startedAt: batch.createdAtMs,
+  return { key: `bulk:${batch.id}`, kind: 'bulk', id: batch.id, title: `批量再认一次资料（${batch.total} 件）`, startedAt: batch.createdAtMs,
     state: working ? 'processing' : batch.failed || failedTasks ? 'attention' : 'ready', stage, note, read: false,
     href: '/tasks', childIds: batch.jobIds, progress: batch.total ? Math.min(1, (batch.completed + batch.failed) / batch.total) : 1 }
 }

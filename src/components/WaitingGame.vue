@@ -67,7 +67,7 @@ onUnmounted(() => { clearTimeout(coverTimer); window.removeEventListener('closet
       </a-button>
     </div>
     <div class="game-bottom"><p role="status">{{ processing.activeCount ? `${processing.activeCount} 个任务仍在后台处理` : '处理结果可在站内任务中查看' }}</p><a-button :type="complete ? 'primary' : 'default'" @click="reset"><ReloadOutlined /> {{ complete ? '再玩一局' : '重新开始' }}</a-button></div>
-    <p class="game-note">不消耗 AI 额度 · 关闭后保留本轮，刷新后重新开始</p>
+    <p class="game-note">不花次数 · 关闭后保留本轮，刷新后重新开始</p>
   </a-modal>
 </template>
 <style scoped>

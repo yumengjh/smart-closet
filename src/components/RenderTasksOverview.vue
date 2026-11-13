@@ -22,7 +22,7 @@ function poll() { if(alive && mayPoll()) timer=setTimeout(async()=>{await load()
 function cancel(job: RenderJob) {
   modal.confirm({title:'取消这次生成？',content:'本平台将停止后续发布；已发出的请求无法保证上游停止或退还额度。',okText:'取消任务',cancelText:'继续等待',async onOk(){cancelling.value=job.id;try{await platformRequest(`/api/me/image-render-jobs/${job.id}/cancel`,'POST',{});await load()}finally{cancelling.value=''}}})
 }
-const title = (job: RenderJob) => job.purpose === 'BASELINE' ? '模特形象' : job.summary?.kind === 'ADJUST' ? '身材调整图' : ['OOTD 穿搭图', job.summary?.pose].filter(Boolean).join(' · ')
+const title = (job: RenderJob) => job.purpose === 'BASELINE' ? '形象' : job.summary?.kind === 'ADJUST' ? '身材调整图' : ['上身图', job.summary?.pose].filter(Boolean).join(' · ')
 const tone = (job: RenderJob) => active.has(job.status) ? 'running' : job.status === 'FAILED' ? 'failed' : 'quota'
 function when(ms: number) {
   const date = new Date(ms), time = date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })
@@ -35,7 +35,7 @@ onUnmounted(()=>{alive=false;clearTimeout(timer);window.removeEventListener('clo
   <section v-if="visible.length || error" class="render-card" aria-label="人物与穿搭图生成">
     <header class="render-head">
       <div><h2>人物与穿搭图生成</h2><p>只列出生成中或需要检查的图片，做好的结果保存在各自页面。</p></div>
-      <span class="render-links"><RouterLink to="/settings?section=personal">我的模特</RouterLink><RouterLink to="/ootd">OOTD 记录</RouterLink></span>
+      <span class="render-links"><RouterLink to="/settings?section=personal">我的形象</RouterLink><RouterLink to="/ootd">上身图 记录</RouterLink></span>
     </header>
     <a-alert v-if="error" type="warning" :message="`生成状态暂时无法更新：${error}`" show-icon class="render-alert" />
     <ul class="render-list">
@@ -47,7 +47,7 @@ onUnmounted(()=>{alive=false;clearTimeout(timer);window.removeEventListener('clo
           <small>开始于 {{ when(job.createdAt) }}</small>
         </div>
         <span class="render-actions">
-          <RouterLink v-if="job.purpose === 'OOTD' && ['UNKNOWN','FAILED'].includes(job.status)" :to="{ path: '/ootd', query: { job: job.id } }"><a-button size="small" type="primary">查看并重新生成</a-button></RouterLink>
+          <RouterLink v-if="job.purpose === '上身图' && ['UNKNOWN','FAILED'].includes(job.status)" :to="{ path: '/ootd', query: { job: job.id } }"><a-button size="small" type="primary">查看并重新生成</a-button></RouterLink>
           <a-button v-if="['QUEUED','WAITING_RESOURCE','RUNNING','UNKNOWN'].includes(job.status)" size="small" :loading="cancelling === job.id" @click="cancel(job)">取消生成</a-button>
         </span>
       </li>

@@ -13,6 +13,7 @@ export const router = createRouter({
     { path: '/login', component: () => import('./views/LoginPage.vue') },
     { path: '/register', component: () => import('./views/RegisterPage.vue') },
     { path: '/welcome', component: () => import('./views/WelcomePage.vue') },
+    { path: '/admin', component: () => import('./views/SettingsPage.vue') },
     { path: '/admin/users', component: () => import('./views/AdminUsersPage.vue') },
     { path: '/admin/security-audit', component: () => import('./views/AdminSecurityAuditPage.vue') },
     { path: '/wardrobe', component: () => import('./views/WardrobePage.vue') },
@@ -58,7 +59,7 @@ router.beforeEach(async (to) => {
     }
   }
   await closet.ensureUser()
-  if (to.path.startsWith('/admin/') && closet.user && closet.user.role !== 'ADMIN') return '/wardrobe'
+  if ((to.path === '/admin' || to.path.startsWith('/admin/')) && closet.user && closet.user.role !== 'ADMIN') return '/today'
   const destination = sessionRedirect(to.path, closet.user)
   if (destination) return { ...router.resolve(destination), replace: true }
 })
