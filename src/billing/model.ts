@@ -4,7 +4,7 @@ export type Redeemed = { batchName: string; points: number; balance: number; ent
 export type NewBatch = { name: string; points: number; unitPriceMicro: number; currency: string | null; imageDailyLimit: number | null; agentDailyLimit: number | null; entitlementDays: number | null; quantity: number; validFromMs: number | null; validUntilMs: number | null }
 export type Batch = NewBatch & { id: string; batchNo: string; status: string; available: number; redeemed: number; createdAtMs: number }
 export type CodeView = { id: string; mask: string; status: string; redeemedBy: string | null; redeemedAtMs: number | null }
-export const ledgerLabels: Record<string, string> = { TOPUP: '充值', GRANT: '赠送', RESERVE: '预留', SETTLE: '结算', RELEASE: '释放', EXPIRE: '过期', ADJUST: '调整' }
+export const ledgerLabels: Record<string, string> = { TOPUP: '充值', GRANT: '赠送', RESERVE: '使用中', SETTLE: '已使用', RELEASE: '已退回', EXPIRE: '过期', ADJUST: '调整' }
 export const sourceLabels: Record<string, string> = { SUBSCRIPTION: '订阅权益', ADMIN: '管理员发放', PROMO: '活动赠送' }
 export function formatPoints(points: number, signed = false) { return `${signed && points > 0 ? '+' : ''}${points.toLocaleString('zh-CN')} 点` }
 /** Decimal input -> integer micro units, avoiding binary multiplication drift. */
@@ -50,7 +50,7 @@ export function formatMinor(amountMinor: number, currency: string) {
 }
 export function productSummary(p: Pick<Product, 'kind' | 'points' | 'entDays' | 'imageDailyLimit' | 'agentDailyLimit'>) {
   if (p.kind === 'POINTS') return formatPoints(p.points)
-  const parts = [p.imageDailyLimit !== null ? `生图每日 ${p.imageDailyLimit} 次` : '', p.agentDailyLimit !== null ? `助手每日 ${p.agentDailyLimit} 次` : ''].filter(Boolean)
+  const parts = [p.imageDailyLimit !== null ? `上身图等图片每日 ${p.imageDailyLimit} 次` : '', p.agentDailyLimit !== null ? `助手每日 ${p.agentDailyLimit} 次` : ''].filter(Boolean)
   return `${p.entDays} 天 · ${parts.join('，')}`
 }
 const orderMessages: Record<string, string> = {
@@ -60,4 +60,24 @@ const orderMessages: Record<string, string> = {
 export function orderError(error: unknown) {
   const failure = error as { message?: string; code?: string } | null
   return failure?.message || orderMessages[failure?.code || ''] || '下单未能完成，请稍后重试。'
+}
+
+export type Quote = { enabled: false } | {
+  enabled: true
+  showPrices: boolean
+  freeRemainingToday: number
+  dailyLimit: number
+  unitPoints?: number
+  balance: number
+  entitlementEndsAtMs: number | null
+}
+/** A disabled or hidden quote must leave the existing action label intact. */
+export function imageActionLabel(quote: Quote | undefined) {
+  return quote?.enabled ? `生成上身图 · 今天还能 ${quote.freeRemainingToday} 次` : '生成上身图'
+}
+export function realtimePrice(quote: Quote | undefined) {
+  return quote?.enabled && quote.showPrices && (quote.unitPoints || 0) > 0 ? `每分钟 ${Number((quote.unitPoints! * 60).toFixed(3))} 点` : ''
+}
+export function subscriptionsForImages(products: Product[]) {
+  return products.filter(product => product.kind === 'SUBSCRIPTION' && product.imageDailyLimit !== null)
 }

@@ -47,7 +47,7 @@ onUnmounted(()=>{alive=false;clearTimeout(timer);window.removeEventListener('clo
           <small>开始于 {{ when(job.createdAt) }}</small>
         </div>
         <span class="render-actions">
-          <RouterLink v-if="job.purpose === '上身图' && ['UNKNOWN','FAILED'].includes(job.status)" :to="{ path: '/ootd', query: { job: job.id } }"><a-button size="small" type="primary">查看并重新生成</a-button></RouterLink>
+          <RouterLink v-if="job.purpose === 'OOTD' && ['UNKNOWN','FAILED'].includes(job.status)" :to="{ path: '/ootd', query: { job: job.id } }"><a-button size="small" type="primary">查看并重新生成</a-button></RouterLink>
           <a-button v-if="['QUEUED','WAITING_RESOURCE','RUNNING','UNKNOWN'].includes(job.status)" size="small" :loading="cancelling === job.id" @click="cancel(job)">取消生成</a-button>
         </span>
       </li>

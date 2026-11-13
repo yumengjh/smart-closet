@@ -9,6 +9,7 @@ export const router = createRouter({
   routes: [
     { path: '/', redirect: '/today' },
     { path: '/today', component: () => import('./views/TodayPage.vue') },
+    { path: '/vip', component: () => import('./views/VipPage.vue') },
     { path: '/try', component: () => import('./views/TryHubPage.vue') },
     { path: '/login', component: () => import('./views/LoginPage.vue') },
     { path: '/register', component: () => import('./views/RegisterPage.vue') },

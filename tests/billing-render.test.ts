@@ -1,3 +1,4 @@
+import { createPinia } from 'pinia'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createServer } from 'vite'
@@ -52,7 +53,7 @@ test('钱包开关关闭/403/404不渲染、不发起其他收费请求；开启
       const Stub = defineComponent({ setup: (_, { slots }) => () => h('stub', slots.default?.()) })
       for (const name of ['a-space', 'a-button', 'a-alert', 'a-tag', 'a-empty', 'a-input', 'a-form-item', 'a-form']) app.component(name, Stub)
       app.component('a-modal', defineComponent({ setup: () => () => null }))
-      app.mount(root)
+      app.use(createPinia()); app.mount(root)
       await new Promise(resolve => setTimeout(resolve, 0)); await nextTick()
       const text = collect(root)
       if (mode === 'enabled') { assert.match(text, /点数与权益/); assert.match(text, /兑换码/); assert.match(text, /正在使用中/) }

@@ -1,12 +1,16 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { billingApi } from './api'
 import { billingHidden, entitlementState, formatPoints, ledgerLabels, normalizeCode, redeemError, retryDeadline, secondsRemaining, sourceLabels, type Wallet } from './model'
 import ShopSection from './ShopSection.vue'
 import { createUuid } from '../domain/id'
 import { accountTime } from '../domain/account'
 import { ApiError } from '../domain/apiError'
+import { useBillingStore } from './store'
+import { celebrate } from '../services/celebrate'
 
+defineProps<{ compare?: boolean }>()
+const billing = useBillingStore()
 const emit = defineEmits<{ redeemed: [] }>()
 const wallet = ref<Wallet>(); const open = ref(false); const code = ref(''); const busy = ref(false)
 const error = ref(''); const loadError = ref(''); const success = ref(''); const now = ref(Date.now()); const blockedUntil = ref(0)
@@ -34,7 +38,7 @@ async function redeem() {
     const result = await billingApi.redeem(normalized, attempt.key)
     success.value = `兑换成功，获得 ${formatPoints(result.points)}${result.entitlementEndsAtMs ? `，权益有效至 ${accountTime(result.entitlementEndsAtMs)}` : ''}。`
     wallet.value.balance = result.balance
-    close(); emit('redeemed'); await load()
+    close(); billing.reset(); void celebrate('paid'); emit('redeemed'); await Promise.all([load(), billing.refresh()])
   } catch (cause) {
     error.value = redeemError(cause)
     if (cause instanceof ApiError) {
@@ -44,6 +48,7 @@ async function redeem() {
     }
   } finally { busy.value = false }
 }
+watch(() => billing.image, quote => { if (quote && !quote.enabled) { wallet.value = undefined; close() } })
 onMounted(() => { void load(); timer = setInterval(() => { now.value = Date.now() }, 1000) })
 onUnmounted(() => { clearInterval(timer); close() })
 </script>
@@ -51,20 +56,20 @@ onUnmounted(() => { clearInterval(timer); close() })
 <template>
   <section v-if="wallet?.enabled" class="settings-group billing-wallet">
     <header class="settings-group-head settings-group-head-row">
-      <div><h3>点数与权益</h3><p>余额 {{ formatPoints(wallet.balance) }}<template v-if="wallet.reserved > 0"> · {{ formatPoints(wallet.reserved) }}正在使用中</template></p></div>
+      <div><h3>{{ compare ? '兑换与明细' : '点数与权益' }}</h3><p v-if="!compare">余额 {{ formatPoints(wallet.balance) }}<template v-if="wallet.reserved > 0"> · {{ formatPoints(wallet.reserved) }}正在使用中</template></p></div>
       <a-space wrap><a-button :disabled="busy" @click="load">刷新余额</a-button><a-button type="primary" @click="open = true; error = ''">兑换码</a-button></a-space>
     </header>
     <a-alert v-if="success" :message="success" type="success" show-icon />
     <a-alert v-if="loadError" :message="loadError" type="warning" show-icon />
-    <ShopSection @paid="load(); emit('redeemed')" />
+    <ShopSection :compare="compare" @paid="load(); emit('redeemed')" />
     <h4>有效权益</h4>
     <p v-if="!active.length" class="settings-hint">暂无有效权益，每日额度按当前账号设置执行。</p>
     <article v-for="ent in active" :key="ent.id" class="billing-row">
       <strong>{{ sourceLabels[ent.source] || '限时权益' }}</strong>
-      <p><template v-if="ent.imageDailyLimit !== null">生图每日 {{ ent.imageDailyLimit }} 次 </template><template v-if="ent.agentDailyLimit !== null">助手每日 {{ ent.agentDailyLimit }} 次</template></p>
+      <p><template v-if="ent.imageDailyLimit !== null">图片每日 {{ ent.imageDailyLimit }} 次 </template><template v-if="ent.agentDailyLimit !== null">助手每日 {{ ent.agentDailyLimit }} 次</template></p>
       <p>{{ accountTime(ent.endsAtMs) }} 到期 <a-tag v-if="entitlementState(ent, now) === 'expiring'" color="orange">将在 3 天内到期</a-tag></p>
     </article>
-    <h4>最近流水</h4>
+    <h4>点数明细</h4>
     <a-empty v-if="!wallet.recent.length" description="暂无点数流水" />
     <article v-for="entry in wallet.recent" :key="entry.id" class="billing-row">
       <div class="billing-entry"><strong>{{ ledgerLabels[entry.kind] || '点数变动' }}</strong><span>{{ formatPoints(entry.points, true) }}</span></div>
