@@ -52,7 +52,7 @@ export type RenderJob = { id: string; purpose: string; status: string; mediaUrl:
 export type BodyAdjustments = Partial<Record<'build' | 'shoulders' | 'waist' | 'hips' | 'legs', number>>
 /** outfitId / outfit / items / poseText (issue #106): what the picture was made from, for the record list only. */
 export type RenderSourceItem = { garmentId: string; role: string; label: string }
-export type RenderSummary = { kind?: '上身图' | 'ADJUST'; retryOf?: string; model?: string; pose?: string; poseText?: string; outfitId?: string; outfit?: string; items?: RenderSourceItem[]; adjustments?: BodyAdjustments }
+export type RenderSummary = { kind?: 'OOTD' | 'ADJUST'; retryOf?: string; model?: string; pose?: string; poseText?: string; outfitId?: string; outfit?: string; items?: RenderSourceItem[]; adjustments?: BodyAdjustments }
 export type PoseJoint = 'HEAD' | 'NECK' | 'L_SHOULDER' | 'R_SHOULDER' | 'L_ELBOW' | 'R_ELBOW' | 'L_WRIST' | 'R_WRIST' | 'L_HIP' | 'R_HIP' | 'L_KNEE' | 'R_KNEE' | 'L_ANKLE' | 'R_ANKLE'
 export type Pose = { id: string; name: string; source: 'PRESET' | 'PHOTO' | 'TEXT'; description: string; tags: string[]; keypoints: Partial<Record<PoseJoint, [number, number]>>; viewAngle: string | null; createdAt: number }
 export type PoseCatalog = { presets: Pose[]; mine: Pose[]; extractionsToday: number; dailyExtractions: number }

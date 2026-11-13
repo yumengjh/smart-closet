@@ -58,7 +58,7 @@ const preparation = ref<Preparation | null>(null); const confirmOpen = ref(false
 const viewing = ref<RenderJob | null>(null); let timer: ReturnType<typeof setInterval> | undefined
 const accessoryOptions = [{ value: 'ACCESSORY:EAR', label: '耳部' }, { value: 'ACCESSORY:NECK', label: '颈部' }, { value: 'ACCESSORY:WRIST', label: '手腕' }, { value: 'ACCESSORY:HAND_LEFT', label: '左手' }, { value: 'ACCESSORY:HAND_RIGHT', label: '右手' }, { value: 'ACCESSORY:TIE', label: '领带' }]
 const current = computed(() => outfits.value.find(o => o.id === outfitId.value)); const person = computed(() => baselines.value.find(b => b.id === baselineId.value))
-const available = computed(() => capabilities.value.filter(c => c.verified && c.purpose === '上身图'))
+const available = computed(() => capabilities.value.filter(c => c.verified && c.purpose === 'OOTD'))
 const capability = computed(() => available.value.find(c => c.provider + ':' + c.model === model.value))
 const filledSlots = computed(() => review.value?.slots.filter(slot => slot.items.length || slot.state === 'CONFLICT' || slot.state === 'UNKNOWN') || [])
 const garments = computed(() => [...new Map((current.value?.scene.elements || []).filter(e => e.kind !== 'PERSON_PART').map(e => [e.garmentId, e])).values()])
