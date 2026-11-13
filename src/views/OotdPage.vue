@@ -3,14 +3,15 @@ import PageTitle from '../shell/PageTitle.vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { App, Empty } from 'ant-design-vue'
-import { ReloadOutlined, UserOutlined } from '@ant-design/icons-vue'
+import { DownOutlined, EllipsisOutlined, PlusOutlined, ReloadOutlined, RightOutlined, SkinOutlined, UserOutlined } from '@ant-design/icons-vue'
 import { closetApi } from '../services/api'
 import { mediaUrl } from '../services/urls'
 import AiBadge from '../components/AiBadge.vue'
 import { platformRequest, PlatformRequestError, type RenderSubmission, type Baseline, type Capability, type RenderJob, type Review, type PoseCatalog, type PoseChoice } from '../services/platform'
 import type { Outfit } from '../domain/outfit'
 import { createUuid } from '../domain/id'
-import OutfitThumbnail from '../components/OutfitThumbnail.vue'
+import OutfitCollage from '../today/OutfitCollage.vue'
+import { scenePieces } from '../today/deck'
 import ModelPicker from '../ootd/ModelPicker.vue'
 import PosePicker from '../ootd/PosePicker.vue'
 import ResultViewer from '../ootd/ResultViewer.vue'
@@ -58,7 +59,7 @@ const available = computed(() => capabilities.value.filter(c => c.verified && c.
 const capability = computed(() => available.value.find(c => c.provider + ':' + c.model === model.value))
 const filledSlots = computed(() => review.value?.slots.filter(slot => slot.items.length || slot.state === 'CONFLICT' || slot.state === 'UNKNOWN') || [])
 const garments = computed(() => [...new Map((current.value?.scene.elements || []).filter(e => e.kind !== 'PERSON_PART').map(e => [e.garmentId, e])).values()])
-const hint = computed(() => !current.value ? '先选一套已保存的搭配' : !person.value ? '先选一位模特' : !capability.value ? '暂无可用的生成模型' : '')
+const hint = computed(() => !current.value ? '先选一套搭配' : !person.value ? '先设置谁来穿' : !capability.value ? '暂时没有可用的生成服务' : '')
 // Issue #106: pictures, running jobs and failures are shown apart; a failure replaced by a successful retry folds away.
 const groups = computed(() => groupRecords(jobs.value)); const showReplaced = ref<string[]>([])
 const thumbs = computed(() => { const out = new Map<string, string>(); for (const o of outfits.value) for (const e of o.scene.elements) if (e.garmentId && e.assetUrl && !out.has(e.garmentId)) out.set(e.garmentId, e.assetUrl); return out })
@@ -175,135 +176,136 @@ function retry(job: RenderJob) {
     },
   })
 }
-onMounted(() => { void load(); timer = setInterval(refresh, 5000) })
-onUnmounted(() => clearInterval(timer))
+// ToC 改版 P2（试穿页重新设计）：“这套 + 谁来穿”两张大卡片，点开底部（桌面右侧）面板挑选；姿势和穿法收进可展开的行。
+const sheet = ref<'' | 'outfit' | 'person' | 'pose'>(''); const moreOpen = ref(false)
+const wideQuery = window.matchMedia('(min-width: 1024px)'); const wide = ref(wideQuery.matches)
+const onWide = () => { wide.value = wideQuery.matches }
+const poseName = computed(() => { const v = pose.value; if (v.mode === 'AUTO') return '自动'; return [...(poseCatalog.value?.presets || []), ...(poseCatalog.value?.mine || [])].find(p => p.id === v.id)?.name || '已选' })
+function chooseOutfit(id: string) { outfitId.value = id; sheet.value = '' }
+watch(baselineId, (_v, old) => { if (old && sheet.value === 'person') sheet.value = '' })
+function moreAction({ key }: { key: string | number }) { if (key === 'check') void check(); else if (key === 'rehearse') rehearse(); else if (key === 'manage') void router.push('/settings?section=personal') }
+const failedOpen = ref<string[]>([])
+onMounted(() => { void load(); timer = setInterval(refresh, 5000); wideQuery.addEventListener('change', onWide) })
+onUnmounted(() => { clearInterval(timer); wideQuery.removeEventListener('change', onWide) })
 </script>
 
 <template>
-  <PageTitle title="OOTD 试穿" hint="选搭配、模特和动作，生成一张上身效果图。" />
-  <div class="ootd-toolbar">
-    <p class="ootd-lead">三步生成一张上身效果图</p>
-    <RouterLink v-slot="{ href, navigate }" to="/settings?section=personal" custom><a-button class="ootd-manage" :href="href" @click="navigate"><UserOutlined /> 管理模特</a-button></RouterLink>
-  </div>
-  <a-alert v-if="error && !confirmOpen" type="error" :message="error" show-icon closable style="margin-bottom:16px" @close="error=''" />
-  <div v-if="loading" class="ootd-card"><a-skeleton active /></div>
-  <div v-else class="ootd-workspace">
-    <div class="ootd-steps">
-      <section class="ootd-card">
-        <header class="ootd-card-head"><span class="ootd-step">1</span><h2>搭配</h2></header>
-        <a-select :value="outfitId || undefined" class="ootd-full" aria-label="已保存搭配" :options="outfits.map(o => ({ value: o.id, label: o.name }))" placeholder="选择组合台里保存的搭配" @update:value="outfitId = $event" />
-        <template v-if="current">
-          <a-button type="link" class="ootd-items-toggle" @click="showItems = !showItems">{{ showItems ? '收起' : '调整本次穿哪些' }}（{{ selected.length }}/{{ garments.length }} 件）</a-button>
-          <div v-if="showItems" class="ootd-items">
-            <a-checkbox-group v-model:value="selected" class="ootd-selections"><a-checkbox v-for="g in garments" :key="g.garmentId" :value="g.garmentId">{{ g.garmentLabel }}</a-checkbox></a-checkbox-group>
-            <a-checkbox v-model:checked="multiLayer">多层穿法（打底 + 主体 + 外搭）</a-checkbox>
-            <div v-if="multiLayer" class="ootd-wear-roles"><div v-for="g in garments.filter(g => selected.includes(g.garmentId))" :key="g.garmentId"><span>{{ g.garmentLabel }}</span><a-select v-model:value="wearRoles[g.garmentId]" allow-clear :options="[{ value: 'INNER', label: '打底内层' }]" placeholder="按品类判断" /></div></div>
-            <div class="ootd-wear-details">
-              <p class="ootd-note">穿法细节（可选）：只影响生成，不改搭配和推荐。</p>
-              <div v-for="g in detailGarments" :key="g.garmentId" class="ootd-detail-row">
-                <span>{{ g.garmentLabel }}<a-tag v-if="suggested[g.garmentId]" color="green">按搭配规则建议</a-tag></span>
-                <a-select v-for="d in DETAIL_OPTIONS[g.role]" :key="d.key" size="small" class="ootd-detail-select" :aria-label="`${g.garmentLabel}${d.label}`" :value="detail(g.garmentId, d.key)" :options="d.options.map(o => ({ value: o.value, label: `${d.label}：${o.label}` }))" @update:value="(v: string) => setDetail(g.garmentId, d.key, v)" />
-              </div>
-              <a-textarea v-model:value="wearNote" :maxlength="200" show-count :auto-size="{ minRows: 1, maxRows: 3 }" placeholder="补充说明，例如：衬衫领口解开一颗扣子" aria-label="穿法补充说明" />
-            </div>
-          </div>
-        </template>
-      </section>
-
-      <section class="ootd-card">
-        <header class="ootd-card-head"><span class="ootd-step">2</span><h2>模特</h2></header>
-        <ModelPicker v-if="baselines.length" v-model="baselineId" :models="baselines" />
-        <a-empty v-else :image="Empty.PRESENTED_IMAGE_SIMPLE" description="还没有模特"><RouterLink to="/settings?section=personal"><a-button type="primary">去生成模特</a-button></RouterLink></a-empty>
-      </section>
-
-      <section class="ootd-card">
-        <header class="ootd-card-head"><span class="ootd-step">3</span><h2>动作</h2></header>
-        <PosePicker v-model="pose" :catalog="poseCatalog"  @changed="loadPoses" />
-      </section>
-
-      <div class="ootd-actions">
-        <a-select v-if="available.length > 1" v-model:value="model" class="ootd-model" aria-label="生成模型" :options="available.map(c => ({ value: c.provider + ':' + c.model, label: c.model }))" />
-        <p v-else class="ootd-note">{{ hint || (capability ? '每张用 1 个图像额度' : '') }}</p>
-        <a-space wrap>
-          <a-button :loading="busy" :disabled="!current" @click="check()">只检查搭配</a-button>
-          <a-tooltip title="只播放生成过程的动画和完成提醒，不调用模型、不消耗额度"><a-button @click="rehearse()">模拟生成</a-button></a-tooltip>
-          <a-button type="primary" :loading="busy" :disabled="!current || !person || !capability" @click="prepare()">生成 OOTD</a-button>
-        </a-space>
+  <PageTitle title="试穿" :count="groups.done.length || null" unit="张" />
+  <a-alert v-if="error && !confirmOpen" type="error" :message="error" show-icon closable class="studio-alert" @close="error=''" />
+  <div v-if="loading" class="studio-card"><a-skeleton active /></div>
+  <div v-else class="studio">
+    <section class="studio-card studio-main">
+      <div class="studio-pair">
+        <button type="button" class="studio-tile" :class="{ empty: !current }" @click="sheet = 'outfit'">
+          <span class="studio-tile-media"><OutfitCollage v-if="current" :pieces="scenePieces(current.scene)" :title="current.name" /><span v-else class="studio-tile-empty"><SkinOutlined /><b>选一套搭配</b></span></span>
+          <span class="studio-tile-label"><small>这套</small><b>{{ current ? current.name : '还没选' }}</b><em>换</em></span>
+        </button>
+        <span class="studio-plus" aria-hidden="true"><PlusOutlined /></span>
+        <button type="button" class="studio-tile" :class="{ empty: !person }" @click="sheet = 'person'">
+          <span class="studio-tile-media"><template v-if="person?.mediaUrl"><img :src="mediaUrl(person.mediaUrl)" :alt="modelLabel(person)" /><AiBadge small /></template><span v-else class="studio-tile-empty"><UserOutlined /><b>{{ baselines.length ? '选一个形象' : '设置我的形象' }}</b></span></span>
+          <span class="studio-tile-label"><small>谁来穿</small><b>{{ person ? modelLabel(person) : '还没设置' }}</b><em>换</em></span>
+        </button>
       </div>
-    </div>
-
-    <aside class="ootd-card ootd-preview" :class="{ empty: !current }">
-      <header class="ootd-card-head"><h2>{{ current ? current.name : '预览' }}</h2></header>
-      <OutfitThumbnail v-if="current" :scene="current.scene" :title="current.name" :resolution="720" />
-      <a-empty v-else :image="Empty.PRESENTED_IMAGE_SIMPLE" description="选择搭配后在这里预览" />
+      <div class="studio-rows">
+        <button type="button" class="studio-row" @click="sheet = 'pose'"><span>姿势</span><b>{{ poseName }}</b><RightOutlined /></button>
+        <button v-if="current" type="button" class="studio-row" :aria-expanded="moreOpen" @click="moreOpen = !moreOpen"><span>穿法与更多</span><b>{{ selected.length }}/{{ garments.length }} 件<template v-if="wearSummary"> · 已调整</template></b><DownOutlined :class="{ flipped: moreOpen }" /></button>
+        <div v-if="current && moreOpen" class="studio-more">
+          <p class="studio-label">这次穿哪些</p>
+          <a-checkbox-group v-model:value="selected" class="ootd-selections"><a-checkbox v-for="g in garments" :key="g.garmentId" :value="g.garmentId">{{ g.garmentLabel }}</a-checkbox></a-checkbox-group>
+          <a-checkbox v-model:checked="multiLayer">多层穿法（打底 + 主体 + 外搭）</a-checkbox>
+          <div v-if="multiLayer" class="ootd-wear-roles"><div v-for="g in garments.filter(g => selected.includes(g.garmentId))" :key="g.garmentId"><span>{{ g.garmentLabel }}</span><a-select v-model:value="wearRoles[g.garmentId]" allow-clear :options="[{ value: 'INNER', label: '打底内层' }]" placeholder="按品类判断" /></div></div>
+          <template v-if="detailGarments.length">
+            <p class="studio-label">穿法细节 <small>只影响这张图，不改搭配</small></p>
+            <div v-for="g in detailGarments" :key="g.garmentId" class="ootd-detail-row">
+              <span>{{ g.garmentLabel }}<a-tag v-if="suggested[g.garmentId]" :bordered="false">建议</a-tag></span>
+              <a-select v-for="d in DETAIL_OPTIONS[g.role]" :key="d.key" size="small" class="ootd-detail-select" :aria-label="`${g.garmentLabel}${d.label}`" :value="detail(g.garmentId, d.key)" :options="d.options.map(o => ({ value: o.value, label: `${d.label}：${o.label}` }))" @update:value="(v: string) => setDetail(g.garmentId, d.key, v)" />
+            </div>
+          </template>
+          <a-textarea v-model:value="wearNote" :maxlength="200" show-count :auto-size="{ minRows: 1, maxRows: 3 }" placeholder="补充说明，例如：衬衫领口解开一颗扣子" aria-label="穿法补充说明" />
+          <template v-if="available.length > 1"><p class="studio-label">生成模型</p><a-select v-model:value="model" class="ootd-full" aria-label="生成模型" :options="available.map(c => ({ value: c.provider + ':' + c.model, label: c.model }))" /></template>
+        </div>
+      </div>
       <template v-if="review">
-        <a-alert v-for="issue in review.blockers" :key="issue.message" type="error" :message="issue.message" :description="issue.action" show-icon style="margin-top:12px" />
-        <a-alert v-for="issue in review.warnings" :key="issue.code" type="warning" :message="issue.message" show-icon style="margin-top:8px" />
-        <a-descriptions :column="1" size="small" bordered style="margin-top:12px"><a-descriptions-item v-for="slot in filledSlots" :key="slot.role" :label="slot.label">{{ slot.items.map(i => i.label).join('、') || '未选择' }} <div v-for="i in slot.items.filter(i => i.role === 'ACCESSORY')" :key="i.garmentId" class="ootd-accessory"><span>{{ i.label }}</span> <a-select v-model:value="wearRoles[i.garmentId]" :options="accessoryOptions" placeholder="选择佩戴位置" /></div> <a-tag v-if="slot.state === 'CONFLICT' || slot.state === 'UNKNOWN'" color="error">{{ slot.state === 'UNKNOWN' ? '资料未确认' : '冲突' }}</a-tag></a-descriptions-item></a-descriptions>
+        <a-alert v-for="issue in review.blockers" :key="issue.message" type="error" :message="issue.message" :description="issue.action" show-icon class="studio-review" />
+        <a-alert v-for="issue in review.warnings" :key="issue.code" type="warning" :message="issue.message" show-icon class="studio-review" />
+        <a-alert v-if="!review.blockers.length && !review.warnings.length" type="success" message="这套可以直接生成" show-icon class="studio-review" />
+        <div v-for="slot in filledSlots.filter(s => s.items.some(i => i.role === 'ACCESSORY'))" :key="slot.role" class="studio-accessories">
+          <div v-for="i in slot.items.filter(i => i.role === 'ACCESSORY')" :key="i.garmentId" class="ootd-accessory"><span>{{ i.label }}</span> <a-select v-model:value="wearRoles[i.garmentId]" :options="accessoryOptions" placeholder="戴在哪里" /></div>
+        </div>
       </template>
+    </section>
+
+    <aside class="studio-cta">
+      <a-button type="primary" size="large" block :loading="busy" :disabled="!current || !person || !capability" @click="prepare()">生成上身图</a-button>
+      <div class="studio-cta-foot">
+        <span>{{ hint || '每张用 1 次图像额度 · 约 30 秒，可以先离开' }}</span>
+        <a-dropdown :trigger="['click']" placement="topRight">
+          <a-button type="text" size="small" aria-label="更多操作"><EllipsisOutlined /></a-button>
+          <template #overlay><a-menu @click="moreAction"><a-menu-item key="check" :disabled="!current">只检查这套能不能生成</a-menu-item><a-menu-item key="rehearse">模拟一次（不花额度）</a-menu-item><a-menu-item key="manage">管理我的形象</a-menu-item></a-menu></template>
+        </a-dropdown>
+      </div>
     </aside>
   </div>
 
   <section class="ootd-records">
-    <header class="ootd-records-head"><h2>我的 OOTD <small v-if="groups.done.length">{{ groups.done.length }} 张</small></h2><a-button type="text" aria-label="刷新" @click="refresh"><ReloadOutlined /></a-button></header>
-    <div v-if="!jobs.length" class="ootd-card"><a-empty description="生成的图片会保存在这里" /></div>
-
-    <div v-if="groups.running.length" class="ootd-group ootd-running" role="status" aria-live="polite">
-      <h3 class="ootd-group-head"><span class="ootd-dot running" />正在生成 {{ groups.running.length }} 张<small>做好后会出现在下方图片列表并提醒你，可以先离开这个页面。</small></h3>
-      <article v-for="job in groups.running" :key="job.id" class="ootd-row">
-        <span class="ootd-result-state running busy">{{ adviceFor(job).label }}</span>
-        <div class="ootd-row-body"><p class="ootd-result-title">{{ recordTitle(job) }}<a-tag v-if="job.summary?.retryOf" color="processing">重新生成</a-tag></p><RenderSource :job="job" :thumbs="thumbs" compact /></div>
-        <div class="ootd-row-actions"><a-button v-if="adviceFor(job).canCancel" size="small" @click="cancel(job)">取消</a-button></div>
+    <header class="ootd-records-head"><h2>我的上身图</h2><a-button type="text" aria-label="刷新" @click="refresh"><ReloadOutlined /></a-button></header>
+    <a-collapse v-if="groups.failed.length || groups.replaced.length" v-model:active-key="failedOpen" ghost class="studio-failed">
+      <a-collapse-panel key="failed" :header="groups.failed.length ? `${groups.failed.length} 张没有生成成功` : `已重新生成成功的失败记录 ${groups.replaced.length} 条`">
+        <article v-for="job in groups.failed" :key="job.id" class="ootd-row">
+          <a-tag class="ootd-row-tag" :bordered="false" :color="adviceFor(job).tone === 'warning' ? 'warning' : adviceFor(job).tone === 'failed' ? 'error' : 'default'">{{ adviceFor(job).label }}</a-tag>
+          <div class="ootd-row-body"><p class="ootd-result-title">{{ recordTitle(job) }}</p><p class="ootd-row-reason">{{ failureReason(job) }}</p><RenderSource :job="job" :thumbs="thumbs" compact /></div>
+          <div class="ootd-row-actions">
+            <a-tag v-if="groups.retryState.get(job.id) === 'retrying'" :bordered="false" color="processing">正在重新生成</a-tag>
+            <a-button v-else-if="adviceFor(job).canRetry" size="small" type="primary" :loading="retrying === job.id" @click="retry(job)">重新生成</a-button>
+            <a-button size="small" @click="openJob(job)">详情</a-button>
+            <a-button v-if="adviceFor(job).canDelete" size="small" danger @click="remove(job)">删除</a-button>
+          </div>
+        </article>
+        <article v-for="job in groups.replaced" :key="job.id" class="ootd-row">
+          <a-tag class="ootd-row-tag" :bordered="false" color="success">已重试成功</a-tag>
+          <div class="ootd-row-body"><p class="ootd-result-title">{{ recordTitle(job) }}</p><p class="ootd-row-reason muted">{{ failureReason(job) }} · {{ recordLine(job) }}</p></div>
+          <div class="ootd-row-actions"><a-button size="small" @click="viewReplacement(job)">查看新图</a-button><a-button v-if="adviceFor(job).canDelete" size="small" danger @click="remove(job)">删除</a-button></div>
+        </article>
+      </a-collapse-panel>
+    </a-collapse>
+    <div v-if="groups.running.length || groups.done.length" class="ootd-results" role="status" aria-live="polite">
+      <article v-for="job in groups.running" :key="job.id" class="ootd-result running">
+        <div class="ootd-result-media"><span class="studio-running"><b>{{ adviceFor(job).label }}</b><small>做好会提醒你</small></span></div>
+        <div class="ootd-result-body"><p class="ootd-result-title">{{ recordTitle(job) }}</p><a-button v-if="adviceFor(job).canCancel" type="link" size="small" class="ootd-source-link" @click="cancel(job)">取消</a-button></div>
       </article>
-    </div>
-
-    <div v-if="groups.failed.length || groups.replaced.length" class="ootd-group ootd-failures">
-      <h3 v-if="groups.failed.length" class="ootd-group-head"><span class="ootd-dot failed" />没有生成成功 {{ groups.failed.length }} 条<small>失败的记录单独放在这里，不进图片列表；重新生成成功后会自动收起。</small></h3>
-      <article v-for="job in groups.failed" :key="job.id" class="ootd-row">
-        <a-tag class="ootd-row-tag" :color="adviceFor(job).tone === 'warning' ? 'warning' : adviceFor(job).tone === 'failed' ? 'error' : 'default'">{{ adviceFor(job).label }}</a-tag>
-        <div class="ootd-row-body">
-          <p class="ootd-result-title">{{ recordTitle(job) }}</p>
-          <p class="ootd-row-reason">{{ failureReason(job) }}</p>
-          <RenderSource :job="job" :thumbs="thumbs" compact />
-        </div>
-        <div class="ootd-row-actions">
-          <a-tag v-if="groups.retryState.get(job.id) === 'retrying'" color="processing">正在重新生成</a-tag>
-          <a-button v-else-if="adviceFor(job).canRetry" size="small" type="primary" :loading="retrying === job.id" @click="retry(job)">重新生成</a-button>
-          <a-button size="small" @click="openJob(job)">详情</a-button>
-          <a-button v-if="adviceFor(job).canDelete" size="small" danger @click="remove(job)">删除</a-button>
-        </div>
-      </article>
-      <a-collapse v-if="groups.replaced.length" v-model:active-key="showReplaced" ghost class="ootd-replaced">
-        <a-collapse-panel key="replaced" :header="`已重新生成成功的失败记录 ${groups.replaced.length} 条`">
-          <article v-for="job in groups.replaced" :key="job.id" class="ootd-row">
-            <a-tag class="ootd-row-tag" color="success">已重试成功</a-tag>
-            <div class="ootd-row-body"><p class="ootd-result-title">{{ recordTitle(job) }}</p><p class="ootd-row-reason muted">{{ failureReason(job) }} · {{ recordLine(job) }}</p></div>
-            <div class="ootd-row-actions"><a-button size="small" @click="viewReplacement(job)">查看新图</a-button><a-button v-if="adviceFor(job).canDelete" size="small" danger @click="remove(job)">删除</a-button></div>
-          </article>
-        </a-collapse-panel>
-      </a-collapse>
-    </div>
-
-    <div v-if="groups.done.length" class="ootd-results">
       <article v-for="job in groups.done" :key="job.id" class="ootd-result">
         <button type="button" class="ootd-result-media" aria-label="查看大图" @click="openJob(job)">
-          <img :src="mediaUrl(job.mediaUrl!)" alt="OOTD 生成结果（AI 生成）" loading="lazy" />
+          <img :src="mediaUrl(job.mediaUrl!)" alt="上身效果图（AI 生成）" loading="lazy" />
           <AiBadge />
           <span v-if="job.summary?.kind === 'ADJUST'" class="ootd-result-flag">身材调整</span>
         </button>
         <div class="ootd-result-body">
           <p class="ootd-result-title" :title="recordTitle(job)">{{ recordTitle(job) }}</p>
           <p class="ootd-result-line">{{ recordLine(job) }}</p>
-          <a-popover trigger="click" placement="top" title="生图原资料" :overlay-style="{ maxWidth: '320px' }">
+          <a-popover trigger="click" placement="top" title="生成时用的资料" :overlay-style="{ maxWidth: '320px' }">
             <template #content><RenderSource :job="job" :thumbs="thumbs" /></template>
-            <a-button type="link" size="small" class="ootd-source-link">原资料</a-button>
+            <a-button type="link" size="small" class="ootd-source-link">用了什么</a-button>
           </a-popover>
         </div>
       </article>
     </div>
-    <p v-else-if="jobs.length" class="ootd-note">还没有生成成功的图片。</p>
+    <div v-else class="studio-gallery-empty"><p>生成的上身图会放在这里。</p></div>
   </section>
 
+  <a-drawer :open="sheet === 'outfit'" :placement="wide ? 'right' : 'bottom'" :width="440" height="min(78dvh, 680px)" title="选一套搭配" root-class-name="studio-sheet" @close="sheet = ''">
+    <div v-if="outfits.length" class="studio-outfits">
+      <button v-for="o in outfits" :key="o.id" type="button" class="studio-outfit" :class="{ on: o.id === outfitId }" :aria-pressed="o.id === outfitId" @click="chooseOutfit(o.id)"><span class="studio-outfit-media"><OutfitCollage :pieces="scenePieces(o.scene)" :title="o.name" :size="320" /></span><b>{{ o.name }}</b></button>
+    </div>
+    <div v-else class="studio-sheet-empty"><p>还没有保存的搭配。去“今天”挑一套，点 ☆ 收进来。</p><a-button type="primary" @click="router.push('/today')">去今天看看</a-button></div>
+  </a-drawer>
+  <a-drawer :open="sheet === 'person'" :placement="wide ? 'right' : 'bottom'" :width="440" height="auto" title="谁来穿" root-class-name="studio-sheet" @close="sheet = ''">
+    <ModelPicker v-if="baselines.length" v-model="baselineId" :models="baselines" />
+    <div v-else class="studio-sheet-empty"><p>先上传一张全身照，生成你的形象，之后每次试穿都用它。</p><a-button type="primary" @click="router.push('/settings?section=personal')">设置我的形象</a-button></div>
+  </a-drawer>
+  <a-drawer :open="sheet === 'pose'" :placement="wide ? 'right' : 'bottom'" :width="480" height="min(82dvh, 760px)" title="姿势" root-class-name="studio-sheet" @close="sheet = ''">
+    <PosePicker v-model="pose" :catalog="poseCatalog" @changed="loadPoses" />
+    <template #footer><a-button type="primary" block @click="sheet = ''">好了 · {{ poseName }}</a-button></template>
+  </a-drawer>
   <a-modal :open="!!statusJob" :title="advice?.title" :footer="null" width="420px" @cancel="statusId = ''">
     <template v-if="statusJob && advice">
       <a-alert :type="advice.tone === 'failed' ? 'error' : advice.tone === 'warning' ? 'warning' : 'info'" show-icon :message="advice.label" :description="advice.body || undefined" class="status-alert" />
@@ -319,128 +321,130 @@ onUnmounted(() => clearInterval(timer))
       </a-space>
     </template>
   </a-modal>
-  <a-modal v-model:open="confirmOpen" title="确认生成" ok-text="生成" cancel-text="取消" :confirm-loading="busy" width="440px" @ok="generate">
+  <a-modal v-model:open="confirmOpen" title="生成这张上身图？" ok-text="生成" cancel-text="再想想" :confirm-loading="busy" width="440px" @ok="generate">
     <template v-if="preparation">
       <a-alert v-if="error" type="error" :message="error" show-icon role="status" aria-live="polite" style="margin-bottom:12px" />
       <div class="confirm-summary">
         <span v-if="person?.mediaUrl" class="confirm-photo"><img :src="mediaUrl(person.mediaUrl)" :alt="person ? modelLabel(person) : '模特'" /><AiBadge small /></span>
         <dl>
-          <dt>模特</dt><dd>{{ person ? modelLabel(person) : '' }}</dd>
-          <dt>动作</dt><dd>{{ preparation.pose?.name || '自动' }}</dd>
+          <dt>谁来穿</dt><dd>{{ person ? modelLabel(person) : '' }}</dd>
+          <dt>姿势</dt><dd>{{ preparation.pose?.name || '自动' }}</dd>
           <dt>衣物</dt><dd>{{ preparation.review.items.map(i => i.label).join('、') }}</dd>
           <template v-if="wearSummary"><dt>穿法</dt><dd>{{ wearSummary }}</dd></template>
-          <dt>额度</dt><dd>{{ preparation.quotaUnits }} 个图像额度</dd>
+          <dt>消耗</dt><dd>{{ preparation.quotaUnits }} 次图像额度</dd>
         </dl>
       </div>
       <a-alert v-for="issue in preparation.review.warnings" :key="issue.code" type="warning" :message="issue.message" style="margin-top:8px" />
-      <p class="ootd-note">生成图是视觉预览，不代表真实尺码是否合身。</p>
+      <p class="ootd-note">这是 AI 生成的效果预览，不代表真实尺码是否合身。</p>
     </template>
   </a-modal>
   <ResultViewer :job="viewingJob" :thumbs="thumbs" :can-adjust="!!available.length" @close="viewing = null" @changed="refresh" @submitted="adjusted" @remove="remove" />
 </template>
 
 <style scoped>
-.ootd-manage { flex-shrink: 0; }
-.ootd-workspace { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr); gap: var(--space-6); align-items: start; }
-.ootd-steps { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
-.ootd-card { min-width: 0; padding: 22px 26px; border: 0; border-radius: 28px; background: var(--surface-alt); }
-.ootd-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 6px 0 22px; }
-.ootd-lead { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: .02em; }
-.ootd-card-head { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-4); }
-.ootd-card-head h2 { margin: 0; font-size: 16px; font-weight: 600; line-height: 1.5; }
-.ootd-step { display: grid; flex-shrink: 0; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--accent-soft); color: var(--accent-strong); font-size: 13px; font-weight: 600; }
+.studio-alert { margin-bottom: 14px; }
+.studio { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+.studio-card { min-width: 0; padding: 14px; border-radius: 20px; background: var(--surface); box-shadow: 0 0 0 1px var(--line); }
+.studio-pair { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; }
+.studio-tile { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 0; border: 0; background: none; color: var(--ink); text-align: left; cursor: pointer; font: inherit; }
+.studio-tile-media { position: relative; display: grid; place-items: center; aspect-ratio: 3 / 4; overflow: hidden; border-radius: 14px; background: var(--surface-alt); transition: box-shadow .2s ease; }
+.studio-tile:hover .studio-tile-media, .studio-tile:focus-visible .studio-tile-media { box-shadow: 0 0 0 2px var(--ink); }
+.studio-tile:focus-visible { outline: none; }
+.studio-tile-media > img { width: 100%; height: 100%; object-fit: cover; object-position: top; }
+.studio-tile.empty .studio-tile-media { box-shadow: inset 0 0 0 1.5px var(--line); background: transparent; }
+.studio-tile-empty { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px; color: var(--muted); text-align: center; font-size: 26px; }
+.studio-tile-empty b { font-size: 13px; font-weight: 500; }
+.studio-tile-label { display: grid; grid-template-columns: 1fr auto; align-items: baseline; gap: 0 6px; padding: 0 2px; }
+.studio-tile-label small { grid-column: 1 / -1; font-size: 12px; color: var(--muted); }
+.studio-tile-label b { overflow: hidden; font-size: 14px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.studio-tile-label em { font-style: normal; font-size: 13px; color: var(--accent-strong); }
+.studio-plus { display: grid; place-items: center; width: 28px; height: 28px; margin-bottom: 44px; border-radius: 50%; color: var(--muted); background: var(--surface-alt); font-size: 12px; }
+.studio-rows { margin-top: 14px; border-top: 1px solid var(--line); }
+.studio-row { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 52px; padding: 0 2px; border: 0; border-bottom: 1px solid var(--line); background: none; color: var(--ink); cursor: pointer; font: inherit; text-align: left; }
+.studio-row > span { flex: none; font-size: 15px; }
+.studio-row > b { flex: 1; min-width: 0; overflow: hidden; font-size: 14px; font-weight: 400; color: var(--muted); text-align: right; text-overflow: ellipsis; white-space: nowrap; }
+.studio-row > .anticon { flex: none; font-size: 12px; color: var(--muted-subtle); transition: transform .2s ease; }
+.studio-row > .anticon.flipped { transform: rotate(180deg); }
+.studio-more { display: grid; gap: 10px; padding: 14px 2px 16px; border-bottom: 1px solid var(--line); }
+.studio-label { margin: 6px 0 0; font-size: 13px; font-weight: 600; }
+.studio-label small { margin-left: 6px; font-weight: 400; color: var(--muted); }
+.studio-review { margin-top: 12px; }
+.studio-accessories { display: grid; gap: 8px; margin-top: 10px; }
+.studio-cta { position: sticky; bottom: calc(var(--dock-space) + 4px); z-index: 5; display: grid; gap: 8px; padding: 12px; border-radius: 18px; background: var(--glass); backdrop-filter: blur(18px) saturate(140%); -webkit-backdrop-filter: blur(18px) saturate(140%); box-shadow: 0 0 0 1px var(--line), 0 10px 30px -16px #00000040; }
+.studio-cta .ant-btn-lg { height: 50px; font-size: 16px; }
+.studio-cta-foot { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+.studio-cta-foot > span { flex: 1; min-width: 0; }
 .ootd-full { width: 100%; }
-.ootd-items-toggle { padding: 0; margin-top: var(--space-2); }
-.ootd-items { display: flex; flex-direction: column; gap: var(--space-3); margin-top: var(--space-2); }
 .ootd-note { margin: 0; font-size: 13px; line-height: 1.7; color: var(--muted-copy); }
-.ootd-selections { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: var(--space-2); width: 100%; }
-.ootd-selections :deep(.ant-checkbox-wrapper) { margin: 0; padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface-alt); }
-.ootd-wear-roles > div { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); padding: 8px 0; border-bottom: 1px solid var(--line); }
+.ootd-selections { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; width: 100%; }
+.ootd-selections :deep(.ant-checkbox-wrapper) { margin: 0; padding: 8px 12px; border-radius: 10px; background: var(--surface-alt); }
+.ootd-wear-roles > div { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); }
 .ootd-wear-roles :deep(.ant-select) { min-width: 180px; }
-.ootd-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-3) var(--space-5); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
-.ootd-model { min-width: 200px; }
-.ootd-actions > .ant-space { margin-left: auto; }
-.ootd-preview { position: sticky; top: 20px; }
-.ootd-preview :deep(.outfit-thumbnail) { max-width: 340px; margin: 0 auto; overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-md); }
-.ootd-preview :deep(.ant-empty) { margin: var(--space-8) 0; }
-.ootd-accessory { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-top: 6px; }
+.ootd-detail-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.ootd-detail-row > span { flex: 1 1 100%; font-size: 13px; }
+.ootd-detail-select { min-width: 132px; }
+.ootd-accessory { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; }
 .ootd-accessory :deep(.ant-select) { min-width: 160px; }
-.ootd-records { margin-top: var(--space-8); }
-.ootd-records-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-4); }
-.ootd-records-head h2 { margin: 0; font-size: 20px; font-weight: 600; }
-.ootd-records-head small { margin-left: 6px; color: var(--muted-subtle); font-size: 14px; font-weight: 400; }
-.ootd-results { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: var(--space-4); }
-.ootd-result { display: flex; flex-direction: column; min-width: 0; overflow: hidden; border: 0; border-radius: 24px; background: var(--surface-alt); }
-.ootd-result-media { position: relative; display: grid; place-items: center; aspect-ratio: 2 / 3; padding: 0; overflow: hidden; border: 0; background: var(--surface-alt); cursor: zoom-in; }
+.ootd-records { margin-top: 28px; }
+.ootd-records-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+.ootd-records-head h2 { margin: 0; font-size: 17px; font-weight: 650; }
+.studio-failed { margin-bottom: 12px; border-radius: 14px; background: var(--surface); box-shadow: 0 0 0 1px var(--line); }
+.studio-failed :deep(.ant-collapse-header) { color: var(--muted-strong); font-size: 14px; }
+.studio-gallery-empty { display: grid; place-items: center; min-height: 140px; border-radius: 16px; background: var(--surface-alt); color: var(--muted); font-size: 14px; }
+.studio-gallery-empty p { margin: 0; }
+.ootd-results { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.ootd-result { display: flex; flex-direction: column; min-width: 0; overflow: hidden; border-radius: 16px; background: var(--surface); box-shadow: 0 0 0 1px var(--line); }
+.ootd-result-media { position: relative; display: grid; place-items: center; aspect-ratio: 3 / 4; padding: 0; overflow: hidden; border: 0; background: var(--surface-alt); cursor: zoom-in; }
+.ootd-result.running .ootd-result-media { cursor: default; }
 .ootd-result-media img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: top; transition: transform .25s ease; }
 .ootd-result-media:hover img { transform: scale(1.02); }
-.ootd-result-state { display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--muted-copy); font-size: 13px; }
-.ootd-result-state small { font-size: 12px; color: var(--muted-subtle); }
-.ootd-result-state.warning { color: var(--warning, #b7791f); font-weight: 600 }
-.ootd-result-state.failed { color: var(--danger, #c0392b) }
+.studio-running { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: var(--muted-strong); background: linear-gradient(110deg, var(--surface-alt) 30%, var(--surface) 50%, var(--surface-alt) 70%); background-size: 220% 100%; animation: studio-shine 1.6s linear infinite; }
+.studio-running b { font-size: 13px; font-weight: 600; }
+.studio-running small { font-size: 12px; color: var(--muted); }
+@keyframes studio-shine { to { background-position: -220% 0; } }
+.ootd-result-flag { position: absolute; top: 8px; left: 8px; padding: 0 8px; border-radius: 6px; background: #111111cc; color: #fff; font-size: 11px; line-height: 20px; }
+.ootd-result-body { display: flex; flex: 1; flex-direction: column; gap: 2px; padding: 8px 10px 10px; }
+.ootd-result-title { margin: 0; overflow: hidden; font-size: 13px; font-weight: 500; color: var(--ink); text-overflow: ellipsis; white-space: nowrap; }
+.ootd-result-line { margin: 0; overflow: hidden; font-size: 12px; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }
+.ootd-source-link { align-self: flex-start; height: auto; padding: 0; font-size: 12px; }
+.ootd-row { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+.ootd-row:first-of-type { border-top: 0; }
+.ootd-row-tag { flex-shrink: 0; margin: 2px 0 0; }
+.ootd-row-body { display: flex; flex: 1 1 240px; flex-direction: column; gap: 4px; min-width: 0; }
+.ootd-row-body .ootd-result-title { white-space: normal; font-weight: 600; }
+.ootd-row-reason { margin: 0; color: var(--danger); font-size: 12px; }
+.ootd-row-reason.muted { color: var(--muted-subtle); }
+.ootd-row-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-left: auto; }
 .status-alert { margin-bottom: 14px; white-space: pre-line }
 .status-facts { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0 0 16px; font-size: 13px }
 .status-facts dt { color: var(--muted-copy) }
 .status-facts dd { margin: 0 }
 .status-actions { margin-top: 4px }
-.ootd-result-state.busy::after { content: ''; display: block; width: 36px; height: 3px; margin: 10px auto 0; border-radius: 2px; background: var(--accent); animation: ootd-pulse 1.2s ease-in-out infinite alternate; }
-@keyframes ootd-pulse { from { opacity: .25; transform: scaleX(.4); } to { opacity: 1; transform: scaleX(1); } }
-.ootd-result-flag { position: absolute; top: 8px; left: 8px; padding: 0 8px; border-radius: 999px; background: #6b4fbbe6; color: #fff; font-size: 11px; line-height: 20px; }
-.ootd-result-body { display: flex; flex: 1; flex-direction: column; gap: var(--space-2); padding: 10px 12px; }
-.ootd-result-title { margin: 0; overflow: hidden; font-size: 12px; color: var(--muted-strong); text-overflow: ellipsis; white-space: nowrap; }
-.ootd-result-line { margin: 0; overflow: hidden; font-size: 12px; color: var(--muted-subtle); text-overflow: ellipsis; white-space: nowrap; }
-.ootd-source-link { align-self: flex-start; height: auto; padding: 0; font-size: 12px; }
-.ootd-group { display: flex; flex-direction: column; gap: var(--space-2); margin-bottom: var(--space-5); padding: var(--space-4) var(--space-5); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
-.ootd-failures { border-color: color-mix(in srgb, var(--danger, #c0392b) 35%, var(--line)); }
-.ootd-group-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; margin: 0 0 var(--space-1); font-size: 15px; font-weight: 600; }
-.ootd-group-head small { color: var(--muted-subtle); font-size: 12px; font-weight: 400; }
-.ootd-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
-.ootd-dot.running { background: var(--accent); }
-.ootd-dot.failed { background: var(--danger, #c0392b); }
-.ootd-row { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-2) var(--space-3); padding: 10px 0; border-top: 1px solid var(--line); }
-.ootd-row:first-of-type { border-top: 0; }
-.ootd-row > .ootd-result-state { flex: 0 0 72px; padding-top: 2px; font-size: 12px; }
-.ootd-row-tag { flex-shrink: 0; margin: 2px 0 0; }
-.ootd-row-body { display: flex; flex: 1 1 260px; flex-direction: column; gap: 4px; min-width: 0; }
-.ootd-row-body .ootd-result-title { display: flex; align-items: center; gap: 6px; white-space: normal; font-size: 13px; font-weight: 600; }
-.ootd-row-reason { margin: 0; color: var(--danger, #c0392b); font-size: 12px; }
-.ootd-row-reason.muted { color: var(--muted-subtle); }
-.ootd-row-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-left: auto; }
-.ootd-replaced :deep(.ant-collapse-header) { padding-inline: 0 !important; color: var(--muted-copy); font-size: 13px; }
-.ootd-replaced :deep(.ant-collapse-content-box) { padding: 0 !important; }
-.confirm-summary { display: flex; gap: var(--space-4); align-items: flex-start; }
+.confirm-summary { display: flex; gap: 16px; align-items: flex-start; }
 .confirm-photo { position: relative; flex-shrink: 0; display: block; width: 84px; height: 126px; }
-.confirm-summary img { flex-shrink: 0; width: 84px; height: 126px; border-radius: var(--radius-md); object-fit: cover; object-position: top; background: var(--surface-alt); }
+.confirm-summary img { flex-shrink: 0; width: 84px; height: 126px; border-radius: 10px; object-fit: cover; object-position: top; background: var(--surface-alt); }
 .confirm-summary dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; margin: 0; font-size: 13px; }
 .confirm-summary dt { color: var(--muted-copy); }
 .confirm-summary dd { margin: 0; overflow-wrap: anywhere; }
 .confirm-summary + * { margin-top: 12px; }
-@media (prefers-reduced-motion: reduce) { .ootd-result-state.busy::after { animation: none; } .ootd-result-media img { transition: none; } }
-@media (max-width: 1023px) {
-  .ootd-workspace { grid-template-columns: 1fr; gap: var(--space-4); }
-  .ootd-preview { position: static; order: -1; }
-  .ootd-actions { position: sticky; bottom: calc(80px + env(safe-area-inset-bottom)); z-index: 4; box-shadow: 0 6px 24px rgb(0 0 0 / 8%); }
+@media (min-width: 768px) { .ootd-results { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 16px; } .studio-card { padding: 20px; } .studio-pair { gap: 16px; } }
+@media (min-width: 1024px) {
+  .studio { grid-template-columns: minmax(0, 1fr) 320px; align-items: start; gap: 24px; }
+  .studio-pair { max-width: 480px; margin: 0 auto; }
+  .studio-cta { position: sticky; top: 24px; bottom: auto; padding: 18px; background: var(--surface); backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: 0 0 0 1px var(--line); }
 }
-@media (max-width: 767px) {
-  .ootd-lead { font-size: 18px; }
-  .ootd-heading { flex-wrap: wrap; }
-  .ootd-card { padding: 16px; }
-  .ootd-selections { grid-template-columns: 1fr; }
-  .ootd-actions { padding: 10px 12px; }
-  .ootd-actions .ootd-note { display: none; }
-  .ootd-actions > .ant-space { width: 100%; }
-  .ootd-actions > .ant-space { gap: 8px !important; flex-wrap: nowrap !important; }
-  .ootd-actions > .ant-space :deep(.ant-space-item) { flex: 1; min-width: 0; }
-  .ootd-actions > .ant-space :deep(.ant-space-item:last-child) { flex: 1.5; }
-  .ootd-actions .ant-btn { width: 100%; padding-inline: 8px; font-size: 13px; }
-  /* Nothing to preview yet: keep the steps first instead of an empty box. */
-  .ootd-preview.empty { display: none; }
-  .ootd-preview :deep(.outfit-thumbnail) { max-width: 220px; }
-  .ootd-results { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
-  .ootd-wear-roles :deep(.ant-select), .ootd-accessory :deep(.ant-select) { width: 100%; min-width: 0; }
-}
-.ootd-wear-details { display: grid; gap: 8px; margin-top: 12px; }
-.ootd-detail-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
-.ootd-detail-row > span { flex: 1 1 100%; font-size: 13px; }
-.ootd-detail-select { min-width: 132px; }
+@media (prefers-reduced-motion: reduce) { .studio-running { animation: none; } .ootd-result-media img, .studio-row > .anticon { transition: none; } }
+</style>
+<style>
+/* 底部（桌面右侧）选择面板：圆角顶边，内容区留白。 */
+.studio-sheet .ant-drawer-content { border-radius: 20px 20px 0 0; }
+.studio-sheet .ant-drawer-right .ant-drawer-content, .studio-sheet.ant-drawer-right .ant-drawer-content { border-radius: 0; }
+.studio-sheet .ant-drawer-header { border-bottom: 0; padding-bottom: 4px; }
+.studio-outfits { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.studio-outfit { display: flex; flex-direction: column; gap: 6px; padding: 0; border: 0; background: none; color: var(--ink); text-align: left; cursor: pointer; font: inherit; }
+.studio-outfit-media { display: block; aspect-ratio: 1; overflow: hidden; border-radius: 12px; background: var(--surface-alt); }
+.studio-outfit.on .studio-outfit-media { box-shadow: 0 0 0 2px var(--ink); }
+.studio-outfit b { overflow: hidden; font-size: 13px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.studio-sheet-empty { display: grid; justify-items: center; gap: 12px; padding: 24px 8px; text-align: center; color: var(--muted); }
+.studio-sheet-empty p { margin: 0; }
 </style>

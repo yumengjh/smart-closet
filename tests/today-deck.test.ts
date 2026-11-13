@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { appendUnique, collageSlots, coverTint, outfitKey, stampOpacity, swipeOutcome, TODAY_OCCASIONS } from '../src/today/deck.ts'
+import { FIRST_BATCH, MORE_BATCH, appendUnique, collageSlots, coverTint, outfitKey, stampOpacity, swipeOutcome, TODAY_OCCASIONS } from '../src/today/deck.ts'
 
 const url = (p: string) => `/media/${p}`
 
@@ -55,4 +55,16 @@ test('today: the worn card only comes back on the same day and for the same acco
   assert.equal(readWorn('amy', new Date(2026, 10, 11, 22), store)?.name, '周末')
   assert.equal(readWorn('amy', new Date(2026, 10, 12, 8), store), null)
   assert.equal(readWorn('bob', day, store), null)
+})
+
+test('today: batch sizes stay within the server limit of 1 to 5 outfits', () => {
+  for (const n of [FIRST_BATCH, MORE_BATCH]) assert.ok(n >= 1 && n <= 5)
+})
+
+test('today: saved outfit scenes become collage pieces without person stickers', async () => {
+  const { scenePieces } = await import('../src/today/deck.ts')
+  const pieces = scenePieces({ elements: [
+    { garmentId: 'b', role: 'BOTTOM', assetUrl: 'b.png', zIndex: 2 }, { garmentId: 'p', kind: 'PERSON_PART', role: 'TOP', assetUrl: 'p.png', zIndex: 0 }, { garmentId: 't', role: 'TOP', assetUrl: 't.png', zIndex: 1 },
+  ] })
+  assert.deepEqual(pieces.map(p => p.id), ['t', 'b'])
 })

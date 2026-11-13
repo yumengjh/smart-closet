@@ -8,7 +8,8 @@ export const TODAY_OCCASIONS = [
   { value: 'TRAVEL', label: '度假' }, { value: 'SPORT', label: '运动' },
 ] as const
 export type TodayOccasion = typeof TODAY_OCCASIONS[number]['value']
-export const FIRST_BATCH = 6
+/** 后端 Intent 限定 1～5 套（推荐数量为 1 到 5 套），/more 也会夹到 5。 */
+export const FIRST_BATCH = 5
 export const MORE_BATCH = 4
 /** 剩下几张时去要下一批。 */
 export const REFILL_AT = 2
@@ -66,3 +67,8 @@ export function swipeOutcome(dx: number, velocity: number): 1 | -1 | 0 {
 }
 /** 印章透明度随拖动距离变化。 */
 export const stampOpacity = (dx: number, side: 1 | -1) => Math.max(0, Math.min(1, (dx * side) / 90))
+
+/** 已保存搭配的画板元素 → 拼图用的衣物（只取衣服，不取人物贴纸）。 */
+export function scenePieces(scene: { elements: { kind?: string; garmentId: string; role: string; assetUrl: string; zIndex: number }[] }) {
+  return [...scene.elements].filter(e => e.kind !== 'PERSON_PART' && e.assetUrl).sort((a, b) => a.zIndex - b.zIndex).map(e => ({ id: e.garmentId, role: e.role, displayUrl: e.assetUrl }))
+}
