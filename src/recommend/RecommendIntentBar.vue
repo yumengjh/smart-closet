@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { activityOptions } from './situation'
 import { recommendApi } from './api'
+import { dateLocale } from './dateLocale'
 import type { ActivityTags, Occasion } from './types'
 import { OCCASIONS, type IntentInput } from './types'
 
@@ -48,7 +49,7 @@ function pick(value: typeof occasion.value) {
       <a-checkable-tag v-for="item in activities" :key="item.id" :checked="intent.activity === item.id" @change="selectActivity(item.id)">{{ item.label }}</a-checkable-tag>
     </div>
     <div class="recommend-intent-extra">
-      <a-date-picker v-model:value="date" value-format="YYYY-MM-DD" :disabled-date="pastDate" placeholder="今天" aria-label="穿搭日期" :allow-clear="true" />
+      <a-date-picker v-model:value="date" :locale="dateLocale" value-format="YYYY-MM-DD" :disabled-date="pastDate" placeholder="今天" aria-label="穿搭日期" :allow-clear="true" />
       <a-input v-model:value="place" :maxlength="40" placeholder="城市（默认常住城市）" aria-label="本次推荐城市" allow-clear style="width: 190px; max-width: 100%" />
       <a-input-number v-model:value="temperature" class="recommend-intent-temp" :min="-40" :max="50" :precision="0" placeholder="气温自动" addon-after="°C" aria-label="温度（可不填，默认按常住城市天气）" />
       <a-select v-if="!props.compact" v-model:value="avoid" class="recommend-intent-avoid" mode="multiple" :options="COLORS.map(c => ({ value: c, label: c }))" placeholder="避开颜色" :max-tag-count="1" :show-search="false" aria-label="避开的颜色" />

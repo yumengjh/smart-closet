@@ -4,6 +4,7 @@ import { RouterLink } from 'vue-router'
 import { BulbOutlined } from '@ant-design/icons-vue'
 import RecommendationGroup from './RecommendationGroup.vue'
 import { recommendApi } from './api'
+import { dateLocale } from './dateLocale'
 import type { InspirationView } from './types'
 
 /** 今日灵感 (P4): reviewed 搭法 filled with the user's own clothes, plus "差一件就能穿" hints. Zero model calls. */
@@ -23,7 +24,7 @@ onMounted(load)
 <template>
   <div class="recommend-inspiration" aria-live="polite">
     <a-space wrap class="recommend-inspiration-conditions">
-      <a-date-picker v-model:value="date" value-format="YYYY-MM-DD" placeholder="今天" aria-label="灵感日期" />
+      <a-date-picker v-model:value="date" :locale="dateLocale" value-format="YYYY-MM-DD" placeholder="今天" aria-label="灵感日期" />
       <a-input v-model:value="place" :maxlength="40" placeholder="城市（默认常住城市）" aria-label="本次灵感城市" allow-clear />
       <a-button :loading="loading" @click="load">查看灵感</a-button>
     </a-space>

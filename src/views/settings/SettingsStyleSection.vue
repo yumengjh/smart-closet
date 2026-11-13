@@ -19,7 +19,7 @@ const groups = computed(() => {
     { key: 'cooldown', title: '冷却中的单品', hint: '被多次“不喜欢”，暂时少推荐', items: pick(['COOLDOWN']) },
     { key: 'feedback', title: '你对搭配的反馈', hint: '点赞、不喜欢和原因', items: pick(['COMBO', 'ITEM', 'MIX', 'FEEDBACK']).concat(list.filter(s => s.kind === 'PAIR' && s.weight < 0)) },
     { key: 'taste', title: '颜色、风格与常穿组合', hint: '从保存和穿着记录里学到', items: pick(['COLOR', 'STYLE', 'MEMORY']).concat(list.filter(s => s.kind === 'PAIR' && s.weight > 0)) },
-    { key: 'accessories', title: '配件习惯', hint: '从配件反馈与搭台增删中学到', items: pick(['ACCESSORIES']) },
+    { key: 'accessories', title: '配件习惯', hint: '从配件反馈与编辑搭配中学到', items: pick(['ACCESSORIES']) },
     { key: 'idle', title: '很久没穿的衣物', hint: '推荐时会适当提一提', items: pick(['IDLE']) },
   ].filter(g => g.items.length)
 })
