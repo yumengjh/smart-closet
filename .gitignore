@@ -31,3 +31,6 @@ dist/
 
 # Local IDE settings.
 /.openidea/
+
+# Claude worktrees are separate local checkouts, not repository source.
+/.claude/worktrees/
