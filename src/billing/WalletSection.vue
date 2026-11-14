@@ -54,27 +54,28 @@ onUnmounted(() => { clearInterval(timer); close() })
 </script>
 
 <template>
-  <section v-if="wallet?.enabled" class="settings-group billing-wallet">
+  <section v-if="wallet?.enabled" class="settings-group billing-wallet" :class="{ 'billing-wallet-vip': compare }">
     <header class="settings-group-head settings-group-head-row">
-      <div><h3>{{ compare ? '兑换与明细' : '点数与权益' }}</h3><p v-if="!compare">余额 {{ formatPoints(wallet.balance) }}<template v-if="wallet.reserved > 0"> · {{ formatPoints(wallet.reserved) }}正在使用中</template></p></div>
+      <div><h3>{{ compare ? '管理点数' : '点数与权益' }}</h3><p v-if="!compare">余额 {{ formatPoints(wallet.balance) }}<template v-if="wallet.reserved > 0"> · {{ formatPoints(wallet.reserved) }}正在使用中</template></p><p v-else-if="wallet.reserved > 0">{{ formatPoints(wallet.reserved) }}正在使用中</p></div>
       <a-space wrap><a-button :disabled="busy" @click="load">刷新余额</a-button><a-button type="primary" @click="open = true; error = ''">兑换码</a-button></a-space>
     </header>
     <a-alert v-if="success" :message="success" type="success" show-icon />
     <a-alert v-if="loadError" :message="loadError" type="warning" show-icon />
     <ShopSection :compare="compare" @paid="load(); emit('redeemed')" />
-    <h4>有效权益</h4>
+    <div class="wallet-details"><section class="wallet-detail"><h4>有效权益</h4>
     <p v-if="!active.length" class="settings-hint">暂无有效权益，每日额度按当前账号设置执行。</p>
     <article v-for="ent in active" :key="ent.id" class="billing-row">
       <strong>{{ sourceLabels[ent.source] || '限时权益' }}</strong>
       <p><template v-if="ent.imageDailyLimit !== null">图片每日 {{ ent.imageDailyLimit }} 次 </template><template v-if="ent.agentDailyLimit !== null">助手每日 {{ ent.agentDailyLimit }} 次</template></p>
       <p>{{ accountTime(ent.endsAtMs) }} 到期 <a-tag v-if="entitlementState(ent, now) === 'expiring'" color="orange">将在 3 天内到期</a-tag></p>
     </article>
-    <h4>点数明细</h4>
+    </section><section class="wallet-detail"><h4>点数明细</h4>
     <a-empty v-if="!wallet.recent.length" description="暂无点数流水" />
     <article v-for="entry in wallet.recent" :key="entry.id" class="billing-row">
       <div class="billing-entry"><strong>{{ ledgerLabels[entry.kind] || '点数变动' }}</strong><span>{{ formatPoints(entry.points, true) }}</span></div>
       <p>{{ accountTime(entry.createdAtMs) }}<template v-if="entry.note"> · {{ entry.note }}</template></p>
     </article>
+    </section></div>
     <a-modal wrap-class-name="billing-wallet-modal" v-model:open="open" title="兑换码" :ok-text="remaining ? `${remaining} 秒后重试` : '确认兑换'" cancel-text="取消" :confirm-loading="busy" :ok-button-props="{ disabled: !!remaining || !normalizeCode(code) }" :closable="!busy" :keyboard="!busy" :mask-closable="false" :cancel-button-props="{ disabled: busy }" @ok="redeem" @cancel="close" @after-close="code = ''">
       <a-form layout="vertical" @finish="redeem"><a-form-item label="兑换码" html-for="billing-code"><a-input id="billing-code" v-model:value="code" autocomplete="off" :maxlength="200" placeholder="YD1-…" :disabled="busy" @press-enter="redeem" @blur="code = normalizeCode(code)" /></a-form-item></a-form>
       <p class="settings-hint">可直接粘贴，空格、大小写和连字符不影响兑换。</p>
@@ -84,6 +85,14 @@ onUnmounted(() => { clearInterval(timer); close() })
   </section>
 </template>
 <style scoped>
+.settings-group.billing-wallet-vip { border: 0; background: transparent; }
+.billing-wallet-vip .settings-group-head { align-items: center; padding: 0 0 20px; margin: 0; border-bottom: 1px solid var(--line); }
+.billing-wallet-vip .settings-group-head h3 { font-size: 18px; }
+.billing-wallet-vip .wallet-details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; margin-top: 28px; }
+.billing-wallet-vip .wallet-detail { min-width: 0; padding-top: 20px; border-top: 1px solid var(--line); }
+.billing-wallet-vip .wallet-detail h4 { margin: 0 0 12px; font-size: 16px; }
+.billing-wallet-vip .billing-row:last-child { border-bottom: 0; }
+@media (max-width: 767px) { .billing-wallet-vip .wallet-details { grid-template-columns: 1fr; gap: 12px; margin-top: 20px; } .billing-wallet-vip .settings-group-head { align-items: flex-start; flex-direction: column; gap: 12px; } }
 h4 { margin: var(--space-5) 0 var(--space-3); }
 .billing-row { padding: var(--space-3) 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
 .billing-row p { margin: var(--space-2) 0 0; color: var(--muted-copy); }

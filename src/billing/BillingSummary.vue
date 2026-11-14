@@ -28,8 +28,8 @@ onUnmounted(() => { animationVersion++; stopAnimation?.() })
 </script>
 
 <template>
-  <a-button v-if="quote && compact" class="points-pill" :aria-label="`点数余额 ${formatPoints(quote.balance)}，查看会员与点数`" @click="router.push('/vip')">{{ formatPoints(quote.balance) }}</a-button>
-  <section v-else-if="quote" class="membership-summary" aria-label="会员与点数">
+  <a-button v-if="quote && compact" type="text" class="points-pill" :aria-label="`点数余额 ${formatPoints(quote.balance)}，查看会员与点数`" @click="router.push('/vip')">{{ quote.balance.toLocaleString('zh-CN') }}</a-button>
+  <section v-else-if="quote" class="membership-summary" :class="{ 'membership-summary-detail': detailsOnly }" aria-label="会员与点数">
     <div><span>点数余额</span><strong>{{ formatPoints(displayed) }}</strong></div>
     <p>{{ quote.entitlementEndsAtMs ? `权益有效至 ${accountTime(quote.entitlementEndsAtMs)}` : '当前按账号每日次数使用' }}</p>
     <a-button v-if="!detailsOnly" type="primary" @click="router.push('/vip')">充值 / 开通</a-button>
@@ -37,12 +37,15 @@ onUnmounted(() => { animationVersion++; stopAnimation?.() })
 </template>
 
 <style scoped>
-.points-pill.ant-btn { min-height: 44px; max-width: 124px; padding: 0 10px; overflow: hidden; border-radius: 12px; font-size: 12px; font-variant-numeric: tabular-nums; text-overflow: ellipsis; }
+.points-pill.ant-btn { min-width: 44px; min-height: 44px; max-width: 124px; padding: 0 8px; overflow: hidden; border: 0; border-radius: 8px; box-shadow: none; color: var(--ink); font-size: 15px; font-weight: 650; font-variant-numeric: tabular-nums; text-overflow: ellipsis; }
 .membership-summary { display: grid; gap: 10px; padding: 18px; margin: 0 0 20px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); }
 .membership-summary > div { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .membership-summary span, .membership-summary p { color: var(--muted); font-size: 13px; }
 .membership-summary strong { font-size: 22px; font-variant-numeric: tabular-nums; }
 .membership-summary p { margin: 0; }
+.membership-summary-detail { gap: 12px; padding: 28px; margin-bottom: 24px; }
+.membership-summary-detail > div { flex-direction: column; align-items: flex-start; gap: 8px; }
+.membership-summary-detail strong { font-size: 36px; line-height: 1.1; letter-spacing: -.03em; }
 .membership-summary .ant-btn { min-height: 44px; }
 @media (max-width: 767px) { .points-pill.ant-btn { max-width: 96px; padding-inline: 8px; } }
 </style>

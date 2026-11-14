@@ -291,7 +291,7 @@ async function signOut() {
 .brand-text { display: flex; align-items: baseline; gap: 8px; min-width: 0; line-height: 1.2; }
 .brand-text strong { font-size: 19px; font-weight: 650; letter-spacing: .04em; }
 .topbar-profile.ant-btn { display: inline-flex; align-items: center; justify-content: center; width: 40px; min-width: 40px; height: 40px; padding: 0; }
-.topbar-profile .avatar { width: 32px; height: 32px; color: var(--accent-strong); background: var(--accent-soft); font-size: 13px; }
+.topbar-profile.ant-btn .avatar { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; line-height: 1; color: var(--accent-strong); background: var(--accent-soft); font-size: 13px; }
 .route-progress { position: fixed; z-index: 2000; inset: 0 0 auto; height: 2px; overflow: hidden; opacity: 0; pointer-events: none; transition: opacity .2s; }
 .route-progress.active { opacity: 1; }
 .route-progress span { position: absolute; inset: 0 auto 0 0; width: 40%; background: var(--brand); border-radius: 0 2px 2px 0; transform: translateX(-100%); }

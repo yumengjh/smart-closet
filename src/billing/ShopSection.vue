@@ -49,9 +49,17 @@ defineExpose({ load })
 </script>
 
 <template>
-  <section class="billing-shop">
+  <section class="billing-shop" :class="{ 'billing-shop-vip': compare }">
     <a-alert v-if="loadError" :message="loadError" type="warning" show-icon><template #action><a-button :loading="loading" @click="load">重试</a-button></template></a-alert>
     <a-skeleton v-if="loading && !products.length" active />
+    <h4>{{ imageOnly ? '提高每日次数' : '点数包与订阅' }}</h4>
+    <a-empty v-if="!loading && !loadError && !visibleProducts.length" :description="imageOnly ? '暂无可提高图片次数的订阅' : '暂无可购买的套餐'" />
+    <a-alert v-if="success" :message="success" type="success" show-icon />
+    <div class="shop-products"><article v-for="product in visibleProducts" :key="product.id" class="shop-row">
+      <div class="shop-info"><strong>{{ product.name }}</strong><p v-if="productSummary(product) !== product.name">{{ productSummary(product) }}</p></div>
+      <a-space><span class="shop-price">{{ formatMinor(product.priceMinor, product.currency) }}</span><a-button type="primary" @click="choose(product)">购买</a-button></a-space>
+    </article>
+    </div>
     <template v-if="compare && products.some(p => p.kind === 'SUBSCRIPTION')">
       <h4>权益对比</h4>
       <p v-if="billing.image?.enabled" class="comparison-current">当前图片每日 {{ billing.image.dailyLimit }} 次，今天还能 {{ billing.image.freeRemainingToday }} 次。账号单独设置的上限优先。</p>
@@ -59,13 +67,6 @@ defineExpose({ load })
         <template #bodyCell="{ text }">{{ text ?? '按账号设置' }}</template>
       </a-table>
     </template>
-    <h4>{{ imageOnly ? '提高每日次数' : '点数包与订阅' }}</h4>
-    <a-empty v-if="!loading && !loadError && !visibleProducts.length" :description="imageOnly ? '暂无可提高图片次数的订阅' : '暂无可购买的套餐'" />
-    <a-alert v-if="success" :message="success" type="success" show-icon />
-    <article v-for="product in visibleProducts" :key="product.id" class="shop-row">
-      <div class="shop-info"><strong>{{ product.name }}</strong><p v-if="productSummary(product) !== product.name">{{ productSummary(product) }}</p></div>
-      <a-space><span class="shop-price">{{ formatMinor(product.priceMinor, product.currency) }}</span><a-button type="primary" @click="choose(product)">购买</a-button></a-space>
-    </article>
     <template v-if="!imageOnly && orders.length">
       <h4>我的订单</h4>
       <article v-for="order in orders" :key="order.id" class="shop-row">
@@ -86,6 +87,17 @@ defineExpose({ load })
   </section>
 </template>
 <style scoped>
+.billing-shop-vip { padding-top: 8px; }
+.billing-shop-vip h4 { margin: 24px 0 12px; font-size: 16px; }
+.billing-shop-vip .shop-products { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
+.billing-shop-vip .shop-products .shop-row { display: flex; flex-direction: column; align-items: stretch; gap: 12px; min-width: 0; padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+.billing-shop-vip .shop-products .shop-info { flex: 1 1 auto; }
+.billing-shop-vip .shop-products .shop-info strong { font-size: 16px; }
+.billing-shop-vip .shop-products .shop-row > .ant-space { width: 100%; margin: 0; justify-content: space-between; }
+.billing-shop-vip .shop-price { font-size: 18px; font-variant-numeric: tabular-nums; }
+.billing-shop-vip .shop-info p { line-height: 1.6; }
+.billing-shop-vip .comparison-current { line-height: 1.6; margin-bottom: 12px; }
+@media (max-width: 767px) { .billing-shop-vip .shop-products { grid-template-columns: 1fr; } .billing-shop-vip .shop-products .shop-row { padding: 16px; } }
 .comparison-current { color: var(--muted-strong); font-size: 13px; }
 h4 { margin: var(--space-5) 0 var(--space-3); }
 .shop-row { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); flex-wrap: wrap; padding: var(--space-3) 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
