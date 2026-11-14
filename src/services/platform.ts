@@ -10,7 +10,7 @@ export class PlatformRequestError extends Error {
     super(message); this.name = 'PlatformRequestError'; this.uncertain = uncertain; this.status = status; this.code = code
   }
 }
-export async function platformRequest<T>(path: string, method = 'GET', body?: unknown, idempotencyKey?: string, options: { timeoutMs?: number } = {}): Promise<T> {
+export async function platformRequest<T>(path: string, method = 'GET', body?: unknown, idempotencyKey?: string, options: { timeoutMs?: number; responseType?: 'json' | 'blob' } = {}): Promise<T> {
   if (usingMocks) throw new Error('演示模式不提供真实个人资料或生成。')
   const headers = new Headers(), controller = new AbortController()
   const write = !['GET', 'HEAD'].includes(method), multipart = body instanceof FormData
@@ -34,10 +34,13 @@ export async function platformRequest<T>(path: string, method = 'GET', body?: un
       const error = await response.json().catch(() => ({}))
       if (response.status === 401) signalSessionExpired(error.code)
       if (response.status === 409 && error.code === 'ACCOUNT_MISMATCH') window.dispatchEvent(new Event('closet-account-mismatch'))
-      throw new PlatformRequestError(error.message || `请求未完成 (${response.status})`, write && (response.status >= 500 || response.status === 408), response.status, error.code)
+      throw new PlatformRequestError(error.message || error.detail || `请求未完成 (${response.status})`, write && (response.status >= 500 || response.status === 408), response.status, error.code)
     }
     stillSameAccount()
-    return response.status === 204 ? undefined as T : await response.json()
+    if (response.status === 204) return undefined as T
+    const result = options.responseType === 'blob' ? await response.blob() : await response.json()
+    stillSameAccount()
+    return result as T
   } catch (error) {
     if (error instanceof PlatformRequestError || error instanceof AccountSwitchedError) throw error
     throw new PlatformRequestError(timedOut ? '请求超时，请核对提交结果。' : sent ? '连接中断，尚无法确认提交结果。' : '暂时无法连接到服务，请检查连接后重试。', sent)
