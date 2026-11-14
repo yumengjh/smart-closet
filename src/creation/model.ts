@@ -16,8 +16,9 @@ export function creationInput(template: CreationTemplate, garments: { id: string
     ...(note.trim() ? { note: note.trim() } : {}), ...(parentJobId ? { parentJobId } : {}),
   }
 }
-export const liveCreation = (job: Pick<CreationJob, 'status'>) => ['QUEUED', 'WAITING_RESOURCE', 'RUNNING'].includes(job.status)
-export function creationStatus(job: Pick<CreationJob, 'status'>) {
+export const liveCreation = (job: Pick<CreationJob, 'status' | 'waitReason'>) => job.waitReason !== 'FEATURE_DISABLED' && ['QUEUED', 'WAITING_RESOURCE', 'RUNNING'].includes(job.status)
+export function creationStatus(job: Pick<CreationJob, 'status' | 'waitReason'>) {
+  if (job.status === 'QUEUED' && job.waitReason === 'FEATURE_DISABLED') return '等待功能恢复'
   return { QUEUED: '等待生成', WAITING_RESOURCE: '等待生成', RUNNING: '正在创作', SUCCEEDED: '作品已完成', FAILED: '生成未完成', UNKNOWN: '结果待确认', CANCELLED: '已取消', DELETED: '已删除' }[job.status] || '状态待确认'
 }
 export function readPendingCreation(value: string | null): PendingCreation | null {

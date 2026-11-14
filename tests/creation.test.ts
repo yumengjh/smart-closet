@@ -34,3 +34,7 @@ test('unknown is neither success nor an automatically retryable running task', (
   assert.equal(creationStatus({ status: 'UNKNOWN' }), '结果待确认'); assert.equal(liveCreation({ status: 'UNKNOWN' }), false)
   assert.equal(liveCreation({ status: 'QUEUED' }), true); assert.equal(liveCreation({ status: 'SUCCEEDED' }), false)
 })
+test('a queue paused by the feature switch does not claim generation is running', () => {
+  assert.equal(creationStatus({ status: 'QUEUED', waitReason: 'FEATURE_DISABLED' }), '等待功能恢复')
+  assert.equal(liveCreation({ status: 'QUEUED', waitReason: 'FEATURE_DISABLED' }), false)
+})

@@ -18,6 +18,7 @@ export type CreationJob = {
   id: string; status: CreationStatus; templateId: string; templateVersion: number; templateName: string
   createdAtMs: number; updatedAtMs: number; mediaUrl: string | null; errorCode?: string; errorMessage?: string
   quotaUnits: number; parentJobId: string | null; canCancel: boolean; canExport: boolean; canRecreate: boolean
+  waitReason?: string | null
 }
 export type CreationPage = { items: CreationJob[]; total: number; page: number; size: number }
 export type PendingCreation = { key: string; preparationId: string }
