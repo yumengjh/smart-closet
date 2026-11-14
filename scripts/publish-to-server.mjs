@@ -11,6 +11,7 @@ mkdirSync(serverStatic, { recursive: true })
 for (const name of ['index.html', 'favicon.svg', 'yuda-logo.png', 'yuda-logo-320.png', 'yuda-logo-192.png', 'manifest.webmanifest', 'sw.js']) cpSync(resolve(output, name), resolve(serverStatic, name))
 cpSync(resolve(output, 'icons'), resolve(serverStatic, 'icons'), { recursive: true })
 cpSync(resolve(output, 'illustrations'), resolve(serverStatic, 'illustrations'), { recursive: true })
+cpSync(resolve(output, 'creation-previews'), resolve(serverStatic, 'creation-previews'), { recursive: true })
 cpSync(resolve(output, 'licenses'), resolve(serverStatic, 'licenses'), { recursive: true })
 // Pose-check runtime and model, prepared by the prebuild:server hook (npm run setup:pose).
 if (existsSync(resolve(output, 'tryon-pose'))) cpSync(resolve(output, 'tryon-pose'), resolve(serverStatic, 'tryon-pose'), { recursive: true })
