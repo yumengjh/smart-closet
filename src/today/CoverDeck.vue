@@ -6,9 +6,9 @@ import { animate } from 'motion'
 import { CheckOutlined, StarOutlined, SwapOutlined } from '@ant-design/icons-vue'
 import { displayOuter } from '../recommend/situation'
 import type { RecommendedOutfit } from '../recommend/types'
-import { thumbUrl } from '../services/urls'
+import PieceCards from './PieceCards.vue'
 import { haptic } from '../services/celebrate'
-import { collageSlots, coverTint, stampOpacity, swipeOutcome } from './deck'
+import { coverTint, stampOpacity, swipeOutcome } from './deck'
 
 const props = defineProps<{ outfits: RecommendedOutfit[]; index: number; busy?: boolean }>()
 const emit = defineEmits<{ wear: [outfit: RecommendedOutfit, el: HTMLElement | null]; skip: [outfit: RecommendedOutfit]; open: [outfit: RecommendedOutfit]; save: [outfit: RecommendedOutfit] }>()
@@ -20,7 +20,6 @@ const current = computed(() => props.outfits[props.index])
 const cards = ref<HTMLElement[]>([])
 const topCard = () => cards.value.find(el => el.dataset.depth === '0') ?? null
 const heart = ref<{ $el: HTMLElement } | null>(null)
-const slots = (outfit: RecommendedOutfit) => collageSlots(outfit.garments, path => thumbUrl(path, 480))
 const tint = (outfit: RecommendedOutfit) => coverTint(outfit.garments)
 
 let drag: { id: number; x: number; y: number; last: number; t: number; v: number; crossed: boolean; moved: boolean } | undefined
@@ -106,10 +105,7 @@ onUnmounted(() => window.removeEventListener('blur', cancel))
           <span class="cover-stamp no" :style="{ opacity: stampOpacity(dx, -1) }" aria-hidden="true">换一套</span>
         </template>
         <div class="cover-photo" :style="{ '--tint': tint(card.outfit) }">
-          <div class="cover-collage">
-            <img v-for="(slot, i) in (card.depth < 2 ? slots(card.outfit) : [])" :key="slot.id" :src="slot.url" alt="" draggable="false" decoding="async"
-              :style="{ left: `${slot.left}%`, top: `${slot.top}%`, width: `${slot.width}%`, height: `${slot.height}%`, '--i': i }" />
-          </div>
+          <PieceCards v-if="card.depth < 2" :pieces="card.outfit.garments" :title="card.outfit.name" />
           <span class="cover-count">{{ card.no }} / {{ outfits.length }}</span>
         </div>
         <footer class="cover-copy">

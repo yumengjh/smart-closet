@@ -10,7 +10,7 @@ import SituationEcho from '../recommend/SituationEcho.vue'
 import { latestRequest } from '../recommend/latest'
 import CoverDeck from '../today/CoverDeck.vue'
 import RecommendationDetailModal from '../recommend/RecommendationDetailModal.vue'
-import OutfitCollage from '../today/OutfitCollage.vue'
+import PieceCards from '../today/PieceCards.vue'
 import { recommendApi } from '../recommend/api'
 import { outfitScene } from '../recommend/sceneCache'
 import type { IntentInput, Occasion, RecommendedOutfit, RecommendationView } from '../recommend/types'
@@ -19,8 +19,7 @@ import type { Outfit } from '../domain/outfit'
 import { useClosetStore } from '../stores/closet'
 import { playSound } from '../services/sound'
 import { celebrate, originOf } from '../services/celebrate'
-import { thumbUrl } from '../services/urls'
-import { appendUnique, collageSlots, coverTint, FIRST_BATCH, MORE_BATCH, REFILL_AT, scenePieces, TODAY_OCCASIONS } from '../today/deck'
+import { appendUnique, coverTint, FIRST_BATCH, MORE_BATCH, REFILL_AT, scenePieces, TODAY_OCCASIONS } from '../today/deck'
 import { readWorn, saveWorn, type WornToday } from '../today/worn'
 
 const router = useRouter(); const closet = useClosetStore(); const { message } = App.useApp()
@@ -125,7 +124,6 @@ function again() { showDeck.value = true; if (remaining.value <= 0) void load() 
 async function loadSaved() {
   try { saved.value = (await closetApi.outfits()).slice(0, 8) } catch { saved.value = [] }
 }
-const wornSlots = computed(() => worn.value ? collageSlots(worn.value.garments, path => thumbUrl(path, 480)) : [])
 const wornTint = computed(() => worn.value ? coverTint(worn.value.garments) : '')
 
 onMounted(() => {
@@ -148,7 +146,7 @@ onMounted(() => {
 
       <div v-if="worn && !showDeck" class="today-done" :style="{ '--tint': wornTint }">
         <span class="today-done-tag"><CheckCircleFilled /> 已记下今天穿这套</span>
-        <div class="today-done-collage"><img v-for="(slot, i) in wornSlots" :key="slot.id" :src="slot.url" alt="" :style="{ left: `${slot.left}%`, top: `${slot.top}%`, width: `${slot.width}%`, height: `${slot.height}%`, '--i': i }" /></div>
+        <div class="today-done-collage"><PieceCards :pieces="worn.garments" /></div>
         <h3>今天就穿「{{ worn.name }}」</h3>
         <p>之后的推荐会参考你今天穿了什么。</p>
         <div class="today-done-actions"><a-button size="large" @click="again">再看看别的</a-button><a-button type="primary" size="large" @click="tryOn(worn)"><SkinOutlined /> 穿上看看</a-button></div>
@@ -180,7 +178,7 @@ onMounted(() => {
       </button>
       <div class="today-sec"><h2>我的搭配</h2><RouterLink to="/outfits">全部 <RightOutlined /></RouterLink></div>
       <div v-if="saved.length" class="today-saved">
-        <RouterLink v-for="o in saved" :key="o.id" :to="`/outfits/${o.id}`" class="today-saved-item"><span class="today-saved-media"><OutfitCollage :pieces="scenePieces(o.scene)" :title="o.name" :size="320" /></span><b>{{ o.name }}</b></RouterLink>
+        <RouterLink v-for="o in saved" :key="o.id" :to="`/outfits/${o.id}`" class="today-saved-item"><span class="today-saved-media"><PieceCards :pieces="scenePieces(o.scene)" :title="o.name" :size="320" compact /></span><b>{{ o.name }}</b></RouterLink>
       </div>
       <p v-else class="today-quiet">遇到喜欢的，点 ☆ 收进来。</p>
       <template v-if="closet.pendingCount">
