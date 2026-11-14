@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
+    "dev:creation-fixture": "node scripts/creation-ui-fixture.mjs",
     "setup:pose": "node scripts/setup-pose.mjs",
     "prebuild": "npm run setup:pose",
     "prebuild:server": "npm run setup:pose",

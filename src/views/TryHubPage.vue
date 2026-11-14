@@ -2,7 +2,7 @@
 // 试穿入口（ToC 改版（二）3.1）：上身效果图（原 OOTD 页，已改成“这套 + 谁来穿”的工作台）与实时试穿合成一个入口。
 // 实时试穿这里只是启动页：看今日剩余时长、挑从哪件或哪套开始、看拍摄小贴士，点“打开镜头”才进全屏的 /try-on。
 // 没有实时试穿权限时不显示切换，直接是上身效果图。
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { BulbOutlined, CameraOutlined, HistoryOutlined, LockOutlined, VideoCameraOutlined } from '@ant-design/icons-vue'
 import { useBillingStore } from '../billing/store'
@@ -16,8 +16,10 @@ import { tryOnAccess } from '../tryon/access'
 import { tryOnApi, type Candidate } from '../tryon/api'
 import type { Outfit } from '../domain/outfit'
 import { mediaUrl } from '../services/urls'
+import { creationCatalog, loadCreationCatalog } from '../creation/access'
 
 const billing = useBillingStore()
+onMounted(() => { void loadCreationCatalog(true).catch(() => { /* Optional feature: the existing try-on flow stays usable. */ }) })
 const route = useRoute(), router = useRouter()
 const liveAvailable = computed(() => Boolean(tryOnAccess.value?.enabled))
 const mode = computed<'image' | 'live'>({
@@ -51,6 +53,7 @@ const TIPS = [
 
 <template>
   <div class="try-hub">
+    <div v-if="creationCatalog?.enabled" class="try-creation-entry"><div><strong>把搭配做成作品</strong><span>画报、平铺，记录自己的穿搭</span></div><a-button @click="router.push('/creation')">穿搭创作</a-button></div>
     <div v-if="liveAvailable" class="try-hub-switch">
       <a-segmented v-model:value="mode" block :options="[{ value: 'image', label: '上身效果图' }, { value: 'live', label: '实时试穿' }]" aria-label="试穿方式" />
     </div>
@@ -102,6 +105,10 @@ const TIPS = [
 </template>
 
 <style scoped>
+.try-creation-entry { display: flex; justify-content: space-between; align-items: center; gap: 16px; max-width: 1080px; margin: 0 auto 18px; padding: 16px 18px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); }
+.try-creation-entry strong, .try-creation-entry span { display: block; }
+.try-creation-entry strong { font-size: 14px; }
+.try-creation-entry span { margin-top: 4px; font-size: 12px; color: var(--muted); }
 .try-hub-switch { max-width: 360px; margin: 0 auto 16px; }
 .try-live { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; max-width: 640px; margin: 0 auto; }
 .try-live > * { min-width: 0; }
