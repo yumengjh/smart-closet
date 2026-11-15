@@ -10,11 +10,14 @@ export class PlatformRequestError extends Error {
     super(message); this.name = 'PlatformRequestError'; this.uncertain = uncertain; this.status = status; this.code = code
   }
 }
-export async function platformRequest<T>(path: string, method = 'GET', body?: unknown, idempotencyKey?: string, options: { timeoutMs?: number; responseType?: 'json' | 'blob' } = {}): Promise<T> {
+export async function platformRequest<T>(path: string, method = 'GET', body?: unknown, idempotencyKey?: string, options: { timeoutMs?: number; responseType?: 'json' | 'blob'; anonymous?: boolean } = {}): Promise<T> {
   if (usingMocks) throw new Error('演示模式不提供真实个人资料或生成。')
+  // Only the official showcase list is anonymous. Private reads retain their account and session guards.
+  const anonymous = options.anonymous === true
+  if (anonymous && (method !== 'GET' || body !== undefined || idempotencyKey !== undefined || path !== '/api/public/creations/showcases')) throw new Error('匿名请求只支持官方精选列表。')
   const headers = new Headers(), controller = new AbortController()
   const write = !['GET', 'HEAD'].includes(method), multipart = body instanceof FormData
-  const stillSameAccount = captureAccount()
+  const stillSameAccount = anonymous ? () => {} : captureAccount()
   let sent = false, timedOut = false
   const timer = setTimeout(() => { timedOut = true; controller.abort() }, options.timeoutMs ?? 30000)
   try {
@@ -29,11 +32,11 @@ export async function platformRequest<T>(path: string, method = 'GET', body?: un
       for (const [name, value] of Object.entries(accountHeaders(path))) headers.set(name, value)
     }
     sent = write
-    const response = await fetch(apiUrl(path), { method, headers, credentials: 'include', signal: controller.signal, body: body === undefined ? undefined : multipart ? body : JSON.stringify(body) })
+    const response = await fetch(apiUrl(path), { method, headers, credentials: anonymous ? 'omit' : 'include', ...(anonymous ? { cache: 'no-store' as const } : {}), signal: controller.signal, body: body === undefined ? undefined : multipart ? body : JSON.stringify(body) })
     if (!response.ok) {
       const error = await response.json().catch(() => ({}))
-      if (response.status === 401) signalSessionExpired(error.code)
-      if (response.status === 409 && error.code === 'ACCOUNT_MISMATCH') window.dispatchEvent(new Event('closet-account-mismatch'))
+      if (!anonymous && response.status === 401) signalSessionExpired(error.code)
+      if (!anonymous && response.status === 409 && error.code === 'ACCOUNT_MISMATCH') window.dispatchEvent(new Event('closet-account-mismatch'))
       throw new PlatformRequestError(error.message || error.detail || `请求未完成 (${response.status})`, write && (response.status >= 500 || response.status === 408), response.status, error.code)
     }
     stillSameAccount()

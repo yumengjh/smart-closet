@@ -38,7 +38,7 @@ async function submit() {
 </script>
 
 <template>
-  <AuthShell eyebrow="欢迎回来" title="登录你的衣柜" intro="查看你的衣物、搭配和处理进度。">
+  <AuthShell showcase eyebrow="欢迎回来" title="登录你的衣柜" intro="查看你的衣物、搭配和处理进度。">
     <form class="auth-form" @submit.prevent="submit">
       <label for="username">用户名</label><a-input id="username" v-model:value="username" size="large" autocomplete="username" placeholder="请输入你的用户名" autofocus />
       <label for="password">密码</label><a-input-password id="password" v-model:value="password" size="large" autocomplete="current-password" placeholder="请输入密码" />
