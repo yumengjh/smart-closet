@@ -1,14 +1,16 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { CameraOutlined, SkinOutlined, ThunderboltOutlined } from '@ant-design/icons-vue'
 import { useThemeStore } from '../stores/theme'
 import ThemeToggle from './ThemeToggle.vue'
+import AuthShowcases from './AuthShowcases.vue'
 
 /**
  * 登录、注册与注册后问询共用的外框 (issue #82)，手机优先：手机上是顶部品牌区 + 底部表单卡片，
  * 表单卡片占下半屏、按钮贴近拇指；桌面上是左侧品牌介绍、右侧表单。
  */
-defineProps<{ eyebrow?: string; title: string; intro?: string; compactArt?: boolean }>()
+defineProps<{ eyebrow?: string; title: string; intro?: string; compactArt?: boolean; showcase?: boolean }>()
+const hasShowcase = ref(false)
 const appearance = useThemeStore()
 const illustration = computed(() => appearance.isDark ? '/illustrations/yuda-login-dark.svg' : '/illustrations/yuda-login-light.svg')
 const features = [
@@ -25,9 +27,10 @@ const features = [
         <RouterLink to="/login" class="auth-brand" aria-label="鱼搭"><img src="/yuda-logo-320.png" alt="" /><span><strong>鱼搭</strong><small>数字衣橱</small></span></RouterLink>
         <ThemeToggle />
       </div>
-      <img class="auth-illustration" :src="illustration" alt="" aria-hidden="true" />
-      <p class="auth-tagline">从照片，<em>到你的数字衣柜。</em></p>
-      <ul class="auth-features">
+      <AuthShowcases v-if="showcase" @available="hasShowcase = $event" />
+      <img v-if="!hasShowcase" class="auth-illustration" :src="illustration" alt="" aria-hidden="true" />
+      <p v-if="!hasShowcase" class="auth-tagline">从照片，<em>到你的数字衣柜。</em></p>
+      <ul v-if="!hasShowcase" class="auth-features">
         <li v-for="f in features" :key="f.title"><span class="auth-feature-icon"><component :is="f.icon" /></span><span><strong>{{ f.title }}</strong><small>{{ f.text }}</small></span></li>
       </ul>
     </section>
