@@ -35,3 +35,14 @@ test('multipart uses the same submission key and does not force a JSON content t
  assert.deepEqual(await platformRequest('/api/me/person-baselines/upload-and-generate','POST',body,'same-key'),{id:'job'})
  assert.equal((captured!.headers as Headers).get('Idempotency-Key'),'same-key');assert.equal((captured!.headers as Headers).has('Content-Type'),false);assert.equal(captured!.body,body)
 })
+test('private export reads a PNG response through the same authenticated CSRF write path',async t=>{
+ let captured:RequestInit|undefined
+ t.mock.method(globalThis,'fetch',async(url:unknown,options:RequestInit)=>{if(String(url).endsWith('/csrf'))return csrf();captured=options;return new Response(new Uint8Array([137,80,78,71]),{headers:{'Content-Type':'image/png'}})})
+ const blob=await platformRequest('/api/creations/jobs/owned/export','POST',{brand:false},undefined,{responseType:'blob'})
+ assert.ok(blob instanceof Blob);assert.equal(blob.type,'image/png');assert.equal(blob.size,4)
+ assert.equal(captured!.credentials,'include');assert.equal((captured!.headers as Headers).get('X-XSRF-TOKEN'),'test-token')
+})
+test('Problem Details validation remains certain and exposes the service detail',async t=>{
+ t.mock.method(globalThis,'fetch',async(url:unknown)=>String(url).endsWith('/csrf')?csrf():Response.json({detail:'这个效果已下架，请重新选择。',code:'TEMPLATE_RETIRED'},{status:409}))
+ await assert.rejects(platformRequest('/api/creations/preparations','POST',{}),(e:Error&{uncertain:boolean})=>!e.uncertain&&e.message.includes('已下架'))
+})
