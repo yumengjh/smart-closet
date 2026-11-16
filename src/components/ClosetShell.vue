@@ -85,7 +85,7 @@ const navItems: NavItem[] = [
   { path: '/try', label: '试穿', glyph: 'try', mobile: 30 },
   { path: '/settings', label: '我的', glyph: 'me', mobile: 40 },
 ]
-const ACTIVE_PREFIXES: Record<string, string[]> = { '/today': ['/today', '/outfits'], '/wardrobe': ['/wardrobe', '/garment', '/pending', '/review', '/batches', '/trash'], '/try': ['/try', '/ootd'], '/settings': ['/settings', '/help', '/admin', '/vip'] }
+const ACTIVE_PREFIXES: Record<string, string[]> = { '/today': ['/today', '/outfits'], '/wardrobe': ['/wardrobe', '/garment', '/pending', '/review', '/batches', '/trash'], '/try': ['/try', '/ootd', '/creation'], '/settings': ['/settings', '/help', '/admin', '/vip'] }
 // Highlight the clicked destination immediately; on slow networks the route itself resolves later.
 const navPath = computed(() => pendingPath.value ?? route.path)
 function isNavActive(path: string) {
