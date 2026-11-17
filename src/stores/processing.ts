@@ -2,7 +2,9 @@ import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { closetApi, usingMocks, type BatchRecognize, type ClosetTask } from '../services/api'
 import { batchApi, type IntakeBatch } from '../services/batches'
-import { batchEntry, bulkEntry, renderEntry, taskEntry, type WaitingEntry } from '../domain/waiting'
+import { batchEntry, bulkEntry, creationEntry, renderEntry, taskEntry, type WaitingEntry } from '../domain/waiting'
+import { creationApi } from '../creation/api'
+import type { CreationJob } from '../creation/types'
 import { platformRequest, type RenderJob } from '../services/platform'
 import { playSound } from '../services/sound'
 import { mayPoll } from '../domain/accountSession'
@@ -86,6 +88,10 @@ export const useProcessingStore = defineStore('processing', () => {
     receive(base, true)
     setTimeout(() => receive({ ...base, state: 'ready', stage: '穿搭图好了，去看看', note: '模拟演示，未真正生成', thumb }), seconds * 1000)
   }
+  /** Creations share the centre with pictures; the first page holds the newest, so a running one is always on it. */
+  function trackCreation(job: CreationJob, submitted = false) { receive(creationEntry(job), submitted) }
+  // 创作可能未开放或接口暂不可用：失败不算整理中心断线，只是这一轮不更新作品。
+  const creationJobs = () => usingMocks ? Promise.resolve([] as CreationJob[]) : creationApi.jobs(1).then(page => page.items, () => null)
   const renderJobs = () => usingMocks ? Promise.resolve([] as RenderJob[]) : platformRequest<RenderJob[]>('/api/me/image-render-jobs')
   /** Removes a finished entry from the centre; running work stays until it ends. */
   function dismiss(entry: WaitingEntry) {
@@ -127,10 +133,11 @@ export const useProcessingStore = defineStore('processing', () => {
     try {
       let failed = false
       if (discover || Date.now() - discoveredAt > 30_000) {
-        const results = await Promise.allSettled([closetApi.tasks(), usingMocks ? Promise.resolve([] as IntakeBatch[]) : batchApi.history(), renderJobs(), usingMocks ? Promise.resolve([] as BatchRecognize[]) : closetApi.batchRecognizeRecent()])
+        const [results, works] = await Promise.all([Promise.allSettled([closetApi.tasks(), usingMocks ? Promise.resolve([] as IntakeBatch[]) : batchApi.history(), renderJobs(), usingMocks ? Promise.resolve([] as BatchRecognize[]) : closetApi.batchRecognizeRecent()]), creationJobs()])
         if (generation !== epoch) return
         const [tasks, batches, renders, bulks] = results
         if (renders.status === 'fulfilled') renders.value.forEach(job => trackRender(job))
+        works?.forEach(job => trackCreation(job))
         if (bulks.status === 'fulfilled') bulks.value.forEach(batch => trackBulk(batch))
         const children = new Set([...(batches.status === 'fulfilled' ? batches.value.flatMap(batch => batch.targets.flatMap(target => target.jobId ? [target.jobId] : [])) : []), ...(bulks.status === 'fulfilled' ? bulks.value.flatMap(batch => batch.jobIds) : [])])
         if (batches.status === 'fulfilled') batches.value.forEach(batch => trackBatch(batch))
@@ -142,11 +149,13 @@ export const useProcessingStore = defineStore('processing', () => {
         else failed = true
         discoveredAt = failed ? 0 : Date.now()
       }
-      const active = entries.value.filter(entry => entry.state === 'processing' && entry.kind !== 'render')
+      const active = entries.value.filter(entry => entry.state === 'processing' && entry.kind !== 'render' && entry.kind !== 'creation')
       const rendering = entries.value.filter(entry => entry.state === 'processing' && entry.kind === 'render' && !entry.id.startsWith('demo-'))
-      const [results, renders] = await Promise.all([
+      const creating = entries.value.filter(entry => entry.state === 'processing' && entry.kind === 'creation')
+      const [results, renders, works] = await Promise.all([
         Promise.allSettled(active.map(async entry => ({ entry, value: entry.kind === 'task' ? taskEntry(await closetApi.task(entry.id)) : entry.kind === 'bulk' ? await bulkStatus(entry) : batchEntry(await batchApi.get(entry.id)) }))),
         rendering.length ? renderJobs().then(list => list, () => null) : Promise.resolve([] as RenderJob[]),
+        creating.length ? creationJobs() : Promise.resolve([] as CreationJob[]),
       ])
       if (generation !== epoch) return
       if (renders) {
@@ -154,6 +163,11 @@ export const useProcessingStore = defineStore('processing', () => {
         const byId = new Map(renders.map(job => [job.id, job]))
         rendering.forEach(entry => { const job = byId.get(entry.id); if (job) trackRender(job); else { entries.value = entries.value.filter(item => item.key !== entry.key); save() } })
       } else failed = true
+      if (works) {
+        // A running creation missing from the newest page was deleted elsewhere; it leaves the centre like a picture does.
+        const byId = new Map(works.map(job => [job.id, job]))
+        creating.forEach(entry => { const job = byId.get(entry.id); if (job) trackCreation(job); else { entries.value = entries.value.filter(item => item.key !== entry.key); save() } })
+      }
       for (const result of results) {
         if (result.status === 'fulfilled') receive(result.value.value)
         else failed = true
@@ -193,7 +207,7 @@ export const useProcessingStore = defineStore('processing', () => {
     stop(); username = user; discoveryDeferred = defer
     try {
       const saved: WaitingEntry[] = JSON.parse(sessionStorage.getItem(storageKey()) || '[]')
-      if (Array.isArray(saved)) entries.value = saved.filter(entry => entry && ['task', 'batch', 'render', 'bulk'].includes(entry.kind) && typeof entry.id === 'string' && entry.key === `${entry.kind}:${entry.id}` && Array.isArray(entry.childIds) && !(entry.id.startsWith('demo-') && entry.state === 'processing'))
+      if (Array.isArray(saved)) entries.value = saved.filter(entry => entry && ['task', 'batch', 'render', 'creation', 'bulk'].includes(entry.kind) && typeof entry.id === 'string' && entry.key === `${entry.kind}:${entry.id}` && Array.isArray(entry.childIds) && !(entry.id.startsWith('demo-') && entry.state === 'processing'))
       const hints: unknown = JSON.parse(sessionStorage.getItem(`${storageKey()}:invited`) || '[]')
       if (Array.isArray(hints)) for (const key of hints) if (typeof key === 'string') invited.add(key)
     } catch { /* A fresh tab discovers active jobs from the server. */ }
@@ -201,5 +215,5 @@ export const useProcessingStore = defineStore('processing', () => {
     document.addEventListener('visibilitychange', visibility)
     void refresh(true)
   }
-  return { entries, ordered, latestNotice, startPrompt, activeCount, unreadCount, connectionError, start, stop, deferDiscovery, resumeDiscovery, refresh, trackTask, trackBatch, trackBulk, trackRender, simulateRender, dismissStartPrompt, dismissNotice, viewed, dismiss, dismissFinished, isHidden, hideTask, hideAllTasks }
+  return { entries, ordered, latestNotice, startPrompt, activeCount, unreadCount, connectionError, start, stop, deferDiscovery, resumeDiscovery, refresh, trackTask, trackBatch, trackBulk, trackRender, trackCreation, simulateRender, dismissStartPrompt, dismissNotice, viewed, dismiss, dismissFinished, isHidden, hideTask, hideAllTasks }
 })
