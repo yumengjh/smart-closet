@@ -17,9 +17,10 @@ import { tryOnApi, type Candidate } from '../tryon/api'
 import type { Outfit } from '../domain/outfit'
 import { mediaUrl } from '../services/urls'
 import { creationCatalog, loadCreationCatalog } from '../creation/access'
+import { liveWorks, refreshWorks } from '../creation/works'
 
 const billing = useBillingStore()
-onMounted(() => { void loadCreationCatalog(true).catch(() => { /* Optional feature: the existing try-on flow stays usable. */ }) })
+onMounted(() => { void refreshWorks(1); void loadCreationCatalog(true).catch(() => { /* Optional feature: the existing try-on flow stays usable. */ }) })
 const route = useRoute(), router = useRouter()
 const liveAvailable = computed(() => Boolean(tryOnAccess.value?.enabled))
 const mode = computed<'image' | 'live'>({
@@ -53,7 +54,7 @@ const TIPS = [
 
 <template>
   <div class="try-hub">
-    <div v-if="creationCatalog?.enabled" class="try-creation-entry"><div><strong>把搭配做成作品</strong><span>画报、平铺，记录自己的穿搭</span></div><a-button @click="router.push('/creation')">穿搭创作</a-button></div>
+    <div v-if="creationCatalog?.enabled" class="try-creation-entry"><div><strong>把搭配做成作品</strong><span>画报、平铺，记录自己的穿搭</span></div><a-badge :dot="liveWorks > 0"><a-button @click="router.push('/creation')">去创作</a-button></a-badge></div>
     <div v-if="liveAvailable" class="try-hub-switch">
       <a-segmented v-model:value="mode" block :options="[{ value: 'image', label: '上身效果图' }, { value: 'live', label: '实时试穿' }]" aria-label="试穿方式" />
     </div>

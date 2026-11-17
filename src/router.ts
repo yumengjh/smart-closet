@@ -12,6 +12,7 @@ export const router = createRouter({
     { path: '/vip', component: () => import('./views/VipPage.vue') },
     { path: '/try', component: () => import('./views/TryHubPage.vue') },
     { path: '/creation', component: () => import('./views/CreationPage.vue') },
+    { path: '/creation/works', component: () => import('./views/CreationWorksPage.vue') },
     { path: '/login', component: () => import('./views/LoginPage.vue') },
     { path: '/register', component: () => import('./views/RegisterPage.vue') },
     { path: '/welcome', component: () => import('./views/WelcomePage.vue') },
