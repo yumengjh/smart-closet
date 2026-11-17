@@ -17,7 +17,7 @@ test('running picture stays in the processing centre with an expectation of the 
 test('finished OOTD links straight to the picture and carries a thumbnail', () => {
   const entry = renderEntry(job({ status: 'SUCCEEDED', mediaUrl: '/api/media/x' }))
   assert.equal(entry.state, 'ready')
-  assert.equal(entry.href, '/ootd?job=j1')
+  assert.equal(entry.href, '/try/album?job=j1')
   assert.equal(entry.thumb, '/api/media/x')
 })
 

@@ -3,6 +3,7 @@ import { useClosetStore } from './stores/closet'
 import { sessionRedirect } from './domain/session'
 import { closetApi } from './services/api'
 import { installRouteProgress } from './composables/useRouteProgress'
+import { legacyCreation, legacyOotd, legacyWorks } from './try/routes'
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -11,8 +12,11 @@ export const router = createRouter({
     { path: '/today', component: () => import('./views/TodayPage.vue') },
     { path: '/vip', component: () => import('./views/VipPage.vue') },
     { path: '/try', component: () => import('./views/TryHubPage.vue') },
-    { path: '/creation', component: () => import('./views/CreationPage.vue') },
-    { path: '/creation/works', component: () => import('./views/CreationWorksPage.vue') },
+    { path: '/try/album', component: () => import('./views/TryAlbumPage.vue') },
+    // 试穿与创作合并（server#271）：旧地址保留跳转。
+    { path: '/creation', redirect: to => legacyCreation(to.query) },
+    { path: '/creation/works', redirect: to => legacyWorks(to.query) },
+    { path: '/ootd', redirect: to => legacyOotd(to.query) },
     { path: '/login', component: () => import('./views/LoginPage.vue') },
     { path: '/register', component: () => import('./views/RegisterPage.vue') },
     { path: '/welcome', component: () => import('./views/WelcomePage.vue') },
@@ -25,7 +29,6 @@ export const router = createRouter({
     { path: '/outfits', component: () => import('./views/OutfitPage.vue') },
     { path: '/outfits/workspace', component: () => import('./views/OutfitWorkspacePage.vue') },
     { path: '/outfits/:id', component: () => import('./views/OutfitWorkspacePage.vue') },
-    { path: '/ootd', component: () => import('./views/OotdPage.vue') },
     { path: '/try-on', component: () => import('./views/TryOnPage.vue') },
     { path: '/help', component: () => import('./views/HelpPage.vue') },
     { path: '/settings', component: () => import('./views/SettingsPage.vue') },

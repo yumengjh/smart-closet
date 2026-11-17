@@ -43,12 +43,10 @@ import SoundToggle from '../components/SoundToggle.vue'
 import { arrangeOutfit } from '../domain/outfit-layout'
 import { canvasBridge } from '../agent/bridge'
 import { playSound } from '../services/sound'
-import { creationCatalog, loadCreationCatalog } from '../creation/access'
 import type { CueName } from '@foleyjs/core'
 import { MIN_VIEW_ZOOM, MAX_VIEW_ZOOM, outfitViewGeometry, outfitWheelZoom } from '../domain/outfit-view'
 
 const props = defineProps<{ board?: import('../domain/outfit-workspace').WorkspaceBoard; saveBoard?: () => Promise<void> }>()
-onMounted(() => { void loadCreationCatalog(true).catch(() => { /* Creation is optional. */ }) })
 const actualRoute = useRoute()
 const route = new Proxy(actualRoute, { get(target, key) { if (props.board && key === 'params') return { id: props.board.outfitId || 'new' }; return Reflect.get(target, key) } })
 const router = useRouter()
@@ -1031,7 +1029,7 @@ defineExpose({ flush: persistDraft, exportPng })
       <a-segmented v-model:value="libraryTab" class="outfit-library-tabs" aria-label="搭配视图" :options="[{ value: 'mix', label: '快速搭' }, { value: 'mine', label: saved.length ? `我的搭配 · ${saved.length}` : '我的搭配' }, { value: 'today', label: '今天穿什么' }]" />
       <a-input v-if="saved.length" v-show="libraryTab === 'mine'" v-model:value="librarySearch" class="outfit-library-search" allow-clear placeholder="搜索搭配名称" aria-label="搜索搭配"><template #prefix><SearchOutlined /></template></a-input>
       <span class="outfit-library-gap"></span>
-      <div class="outfit-library-actions"><WorkspaceMenu /><a-button @click="router.push('/ootd')"><CameraOutlined /><span>上身效果图</span></a-button><a-button type="primary" class="outfit-library-new" @click="router.push('/outfits/new')"><PlusOutlined /><span>新建搭配</span></a-button></div>
+      <div class="outfit-library-actions"><WorkspaceMenu /><a-button @click="router.push('/try')"><CameraOutlined /><span>上身效果图</span></a-button><a-button type="primary" class="outfit-library-new" @click="router.push('/outfits/new')"><PlusOutlined /><span>新建搭配</span></a-button></div>
     </div>
     <QuickMix v-if="libraryTab === 'mix'" :key="String(actualRoute.query.mix || '')" />
     <RecommendationStrip v-if="todayVisited" v-show="libraryTab === 'today'" />
@@ -1058,7 +1056,7 @@ defineExpose({ flush: persistDraft, exportPng })
   <div v-else class="outfit-editor-page" :inert="props.board?.locked ? true : undefined">
     <header v-if="!props.board" class="outfit-editor-header">
       <div class="outfit-editor-title"><a-tooltip v-if="!props.board" title="返回搭配列表，草稿会自动保留"><a-button aria-label="返回搭配列表" @click="router.push('/outfits')"><ArrowLeftOutlined /></a-button></a-tooltip><div class="outfit-title-field"><a-input v-model:value="name" maxlength="100" aria-label="搭配名称" placeholder="给搭配起个名字" /></div><a-tooltip :title="saveState"><span class="outfit-save-state" role="status"><CheckOutlined v-if="localDraftNotice || (!isNew && !hasChanges)" />{{ localDraftNotice ? '本机草稿' : !isNew && !hasChanges ? '已保存' : '未保存' }}</span></a-tooltip></div>
-      <div class="outfit-header-actions"><SoundToggle /><a-button v-if="!isNew && !hasChanges && !remoteConflict" :loading="wearing" @click="wearOutfit(outfitId)"><CheckOutlined /> 今天穿了</a-button><a-button @click="reviewOpen=true">穿搭检查</a-button><a-button :disabled="isNew || hasChanges || !!remoteConflict" title="请先保存当前修改，再生成上身图" @click="router.push({ path: '/ootd', query: { outfit: outfitId } })">上身图</a-button><a-button v-if="creationCatalog?.enabled" :disabled="isNew || hasChanges || !!remoteConflict" @click="router.push({ path: '/creation', query: { outfit: outfitId } })">穿搭创作</a-button><a-button v-if="tryOnAccess?.enabled" :disabled="isNew || hasChanges || !!remoteConflict" @click="router.push({ path: '/try-on', query: { outfit: outfitId } })">实时试穿</a-button><a-button class="outfit-desktop-export" :loading="exporting" :disabled="!dirty || !!failedImage" @click="exportPng"><DownloadOutlined /> 导出图片</a-button><a-button type="primary" aria-label="保存搭配" :loading="saving" :disabled="!dirty || remoteConflict" @click="saveOutfit"><SaveOutlined /><span>{{ compact ? '保存' : '保存搭配' }}</span></a-button></div>
+      <div class="outfit-header-actions"><SoundToggle /><a-button v-if="!isNew && !hasChanges && !remoteConflict" :loading="wearing" @click="wearOutfit(outfitId)"><CheckOutlined /> 今天穿了</a-button><a-button @click="reviewOpen=true">穿搭检查</a-button><a-dropdown-button v-if="tryOnAccess?.enabled" :disabled="isNew || hasChanges || !!remoteConflict" title="请先保存当前修改，再做张图" @click="router.push({ path: '/try', query: { outfit: outfitId } })">做张图<template #overlay><a-menu @click="router.push({ path: '/try-on', query: { outfit: outfitId } })"><a-menu-item key="live">镜头试穿</a-menu-item></a-menu></template></a-dropdown-button><a-button v-else :disabled="isNew || hasChanges || !!remoteConflict" title="请先保存当前修改，再做张图" @click="router.push({ path: '/try', query: { outfit: outfitId } })">做张图</a-button><a-button class="outfit-desktop-export" :loading="exporting" :disabled="!dirty || !!failedImage" @click="exportPng"><DownloadOutlined /> 导出图片</a-button><a-button type="primary" aria-label="保存搭配" :loading="saving" :disabled="!dirty || remoteConflict" @click="saveOutfit"><SaveOutlined /><span>{{ compact ? '保存' : '保存搭配' }}</span></a-button></div>
     </header>
     <a-alert v-if="!props.board && actualRoute.query.from === 'recommend'" type="info" show-icon closable class="outfit-alert" message="来自推荐 · 这是一份草稿，保存前可以随意调整"><template v-if="typeof actualRoute.query.run === 'string' && typeof actualRoute.query.key === 'string'" #action><ExplainButton :run-id="actualRoute.query.run" :outfit-key="actualRoute.query.key" label="查看依据" /></template></a-alert>
     <a-alert v-if="remoteConflict" type="warning" show-icon message="另一处已更新这套搭配，你的草稿仍保留。" class="outfit-alert"><template #action><div class="outfit-conflict-actions"><a-button @click="loadLatest">重新加载</a-button><a-button type="primary" @click="saveConflictAsCopy">另存副本</a-button></div></template></a-alert>

@@ -1,13 +1,13 @@
 <script setup lang="ts">
-// 试穿入口（ToC 改版（二）3.1）：上身效果图（原 OOTD 页，已改成“这套 + 谁来穿”的工作台）与实时试穿合成一个入口。
-// 实时试穿这里只是启动页：看今日剩余时长、挑从哪件或哪套开始、看拍摄小贴士，点“打开镜头”才进全屏的 /try-on。
-// 没有实时试穿权限时不显示切换，直接是上身效果图。
+// 试穿入口（ToC 改版（二）3.1；试穿与创作合并 server#271）：“做张图”（上身图与创作效果共用一个分步流程，见 TryMaker）
+// 与“镜头试穿”（实时试穿的启动页：看今日剩余时长、挑从哪件或哪套开始、看拍摄小贴士，点“打开镜头”才进全屏的 /try-on）。
+// 没有实时试穿权限时不显示切换，直接是“做张图”。右上“我的图”（/try/album）收着上身图与作品，有进行中的任务时带小红点。
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { BulbOutlined, CameraOutlined, HistoryOutlined, LockOutlined, VideoCameraOutlined } from '@ant-design/icons-vue'
+import { BulbOutlined, CameraOutlined, HistoryOutlined, LockOutlined, PictureOutlined, VideoCameraOutlined } from '@ant-design/icons-vue'
 import { useBillingStore } from '../billing/store'
 import { realtimePrice } from '../billing/model'
-import OotdPage from './OotdPage.vue'
+import TryMaker from '../components/try/TryMaker.vue'
 import PageTitle from '../shell/PageTitle.vue'
 import OutfitCollage from '../today/OutfitCollage.vue'
 import { scenePieces } from '../today/deck'
@@ -16,11 +16,14 @@ import { tryOnAccess } from '../tryon/access'
 import { tryOnApi, type Candidate } from '../tryon/api'
 import type { Outfit } from '../domain/outfit'
 import { mediaUrl } from '../services/urls'
-import { creationCatalog, loadCreationCatalog } from '../creation/access'
 import { liveWorks, refreshWorks } from '../creation/works'
+import { useProcessingStore } from '../stores/processing'
+import { ALBUM_PATH } from '../try/routes'
 
-const billing = useBillingStore()
-onMounted(() => { void refreshWorks(1); void loadCreationCatalog(true).catch(() => { /* Optional feature: the existing try-on flow stays usable. */ }) })
+const billing = useBillingStore(), processing = useProcessingStore()
+onMounted(() => { void refreshWorks(1) })
+// 上身图的进度在整理中心（processing store）里，作品的进度在 works；任一有进行中的就点亮。
+const albumBusy = computed(() => liveWorks.value > 0 || processing.entries.some(entry => entry.kind === 'render' && entry.state === 'processing' && entry.href.startsWith(ALBUM_PATH)))
 const route = useRoute(), router = useRouter()
 const liveAvailable = computed(() => Boolean(tryOnAccess.value?.enabled))
 const mode = computed<'image' | 'live'>({
@@ -54,9 +57,10 @@ const TIPS = [
 
 <template>
   <div class="try-hub">
-    <div v-if="creationCatalog?.enabled" class="try-creation-entry"><div><strong>把搭配做成作品</strong><span>画报、平铺，记录自己的穿搭</span></div><a-badge :dot="liveWorks > 0"><a-button @click="router.push('/creation')">去创作</a-button></a-badge></div>
-    <div v-if="liveAvailable" class="try-hub-switch">
-      <a-segmented v-model:value="mode" block :options="[{ value: 'image', label: '上身效果图' }, { value: 'live', label: '实时试穿' }]" aria-label="试穿方式" />
+    <PageTitle v-if="mode === 'image'" title="试穿" />
+    <div class="try-hub-top">
+      <a-segmented v-if="liveAvailable" v-model:value="mode" block class="try-hub-switch" :options="[{ value: 'image', label: '做张图' }, { value: 'live', label: '镜头试穿' }]" aria-label="试穿方式" />
+      <a-badge :dot="albumBusy" :offset="[-4, 4]" class="try-hub-album"><a-button @click="router.push(ALBUM_PATH)"><PictureOutlined /> 我的图</a-button></a-badge>
     </div>
     <div v-if="mode === 'live'" class="try-live">
       <PageTitle title="实时试穿" />
@@ -101,16 +105,14 @@ const TIPS = [
         <a-button v-if="cap?.hasHistory" type="text" @click="router.push('/try-on?history=1')"><HistoryOutlined /> 拍摄记录</a-button>
       </div>
     </div>
-    <OotdPage v-else />
+    <TryMaker v-else />
   </div>
 </template>
 
 <style scoped>
-.try-creation-entry { display: flex; justify-content: space-between; align-items: center; gap: 16px; max-width: 1080px; margin: 0 auto 18px; padding: 16px 18px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); }
-.try-creation-entry strong, .try-creation-entry span { display: block; }
-.try-creation-entry strong { font-size: 14px; }
-.try-creation-entry span { margin-top: 4px; font-size: 12px; color: var(--muted); }
-.try-hub-switch { max-width: 360px; margin: 0 auto 16px; }
+.try-hub-top { display: flex; align-items: center; justify-content: flex-end; gap: 12px; max-width: 1080px; margin: 0 auto 16px; }
+.try-hub-switch { flex: 1; max-width: 360px; margin-right: auto; }
+.try-hub-album { flex: none; }
 .try-live { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; max-width: 640px; margin: 0 auto; }
 .try-live > * { min-width: 0; }
 .try-live-stage { position: relative; display: flex; flex-direction: column; justify-content: flex-end; min-height: 300px; padding: 20px; overflow: hidden; border-radius: 20px; color: #fff; background: radial-gradient(120% 90% at 50% 0%, #3a3a3a 0%, #111 70%); }

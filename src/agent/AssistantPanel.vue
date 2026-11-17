@@ -334,7 +334,7 @@ function nearBottom() { return !transcript.value || transcript.value.scrollHeigh
 
 const session = computed(() => sessions.value.find(s => s.id === selected.value))
 const context = computed(() => pageContext(route.path))
-const contextName = computed(() => context.value.scene ? `${context.value.name || '搭配'} · ${context.value.selectedIds?.length || 0} 项选中` : context.value.garmentId ? '当前衣物详情' : ({ '/today': '今天', '/try': '试穿', '/wardrobe': '我的衣柜', '/outfits': '搭配', '/settings': '我的设置', '/help': '平台帮助', '/tasks': '任务记录', '/pending': '整理中', '/add': '添加衣物', '/trash': '回收站' } as Record<string, string>)[route.path] || '当前页面')
+const contextName = computed(() => context.value.scene ? `${context.value.name || '搭配'} · ${context.value.selectedIds?.length || 0} 项选中` : context.value.garmentId ? '当前衣物详情' : ({ '/today': '今天', '/try': '试穿', '/try/album': '我的图', '/wardrobe': '我的衣柜', '/outfits': '搭配', '/settings': '我的设置', '/help': '平台帮助', '/tasks': '任务记录', '/pending': '整理中', '/add': '添加衣物', '/trash': '回收站' } as Record<string, string>)[route.path] || '当前页面')
 async function refreshSessions() { sessions.value = await agentRequest<AgentSession[]>('/sessions') }
 async function load() {
   void flushBoardTrace()

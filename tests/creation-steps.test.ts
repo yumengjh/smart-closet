@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { generateBlock, liveCount, newlyDone, nextStep, readDraft, serializeDraft, startStep, stepBlock, stepsFor, workState } from '../src/creation/steps.ts'
-import type { CreationTemplate } from '../src/creation/types.ts'
+import { canChooseEffect, effectsFor, entryStep, generateBlock, isOutfitEffect, liveCount, newlyDone, nextStep, OUTFIT_EFFECT_ID, outfitEffect, readDraft, serializeDraft, startStep, stepBlock, stepsFor, workState } from '../src/creation/steps.ts'
+import type { CreationCatalog, CreationTemplate } from '../src/creation/types.ts'
 
 const flat: CreationTemplate = { id: 'flat', version: 1, name: '平铺', description: '', previewUrl: null, personRequired: false, options: {}, maxGarments: 3, available: true, unavailableReason: null }
 const worn: CreationTemplate = { ...flat, id: 'worn', personRequired: true, maxGarments: 20 }
@@ -49,4 +49,41 @@ test('celebration fires once, only for jobs seen unfinished', () => {
   assert.deepEqual(newlyDone(seen, [{ id: 'a', status: 'SUCCEEDED' }, { id: 'b', status: 'RUNNING' }], done), [])
   assert.deepEqual(newlyDone(seen, [{ id: 'a', status: 'SUCCEEDED' }, { id: 'b', status: 'SUCCEEDED' }], done), ['b'])
   assert.deepEqual(newlyDone(seen, [{ id: 'b', status: 'SUCCEEDED' }], done), [])
+})
+
+// 试穿与创作合并（server#271）：上身图是内置的第一张效果，只能从搭配选；创作关闭时跳过选效果。
+test('the outfit picture is always the first effect, and the only one when creation is off or empty', () => {
+  const open: CreationCatalog = { enabled: true, templates: [flat, worn] }
+  assert.deepEqual(effectsFor(open).map(t => t.id), [OUTFIT_EFFECT_ID, 'flat', 'worn'])
+  assert.deepEqual(effectsFor({ enabled: false, templates: [flat] }).map(t => t.id), [OUTFIT_EFFECT_ID])
+  assert.deepEqual(effectsFor(null).map(t => t.id), [OUTFIT_EFFECT_ID])
+  assert.equal(canChooseEffect(open), true)
+  assert.equal(canChooseEffect({ enabled: true, templates: [] }), false)
+  assert.equal(canChooseEffect({ enabled: false, templates: [flat] }), false)
+  assert.equal(canChooseEffect(undefined), false)
+  assert.ok(isOutfitEffect(outfitEffect)); assert.ok(!isOutfitEffect(worn)); assert.ok(outfitEffect.personRequired)
+})
+test('without an effect choice the flow starts at the clothes', () => {
+  assert.deepEqual(stepsFor(outfitEffect, false), ['garments', 'person'])
+  assert.deepEqual(stepsFor(outfitEffect), ['effect', 'garments', 'person'])
+  assert.deepEqual(stepsFor(flat, false), ['garments'])
+})
+test('the outfit picture takes a saved outfit only; loose clothes are asked to be saved first', () => {
+  const base = { template: outfitEffect, hasPerson: true }
+  assert.equal(stepBlock('effect', { ...base, garmentCount: 0 }), '')
+  assert.equal(stepBlock('garments', { ...base, garmentCount: 0, hasOutfit: false }), '先选一套搭配')
+  assert.equal(stepBlock('garments', { ...base, garmentCount: 3, hasOutfit: false }), '先存成搭配')
+  assert.match(stepBlock('garments', { ...base, garmentCount: 0, hasOutfit: true }), /至少/)
+  // 搭配不受创作效果的 12 件上限约束。
+  assert.equal(stepBlock('garments', { ...base, garmentCount: 20, hasOutfit: true }), '')
+  assert.equal(stepBlock('person', { ...base, hasPerson: false, garmentCount: 2, hasOutfit: true }), '先设置谁来穿')
+  assert.equal(generateBlock({ ...base, garmentCount: 2, hasOutfit: true }), '')
+  assert.equal(generateBlock({ ...base, garmentCount: 2, hasOutfit: false }), '先存成搭配')
+})
+test('entering always starts at the effect when there is a choice; otherwise at the first unfinished step', () => {
+  const ready = { template: outfitEffect, garmentCount: 2, hasPerson: true, hasOutfit: true }
+  assert.equal(entryStep(stepsFor(outfitEffect), ready), 'effect')
+  assert.equal(entryStep(stepsFor(outfitEffect, false), ready), 'person')
+  assert.equal(entryStep(stepsFor(outfitEffect, false), { ...ready, hasOutfit: false, garmentCount: 0 }), 'garments')
+  assert.equal(entryStep(stepsFor(outfitEffect, false), { ...ready, hasPerson: false }), 'person')
 })

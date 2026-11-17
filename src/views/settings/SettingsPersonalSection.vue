@@ -151,7 +151,7 @@ onUnmounted(()=>{clearInterval(timer);if(photoPreview.value)URL.revokeObjectURL(
           <h3>我的形象</h3>
           <p>可以保留多位形象（例如不同发型、不同照片），上身图 时任选一位。未填的资料按示意默认值生成（男 170 cm、女 160 cm、BMI 22），不写回资料。</p>
         </div>
-        <RouterLink class="settings-group-link" to="/ootd">去 上身效果图 ↗</RouterLink>
+        <RouterLink class="settings-group-link" to="/try">去 上身效果图 ↗</RouterLink>
       </header>
       <a-alert v-if="pending" type="warning" message="上一次提交结果尚未核对，请继续核对原任务，避免重复生成。" style="margin-bottom:12px" />
       <a-alert v-if="!choices.length" type="info" message="暂时没有可用的生成模型，资料可以先保存。" style="margin-bottom:12px" />

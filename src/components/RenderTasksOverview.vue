@@ -35,7 +35,7 @@ onUnmounted(()=>{alive=false;clearTimeout(timer);window.removeEventListener('clo
   <section v-if="visible.length || error" class="render-card" aria-label="人物与穿搭图生成">
     <header class="render-head">
       <div><h2>人物与穿搭图生成</h2><p>只列出生成中或需要检查的图片，做好的结果保存在各自页面。</p></div>
-      <span class="render-links"><RouterLink to="/settings?section=personal">我的形象</RouterLink><RouterLink to="/ootd">上身图 记录</RouterLink></span>
+      <span class="render-links"><RouterLink to="/settings?section=personal">我的形象</RouterLink><RouterLink to="/try/album">我的图</RouterLink></span>
     </header>
     <a-alert v-if="error" type="warning" :message="`生成状态暂时无法更新：${error}`" show-icon class="render-alert" />
     <ul class="render-list">
@@ -47,7 +47,7 @@ onUnmounted(()=>{alive=false;clearTimeout(timer);window.removeEventListener('clo
           <small>开始于 {{ when(job.createdAt) }}</small>
         </div>
         <span class="render-actions">
-          <RouterLink v-if="job.purpose === 'OOTD' && ['UNKNOWN','FAILED'].includes(job.status)" :to="{ path: '/ootd', query: { job: job.id } }"><a-button size="small" type="primary">查看并重新生成</a-button></RouterLink>
+          <RouterLink v-if="job.purpose === 'OOTD' && ['UNKNOWN','FAILED'].includes(job.status)" :to="{ path: '/try/album', query: { job: job.id } }"><a-button size="small" type="primary">查看并重新生成</a-button></RouterLink>
           <a-button v-if="['QUEUED','WAITING_RESOURCE','RUNNING','UNKNOWN'].includes(job.status)" size="small" :loading="cancelling === job.id" @click="cancel(job)">取消生成</a-button>
         </span>
       </li>

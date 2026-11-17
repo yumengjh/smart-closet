@@ -2,6 +2,7 @@ import type { ClosetTask } from '../services/api'
 import type { IntakeBatch } from '../services/batches'
 import type { RenderJob } from '../services/platform'
 import type { BatchRecognize } from '../services/api'
+import { albumJobHref } from '../try/routes.ts'
 
 export type WaitingEntry = {
   key: string; kind: 'task' | 'batch' | 'render' | 'bulk'; id: string; title: string; startedAt: number
@@ -62,7 +63,7 @@ export function renderEntry(job: RenderJob): WaitingEntry {
     : state === 'cancelled' ? '已停止生成' : job.status === 'UNKNOWN' ? '结果待核实，不会自动重发' : '生成未完成'
   return { key: `render:${job.id}`, kind: 'render', id: job.id, title, startedAt: job.createdAt, state, stage,
     note: state === 'processing' ? '通常 1 分钟左右，好了会提醒你' : job.error || '', read: false, childIds: [],
-    href: job.purpose === 'BASELINE' ? '/settings?section=personal' : `/ootd?job=${job.id}`,
+    href: job.purpose === 'BASELINE' ? '/settings?section=personal' : albumJobHref(job.id),
     thumb: state === 'ready' && job.mediaUrl ? job.mediaUrl : undefined }
 }
 
