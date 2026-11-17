@@ -6,7 +6,7 @@ import { thumbUrl } from '../services/urls'
 import { taskLabels, isProcessing } from '../domain/workflow'
 import { useProcessingStore } from '../stores/processing'
 import { useClosetStore } from '../stores/closet'
-import type { WaitingEntry } from '../domain/waiting'
+import { isPictureEntry, type WaitingEntry } from '../domain/waiting'
 import { useNotificationStore } from '../stores/notifications'
 import type { ClosetNotification } from '../notifications/api'
 const props = defineProps<{ open: boolean }>()
@@ -37,7 +37,7 @@ const active = computed(() => processing.ordered.filter(entry => entry.state ===
 const finished = computed(() => processing.ordered.filter(entry => entry.state !== 'processing'))
 const summary = computed(() => [processing.activeCount && `${processing.activeCount} 个处理中`, processing.unreadCount && `${processing.unreadCount} 个新结果`, notices.unread && `${notices.unread} 条提醒`].filter(Boolean).join(' · ') || '离开页面也会继续处理')
 const stateIcon = { ready: CheckOutlined, attention: ExclamationOutlined, cancelled: MinusOutlined } as const
-const actionLabel = (entry: WaitingEntry) => entry.state === 'processing' ? '进度' : entry.kind === 'render' && entry.state === 'ready' ? '去看看' : entry.state === 'ready' ? '去核对' : '查看'
+const actionLabel = (entry: WaitingEntry) => entry.state === 'processing' ? '进度' : isPictureEntry(entry) && entry.state === 'ready' ? '去看看' : entry.state === 'ready' ? '去核对' : '查看'
 function waited(start: number) {
   const seconds = Math.max(0, Math.floor((now.value - start) / 1000)), minutes = Math.floor(seconds / 60)
   if (minutes < 1) return `${seconds} 秒`
@@ -85,7 +85,7 @@ onUnmounted(() => clearInterval(clock))
         <div v-for="entry in active" :key="entry.key" class="inbox-item">
           <a-button type="text" block class="inbox-row processing" @click="emit('visit', entry)">
             <span class="inbox-state"><span class="inbox-ring" /></span>
-            <span class="inbox-copy"><strong>{{ entry.title }}</strong><span>{{ entry.stage }}</span><span class="inbox-bar"><i :class="{ determinate: entry.progress !== undefined }" :style="entry.progress !== undefined ? { width: `${Math.max(3, Math.round(entry.progress * 100))}%` } : undefined" /></span><small>已等待 {{ waited(entry.startedAt) }}<template v-if="entry.kind === 'render'"> · {{ entry.note }}</template></small></span>
+            <span class="inbox-copy"><strong>{{ entry.title }}</strong><span>{{ entry.stage }}</span><span class="inbox-bar"><i :class="{ determinate: entry.progress !== undefined }" :style="entry.progress !== undefined ? { width: `${Math.max(3, Math.round(entry.progress * 100))}%` } : undefined" /></span><small>已等待 {{ waited(entry.startedAt) }}<template v-if="isPictureEntry(entry)"> · {{ entry.note }}</template></small></span>
             <span class="inbox-action">{{ actionLabel(entry) }}<RightOutlined /></span>
           </a-button>
           <span class="inbox-remove-space" aria-hidden="true" />

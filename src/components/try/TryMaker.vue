@@ -27,6 +27,7 @@ import { canChooseEffect, effectsFor, entryStep, generateBlock, isOutfitEffect, 
 import { addWork, refreshWorks } from '../../creation/works'
 import type { Light, PendingCreation } from '../../creation/types'
 import { ALBUM_PATH } from '../../try/routes'
+import { useProcessingStore } from '../../stores/processing'
 import { useOotdStudio, ACCESSORY_OPTIONS } from '../../ootd/useOotdStudio'
 import CreationGarmentPicker from '../creation/CreationGarmentPicker.vue'
 import OutfitCollage from '../../today/OutfitCollage.vue'
@@ -38,7 +39,7 @@ import OotdMore from '../../ootd/OotdMore.vue'
 import OotdConfirmModal from '../../ootd/OotdConfirmModal.vue'
 import { modelLabel } from '../../ootd/labels'
 
-const route = useRoute(), router = useRouter(), { message } = App.useApp(), billing = useBillingStore(), closet = useClosetStore()
+const route = useRoute(), router = useRouter(), { message } = App.useApp(), billing = useBillingStore(), closet = useClosetStore(), processing = useProcessingStore()
 const storagePrefix = `yixu.creation:${activeAccount() || 'anonymous'}:`
 function read(key: string) { try { return sessionStorage.getItem(storagePrefix + key) } catch { return null } }
 function store(key: string, value: string | null) { try { if (value === null) sessionStorage.removeItem(storagePrefix + key); else sessionStorage.setItem(storagePrefix + key, value) } catch { /* 内存里的待确认状态仍能防止重复提交。 */ } }
@@ -160,7 +161,7 @@ async function settle() {
   try {
     const job = await creationApi.submit(pending.value)
     pending.value = null; parentJobId.value = undefined
-    addWork(job); void refreshWorks(1)
+    addWork(job); processing.trackCreation(job, true); void refreshWorks(1)
     playSound('success'); message.success('开始创作了，做好会提醒你')
     await router.push(ALBUM_PATH)
   } catch (cause) {

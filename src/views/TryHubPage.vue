@@ -19,11 +19,12 @@ import { mediaUrl } from '../services/urls'
 import { liveWorks, refreshWorks } from '../creation/works'
 import { useProcessingStore } from '../stores/processing'
 import { ALBUM_PATH } from '../try/routes'
+import { isPictureEntry } from '../domain/waiting'
 
 const billing = useBillingStore(), processing = useProcessingStore()
 onMounted(() => { void refreshWorks(1) })
 // 上身图的进度在整理中心（processing store）里，作品的进度在 works；任一有进行中的就点亮。
-const albumBusy = computed(() => liveWorks.value > 0 || processing.entries.some(entry => entry.kind === 'render' && entry.state === 'processing' && entry.href.startsWith(ALBUM_PATH)))
+const albumBusy = computed(() => liveWorks.value > 0 || processing.entries.some(entry => isPictureEntry(entry) && entry.state === 'processing' && entry.href.startsWith(ALBUM_PATH)))
 const route = useRoute(), router = useRouter()
 const liveAvailable = computed(() => Boolean(tryOnAccess.value?.enabled))
 const mode = computed<'image' | 'live'>({

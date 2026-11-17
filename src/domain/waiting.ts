@@ -3,9 +3,10 @@ import type { IntakeBatch } from '../services/batches'
 import type { RenderJob } from '../services/platform'
 import type { BatchRecognize } from '../services/api'
 import { albumJobHref } from '../try/routes.ts'
+import type { CreationJob } from '../creation/types.ts'
 
 export type WaitingEntry = {
-  key: string; kind: 'task' | 'batch' | 'render' | 'bulk'; id: string; title: string; startedAt: number
+  key: string; kind: 'task' | 'batch' | 'render' | 'creation' | 'bulk'; id: string; title: string; startedAt: number
   state: 'processing' | 'ready' | 'attention' | 'cancelled'; stage: string; note: string
   href: string; read: boolean; childIds: string[]
   /** Finished image shown beside the result (generated pictures only). */
@@ -65,6 +66,25 @@ export function renderEntry(job: RenderJob): WaitingEntry {
     note: state === 'processing' ? '通常 1 分钟左右，好了会提醒你' : job.error || '', read: false, childIds: [],
     href: job.purpose === 'BASELINE' ? '/settings?section=personal' : albumJobHref(job.id),
     thumb: state === 'ready' && job.mediaUrl ? job.mediaUrl : undefined }
+}
+
+/** Pictures the centre can open straight away (上身图、形象、作品). */
+export const isPictureEntry = (entry: Pick<WaitingEntry, 'kind'>) => entry.kind === 'render' || entry.kind === 'creation'
+
+const creationRunning = ['QUEUED', 'WAITING_RESOURCE', 'RUNNING']
+const creationStages: Record<string, string> = { QUEUED: '排队中，马上开始', WAITING_RESOURCE: '等待生成资源', RUNNING: '正在创作' }
+/** 作品也进整理中心（server#271）：与上身图同一个通知入口，链接到“我的图”里那一张。 */
+export function creationEntry(job: CreationJob): WaitingEntry {
+  // 功能关闭时排队的作品不会开始，也不会用次数：不算进行中，免得整理中心一直轮询。
+  const paused = job.status === 'QUEUED' && job.waitReason === 'FEATURE_DISABLED'
+  const state = paused ? 'attention' : creationRunning.includes(job.status) ? 'processing' : job.status === 'SUCCEEDED' ? 'ready'
+    : ['CANCELLED', 'DELETED'].includes(job.status) ? 'cancelled' : 'attention'
+  const stage = paused ? '暂未开放，还没开始，不会用次数' : state === 'processing' ? creationStages[job.status] || '正在创作'
+    : state === 'ready' ? '作品做好了，去看看' : state === 'cancelled' ? '已取消创作'
+    : job.status === 'UNKNOWN' ? '结果待确认，不会自动重做' : '没做成，可以再试一次'
+  return { key: `creation:${job.id}`, kind: 'creation', id: job.id, title: ['作品', job.templateName].filter(Boolean).join(' · '),
+    startedAt: job.createdAtMs, state, stage, note: state === 'processing' ? '通常 1 分钟左右，好了会提醒你' : (job.errorMessage || '').trim().slice(0, 60),
+    read: false, childIds: [], href: albumJobHref(job.id), thumb: state === 'ready' && job.mediaUrl ? job.mediaUrl : undefined }
 }
 
 /** One entry for a whole batch of re-recognitions, so hundreds of tasks do not flood the centre (the tasks are its children). */

@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import { App, Button } from 'ant-design-vue'
 import { CheckCircleFilled, ExclamationCircleFilled, MinusCircleFilled } from '@ant-design/icons-vue'
 import { useProcessingStore } from '../stores/processing'
-import type { WaitingEntry } from '../domain/waiting'
+import { isPictureEntry, type WaitingEntry } from '../domain/waiting'
 import { thumbUrl } from '../services/urls'
 // Finished tasks surface as a card under the processing center instead of a box at the top of every page.
 const processing = useProcessingStore(), router = useRouter(), { notification } = App.useApp()
@@ -19,7 +19,7 @@ function show(entry: WaitingEntry) {
     placement: window.innerWidth < 768 ? 'top' : 'topRight',
     message: entry.stage, description: entry.thumb ? h('span', { class: 'task-toast-media' }, [h('img', { src: thumbUrl(entry.thumb, 160), alt: '' }), entry.title]) : entry.title,
     icon: icon && h(icon),
-    btn: h(Button, { size: 'small', type: entry.state === 'ready' ? 'primary' : 'default', onClick: () => { processing.viewed(entry); notification.destroy(key); void router.push(entry.href) } }, () => entry.kind === 'render' && entry.state === 'ready' ? '去看看' : entry.state === 'ready' ? '去核对' : '查看任务'),
+    btn: h(Button, { size: 'small', type: entry.state === 'ready' ? 'primary' : 'default', onClick: () => { processing.viewed(entry); notification.destroy(key); void router.push(entry.href) } }, () => isPictureEntry(entry) && entry.state === 'ready' ? '去看看' : entry.state === 'ready' ? '去核对' : '查看任务'),
     onClose: () => { if (shown === key) shown = ''; if (processing.latestNotice?.key === entry.key) processing.dismissNotice() },
   })
 }
