@@ -46,7 +46,7 @@ const checked = ref<string[]>([])
 const boardsOpen = ref(false), boardInfo = ref(false), glowPreview = ref(false), reviewOpen=ref(false)
 const readyForOotd=computed(()=>!!active.value?.outfitId&&!active.value.locked&&!active.value.error&&boardSignature(active.value)===active.value.savedSignature)
 function reviewActive(){editor.value?.flush();if(active.value&&!active.value.locked)reviewOpen.value=true}
-function openOotd(){editor.value?.flush();if(!readyForOotd.value){message.info('请先保存当前搭配，再生成上身图。');return}void router.push({path:'/ootd',query:{outfit:active.value!.outfitId}})}
+function openOotd(){editor.value?.flush();if(!readyForOotd.value){message.info('请先保存当前搭配，再做张图。');return}void router.push({path:'/try',query:{outfit:active.value!.outfitId}})}
 let glowPreviewTimer: ReturnType<typeof setTimeout> | undefined
 function endGlowPreview() { glowPreview.value = false; clearTimeout(glowPreviewTimer) }
 function previewGlow() { glowPreview.value = true; clearTimeout(glowPreviewTimer); glowPreviewTimer = setTimeout(endGlowPreview, 10_000) }
@@ -316,14 +316,14 @@ onUnmounted(() => { endGlowPreview(); window.removeEventListener('resize', resiz
       </div>
       <div class="workspace-actions">
         <a-tooltip title="问鱼搭助手"><a-button type="text" class="workspace-assistant" aria-label="打开鱼搭助手" @click="openAssistant"><BloubAvatar :size="34" expression="happy" /></a-button></a-tooltip>
-        <a-button class="workspace-personal-action" :disabled="!active || !!active.locked" @click="reviewActive">穿搭检查</a-button><a-button class="workspace-personal-action" :disabled="!readyForOotd" @click="openOotd">上身图</a-button>
+        <a-button class="workspace-personal-action" :disabled="!active || !!active.locked" @click="reviewActive">穿搭检查</a-button><a-button class="workspace-personal-action" :disabled="!readyForOotd" @click="openOotd">做张图</a-button>
         <a-tooltip title="切换搭配、勾选保存"><a-button type="text" class="workspace-boards-button" :aria-label="`管理搭配，共 ${space.boards.length} 块`" @click="boardsOpen = true"><AppstoreOutlined /><span class="workspace-board-count">{{ space.boards.length }}</span></a-button></a-tooltip>
         <a-tooltip :title="focus ? '总览所有搭配' : '编辑当前搭配'"><a-button type="text" :aria-label="focus ? '总览所有搭配' : '聚焦当前搭配'" :disabled="!space.boards.length" @click="focus = !focus"><ExpandOutlined /><span class="workspace-view-label">{{ focus ? '总览' : '聚焦' }}</span></a-button></a-tooltip>
         <a-dropdown :trigger="['click']" placement="bottomRight"><a-button type="text" aria-label="更多搭配编辑操作"><MoreOutlined /></a-button><template #overlay><a-menu @click="moreAction">
           <a-menu-item key="new" :disabled="space.boards.length >= 12"><PlusOutlined /> 新搭配</a-menu-item>
           <a-menu-item key="open"><FolderOpenOutlined /> 打开已有搭配</a-menu-item>
           <a-menu-divider />
-          <a-menu-item key="review" :disabled="!active || !!active.locked">穿搭检查</a-menu-item><a-menu-item key="ootd" :disabled="!readyForOotd">上身图（先保存搭配）</a-menu-item>
+          <a-menu-item key="review" :disabled="!active || !!active.locked">穿搭检查</a-menu-item><a-menu-item key="ootd" :disabled="!readyForOotd">做张图（先保存搭配）</a-menu-item>
           <a-menu-item key="details" :disabled="!active"><InfoCircleOutlined /> 搭配说明与保存状态</a-menu-item>
           <a-menu-item key="export" :disabled="!focus || !active?.scene.elements.length || !!active?.locked"><DownloadOutlined /> 导出当前搭配</a-menu-item>
           <a-menu-item v-if="active?.outfitId" key="copy" :disabled="!!active.locked">另存副本…</a-menu-item>

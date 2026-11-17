@@ -8,7 +8,7 @@
 - 聊天列表应占面板主要高度。推荐组合在聊天中紧凑显示，详细预览与操作放入 Ant Design Vue 大模态框。
 - 音效使用 src/services/sound.ts，尊重已有开关；动效尊重 prefers-reduced-motion。
 - 种草（smart-closet-server#197）：衣物状态 WANTED 表示网上看中、还没买。显示名一律用 src/wardrobe/wanted.ts 的 wantedLabel（用户可在界面偏好自定义），不要写死“种草”；件数、色谱只算已拥有；快速入柜的“我有这件 / 种草”切换默认“我有这件”且不跨次记忆。快速入柜页按清新改版保持少字、大留白，说明放进“？”提示，记录用图片网格与“⋯”菜单。
-- ToC 改版（smart-closet-server#243）：面向年轻用户，界面少字、一屏一个主操作，说明放进“？”或去掉，不写流程用语和工程用语（词表见（一）第五节）。“今天”页（src/views/TodayPage.vue、src/today/）全程零模型调用：左滑换一套不发任何推荐反馈，右滑等同“今天穿了这套”写穿着记录；纯逻辑放 src/today/deck.ts 并有单测。
+- ToC 改版（smart-closet-server#243）：面向年轻用户，界面少字、一屏一个主操作，说明放进“？”或去掉，不写流程用语和工程用语（词表见（一）第五节）。“试穿”（/try，src/views/TryHubPage.vue）是“做张图 / 镜头试穿”：做张图是 src/components/try/TryMaker.vue 的分步流程，上身图是 src/creation/steps.ts 里内置的第一张效果（只从已保存搭配选，选择与生成在 src/ootd/useOotdStudio.ts），结果统一在 /try/album“我的图”（src/views/TryAlbumPage.vue），旧地址跳转见 src/try/routes.ts（server#271）。“今天”页（src/views/TodayPage.vue、src/today/）全程零模型调用：左滑换一套不发任何推荐反馈，右滑等同“今天穿了这套”写穿着记录；纯逻辑放 src/today/deck.ts 并有单测。
 - 情绪效果（src/services/celebrate.ts：canvas-confetti 按需加载、motion 弹簧动画）只在真实完成时触发（穿上、首次看到搭配、到账或开通、上身图做好），同一动作只庆祝一次；遵守 prefers-reduced-motion 与音效开关，不替代状态说明。新增第三方依赖要把许可证放进 public/licenses 并登记 THIRD-PARTY-NOTICES.md。
 - “我的”（src/views/SettingsPage.vue）是分组的单行列表 + 子页面：手机先列表后子页面，电脑左列表右内容；分区叫法用用户语言（我的风格、我的形象、鱼搭助手、重复的衣服、次数与点数、账号与安全、外观……），?section= 的键名不变以兼容旧链接；新增分区放进对应分组，不要再加解释副标题。
 - 首次体验（src/views/WelcomePage.vue、src/onboarding/welcome.ts，server#239）：注册后四步、每步可跳过（你是 → 喜欢的感觉 → 挑常见单品 → 第一套）；性别只写个人资料 sex，不问年龄与身材；常见单品默认不勾、只导入用户点选的；完成后进“今天”，不自动播放新手指引，只在“今天”卡片上一次性提示滑动。
