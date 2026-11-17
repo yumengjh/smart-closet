@@ -15,7 +15,7 @@ import { creationApi } from '../creation/api'
 import { creationCatalog, loadCreationCatalog } from '../creation/access'
 import { eligibleGarment } from '../creation/eligible'
 import { creationInput, readPendingCreation } from '../creation/model'
-import { generateBlock, nextStep, prevStep, readDraft, serializeDraft, startStep, stepBlock, stepsFor, stepTitles, type StepKey } from '../creation/steps'
+import { generateBlock, nextStep, prevStep, readDraft, serializeDraft, stepBlock, stepsFor, stepTitles, type StepKey } from '../creation/steps'
 import { addWork, liveWorks, refreshWorks, watchWorks } from '../creation/works'
 import type { Light, PendingCreation } from '../creation/types'
 import CreationGarmentPicker from '../components/creation/CreationGarmentPicker.vue'
@@ -85,8 +85,8 @@ async function load() {
         selected.value = garments.flatMap(item => item.status === 'fulfilled' && eligibleGarment(item.value) ? [item.value] : [])
         if (selected.value.length !== new Set(ids).size) { source.value = null; sourceError.value = '部分衣服已变化或无法使用，已移除，请再看一下。' }
       } catch (cause) { source.value = null; sourceError.value = describe(cause) }
-      // 从搭配进来而还没选效果：先选效果，之后直接是已带入的衣服。
-      step.value = startStep(state.value)
+      // 每次进来都从选效果开始；上次选过的效果、带入的衣服保留为已选，点“下一步”即可继续。
+      step.value = 'effect'
     }
   } catch (cause) { error.value = describe(cause) }
   finally { loading.value = false; ready.value = true }
