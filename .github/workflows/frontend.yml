@@ -30,7 +30,10 @@ jobs:
         run: |
           mkdir -p security-reports
           git rev-parse HEAD > security-reports/commit.txt
-          npm audit --package-lock-only --ignore-scripts --audit-level=high --json > security-reports/npm-all.json
+          # 只拦生产依赖：开发与构建工具（vite、vue-tsc 等）不进产物，其高危漏洞写进报告并提示，不让检查失败。
+          # 起因：2026-11-18 picomatch（GHSA-fc5q-39xc-vjpf，<=4.0.7 无修复版）经 vite / vue-tsc 引入；上游修复后升级。
+          npm audit --package-lock-only --ignore-scripts --audit-level=high --json > security-reports/npm-all.json \
+            || echo "::warning title=开发依赖审计::开发或构建依赖有高危漏洞，详见 frontend-security-reports/npm-all.json"
           npm audit --package-lock-only --ignore-scripts --omit=dev --audit-level=high --json > security-reports/npm-production.json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
