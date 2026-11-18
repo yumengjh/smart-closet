@@ -74,6 +74,11 @@ export type Garment = {
   images: { id: string; url: string; kind: string; reviewStatus: string; aiGenerated?: boolean; width?: number | null; height?: number | null }[]
 }
 
+/** 回收站一项（smart-closet-server 回收站：自动彻底删除设计）：purgeAtMs 是自动彻底删除的时刻。 */
+export type TrashEntry = { garment: Garment; trashedAtMs: number | null; purgeAtMs: number }
+export type TrashPage = { retentionDays: number; autoPurge: boolean; total: number; items: TrashEntry[] }
+export type PurgeOutcome = { purged: number; busy: number }
+
 export type TaskStep = { name: string; type?: string; status: 'completed' | 'running' | 'failed' | 'waiting' | 'review' | 'skipped'; startedAt?: string; finishedAt?: string; inputUrl?: string; outputUrl?: string; error?: string; transparency?: { after: TransparencyReport }; recognition?: { target?: GarmentTarget | null; assessment?: string; issues?: { code?: string; message: string; suggestedAction?: string }[] } }
 export type ClosetTask = {
   id: string
@@ -596,6 +601,29 @@ export const closetApi = {
     return request<ClosetPreferences>('/api/closet/preferences', { method: 'PUT', body: JSON.stringify(patch) })
   },
   async restore(id: string, status: 'ACTIVE' | 'DRAFT' = 'ACTIVE', revision?: number) { return this.setStatus(id, status, revision) },
+  /** 回收站：最近移入的在前，每件带自动彻底删除时刻。 */
+  async trashPage(): Promise<TrashPage> {
+    if (!usingMocks) {
+      const page = await request<{ retentionDays: number; autoPurge: boolean; total: number; items: { garment: GarmentView; trashedAtMs: number | null; purgeAtMs: number }[] }>('/api/closet/trash')
+      return { ...page, items: page.items.map((item) => ({ ...item, garment: fromView(item.garment) })) }
+    }
+    await delay()
+    const day = 86_400_000
+    const items = readMock().garments.filter((item) => item.status === 'TRASHED')
+      .map((garment) => { const trashedAtMs = Date.parse(garment.updatedAt) || Date.now(); return { garment, trashedAtMs, purgeAtMs: trashedAtMs + 30 * day } })
+      .sort((a, b) => (b.trashedAtMs || 0) - (a.trashedAtMs || 0))
+    return { retentionDays: 30, autoPurge: true, total: items.length, items }
+  },
+  /** 彻底删除，不可恢复：指定几件，或 all 清空回收站。 */
+  async purge(target: { ids: string[] } | { all: true }): Promise<PurgeOutcome> {
+    if (!usingMocks) return request<PurgeOutcome>('/api/closet/trash/purge', { method: 'POST', body: JSON.stringify(target) })
+    await delay()
+    const state = readMock()
+    const doomed = new Set(state.garments.filter((item) => item.status === 'TRASHED' && ('all' in target || target.ids.includes(item.id))).map((item) => item.id))
+    state.garments = state.garments.filter((item) => !doomed.has(item.id))
+    writeMock(state)
+    return { purged: doomed.size, busy: 0 }
+  },
   async setStatus(id: string, status: ClosetStatus, revision?: number) {
     if (!usingMocks) {
       const view = await request<GarmentView>(`/api/garments/${id}`)

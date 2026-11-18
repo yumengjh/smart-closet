@@ -345,7 +345,7 @@ function cancel() {
 }
 function remove() {
   if (!garment.value || busy.value) return
-  modal.confirm({ title: '移入回收站？', content: processing.value ? '会先取消活动任务，等待终止后移入回收站。图片与历史保留，可以恢复。' : '图片与处理历史会保留，可以在回收站恢复。', okText: '移入回收站', cancelText: '取消', onOk: async () => {
+  modal.confirm({ title: '移入回收站？', content: processing.value ? '会先取消活动任务，等待终止后移入回收站。到期前可以在回收站恢复，到期后自动彻底删除。' : '到期前可以在回收站恢复，到期后自动彻底删除。', okText: '移入回收站', cancelText: '取消', onOk: async () => {
     busy.value = 'trash'
     try { if (processing.value) { for (const id of [...new Set([garment.value!.taskId, imageTask.value?.id].filter((id): id is string => Boolean(id)))]) await closetApi.cancelAndWait(id) }; const record = await closetApi.detail(garment.value!.id); await closetApi.trash(record.id, record.revision)
       // Back to the list the garment was in (issue #13); the guard above lets the page go.

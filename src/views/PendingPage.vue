@@ -41,7 +41,7 @@ function startBatch(mode: BatchMode) {
   const runnable = mode === 'trash' ? targets : targets.filter(item => !isProcessing(item.taskStatus))
   const skipped = targets.length - runnable.length
   if (!runnable.length) { batchResult.value = { type: 'warning', message: '没有可提交的衣物', description: '选中的衣服都还在整理，请等整理好再试。' }; return }
-  const content = { confirm: '按现在的图片和资料收进衣柜，之后仍可在衣服详情里修改。图片还没做好或资料要确认的衣服会被退回，请逐件看一下。', recognize: '每件重新认一次品类、颜色等资料，用 1 次图像额度；你改过的地方会保留。', trash: '移入回收站后不再显示在这里，可在回收站恢复。' }[mode]
+  const content = { confirm: '按现在的图片和资料收进衣柜，之后仍可在衣服详情里修改。图片还没做好或资料要确认的衣服会被退回，请逐件看一下。', recognize: '每件重新认一次品类、颜色等资料，用 1 次图像额度；你改过的地方会保留。', trash: '移入回收站后不再显示在这里，到期前可在回收站恢复，到期后自动彻底删除。' }[mode]
   modal.confirm({ title: `${batchLabels[mode]}（${runnable.length} 件）？`, content: content + (skipped ? `另有 ${skipped} 件正在处理，将跳过。` : ''), okText: batchLabels[mode], cancelText: '取消', okButtonProps: { danger: mode === 'trash' }, onOk: () => { void runBatch(mode, runnable, skipped) } })
 }
 async function runBatch(mode: BatchMode, targets: Garment[], skipped: number) {

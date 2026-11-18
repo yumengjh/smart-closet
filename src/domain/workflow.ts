@@ -22,7 +22,7 @@ export function orderedTasks(...tasks: (ClosetTask | null | undefined)[]) {
 }
 export function workflowSummary(garment: Pick<Garment, 'taskStatus' | 'status' | 'assessment' | 'imageProcessing'>, task?: ClosetTask | null) {
   const state = task?.status || garment.taskStatus
-  if (garment.status === 'TRASHED') return { title: '已移入回收站', description: '图片与处理记录已保留，可以恢复。', tone: 'neutral' }
+  if (garment.status === 'TRASHED') return { title: '已移入回收站', description: '到期前可以恢复，到期后自动彻底删除。', tone: 'neutral' }
   if (state === 'CANCEL_REQUESTED') return { title: '正在取消处理', description: '等待服务端终止任务，原图和已产生的结果会保留。', tone: 'processing' }
   if (state === 'QUEUED') return { title: '照片已保存，等待处理', description: '任务在服务端排队。你可以离开页面或继续添加衣物。', tone: 'processing' }
   if (state === 'RUNNING') {
