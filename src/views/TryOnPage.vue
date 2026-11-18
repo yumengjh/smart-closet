@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { App } from 'ant-design-vue'
-import { CameraOutlined, SwapOutlined, LeftOutlined, PictureOutlined, DownloadOutlined, DeleteOutlined, PlusOutlined, ExpandOutlined, CompressOutlined, InfoCircleOutlined, LoadingOutlined, BorderOutlined, ColumnWidthOutlined, EyeOutlined, EyeInvisibleOutlined, RightOutlined, PoweroffOutlined, CheckCircleFilled, ExclamationCircleFilled, WifiOutlined, CloseOutlined, EllipsisOutlined, ClearOutlined, LayoutOutlined } from '@ant-design/icons-vue'
+import { CameraOutlined, SwapOutlined, LeftOutlined, PictureOutlined, DownloadOutlined, DeleteOutlined, PlusOutlined, ExpandOutlined, CompressOutlined, InfoCircleOutlined, LoadingOutlined, BorderOutlined, ColumnWidthOutlined, EyeOutlined, EyeInvisibleOutlined, RightOutlined, PoweroffOutlined, CheckCircleFilled, ExclamationCircleFilled, BulbOutlined, SoundOutlined, SoundFilled, WifiOutlined, CloseOutlined, EllipsisOutlined, ClearOutlined, LayoutOutlined } from '@ant-design/icons-vue'
 import { tryOnApi, emergencyStop, duration, finished, mediaUrl, type Candidate, type Capabilities, type Media, type Prepared, type Selection, type Session } from '../tryon/api'
 import { TryOnCamera } from '../tryon/camera'
 import { frameCanvas, photo, startRecording, type Recorder } from '../tryon/recording'
@@ -16,10 +16,13 @@ import { framingHint, WEAR_GROUPS } from '../tryon/context'
 import { stageLabel, type StartupStage } from '../tryon/diagnostic'
 import TryOnShutter from '../tryon/TryOnShutter.vue'
 import TryOnFilmstrip from '../tryon/TryOnFilmstrip.vue'
-import { playSound } from '../services/sound'
+import { playSound, soundEnabled, toggleSound } from '../services/sound'
+import TryOnGuide from '../tryon/TryOnGuide.vue'
+import { PART_LABEL, VoiceGate, bodySpan, coverage, guideLine, isFar, partsFor, projectY, scopeOf, type Device, type Setup } from '../tryon/guide'
+import { hush, say, setVoice, voiceChosen, voiceOn, voiceSupported } from '../tryon/voice'
 import { ASPECTS, CAMERA_LAYOUT_QUERY, CONNECT_STEPS, aspectOf, autoFit, connectStep, cornerPosition, defaultAspect, nearestCorner, pipSize, presetOf, shutterIntent, swipeDirection, tryOnPhase, type AspectValue, type Box, type CaptureMode, type Corner, type Fit, type Insets } from '../tryon/stage'
 import OutfitThumbnail from '../components/OutfitThumbnail.vue'
-import { AbsenceWatch, SteadyCheck, checkFrame, present, type Absence, type FrameCheck } from '../tryon/pose/checks'
+import { AbsenceWatch, SteadyCheck, checkFrame, present, type Absence, type FrameCheck, type Point } from '../tryon/pose/checks'
 import { PoseSampler, poseFailureLabel, type PoseStatus } from '../tryon/pose/sampler'
 import { shrinkImage, formatBytes, type Shrunk } from '../tryon/shrink'
 import { probeNetwork, describeProbe, describeStream, saveData, sdkQualityLabel, type NetworkProbe } from '../tryon/network'
@@ -105,14 +108,18 @@ const poseCheck = ref<FrameCheck | null>(null), absence = ref<Absence>({ state: 
 const steady = new SteadyCheck(), away = new AbsenceWatch()
 let sampler: PoseSampler | undefined, poseTimer = 0
 const poseStatus = ref<PoseStatus | null>(null)
-const showPoseCheck = computed(() => phase.value === 'preview' && selected.value.length > 0 && poseCheck.value !== null && !error.value)
 function startPose() {
   if (sampler || disposed) return
   sampler = new PoseSampler(() => camera?.localVideo)
   sampler.onUnavailable = () => { sampler = undefined; poseCheck.value = null }
   sampler.onStatus = status => { if (!disposed) poseStatus.value = status }
   sampler.onPoints = (points, at) => {
-    if (phase.value === 'preview') { poseCheck.value = steady.update(checkFrame(points, selectedRoles.value.map(r => r.wearingRole)), at); return }
+    lastPoints = points
+    if (phase.value === 'preview') {
+      poseCheck.value = steady.update(checkFrame(points, selectedRoles.value.map(r => r.wearingRole)), at)
+      lit.value = coverage(points, guideParts.value); voteFar(isFar(points, scope.value)); speakGuide()
+      return
+    }
     if (!generating.value) return
     absence.value = away.update(present(points), at)
     if (absence.value.state === 'stop') {
@@ -122,7 +129,30 @@ function startPose() {
   }
   sampler.start()
 }
-function stopPose() { clearTimeout(poseTimer); poseTimer = 0; sampler?.close(); sampler = undefined; poseStatus.value = null; steady.reset(); away.reset(); poseCheck.value = null; absence.value = { state: 'ok' } }
+function stopPose() { clearTimeout(poseTimer); poseTimer = 0; sampler?.close(); sampler = undefined; poseStatus.value = null; steady.reset(); away.reset(); poseCheck.value = null; absence.value = { state: 'ok' }; lit.value = []; far.value = false; farStreak = 0; lastPoints = []; hush() }
+// 取景引导（2026-11-19 启动动效与取景引导设计）：按设备、前后摄、横竖屏和所选部位给一句话，部位刻度只列需要的部位。
+const front = ref(true), coarse = ref(window.matchMedia('(pointer: coarse)').matches), portrait = ref(window.matchMedia('(orientation: portrait)').matches)
+const setup = computed<Setup>(() => ({ device: (coarse.value ? (narrow.value ? 'phone' : 'tablet') : 'desktop') as Device, front: front.value, portrait: portrait.value }))
+const guideParts = computed(() => partsFor(selectedRoles.value.map(r => r.wearingRole)))
+const scope = computed(() => scopeOf(guideParts.value))
+const lit = ref<ReturnType<typeof coverage>>([]), far = ref(false)
+let lastPoints: Point[] = [], farStreak = 0
+/** 远近要连续三次识别一致才切换，人前后晃时大字不来回跳。 */
+function voteFar(next: boolean) { if (next === far.value) { farStreak = 0; return } if (++farStreak >= 3) { far.value = next; farStreak = 0 } }
+const showGuide = computed(() => phase.value === 'preview' && selected.value.length > 0 && !error.value && !clean.value)
+const line = computed(() => guideLine(poseCheck.value, setup.value, scope.value))
+const guideReady = computed(() => showGuide.value && poseCheck.value?.status === 'ready')
+/** 刻度没识别过时全部按未点亮显示，选的衣物变了也跟着换。 */
+const guideMarks = computed(() => guideParts.value.map(part => lit.value.find(l => l.part === part) ?? { part, label: PART_LABEL[part], on: false }))
+const bigText = computed(() => showGuide.value && far.value ? line.value.text : '')
+const gate = new VoiceGate()
+function speakGuide() { if (!voiceOn.value || !showGuide.value) return; const text = gate.next(line.value.text, performance.now()); if (text) say(text) }
+function toggleVoice() {
+  const on = !voiceChosen.value
+  setVoice(on)
+  if (on && !soundEnabled.value) { toggleSound(); message.info('语音提示跟随音效，已同时打开音效。') }
+  if (on) { gate.reset(); speakGuide() }
+}
 /**
  * 姿态识别文件约 19 MB：本地画面出现后再空闲 2 秒才加载；正在连接试穿时等试穿画面出来，
  * 不和上传参考图、建立实时连接抢带宽（2026-11-06 加载提速设计 §3.4）。
@@ -221,7 +251,7 @@ const startHint = computed(() => {
   if (live.value) return '连接成功后开始计时，首帧仍在生成，请保持人在画面中。'
   if (!selected.value.length) return '先选一套搭配或几件衣物，再打开相机。'
   if (!cameraReady.value) return '衣物已选好。打开相机先看本地预览，不消耗额度。'
-  return `${framingHint(selectedRoles.value)} 点击开始后连接计时。`
+  return showGuide.value ? '本地预览不计时，点开始后才连接计时。' : `${framingHint(selectedRoles.value)} 点击开始后连接计时。`
 })
 const intent = computed(() => shutterIntent(phase.value, captureMode.value, selected.value.length > 0, Boolean(cap.value?.ready) && !preparing.value))
 const shutterLabel = computed(() => ({ disabled: cap.value?.reason || '暂不可开始', open: '打开相机预览', pick: '选择试穿衣物', start: '开始试穿', accept: `开始试穿，还剩 ${waitSeconds.value} 秒`, cancel: queued.value ? '取消排队' : '取消连接', wait: '正在结束', photo: '拍下试穿效果', record: '开始录像', 'stop-record': '结束录像' }[intent.value]))
@@ -229,6 +259,7 @@ const shutterText = computed(() => intent.value === 'start' ? '开始' : intent.
 const shutterProgress = computed(() => {
   if (intent.value === 'stop-record') return recordingSeconds.value / (cap.value?.limits.recordingSeconds || 60)
   if (intent.value === 'accept') return waitSeconds.value / (cap.value?.limits.offerSeconds || 10)
+  if (intent.value === 'cancel' && phase.value === 'connecting') return (stepIndex.value + 0.5) / CONNECT_STEPS.length
   return undefined
 })
 const stepIndex = computed(() => connectStep(startupStage.value))
@@ -244,6 +275,15 @@ const dockBox = ref({ top: 72, bottom: 16, right: 12 })
 const pipOpen = ref(true), swapped = ref(false), corner = ref<Corner>('top-right'), dragPosition = ref<{ x: number; y: number } | null>(null)
 const revealing = ref(false), flipping = ref(false), freezing = ref(false), flashKey = ref(0), bumpKey = ref(0), fly = ref<{ url: string; x: number; y: number } | null>(null)
 const showsResult = computed(() => phase.value === 'live' || phase.value === 'recording')
+/** “穿上”扫光从肩扫到脚：用开始前最后一次识别到的身体范围，认不出时扫整块画面。 */
+const sweepStyle = ref<Record<string, string>>({})
+function placeSweep() {
+  const span = bodySpan(lastPoints), box = stageBox.value
+  if (!span || box.height <= 0) { sweepStyle.value = {}; return }
+  const clamp = (v: number) => Math.min(box.height, Math.max(0, v))
+  const top = clamp(projectY(span.top, mainRatio.value, box, fit.value)), bottom = clamp(projectY(span.bottom, mainRatio.value, box, fit.value))
+  sweepStyle.value = bottom - top > 80 ? { '--sweep-top': `${top}px`, '--sweep-height': `${bottom - top}px` } : {}
+}
 const mainRatio = computed(() => (showsResult.value ? sizes.value.remote : sizes.value.local) || sizes.value.local || aspectOf(aspect.value)!.ratio)
 const pipRatio = computed(() => (swapped.value ? sizes.value.remote : sizes.value.local) || mainRatio.value)
 // 舞台始终顶满可用区域：画幅与舞台接近时铺满，差得多时完整显示，可随时切换。
@@ -575,7 +615,7 @@ async function finishRecording(interrupted = false) {
 async function switchCamera() {
   if (recording.value || recordingBusy.value || busy.value || flipping.value) return
   flipping.value = true
-  try { await camera?.switchCamera() } catch (e) { fail(e) }
+  try { await camera?.switchCamera(); front.value = camera?.isFront ?? true } catch (e) { fail(e) }
   finally { window.setTimeout(() => { flipping.value = false }, calm() ? 0 : 420) }
 }
 async function openHistory() {
@@ -601,14 +641,21 @@ async function latest() {
 }
 watch(phase, (next, before) => {
   if ((next === 'live' && before !== 'recording') && !revealing.value) {
-    revealing.value = true; playSound('success'); navigator.vibrate?.(18)
+    placeSweep(); revealing.value = true; playSound('success'); navigator.vibrate?.(18)
     window.setTimeout(() => { revealing.value = false }, calm() ? 0 : 1300)
   }
   if (next !== 'live' && next !== 'recording') { swapped.value = false; pipOpen.value = true; away.reset(); absence.value = { state: 'ok' } }
-  if (next === 'preview') { steady.reset(); sampler?.resetRate(5) } else if (next === 'live' || next === 'recording') sampler?.setRate(2)
+  if (next === 'preview') { steady.reset(); gate.reset(); sampler?.resetRate(5) } else if (next === 'live' || next === 'recording') sampler?.setRate(2)
+  if (next !== 'preview') hush()
   void nextTick(measure)
 })
 watch(frameReady, ready => { if (!ready) freezeLastFrame() }, { flush: 'sync' })
+// 开机：画面从中心展开时轻响一声。
+watch(cameraReady, on => { if (on && !calm()) { playSound('tick'); navigator.vibrate?.(10) } })
+// 没识别到姿态时也念一次放置提示；姿态就绪后由每次识别结果驱动。
+watch(() => showGuide.value && line.value.text, () => speakGuide())
+// 人离开画面：看不到屏幕的人更需要听到，绕过节流念一次。
+watch(() => absence.value.state, state => { if (state === 'warn' && voiceOn.value) say('画面里没有人，稍后会自动结束试穿') })
 watch(silentChoice, open => { if (open) leaveFullscreen() })
 watch(search, () => { stripDone = false; clearTimeout(searchTimer); searchTimer = window.setTimeout(() => { void loadGarments() }, 250) })
 const stateName = (state: string) => ({ QUEUED:'排队中', OFFERED:'等待确认', RESERVED:'已授权', SIGNING:'申请连接', CONNECTING:'连接中', WAITING_FRAME:'等待画面', GENERATING:'试穿中', STOPPING:'结束中', UNKNOWN:'消耗等你确认', CLOSED:'已结束', FAILED:'启动失败', CANCELLED:'已取消' }[state] || '等你确认')
@@ -624,18 +671,27 @@ onMounted(async () => {
     lease.value = history.sessions.find(s => !finished(s)) || null
     if (lease.value && !finished(lease.value)) await stop(true)
     if (route.query.history) await openHistory()
+    else if (route.query.open && cap.value?.enabled) {
+      // 从“镜头试穿”点“打开镜头”进来：直接打开本地预览（免费、不计时），不用再点一次。
+      const rest = { ...route.query }; delete rest.open
+      void router.replace({ query: rest })
+      loading.value = false
+      await openCamera()
+    }
   } catch (e) { fail(e) } finally { loading.value = false }
   pulseTimer = window.setInterval(() => { void pulse() }, 5000); clockTimer = window.setInterval(() => { now.value = Date.now() }, 500)
   document.addEventListener('visibilitychange', background); window.addEventListener('pagehide', background)
 })
 const layoutQuery = window.matchMedia(CAMERA_LAYOUT_QUERY), syncNarrow = () => { narrow.value = layoutQuery.matches; void nextTick(measure) }, syncFullscreen = () => { fullscreen.value = Boolean(document.fullscreenElement) }
+const portraitQuery = window.matchMedia('(orientation: portrait)'), coarseQuery = window.matchMedia('(pointer: coarse)')
+const syncDevice = () => { portrait.value = portraitQuery.matches; coarse.value = coarseQuery.matches }
 let layoutObserver: ResizeObserver | undefined
 onMounted(() => {
   layoutObserver = new ResizeObserver(measure)
   for (const el of [stageArea.value, stage.value, dock.value, topbar.value]) if (el) layoutObserver.observe(el)
-  measure(); layoutQuery.addEventListener('change', syncNarrow); document.addEventListener('fullscreenchange', syncFullscreen)
+  measure(); layoutQuery.addEventListener('change', syncNarrow); portraitQuery.addEventListener('change', syncDevice); coarseQuery.addEventListener('change', syncDevice); document.addEventListener('fullscreenchange', syncFullscreen)
 })
-onBeforeUnmount(() => { disposed = true; action++; stopPose(); layoutObserver?.disconnect(); layoutQuery.removeEventListener('change', syncNarrow); document.removeEventListener('fullscreenchange', syncFullscreen); flyDone(); offAccount(); clearInterval(pulseTimer); clearInterval(clockTimer); clearTimeout(rebuildTimer); clearTimeout(searchTimer); document.removeEventListener('visibilitychange', background); window.removeEventListener('pagehide', background); if (lease.value && !finished(lease.value)) emergencyStop(lease.value.id); void finishRecording(true); void camera?.dispose() })
+onBeforeUnmount(() => { disposed = true; action++; stopPose(); layoutObserver?.disconnect(); layoutQuery.removeEventListener('change', syncNarrow); portraitQuery.removeEventListener('change', syncDevice); coarseQuery.removeEventListener('change', syncDevice); document.removeEventListener('fullscreenchange', syncFullscreen); flyDone(); offAccount(); clearInterval(pulseTimer); clearInterval(clockTimer); clearTimeout(rebuildTimer); clearTimeout(searchTimer); document.removeEventListener('visibilitychange', background); window.removeEventListener('pagehide', background); if (lease.value && !finished(lease.value)) emergencyStop(lease.value.id); void finishRecording(true); void camera?.dispose() })
 </script>
 
 <template>
@@ -648,7 +704,8 @@ onBeforeUnmount(() => { disposed = true; action++; stopPose(); layoutObserver?.d
           <div v-if="cameraReady" class="tryon-gesture" aria-hidden="true" @pointerdown="gestureDown" @pointerup="gestureUp" @pointercancel="gesture = undefined"></div>
 
           <div class="tryon-viewfinder" aria-hidden="true"><i></i><i></i><i></i><i></i><span class="tryon-scan"></span></div>
-          <span v-if="revealing" class="tryon-sweep" aria-hidden="true"></span>
+          <TryOnGuide v-if="showGuide" :scope="scope" :parts="guideMarks" :ready="guideReady" :big="bigText" />
+          <span v-if="revealing" class="tryon-sweep" :style="sweepStyle" aria-hidden="true"></span>
           <span v-if="flashKey" :key="flashKey" class="tryon-flash" aria-hidden="true"></span>
           <img v-if="fly" class="tryon-fly" :src="fly.url" alt="" :style="{ '--fly-x': `${fly.x}px`, '--fly-y': `${fly.y}px` }" @animationend="flyDone" />
 
@@ -688,10 +745,12 @@ onBeforeUnmount(() => { disposed = true; action++; stopPose(); layoutObserver?.d
               <a-tooltip v-if="cameraReady && !narrow && !clean" :title="live ? '结束试穿并关闭相机' : '关闭相机'" placement="bottom" :get-popup-container="popupHost"><a-button type="text" class="camera-tool" :aria-label="live ? '结束试穿并关闭相机' : '关闭相机'" :disabled="busy || recordingBusy" @click="closeCamera"><PoweroffOutlined /></a-button></a-tooltip>
               <a-tooltip v-if="cameraReady && !narrow && !clean" :title="fit === 'cover' ? '完整显示画面' : '铺满取景框'" placement="bottom" :get-popup-container="popupHost"><a-button type="text" class="camera-tool" :aria-label="fit === 'cover' ? '完整显示画面' : '铺满取景框'" @click="toggleFit"><BorderOutlined v-if="fit === 'cover'" /><ColumnWidthOutlined v-else /></a-button></a-tooltip>
               <a-button v-if="!narrow && cameraReady && !clean" type="text" class="camera-tool" :aria-label="fullscreen ? '退出全屏' : '全屏试穿'" @click="toggleFullscreen"><CompressOutlined v-if="fullscreen" /><ExpandOutlined v-else /></a-button>
+              <a-tooltip v-if="voiceSupported && !narrow && cameraReady" :title="voiceChosen ? '关闭语音提示' : '打开语音提示：站远了也能听到取景提示'" placement="bottom" :get-popup-container="popupHost"><a-button type="text" class="camera-tool" :aria-pressed="voiceChosen" :aria-label="voiceChosen ? '关闭语音提示' : '打开语音提示'" @click="toggleVoice"><SoundFilled v-if="voiceChosen" /><SoundOutlined v-else /></a-button></a-tooltip>
               <a-popover title="连接状态" trigger="click" placement="bottomRight" :get-popup-container="popupHost"><template #content><div class="tryon-health"><p><strong>网络</strong><span>{{ networkText }}</span></p><p v-if="liveNetworkText"><strong>试穿中</strong><span>{{ liveNetworkText }}</span></p><p v-for="q in qualityRows" :key="q.label"><strong>{{ q.label }}</strong><span>{{ q.text }}</span></p><p v-if="quotaText"><strong>额度</strong><TryOnQuota :remaining="cap?.quota.remaining || 0" :points="cap?.points" /></p><p><strong>姿态检查</strong><span>{{ poseText }}</span></p><p class="tryon-info-copy">只在本机检测，结果不上传；姿态检查只是取景提示，没加载好也能正常试穿。</p><a-button size="small" :loading="probing" @click="checkNetwork(true)">重新检测网络</a-button></div></template><a-button type="text" class="camera-tool tryon-health-tool" :class="`is-${healthLevel}`" :aria-label="`连接状态：${networkText}`"><WifiOutlined /><i v-if="poseStatus?.state === 'loading'" class="tryon-health-dot" aria-hidden="true"></i></a-button></a-popover>
               <a-tooltip :title="clean ? '显示全部界面' : '隐藏多余界面'" placement="bottom" :get-popup-container="popupHost"><a-button type="text" class="camera-tool" :aria-pressed="clean" :aria-label="clean ? '显示全部界面' : '隐藏多余界面'" @click="toggleClean"><LayoutOutlined v-if="clean" /><ClearOutlined v-else /></a-button></a-tooltip>
               <a-popover v-if="narrow && !clean" v-model:open="moreOpen" trigger="click" placement="bottomRight" title="更多" :get-popup-container="popupHost"><template #content><div class="tryon-more">
                 <div v-if="phase === 'preview' || phase === 'cover'" class="tryon-more-aspect"><span>画面比例</span><a-segmented :value="aspect" :options="aspectOptions" @change="changeAspect" /></div>
+                <a-button v-if="voiceSupported" block :aria-pressed="voiceChosen" @click="fromMore(toggleVoice)"><SoundFilled v-if="voiceChosen" /><SoundOutlined v-else />{{ voiceChosen ? '关闭语音提示' : '打开语音提示' }}</a-button>
                 <a-button v-if="cameraReady" block @click="fromMore(toggleFit)"><BorderOutlined v-if="fit === 'cover'" /><ColumnWidthOutlined v-else />{{ fit === 'cover' ? '完整显示画面' : '铺满取景框' }}</a-button>
                 <a-button v-if="cameraReady" block :disabled="busy || recordingBusy" @click="fromMore(closeCamera)"><PoweroffOutlined />{{ live ? '结束试穿并关闭相机' : '关闭相机' }}</a-button>
                 <p class="tryon-info-copy">打开相机只做本地预览。点击开始后，视频与服装参考图会发送至 XMax，连接后按时长消耗额度。切后台会结束试穿。点小窗互换主画面，拖动可换位置；左右滑动切换拍照和录像，双击切换铺满。</p>
@@ -709,7 +768,7 @@ onBeforeUnmount(() => { disposed = true; action++; stopPose(); layoutObserver?.d
           <div ref="dock" class="tryon-dock" :class="{ 'is-loading': loading }">
             <div class="tryon-notice-area" aria-live="polite">
               <div v-if="absence.state === 'warn'" class="tryon-notice is-away" role="alert"><strong>画面里没有人</strong><small>{{ absence.secondsLeft }} 秒后自动结束试穿，以免继续计时。</small><a-button size="small" @click="stillHere">我还在，继续</a-button></div>
-              <span v-if="showPoseCheck && poseCheck" class="tryon-pose-check" :class="`is-${poseCheck.status}`" role="status"><CheckCircleFilled v-if="poseCheck.status === 'ready'" /><ExclamationCircleFilled v-else />{{ poseCheck.hint }}</span>
+              <Transition name="tryon-rise" mode="out-in"><span v-if="showGuide" :key="line.text" class="tryon-pose-check" :class="[`is-${line.tone}`, { 'is-far': !!bigText }]" role="status"><CheckCircleFilled v-if="line.tone === 'ready'" /><ExclamationCircleFilled v-else-if="line.tone === 'adjust'" /><BulbOutlined v-else />{{ line.text }}</span></Transition>
               <Transition name="tryon-rise" mode="out-in">
                 <div v-if="notice === 'error'" key="error" class="tryon-notice is-error" role="alert"><p>{{ error }}</p><a-button v-if="canUseLatest" size="small" :loading="latestBusy" @click="latest">使用最新成品</a-button><a-button v-else type="text" size="small" @click="error=''">收起</a-button></div>
                 <div v-else-if="notice === 'connecting'" key="connecting" class="tryon-notice is-progress" role="status">
@@ -739,7 +798,7 @@ onBeforeUnmount(() => { disposed = true; action++; stopPose(); layoutObserver?.d
               </div>
               <div class="tryon-mode"><a-segmented v-model:value="captureMode" :options="['拍照','录像']" :disabled="recording || recordingBusy" /></div>
               <div ref="historySlot" class="tryon-slot-history"><a-button :key="bumpKey" class="tryon-history-thumb" :class="{ bump: bumpKey }" aria-label="查看拍摄历史" @click="openHistory"><img v-if="captureImage" :src="mediaUrl(captureImage.url)" alt="最近拍摄的试穿照片" /><PictureOutlined v-else /></a-button></div>
-              <TryOnShutter class="tryon-slot-shutter" :intent="intent" :label="shutterLabel" :text="shutterText" :progress="shutterProgress" :busy="recordingBusy || busy && intent === 'open' || intent === 'start' && busy" @press="pressShutter" />
+              <TryOnShutter class="tryon-slot-shutter" :ready="guideReady && intent === 'start'" :intent="intent" :label="shutterLabel" :text="shutterText" :progress="shutterProgress" :busy="recordingBusy || busy && intent === 'open' || intent === 'start' && busy" @press="pressShutter" />
               <div class="tryon-slot-flip"><a-button class="tryon-flip" shape="circle" :disabled="recording || recordingBusy || busy || !cameraReady" aria-label="切换前后摄像头" @click="switchCamera"><SwapOutlined /></a-button></div>
             </div>
           </div>
@@ -791,7 +850,7 @@ onBeforeUnmount(() => { disposed = true; action++; stopPose(); layoutObserver?.d
   background: var(--paper);
 }
 .tryon-video-host { position: absolute; inset: 0; z-index: 0; isolation: isolate; }
-.camera-on .tryon-video-host { animation: tryon-lens-open .7s var(--ease-out); }
+.camera-on .tryon-video-host { animation: tryon-lens-open .9s var(--ease-out); }
 .is-flipping .tryon-video-host { animation: tryon-flip .42s ease-in-out; }
 .tryon-gesture { position: absolute; inset: 0; z-index: 4; touch-action: none; }
 .tryon-freeze { position: absolute; inset: 0; z-index: 2; width: 100%; height: 100%; object-fit: contain; animation: tryon-fade-out .55s ease forwards; }
@@ -864,7 +923,9 @@ onBeforeUnmount(() => { disposed = true; action++; stopPose(); layoutObserver?.d
 .tryon-viewfinder i:nth-child(3) { left: 0; bottom: 0; border-right: 0; border-top: 0; border-radius: 0 0 0 8px; }
 .tryon-viewfinder i:nth-child(4) { right: 0; bottom: 0; border-left: 0; border-top: 0; border-radius: 0 0 8px; }
 .tryon-scan { position: absolute; left: 0; right: 0; top: 0; height: 2px; background: linear-gradient(90deg, #9fe8c300, #9fe8c3, #9fe8c300); box-shadow: 0 0 18px 4px #9fe8c366; animation: tryon-scan 2.2s ease-in-out infinite alternate; }
-.tryon-sweep { position: absolute; inset: 0; z-index: 4; pointer-events: none; background: linear-gradient(180deg, #9fe8c300 0, #9fe8c344 46%, #ffffffcc 50%, #9fe8c344 54%, #9fe8c300 100%); background-size: 100% 240%; animation: tryon-sweep 1.1s var(--ease-out) forwards; }
+.tryon-sweep { position: absolute; left: 0; right: 0; top: var(--sweep-top, 0px); height: var(--sweep-height, 100%); z-index: 4; pointer-events: none; }
+.tryon-sweep::before { content: ''; position: absolute; left: 8%; right: 8%; top: 0; height: 2px; background: linear-gradient(90deg, #9fe8c300, #fff 30%, #fff 70%, #9fe8c300); box-shadow: 0 0 22px 6px #9fe8c380; animation: tryon-wear 1.1s var(--ease-out) forwards; }
+.tryon-sweep::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, #9fe8c300, #9fe8c32e 90%, #9fe8c300); transform-origin: top; animation: tryon-wear-tint 1.1s var(--ease-out) forwards; }
 .tryon-flash { position: absolute; inset: 0; z-index: 7; pointer-events: none; background: #fff; opacity: 0; animation: tryon-flash .32s ease-out; }
 .tryon-fly { position: absolute; left: 50%; top: 50%; z-index: 8; width: 46%; max-height: 60%; object-fit: contain; pointer-events: none; border: 3px solid #fff; border-radius: 10px; transform: translate(-50%, -50%); animation: tryon-fly .68s var(--ease-out) .1s forwards; }
 
@@ -958,7 +1019,11 @@ onBeforeUnmount(() => { disposed = true; action++; stopPose(); layoutObserver?.d
 .tryon-start-hint.active { color: #bff0d5; }
 .tryon-pose-check { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; font-size: 13px; color: #fff; background: #101714b3; border-radius: 16px; backdrop-filter: blur(10px); }
 .tryon-pose-check.is-ready :deep(.anticon) { color: #7fe3a6; }
-.tryon-pose-check:not(.is-ready) :deep(.anticon) { color: #f2d28b; }
+.tryon-pose-check.is-adjust :deep(.anticon) { color: #f2d28b; }
+.tryon-pose-check.is-tip :deep(.anticon) { color: #ffffffb3; }
+.tryon-pose-check.is-ready { box-shadow: 0 0 0 1px #9fe8c366; }
+/* 站远了画面中央已有大字，底部这行只留给读屏，避免两处同时抢眼。 */
+.tryon-pose-check.is-far { opacity: 0; }
 .tryon-notice.is-away strong { color: #f2d28b; }
 
 .tryon-controls { pointer-events: auto; display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto minmax(0, 1fr) auto; grid-template-areas: "hist mode . shut . flip"; align-items: center; gap: 14px; }
@@ -1077,11 +1142,13 @@ onBeforeUnmount(() => { disposed = true; action++; stopPose(); layoutObserver?.d
   .tryon-controls { grid-template-columns: 1fr auto 1fr; grid-template-areas: "sel sel sel" "mode mode mode" "hist shut flip"; }
 }
 
-@keyframes tryon-lens-open { from { opacity: 0; filter: blur(14px); transform: scale(1.07); } }
+/* 开机：像光圈打开，从中心圆形展开，同时由虚变实。 */
+@keyframes tryon-lens-open { from { clip-path: circle(0 at 50% 46%); filter: blur(14px) brightness(1.3); transform: scale(1.06); } 60% { filter: blur(0) brightness(1); } to { clip-path: circle(110% at 50% 46%); } }
 @keyframes tryon-flip { 50% { opacity: .35; filter: blur(12px); transform: perspective(900px) rotateY(80deg); } }
 @keyframes tryon-develop { from { filter: blur(16px) brightness(1.3) saturate(.6); } }
 @keyframes tryon-scan { to { top: calc(100% - 2px); } }
-@keyframes tryon-sweep { from { background-position: 0 100%; } to { background-position: 0 0; opacity: .2; } }
+@keyframes tryon-wear { from { top: 0; } 80% { opacity: 1; } to { top: 100%; opacity: 0; } }
+@keyframes tryon-wear-tint { from { transform: scaleY(0); } 70% { opacity: 1; } to { transform: scaleY(1); opacity: 0; } }
 @keyframes tryon-flash { 0% { opacity: .85; } 100% { opacity: 0; } }
 @keyframes tryon-fly { to { transform: translate(calc(-50% + var(--fly-x)), calc(-50% + var(--fly-y))) scale(.12); opacity: .7; } }
 @keyframes tryon-fade-in { from { opacity: 0; } }

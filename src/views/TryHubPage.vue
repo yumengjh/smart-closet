@@ -2,9 +2,10 @@
 // 试穿入口（ToC 改版（二）3.1；试穿与创作合并 server#271）：“做张图”（上身图与创作效果共用一个分步流程，见 TryMaker）
 // 与“镜头试穿”（实时试穿的启动页：看今日剩余时长、挑从哪件或哪套开始、看拍摄小贴士，点“打开镜头”才进全屏的 /try-on）。
 // 没有实时试穿权限时不显示切换，直接是“做张图”。右上“我的图”（/try/album）收着上身图与作品，有进行中的任务时带小红点。
+// 启动动效与取景引导（server#277）：舞台上是呼吸的人形轮廓，选的衣服落到对应部位；“打开镜头”从按钮圆形展开进 /try-on 并直接开预览。
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { BulbOutlined, CameraOutlined, HistoryOutlined, LockOutlined, PictureOutlined, VideoCameraOutlined } from '@ant-design/icons-vue'
+import { BulbOutlined, CameraOutlined, HistoryOutlined, LockOutlined, PictureOutlined, SoundOutlined, VideoCameraOutlined } from '@ant-design/icons-vue'
 import { useBillingStore } from '../billing/store'
 import { realtimePrice } from '../billing/model'
 import TryMaker from '../components/try/TryMaker.vue'
@@ -20,6 +21,10 @@ import { liveWorks, refreshWorks } from '../creation/works'
 import { useProcessingStore } from '../stores/processing'
 import { ALBUM_PATH } from '../try/routes'
 import { isPictureEntry } from '../domain/waiting'
+import { revealNavigate } from '../shell/revealNavigate'
+import { partsFor, scopeOf, setupTip, type Device, type Scope } from '../tryon/guide'
+import { CAMERA_LAYOUT_QUERY } from '../tryon/stage'
+import { voiceSupported } from '../tryon/voice'
 
 const billing = useBillingStore(), processing = useProcessingStore()
 onMounted(() => { void refreshWorks(1) })
@@ -45,15 +50,29 @@ watch(mode, value => { if (value === 'live') void loadChoices() }, { immediate: 
 function choose(kind: 'garment' | 'outfit', id: string) { pick.value = pick.value?.kind === kind && pick.value.id === id ? null : { kind, id } }
 const isPicked = (kind: 'garment' | 'outfit', id: string) => pick.value?.kind === kind && pick.value.id === id
 const needsPoints = computed(() => billing.realtime?.enabled && cap.value?.enabled && cap.value.quota.remaining <= 0 && (cap.value.points?.milliPointsPerSecond || 0) > 0 && (cap.value.points?.paidSeconds || 0) <= 0)
-function start() {
+/** 从按钮圆形展开进试穿页，并带上 open=1：试穿页直接打开本地预览（免费、不计时）。 */
+function start(event: MouseEvent) {
   if (needsPoints.value) { billing.purchase = 'tryon'; return }
-  void router.push({ path: '/try-on', query: pick.value ? { [pick.value.kind]: pick.value.id } : {} })
+  const query = new URLSearchParams({ open: '1', ...(pick.value ? { [pick.value.kind]: pick.value.id } : {}) })
+  const box = (event.currentTarget as HTMLElement | null)?.getBoundingClientRect()
+  const origin = box ? { x: box.left + box.width / 2, y: box.top + box.height / 2, from: Math.min(box.width, box.height) / 2 } : { x: innerWidth / 2, y: innerHeight / 2, from: 0 }
+  void revealNavigate(router, `/try-on?${query}`, origin)
 }
-const TIPS = [
+const pickedGarment = computed(() => pick.value?.kind === 'garment' ? garments.value.find(g => g.id === pick.value!.id) : undefined)
+const pickedOutfit = computed(() => pick.value?.kind === 'outfit' ? outfits.value.find(o => o.id === pick.value!.id) : undefined)
+// 舞台轮廓上的落点（占舞台高度的百分比）：衣服按穿戴位置落到头、颈、上身、手、腰、腿、脚。
+const ZONE: Record<string, number> = { HAT: 10, HEADWEAR: 10, GLASSES: 12, EAR: 12, NECK: 22, SCARF: 22, TOP: 36, INNER: 36, OUTER: 36, ONE_PIECE: 44, OVERALL: 44, BAG: 44, WRIST: 50, FINGER: 50, GLOVES: 50, ARM: 46, HANDHELD: 50, BELT: 52, BOTTOM: 68, SOCKS: 88, SHOES: 92 }
+const dropAt = computed(() => `${ZONE[pickedGarment.value?.wearingRole || ''] ?? 40}%`)
+// 拍摄小贴士按设备和所选衣物生成：手机前摄拍全身要靠墙放稳、后退两三步；电脑离屏幕两米左右。
+const coarse = window.matchMedia('(pointer: coarse)').matches, narrowScreen = window.matchMedia(CAMERA_LAYOUT_QUERY).matches
+const device: Device = coarse ? (narrowScreen ? 'phone' : 'tablet') : 'desktop'
+const scope = computed<Scope>(() => pickedGarment.value ? scopeOf(partsFor([pickedGarment.value.wearingRole])) : 'full')
+const tips = computed(() => [
+  { icon: CameraOutlined, text: setupTip({ device, front: true, portrait: true }, scope.value) },
   { icon: BulbOutlined, text: '站在光线均匀的地方，背景越简单越好' },
-  { icon: CameraOutlined, text: '离镜头远一点，让要试的部位完整入镜' },
+  ...(voiceSupported && device !== 'desktop' ? [{ icon: SoundOutlined, text: '站远了看不清字，可以在镜头里打开语音提示' }] : []),
   { icon: LockOutlined, text: '取景提示只在你的浏览器里识别，结束后参考图会删除' },
-]
+])
 </script>
 
 <template>
@@ -68,10 +87,18 @@ const TIPS = [
       <section class="try-live-stage">
         <div class="try-live-frame" aria-hidden="true">
           <span class="try-live-corner tl" /><span class="try-live-corner tr" /><span class="try-live-corner bl" /><span class="try-live-corner br" />
-          <VideoCameraOutlined />
+          <svg class="try-live-figure" viewBox="0 0 100 200" preserveAspectRatio="xMidYMid meet">
+            <circle cx="50" cy="20" r="12" />
+            <path d="M42 36 Q50 40 58 36 L72 43 Q78 45 79 53 L84 97 Q84 102 80 102 L76 102 L71 62 L68 104 L70 189 Q70 194 66 194 L56 194 L51 118 L49 118 L44 194 L34 194 Q30 194 30 189 L32 104 L29 62 L24 102 L20 102 Q16 102 16 97 L21 53 Q22 45 28 43 Z" />
+          </svg>
+          <span class="try-live-scan" />
+          <Transition name="try-live-drop" mode="out-in">
+            <span v-if="pickedGarment" :key="pickedGarment.id" class="try-live-worn" :style="{ top: dropAt }"><img :src="mediaUrl(pickedGarment.imageUrl)" alt="" /></span>
+            <span v-else-if="pickedOutfit" :key="pickedOutfit.id" class="try-live-worn outfit"><OutfitCollage :pieces="scenePieces(pickedOutfit.scene)" :title="pickedOutfit.name" :size="240" /></span>
+          </Transition>
         </div>
         <div class="try-live-copy">
-          <h2>对着镜头，直接换上</h2>
+          <h2>{{ pickedGarment ? `对着镜头，换上${pickedGarment.name}` : pickedOutfit ? `对着镜头，换上「${pickedOutfit.name}」` : '对着镜头，直接换上' }}</h2>
           <p v-if="cap?.ready || needsPoints"><TryOnQuota :remaining="cap?.quota.remaining || 0" :points="cap?.points" /></p>
           <p v-else-if="cap" class="try-live-warn">{{ cap.reason || '实时试穿暂时不可用' }}</p>
         </div>
@@ -98,7 +125,7 @@ const TIPS = [
       </section>
 
       <ul class="try-live-tips">
-        <li v-for="tip in TIPS" :key="tip.text"><component :is="tip.icon" />{{ tip.text }}</li>
+        <li v-for="tip in tips" :key="tip.text"><component :is="tip.icon" />{{ tip.text }}</li>
       </ul>
 
       <div class="try-live-cta">
@@ -117,7 +144,21 @@ const TIPS = [
 .try-live { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; max-width: 640px; margin: 0 auto; }
 .try-live > * { min-width: 0; }
 .try-live-stage { position: relative; display: flex; flex-direction: column; justify-content: flex-end; min-height: 300px; padding: 20px; overflow: hidden; border-radius: 20px; color: #fff; background: radial-gradient(120% 90% at 50% 0%, #3a3a3a 0%, #111 70%); }
-.try-live-frame { position: absolute; inset: 22px 22px 110px; display: grid; place-items: center; color: #ffffff40; font-size: 44px; }
+.try-live-frame { position: absolute; inset: 22px 22px 110px; display: grid; place-items: center; }
+/* 人形轮廓慢慢呼吸，扫描线上下走：还没开镜头，先让人知道“站进这里”。 */
+.try-live-figure { height: 100%; max-width: 60%; fill: #ffffff0a; stroke: #ffffff59; stroke-width: 1.2; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; animation: try-live-breathe 3.2s ease-in-out infinite; }
+.try-live-scan { position: absolute; left: 12%; right: 12%; top: 0; height: 2px; background: linear-gradient(90deg, #9fe8c300, #9fe8c3, #9fe8c300); box-shadow: 0 0 16px 3px #9fe8c355; opacity: .75; animation: try-live-scan 3.6s ease-in-out infinite alternate; }
+/* 选的衣服落到轮廓对应部位。 */
+.try-live-worn { position: absolute; left: 50%; display: grid; place-items: center; width: 56px; height: 56px; overflow: hidden; border-radius: 14px; background: #ffffffeb; box-shadow: 0 0 0 2px #9fe8c3, 0 8px 22px #0008; transform: translate(-50%, -50%); }
+.try-live-worn img { width: 86%; height: 86%; object-fit: contain; }
+.try-live-worn.outfit { top: 46%; width: 92px; height: 116px; }
+.try-live-worn.outfit :deep(canvas), .try-live-worn.outfit :deep(img) { width: 100%; height: 100%; object-fit: contain; }
+.try-live-drop-enter-active { transition: opacity .3s ease, transform .5s cubic-bezier(.34, 1.4, .64, 1); }
+.try-live-drop-leave-active { transition: opacity .15s ease, transform .15s ease; }
+.try-live-drop-enter-from { opacity: 0; transform: translate(-50%, -140%) scale(1.25); }
+.try-live-drop-leave-to { opacity: 0; transform: translate(-50%, -50%) scale(.8); }
+@keyframes try-live-breathe { 50% { stroke: #ffffff8c; fill: #ffffff14; } }
+@keyframes try-live-scan { to { top: calc(100% - 2px); } }
 .try-live-corner { position: absolute; width: 22px; height: 22px; border-color: #ffffffb3; border-style: solid; border-width: 0; }
 .try-live-corner.tl { top: 0; left: 0; border-top-width: 2px; border-left-width: 2px; border-top-left-radius: 8px; }
 .try-live-corner.tr { top: 0; right: 0; border-top-width: 2px; border-right-width: 2px; border-top-right-radius: 8px; }
@@ -156,5 +197,12 @@ const TIPS = [
   .try-live-stage { grid-row: span 3; min-height: 520px; position: sticky; top: 24px; }
   .try-live-cta { position: static; padding: 0; background: none; backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none; }
 }
-@media (prefers-reduced-motion: reduce) { .try-live-thumb { transition: none; } }
+@media (min-width: 1024px) { .try-live-worn { width: 76px; height: 76px; } .try-live-worn.outfit { width: 132px; height: 164px; } }
+@media (prefers-reduced-motion: reduce) {
+  .try-live-thumb { transition: none; }
+  .try-live-figure, .try-live-scan { animation: none; }
+  .try-live-scan { display: none; }
+  .try-live-drop-enter-active, .try-live-drop-leave-active { transition: opacity .15s ease; }
+  .try-live-drop-enter-from, .try-live-drop-leave-to { transform: translate(-50%, -50%); }
+}
 </style>
