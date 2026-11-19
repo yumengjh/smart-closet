@@ -3,7 +3,8 @@ import { computed } from 'vue'
 import { CameraOutlined, CloseOutlined, PlusOutlined } from '@ant-design/icons-vue'
 import type { ShutterIntent } from './stage'
 
-const props = defineProps<{ intent: ShutterIntent; label: string; text?: string; progress?: number; busy?: boolean }>()
+/** ready：取景就绪，快门外圈呼吸发光，提示可以开始（只是提示，不自动开始）。 */
+const props = defineProps<{ intent: ShutterIntent; label: string; text?: string; progress?: number; busy?: boolean; ready?: boolean }>()
 defineEmits<{ press: [] }>()
 const inert = computed(() => props.intent === 'disabled' || props.intent === 'wait' || props.busy)
 const spinning = computed(() => props.intent === 'cancel' || props.intent === 'wait' || props.busy)
@@ -11,7 +12,7 @@ const ring = computed(() => `${Math.round(Math.min(1, Math.max(0, props.progress
 </script>
 
 <template>
-  <a-button class="tryon-shutter" :class="[`is-${intent}`, { 'is-spinning': spinning, 'has-progress': progress !== undefined }]" :style="{ '--ring': ring }" shape="circle" :disabled="inert" :aria-label="label" @click="$emit('press')">
+  <a-button class="tryon-shutter" :class="[`is-${intent}`, { 'is-spinning': spinning, 'has-progress': progress !== undefined, 'is-ready': ready }]" :style="{ '--ring': ring }" shape="circle" :disabled="inert" :aria-label="label" @click="$emit('press')">
     <span class="shutter-ring" aria-hidden="true"></span>
     <span class="shutter-core" aria-hidden="true">
       <CameraOutlined v-if="intent === 'open'" />
@@ -57,6 +58,12 @@ const ring = computed(() => `${Math.round(Math.min(1, Math.max(0, props.progress
   background: conic-gradient(from 0deg, #fff0 10%, #fff 90%);
   animation: shutter-spin 1s linear infinite;
 }
+/* 连接中：外圈按连接步骤走成进度环，不再只是转圈。 */
+@property --ring { syntax: '<angle>'; inherits: true; initial-value: 0deg; }
+.tryon-shutter.ant-btn { transition: --ring .6s cubic-bezier(.22, 1, .36, 1); }
+.is-cancel.has-progress .shutter-ring { background: conic-gradient(#9fe8c3 var(--ring), #ffffff40 0); animation: none; }
+/* 取景就绪：外圈薄荷绿呼吸，提示可以点开始。 */
+.is-ready::before { content: ''; position: absolute; inset: -6px; border-radius: 50%; box-shadow: 0 0 0 2px #9fe8c3, 0 0 18px 4px #9fe8c366; animation: shutter-ready 1.8s ease-in-out infinite; pointer-events: none; }
 
 .shutter-core {
   position: absolute;
@@ -82,7 +89,8 @@ const ring = computed(() => `${Math.round(Math.min(1, Math.max(0, props.progress
 
 @keyframes shutter-spin { to { transform: rotate(360deg); } }
 @keyframes shutter-call { 50% { transform: scale(.9); } }
+@keyframes shutter-ready { 50% { opacity: .35; transform: scale(1.06); } }
 @media (prefers-reduced-motion: reduce) {
-  .shutter-ring, .shutter-core { animation: none !important; transition: none !important; }
+  .shutter-ring, .shutter-core, .is-ready::before { animation: none !important; transition: none !important; }
 }
 </style>
