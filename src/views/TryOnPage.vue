@@ -116,7 +116,6 @@ function startPose() {
   sampler.onStatus = status => { if (!disposed) poseStatus.value = status }
   sampler.onPoints = (points, at) => {
     lastPoints = points
-    if (spark && (phase.value === 'queued' || phase.value === 'offered' || phase.value === 'connecting')) spark.setTargets(sparkTargets())
     if (phase.value === 'preview') {
       poseCheck.value = steady.update(checkFrame(points, selectedRoles.value.map(r => r.wearingRole)), at)
       lit.value = coverage(points, guideParts.value); voteFar(isFar(points, scope.value)); speakGuide()
@@ -284,14 +283,16 @@ const showsResult = computed(() => phase.value === 'live' || phase.value === 're
 const sparkCanvas = ref<HTMLCanvasElement>()
 const unveilStyle = ref<Record<string, string>>({})
 let spark: ParticleField | undefined, fading: ParticleField | undefined
-const sparkCount = () => window.matchMedia('(pointer: coarse)').matches ? 170 : 300
+const sparkCount = () => window.matchMedia('(pointer: coarse)').matches ? 110 : 180
 function toStage(p: XY): XY {
   const box = stageBox.value, ratio = sizes.value.local || mainRatio.value
   return { x: projectX(p.x, ratio, box, fit.value), y: projectY(p.y, ratio, box, fit.value) }
 }
-function sparkTargets() {
-  const body = present(lastPoints) ? skeletonTargets(lastPoints, sparkCount(), toStage, 12) : []
-  return body.length ? body : skeletonTargets(STANDING_POSE, sparkCount(), toStage, 12)
+/** 每帧取一次：骨架跟着最新的姿态识别结果，所有点沿骨架慢慢流动（约 40 秒一圈）。 */
+function sparkTargets(now: number) {
+  const offset = now / 40_000, n = sparkCount()
+  const body = present(lastPoints) ? skeletonTargets(lastPoints, n, toStage, 3, offset) : []
+  return body.length ? body : skeletonTargets(STANDING_POSE, n, toStage, 3, offset)
 }
 const sparkCalled = computed(() => phase.value === 'queued' || phase.value === 'offered' ? 0.25 : phase.value === 'connecting' ? (stepIndex.value + 1) / CONNECT_STEPS.length : 1)
 function gatherSpark() {
@@ -299,8 +300,8 @@ function gatherSpark() {
   fading?.destroy(); fading = undefined
   const box = stageBox.value
   spark = new ParticleField(sparkCanvas.value, sparkCount())
-  spark.resize(box.width, box.height); spark.seed('edge')
-  spark.setTargets(sparkTargets()); spark.setCalled(sparkCalled.value); spark.start()
+  spark.resize(box.width, box.height); spark.seed()
+  spark.setTargets(sparkTargets); spark.setCalled(sparkCalled.value); spark.start()
 }
 /** ring：首帧出来时炸开并铺开画面；否则（取消、失败）只是轻轻散掉。 */
 function releaseSpark(ring: boolean) {

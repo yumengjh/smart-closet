@@ -30,9 +30,10 @@ const GOLDEN = 0.6180339887498949
 
 /**
  * 沿可见骨架（加头部一圈）按长度均匀取 count 个点，map 把画面坐标换算成舞台像素；
- * thickness 是垂直于骨头的散布宽度（像素）。没有可见骨头时返回空数组。
+ * thickness 是垂直于骨头的散布宽度（像素）；offset 让所有点沿骨架整体前移（0..1 为一圈），用来做“流动”。
+ * 没有可见骨头时返回空数组。
  */
-export function skeletonTargets(points: readonly Point[], count: number, map: (p: XY) => XY, thickness = 10): XY[] {
+export function skeletonTargets(points: readonly Point[], count: number, map: (p: XY) => XY, thickness = 3, offset = 0): XY[] {
   if (points.length < 33 || count <= 0) return []
   const segs = BONES.filter(([a, b]) => seen(points, a) && seen(points, b)).map(([a, b]) => [map(points[a]), map(points[b])] as const)
   let head: { c: XY; r: number } | null = null
@@ -48,7 +49,7 @@ export function skeletonTargets(points: readonly Point[], count: number, map: (p
   if (total <= 0) return []
   const out: XY[] = []
   for (let i = 0; i < count; i++) {
-    let d = ((i * GOLDEN) % 1) * total
+    let d = ((((i * GOLDEN) + offset) % 1 + 1) % 1) * total
     const spread = (hash01(i) - 0.5) * thickness
     if (head && d < headLength) {
       const angle = d / head.r, r = head.r + spread * 0.5
@@ -85,33 +86,32 @@ export const easeOutCubic = (t: number) => 1 - Math.pow(1 - Math.min(1, Math.max
 export const unveilRadius = (w: number, h: number) => 1.5 * Math.hypot(w, h) / Math.SQRT2
 export const UNVEIL_SECONDS = 0.9
 
-export type Tone = 'dark' | 'light'
-type Dot = { x: number; y: number; vx: number; vy: number; size: number; phase: number; alt: boolean; release: number; life: number; out: boolean }
+type Dot = { x: number; y: number; vx: number; vy: number; tx: number; ty: number; size: number; phase: number; fresh: number; release: number; life: number; out: boolean }
 type Burst = { at: number; origin: XY; ring: boolean; done?: () => void }
+type Targets = XY[] | ((now: number) => XY[])
 
-const PALETTE: Record<Tone, { main: string; alt: string; ring: string; blend: GlobalCompositeOperation; alpha: number }> = {
-  dark: { main: '#9fe8c3', alt: '#ffffff', ring: '159, 232, 195', blend: 'lighter', alpha: 0.9 },
-  light: { main: '#2f7d5b', alt: '#111111', ring: '47, 125, 91', blend: 'source-over', alpha: 0.7 },
-}
-
-function sprite(color: string, soft: boolean) {
+const MINT = '159, 232, 195'
+/** 光点：白色小核加一圈很淡的薄荷绿晕，所有粒子同一张贴图、大小只差一点，避免“斑点感”。 */
+function sprite() {
   const c = document.createElement('canvas'); c.width = c.height = 32
   const g = c.getContext('2d')!, grad = g.createRadialGradient(16, 16, 0, 16, 16, 16)
-  grad.addColorStop(0, color); grad.addColorStop(soft ? 0.25 : 0.45, color); grad.addColorStop(1, `${color}00`)
+  grad.addColorStop(0, 'rgba(255, 255, 255, 1)'); grad.addColorStop(0.12, 'rgba(255, 255, 255, .95)')
+  grad.addColorStop(0.3, `rgba(${MINT}, .35)`); grad.addColorStop(1, `rgba(${MINT}, 0)`)
   g.fillStyle = grad; g.fillRect(0, 0, 32, 32)
   return c
 }
 
 /**
- * 一层画布上的粒子：汇聚到目标点（spring），被“踢”开后弹回，炸开后漂散消失。
- * 只用 2D 画布和预渲染的光点贴图；画布尺寸按 devicePixelRatio 取，最高 2 倍。
+ * 黑底相机画面上的一层光点：沿骨架流动（目标可以是随时间变化的函数），飞行时拖出细尾迹，
+ * 炸开后漂散消失。只用 2D 画布和一张预渲染贴图，叠加模式发光；画布按设备像素比取、最高 2 倍。
  */
 export class ParticleField {
   private readonly canvas: HTMLCanvasElement
   private readonly ctx: CanvasRenderingContext2D
   private readonly count: number
+  private readonly dot: HTMLCanvasElement
   private dots: Dot[] = []
-  private targets: XY[] = []
+  private targets: Targets = []
   private called = 1
   private w = 0
   private h = 0
@@ -119,20 +119,11 @@ export class ParticleField {
   private raf = 0
   private last = 0
   private burstState: Burst | null = null
-  private kicks: { at: number; origin: XY }[] = []
-  private tone: Tone = 'dark'
-  private sprites: { main: HTMLCanvasElement; alt: HTMLCanvasElement } | null = null
 
-  constructor(canvas: HTMLCanvasElement, count: number, tone: Tone = 'dark') {
+  constructor(canvas: HTMLCanvasElement, count: number) {
     this.canvas = canvas; this.count = count
     this.ctx = canvas.getContext('2d')!
-    this.setTone(tone)
-  }
-
-  setTone(tone: Tone) {
-    this.tone = tone
-    const p = PALETTE[tone]
-    this.sprites = { main: sprite(p.main, tone === 'dark'), alt: sprite(p.alt, tone === 'dark') }
+    this.dot = sprite()
   }
 
   resize(w: number, h: number) {
@@ -142,30 +133,25 @@ export class ParticleField {
     this.w = w; this.h = h
   }
 
-  /** 从画布四周撒入；from='edge' 时从边缘飞进来，'scatter' 时直接散在整块画布上。 */
-  seed(from: 'edge' | 'scatter' = 'edge') {
+  /** 从画布四边外飞进来。 */
+  seed() {
     this.dots = Array.from({ length: this.count }, (_, i) => {
       const r = hash01(i + 7), side = Math.floor(hash01(i + 19) * 4)
-      const edge = from === 'edge'
-      const x = edge ? (side === 0 ? -10 : side === 1 ? this.w + 10 : r * this.w) : hash01(i + 3) * this.w
-      const y = edge ? (side === 2 ? -10 : side === 3 ? this.h + 10 : r * this.h) : hash01(i + 5) * this.h
-      return { x, y, vx: 0, vy: 0, size: 1.2 + hash01(i + 11) * 2.2, phase: hash01(i + 13) * Math.PI * 2, alt: hash01(i + 17) < 0.28, release: 0, life: 1, out: false }
+      const x = side === 0 ? -20 : side === 1 ? this.w + 20 : r * this.w
+      const y = side === 2 ? -20 : side === 3 ? this.h + 20 : r * this.h
+      return { x, y, vx: 0, vy: 0, tx: x, ty: y, size: 0.9 + hash01(i + 11) * 0.5, phase: hash01(i + 13) * Math.PI * 2, fresh: 1, release: 0, life: 1, out: false }
     })
-    this.burstState = null; this.kicks = []
+    this.burstState = null
   }
 
-  setTargets(targets: XY[]) { this.targets = targets }
-  /** 汇聚比例：前 fraction 的粒子归位，其余在四周慢慢飘，连接进度越往后聚得越多。 */
+  setTargets(targets: Targets) { this.targets = targets }
+  /** 汇聚比例：前 fraction 的粒子归位，其余在四周慢慢飘。 */
   setCalled(fraction: number) { this.called = Math.min(1, Math.max(0, fraction)) }
-
-  /** 在某处荡开一圈：附近的粒子被推开，再被弹回目标。 */
-  kick(origin: XY) { this.kicks.push({ at: performance.now(), origin }) ; this.start() }
 
   /** 炸开：粒子按 releaseDelay 依次飞散并上浮消失；ring 时画一圈与画面铺开同步的光环。 */
   burst(origin: XY, span: { top: number; bottom: number } | null, ring: boolean, done?: () => void) {
-    const at = performance.now()
     for (const d of this.dots) { d.release = releaseDelay(d.y, span); d.out = false }
-    this.burstState = { at, origin, ring, done }
+    this.burstState = { at: performance.now(), origin, ring, done }
     this.start()
   }
 
@@ -184,8 +170,8 @@ export class ParticleField {
 
   private step(now: number, dt: number) {
     const burst = this.burstState, since = burst ? (now - burst.at) / 1000 : -1
-    this.kicks = this.kicks.filter(k => now - k.at < 600)
-    const drag = Math.pow(0.02, dt), loose = Math.pow(0.18, dt)
+    const targets = typeof this.targets === 'function' ? this.targets(now) : this.targets
+    const drag = Math.pow(0.004, dt), loose = Math.pow(0.25, dt)
     let alive = 0
     for (let i = 0; i < this.dots.length; i++) {
       const d = this.dots[i]
@@ -194,33 +180,30 @@ export class ParticleField {
           d.out = true
           let dx = d.x - burst.origin.x, dy = d.y - burst.origin.y
           const len = Math.hypot(dx, dy) || 1; dx /= len; dy /= len
-          const speed = (burst.ring ? 220 : 90) + hash01(i + 23) * (burst.ring ? 380 : 120)
-          d.vx = dx * speed - dy * speed * 0.28; d.vy = dy * speed + dx * speed * 0.28 - 50
+          const speed = burst.ring ? 260 + hash01(i + 23) * 420 : 60 + hash01(i + 23) * 80
+          d.vx = dx * speed - dy * speed * 0.18; d.vy = dy * speed + dx * speed * 0.18 - 40
         }
-        d.vx *= loose; d.vy = d.vy * loose - 70 * dt
+        d.vx *= loose; d.vy = d.vy * loose - 60 * dt
         d.x += d.vx * dt; d.y += d.vy * dt
-        d.life -= dt / (0.75 + hash01(i + 29) * 0.55)
+        d.life -= dt / (0.7 + hash01(i + 29) * 0.5)
         if (d.life > 0) alive++
         continue
       }
       alive++
+      d.fresh = Math.min(1, d.fresh + dt * 3)
       const slot = (i * GOLDEN) % 1
-      const target = this.targets.length && slot < this.called ? this.targets[i % this.targets.length] : null
+      const target = targets.length && slot < this.called ? targets[i % targets.length] : null
       if (target) {
-        const wobble = Math.sin(now * 0.0016 + d.phase) * 1.6
-        d.vx += (target.x + wobble - d.x) * 26 * dt; d.vy += (target.y + Math.cos(now * 0.0013 + d.phase) * 1.6 - d.y) * 26 * dt
+        // 目标沿骨架流动；流到一根骨头尽头会跳到下一根的起点，这时直接换位并淡入，不拖一条线横穿身体。
+        if (Math.hypot(target.x - d.tx, target.y - d.ty) > 40 && d.fresh >= 1 && Math.hypot(d.x - d.tx, d.y - d.ty) < 6) { d.x = target.x; d.y = target.y; d.vx = d.vy = 0; d.fresh = 0 }
+        d.tx = target.x; d.ty = target.y
+        d.vx += (target.x - d.x) * 60 * dt; d.vy += (target.y - d.y) * 60 * dt
         d.vx *= drag; d.vy *= drag
       } else {
-        // 没被叫到的粒子在四周慢慢飘，出了画布从另一边回来。
-        d.vx += Math.sin(now * 0.0005 + d.phase) * 6 * dt; d.vy += Math.cos(now * 0.0004 + d.phase * 1.3) * 6 * dt - 2 * dt
-        d.vx *= Math.pow(0.6, dt); d.vy *= Math.pow(0.6, dt)
-        if (d.x < -12) d.x = this.w + 10; else if (d.x > this.w + 12) d.x = -10
-        if (d.y < -12) d.y = this.h + 10; else if (d.y > this.h + 12) d.y = -10
-      }
-      for (const k of this.kicks) {
-        const age = (now - k.at) / 1000, dx = d.x - k.origin.x, dy = d.y - k.origin.y, dist = Math.hypot(dx, dy) || 1
-        const front = age * 260
-        if (Math.abs(dist - front) < 18) { d.vx += (dx / dist) * 900 * dt; d.vy += (dy / dist) * 900 * dt }
+        d.vx += Math.sin(now * 0.0005 + d.phase) * 8 * dt; d.vy += Math.cos(now * 0.0004 + d.phase * 1.3) * 8 * dt - 3 * dt
+        d.vx *= Math.pow(0.5, dt); d.vy *= Math.pow(0.5, dt)
+        if (d.x < -24) d.x = this.w + 20; else if (d.x > this.w + 24) d.x = -20
+        if (d.y < -24) d.y = this.h + 20; else if (d.y > this.h + 24) d.y = -20
       }
       d.x += d.vx * dt; d.y += d.vy * dt
     }
@@ -228,36 +211,38 @@ export class ParticleField {
   }
 
   private draw(now: number) {
-    const ctx = this.ctx, palette = PALETTE[this.tone], sprites = this.sprites!
+    const ctx = this.ctx, burst = this.burstState
     ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, this.canvas.width, this.canvas.height)
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0)
-    ctx.globalCompositeOperation = palette.blend
-    const burst = this.burstState
+    ctx.globalCompositeOperation = 'lighter'
+    ctx.lineCap = 'round'
+    const hasTargets = typeof this.targets === 'function' || this.targets.length > 0
     for (let i = 0; i < this.dots.length; i++) {
       const d = this.dots[i]
       if (d.life <= 0) continue
-      const slot = (i * GOLDEN) % 1, settled = this.targets.length && slot < this.called
-      const twinkle = 0.62 + 0.38 * Math.sin(now * 0.004 + d.phase)
-      const alpha = palette.alpha * twinkle * Math.max(0, d.life) * (settled || d.out ? 1 : 0.4)
-      const s = d.size * (d.out ? 0.6 + d.life * 0.8 : 1) * 2.4
+      const settled = hasTargets && (i * GOLDEN) % 1 < this.called
+      const alpha = (0.85 + 0.15 * Math.sin(now * 0.003 + d.phase)) * Math.max(0, d.life) * d.fresh * (settled || d.out ? 1 : 0.3)
+      // 尾迹：速度越快越长，慢下来就只剩一个光点。
+      const speed = Math.hypot(d.vx, d.vy)
+      if (speed > 40) {
+        const tail = Math.min(26, speed * 0.028) / speed
+        ctx.globalAlpha = alpha * 0.55
+        ctx.strokeStyle = `rgb(${MINT})`; ctx.lineWidth = d.size
+        ctx.beginPath(); ctx.moveTo(d.x - d.vx * tail, d.y - d.vy * tail); ctx.lineTo(d.x, d.y); ctx.stroke()
+      }
+      const s = d.size * (d.out ? 0.5 + d.life * 0.6 : 1) * 3.2
       ctx.globalAlpha = Math.min(1, alpha)
-      ctx.drawImage(d.alt ? sprites.alt : sprites.main, d.x - s, d.y - s, s * 2, s * 2)
-    }
-    for (const k of this.kicks) {
-      const age = (now - k.at) / 600
-      ctx.globalAlpha = Math.max(0, 1 - age) * 0.6
-      ctx.strokeStyle = `rgb(${palette.ring})`; ctx.lineWidth = 1.5
-      ctx.beginPath(); ctx.arc(k.origin.x, k.origin.y, age * 156, 0, Math.PI * 2); ctx.stroke()
+      ctx.drawImage(this.dot, d.x - s, d.y - s, s * 2, s * 2)
     }
     if (burst?.ring) {
       const t = (now - burst.at) / 1000 / UNVEIL_SECONDS
       if (t < 1) {
         const r = easeOutCubic(t) * unveilRadius(this.w, this.h)
         ctx.globalCompositeOperation = 'source-over'
-        ctx.globalAlpha = (1 - t) * 0.9
-        ctx.lineWidth = 2 + (1 - t) * 4
-        ctx.strokeStyle = `rgb(${palette.ring})`
-        ctx.shadowColor = `rgba(${palette.ring}, .9)`; ctx.shadowBlur = 18
+        ctx.globalAlpha = (1 - t) * 0.8
+        ctx.lineWidth = 1.2 + (1 - t) * 1.8
+        ctx.strokeStyle = 'rgb(255, 255, 255)'
+        ctx.shadowColor = `rgba(${MINT}, 1)`; ctx.shadowBlur = 14
         ctx.beginPath(); ctx.arc(burst.origin.x, burst.origin.y, r, 0, Math.PI * 2); ctx.stroke()
         ctx.shadowBlur = 0
       }

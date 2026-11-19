@@ -25,7 +25,6 @@ import { revealNavigate } from '../shell/revealNavigate'
 import { partsFor, scopeOf, setupTip, type Device, type Scope } from '../tryon/guide'
 import { CAMERA_LAYOUT_QUERY } from '../tryon/stage'
 import { voiceSupported } from '../tryon/voice'
-import ParticleFigure from '../tryon/ParticleFigure.vue'
 
 const billing = useBillingStore(), processing = useProcessingStore()
 onMounted(() => { void refreshWorks(1) })
@@ -63,12 +62,10 @@ const pickedGarment = computed(() => pick.value?.kind === 'garment' ? garments.v
 const pickedOutfit = computed(() => pick.value?.kind === 'outfit' ? outfits.value.find(o => o.id === pick.value!.id) : undefined)
 // 舞台轮廓上的落点（占舞台高度的百分比）：衣服按穿戴位置落到头、颈、上身、手、腰、腿、脚。
 const ZONE: Record<string, number> = { HAT: 10, HEADWEAR: 10, GLASSES: 12, EAR: 12, NECK: 22, SCARF: 22, TOP: 36, INNER: 36, OUTER: 36, ONE_PIECE: 44, OVERALL: 44, BAG: 44, WRIST: 50, FINGER: 50, GLOVES: 50, ARM: 46, HANDHELD: 50, BELT: 52, BOTTOM: 68, SOCKS: 88, SHOES: 92 }
-const dropPercent = computed(() => pickedGarment.value ? ZONE[pickedGarment.value.wearingRole || ''] ?? 40 : pickedOutfit.value ? 46 : null)
-const dropAt = computed(() => `${dropPercent.value ?? 40}%`)
-/** 舞台卡人形轮廓（100×200 坐标），虚线轮廓和粒子共用。 */
+const dropAt = computed(() => `${pickedOutfit.value ? 46 : ZONE[pickedGarment.value?.wearingRole || ''] ?? 40}%`)
+/** 舞台卡人形轮廓（100×200 坐标），底线和流光共用。 */
 const FIGURE_PATH = 'M42 36 Q50 40 58 36 L72 43 Q78 45 79 53 L84 97 Q84 102 80 102 L76 102 L71 62 L68 104 L70 189 Q70 194 66 194 L56 194 L51 118 L49 118 L44 194 L34 194 Q30 194 30 189 L32 104 L29 62 L24 102 L20 102 Q16 102 16 97 L21 53 Q22 45 28 43 Z'
 const FIGURE_HEAD = { cx: 50, cy: 20, r: 12 }
-const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches
 // 拍摄小贴士按设备和所选衣物生成：手机前摄拍全身要靠墙放稳、后退两三步；电脑离屏幕两米左右。
 const coarse = window.matchMedia('(pointer: coarse)').matches, narrowScreen = window.matchMedia(CAMERA_LAYOUT_QUERY).matches
 const device: Device = coarse ? (narrowScreen ? 'phone' : 'tablet') : 'desktop'
@@ -94,10 +91,18 @@ const tips = computed(() => [
         <div class="try-live-frame" aria-hidden="true">
           <span class="try-live-corner tl" /><span class="try-live-corner tr" /><span class="try-live-corner bl" /><span class="try-live-corner br" />
           <svg class="try-live-figure" viewBox="0 0 100 200" preserveAspectRatio="xMidYMid meet">
-            <circle :cx="FIGURE_HEAD.cx" :cy="FIGURE_HEAD.cy" :r="FIGURE_HEAD.r" />
-            <path :d="FIGURE_PATH" />
+            <g class="try-live-body">
+              <circle :cx="FIGURE_HEAD.cx" :cy="FIGURE_HEAD.cy" :r="FIGURE_HEAD.r" />
+              <path :d="FIGURE_PATH" />
+            </g>
+            <!-- 两段光沿轮廓流动；pathLength 归一化成 100，方便按比例设置光段长度。 -->
+            <g class="try-live-flow">
+              <path :d="FIGURE_PATH" pathLength="100" />
+              <path :d="FIGURE_PATH" pathLength="100" />
+              <circle :cx="FIGURE_HEAD.cx" :cy="FIGURE_HEAD.cy" :r="FIGURE_HEAD.r" pathLength="100" />
+            </g>
           </svg>
-          <ParticleFigure v-if="!calm" :path="FIGURE_PATH" :head="FIGURE_HEAD" :drop="dropPercent" :drop-key="pick?.id" />
+          <span v-if="pick" :key="pick.id" class="try-live-ripple" :style="{ top: dropAt }" />
           <span class="try-live-scan" />
           <Transition name="try-live-drop" mode="out-in">
             <span v-if="pickedGarment" :key="pickedGarment.id" class="try-live-worn" :style="{ top: dropAt }"><img :src="mediaUrl(pickedGarment.imageUrl)" alt="" /></span>
@@ -153,7 +158,7 @@ const tips = computed(() => [
 /* 舞台卡跟随主题：浅色是白底墨线、深绿扫描线，深色是黑底白线、薄荷绿扫描线。 */
 .try-live-stage {
   --stage-bg: radial-gradient(120% 90% at 50% 0%, #ffffff 0%, #eeefec 72%); --stage-ink: var(--ink); --stage-copy: var(--muted-strong); --stage-quiet: var(--muted);
-  --stage-line: #1111114d; --stage-line-strong: #11111180; --stage-fill: #1111110a; --stage-fill-strong: #11111112; --stage-corner: #11111166;
+  --stage-line: #11111138; --stage-line-strong: #11111166; --stage-fill: #1111110a; --stage-fill-strong: #11111112; --stage-corner: #11111166;
   --stage-glow: #2f7d5b; --stage-glow-soft: #2f7d5b33; --stage-worn-shadow: 0 8px 22px #00000024; --stage-warn: var(--warning);
   position: relative; display: flex; flex-direction: column; justify-content: flex-end; min-height: 300px; padding: 20px; overflow: hidden; border-radius: 20px;
   color: var(--stage-ink); background: var(--stage-bg); box-shadow: 0 0 0 1px var(--line);
@@ -166,7 +171,16 @@ const tips = computed(() => [
 }
 .try-live-frame { position: absolute; inset: 22px 22px 110px; display: grid; place-items: center; }
 /* 人形轮廓慢慢呼吸，扫描线上下走：还没开镜头，先让人知道“站进这里”。 */
-.try-live-figure { height: 100%; max-width: 60%; fill: var(--stage-fill); stroke: var(--stage-line); stroke-width: 1.2; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; animation: try-live-breathe 3.2s ease-in-out infinite; }
+.try-live-figure { height: 100%; max-width: 60%; overflow: visible; }
+.try-live-body { fill: var(--stage-fill); stroke: var(--stage-line); stroke-width: 1; vector-effect: non-scaling-stroke; animation: try-live-breathe 4s ease-in-out infinite; }
+.try-live-body * { vector-effect: non-scaling-stroke; }
+/* 流光：一小段亮线沿轮廓匀速走，两段错开半圈；头部一圈慢一些。 */
+.try-live-flow { fill: none; stroke: var(--stage-glow); stroke-width: .9; stroke-linecap: round; filter: drop-shadow(0 0 2px var(--stage-glow)); }
+.try-live-flow > * { stroke-dasharray: 7 93; animation: try-live-flow 6s linear infinite; }
+.try-live-flow > :nth-child(2) { animation-delay: -3s; }
+.try-live-flow > circle { stroke-dasharray: 18 82; animation-duration: 4.5s; opacity: .8; }
+/* 衣服落地时荡开的一圈。 */
+.try-live-ripple { position: absolute; left: 50%; width: 120px; height: 120px; margin: -60px 0 0 -60px; border-radius: 50%; box-shadow: 0 0 0 1px var(--stage-glow), 0 0 12px var(--stage-glow-soft); opacity: 0; pointer-events: none; animation: try-live-ripple .9s var(--ease-out, ease-out) .3s; }
 .try-live-scan { position: absolute; left: 12%; right: 12%; top: 0; height: 2px; background: linear-gradient(90deg, transparent, var(--stage-glow), transparent); box-shadow: 0 0 16px 3px var(--stage-glow-soft); opacity: .75; animation: try-live-scan 3.6s ease-in-out infinite alternate; }
 /* 选的衣服落到轮廓对应部位。 */
 .try-live-worn { position: absolute; left: 50%; display: grid; place-items: center; width: 56px; height: 56px; overflow: hidden; border-radius: 14px; background: #ffffffeb; box-shadow: 0 0 0 2px var(--stage-glow), var(--stage-worn-shadow); transform: translate(-50%, -50%); }
@@ -178,6 +192,8 @@ const tips = computed(() => [
 .try-live-drop-enter-from { opacity: 0; transform: translate(-50%, -140%) scale(1.25); }
 .try-live-drop-leave-to { opacity: 0; transform: translate(-50%, -50%) scale(.8); }
 @keyframes try-live-breathe { 50% { stroke: var(--stage-line-strong); fill: var(--stage-fill-strong); } }
+@keyframes try-live-flow { from { stroke-dashoffset: 100; } to { stroke-dashoffset: 0; } }
+@keyframes try-live-ripple { from { opacity: .9; transform: scale(.2); } to { opacity: 0; transform: scale(1.6); } }
 @keyframes try-live-scan { to { top: calc(100% - 2px); } }
 .try-live-corner { position: absolute; width: 22px; height: 22px; border-color: var(--stage-corner); border-style: solid; border-width: 0; }
 .try-live-corner.tl { top: 0; left: 0; border-top-width: 2px; border-left-width: 2px; border-top-left-radius: 8px; }
@@ -220,7 +236,8 @@ const tips = computed(() => [
 @media (min-width: 1024px) { .try-live-worn { width: 76px; height: 76px; } .try-live-worn.outfit { width: 132px; height: 164px; } }
 @media (prefers-reduced-motion: reduce) {
   .try-live-thumb { transition: none; }
-  .try-live-figure, .try-live-scan { animation: none; }
+  .try-live-body, .try-live-scan { animation: none; }
+  .try-live-flow, .try-live-ripple { display: none; }
   .try-live-scan { display: none; }
   .try-live-drop-enter-active, .try-live-drop-leave-active { transition: opacity .15s ease; }
   .try-live-drop-enter-from, .try-live-drop-leave-to { transform: translate(-50%, -50%); }
