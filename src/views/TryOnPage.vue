@@ -18,12 +18,11 @@ import TryOnShutter from '../tryon/TryOnShutter.vue'
 import TryOnFilmstrip from '../tryon/TryOnFilmstrip.vue'
 import { playSound, soundEnabled, toggleSound } from '../services/sound'
 import TryOnGuide from '../tryon/TryOnGuide.vue'
-import { PART_LABEL, VoiceGate, bodySpan, coverage, guideLine, isFar, partsFor, projectX, projectY, scopeOf, type Device, type Setup } from '../tryon/guide'
+import { PART_LABEL, VoiceGate, bodySpan, coverage, guideLine, isFar, partsFor, projectY, scopeOf, type Device, type Setup } from '../tryon/guide'
 import { hush, say, setVoice, voiceChosen, voiceOn, voiceSupported } from '../tryon/voice'
 import { ASPECTS, CAMERA_LAYOUT_QUERY, CONNECT_STEPS, aspectOf, autoFit, connectStep, cornerPosition, defaultAspect, nearestCorner, pipSize, presetOf, shutterIntent, swipeDirection, tryOnPhase, type AspectValue, type Box, type CaptureMode, type Corner, type Fit, type Insets } from '../tryon/stage'
 import OutfitThumbnail from '../components/OutfitThumbnail.vue'
 import { AbsenceWatch, SteadyCheck, checkFrame, present, type Absence, type FrameCheck, type Point } from '../tryon/pose/checks'
-import { ParticleField, STANDING_POSE, bodyCenter, skeletonTargets, type XY } from '../tryon/particles'
 import { PoseSampler, poseFailureLabel, type PoseStatus } from '../tryon/pose/sampler'
 import { shrinkImage, formatBytes, type Shrunk } from '../tryon/shrink'
 import { probeNetwork, describeProbe, describeStream, saveData, sdkQualityLabel, type NetworkProbe } from '../tryon/network'
@@ -276,43 +275,14 @@ const dockBox = ref({ top: 72, bottom: 16, right: 12 })
 const pipOpen = ref(true), swapped = ref(false), corner = ref<Corner>('top-right'), dragPosition = ref<{ x: number; y: number } | null>(null)
 const revealing = ref(false), flipping = ref(false), freezing = ref(false), flashKey = ref(0), bumpKey = ref(0), fly = ref<{ url: string; x: number; y: number } | null>(null)
 const showsResult = computed(() => phase.value === 'live' || phase.value === 'recording')
-/**
- * 粒子转场（设计 4.5）：连接中粒子汇聚到人的骨架上，首帧出来时从肩到脚依次炸开，
- * 试穿画面跟着光环从身体中心铺开。关键点用完即丢；减少动态效果时不出现。
- */
-const sparkCanvas = ref<HTMLCanvasElement>()
-const unveilStyle = ref<Record<string, string>>({})
-let spark: ParticleField | undefined, fading: ParticleField | undefined
-const sparkCount = () => window.matchMedia('(pointer: coarse)').matches ? 110 : 180
-function toStage(p: XY): XY {
-  const box = stageBox.value, ratio = sizes.value.local || mainRatio.value
-  return { x: projectX(p.x, ratio, box, fit.value), y: projectY(p.y, ratio, box, fit.value) }
-}
-/** 每帧取一次：骨架跟着最新的姿态识别结果，所有点沿骨架慢慢流动（约 40 秒一圈）。 */
-function sparkTargets(now: number) {
-  const offset = now / 40_000, n = sparkCount()
-  const body = present(lastPoints) ? skeletonTargets(lastPoints, n, toStage, 3, offset) : []
-  return body.length ? body : skeletonTargets(STANDING_POSE, n, toStage, 3, offset)
-}
-const sparkCalled = computed(() => phase.value === 'queued' || phase.value === 'offered' ? 0.25 : phase.value === 'connecting' ? (stepIndex.value + 1) / CONNECT_STEPS.length : 1)
-function gatherSpark() {
-  if (spark || calm() || !sparkCanvas.value) return
-  fading?.destroy(); fading = undefined
-  const box = stageBox.value
-  spark = new ParticleField(sparkCanvas.value, sparkCount())
-  spark.resize(box.width, box.height); spark.seed()
-  spark.setTargets(sparkTargets); spark.setCalled(sparkCalled.value); spark.start()
-}
-/** ring：首帧出来时炸开并铺开画面；否则（取消、失败）只是轻轻散掉。 */
-function releaseSpark(ring: boolean) {
-  const box = stageBox.value
-  const origin = (present(lastPoints) && bodyCenter(lastPoints, toStage)) || { x: box.width / 2, y: box.height * 0.46 }
-  if (ring) unveilStyle.value = { '--ux': `${Math.round(origin.x)}px`, '--uy': `${Math.round(origin.y)}px` }
-  const field = spark
-  if (!field) return
-  spark = undefined; fading = field
-  const span = bodySpan(lastPoints)
-  field.burst(origin, span && { top: toStage({ x: 0, y: span.top }).y, bottom: toStage({ x: 0, y: span.bottom }).y }, ring, () => { field.destroy(); if (fading === field) fading = undefined })
+/** “穿上”扫光从肩扫到脚：用开始前最后一次识别到的身体范围，认不出时扫整块画面。 */
+const sweepStyle = ref<Record<string, string>>({})
+function placeSweep() {
+  const span = bodySpan(lastPoints), box = stageBox.value
+  if (!span || box.height <= 0) { sweepStyle.value = {}; return }
+  const clamp = (v: number) => Math.min(box.height, Math.max(0, v))
+  const top = clamp(projectY(span.top, mainRatio.value, box, fit.value)), bottom = clamp(projectY(span.bottom, mainRatio.value, box, fit.value))
+  sweepStyle.value = bottom - top > 80 ? { '--sweep-top': `${top}px`, '--sweep-height': `${bottom - top}px` } : {}
 }
 const mainRatio = computed(() => (showsResult.value ? sizes.value.remote : sizes.value.local) || sizes.value.local || aspectOf(aspect.value)!.ratio)
 const pipRatio = computed(() => (swapped.value ? sizes.value.remote : sizes.value.local) || mainRatio.value)
@@ -671,18 +641,14 @@ async function latest() {
 }
 watch(phase, (next, before) => {
   if ((next === 'live' && before !== 'recording') && !revealing.value) {
-    releaseSpark(true); revealing.value = true; playSound('success'); navigator.vibrate?.(18)
-    window.setTimeout(() => { revealing.value = false }, calm() ? 0 : 1500)
+    placeSweep(); revealing.value = true; playSound('success'); navigator.vibrate?.(18)
+    window.setTimeout(() => { revealing.value = false }, calm() ? 0 : 1300)
   }
-  if (next === 'queued' || next === 'offered' || next === 'connecting') gatherSpark()
-  else if (next !== 'live' && next !== 'recording') releaseSpark(false)
   if (next !== 'live' && next !== 'recording') { swapped.value = false; pipOpen.value = true; away.reset(); absence.value = { state: 'ok' } }
   if (next === 'preview') { steady.reset(); gate.reset(); sampler?.resetRate(5) } else if (next === 'live' || next === 'recording') sampler?.setRate(2)
   if (next !== 'preview') hush()
   void nextTick(measure)
 })
-watch(sparkCalled, value => spark?.setCalled(value))
-watch(stageBox, box => { spark?.resize(box.width, box.height); fading?.resize(box.width, box.height) })
 watch(frameReady, ready => { if (!ready) freezeLastFrame() }, { flush: 'sync' })
 // 开机：画面从中心展开时轻响一声。
 watch(cameraReady, on => { if (on && !calm()) { playSound('tick'); navigator.vibrate?.(10) } })
@@ -725,7 +691,7 @@ onMounted(() => {
   for (const el of [stageArea.value, stage.value, dock.value, topbar.value]) if (el) layoutObserver.observe(el)
   measure(); layoutQuery.addEventListener('change', syncNarrow); portraitQuery.addEventListener('change', syncDevice); coarseQuery.addEventListener('change', syncDevice); document.addEventListener('fullscreenchange', syncFullscreen)
 })
-onBeforeUnmount(() => { disposed = true; action++; spark?.destroy(); fading?.destroy(); stopPose(); layoutObserver?.disconnect(); layoutQuery.removeEventListener('change', syncNarrow); portraitQuery.removeEventListener('change', syncDevice); coarseQuery.removeEventListener('change', syncDevice); document.removeEventListener('fullscreenchange', syncFullscreen); flyDone(); offAccount(); clearInterval(pulseTimer); clearInterval(clockTimer); clearTimeout(rebuildTimer); clearTimeout(searchTimer); document.removeEventListener('visibilitychange', background); window.removeEventListener('pagehide', background); if (lease.value && !finished(lease.value)) emergencyStop(lease.value.id); void finishRecording(true); void camera?.dispose() })
+onBeforeUnmount(() => { disposed = true; action++; stopPose(); layoutObserver?.disconnect(); layoutQuery.removeEventListener('change', syncNarrow); portraitQuery.removeEventListener('change', syncDevice); coarseQuery.removeEventListener('change', syncDevice); document.removeEventListener('fullscreenchange', syncFullscreen); flyDone(); offAccount(); clearInterval(pulseTimer); clearInterval(clockTimer); clearTimeout(rebuildTimer); clearTimeout(searchTimer); document.removeEventListener('visibilitychange', background); window.removeEventListener('pagehide', background); if (lease.value && !finished(lease.value)) emergencyStop(lease.value.id); void finishRecording(true); void camera?.dispose() })
 </script>
 
 <template>
@@ -733,13 +699,13 @@ onBeforeUnmount(() => { disposed = true; action++; spark?.destroy(); fading?.des
     <div ref="body" class="tryon-body">
       <div ref="stageArea" class="tryon-stage-area">
         <div ref="stage" class="tryon-stage" :class="[`fit-${fit}`, { 'is-pip': showsResult, 'is-swapped': swapped, 'pip-off': !pipOpen, 'is-dragging': !!dragPosition, 'is-revealing': revealing, 'is-flipping': flipping, 'is-working': phase === 'connecting' || phase === 'queued', 'camera-on': cameraReady, 'is-cover': !cameraReady }]" :style="stageStyle">
-          <div ref="host" class="tryon-video-host" :style="unveilStyle" aria-label="摄像头与试穿画面"></div>
+          <div ref="host" class="tryon-video-host" aria-label="摄像头与试穿画面"></div>
           <canvas v-show="freezing" ref="freezeCanvas" class="tryon-freeze" aria-hidden="true" @animationend="freezing = false"></canvas>
           <div v-if="cameraReady" class="tryon-gesture" aria-hidden="true" @pointerdown="gestureDown" @pointerup="gestureUp" @pointercancel="gesture = undefined"></div>
 
           <div class="tryon-viewfinder" aria-hidden="true"><i></i><i></i><i></i><i></i><span class="tryon-scan"></span></div>
           <TryOnGuide v-if="showGuide" :scope="scope" :parts="guideMarks" :ready="guideReady" :big="bigText" />
-          <canvas ref="sparkCanvas" class="tryon-spark" aria-hidden="true"></canvas>
+          <span v-if="revealing" class="tryon-sweep" :style="sweepStyle" aria-hidden="true"></span>
           <span v-if="flashKey" :key="flashKey" class="tryon-flash" aria-hidden="true"></span>
           <img v-if="fly" class="tryon-fly" :src="fly.url" alt="" :style="{ '--fly-x': `${fly.x}px`, '--fly-y': `${fly.y}px` }" @animationend="flyDone" />
 
@@ -909,8 +875,7 @@ onBeforeUnmount(() => { disposed = true; action++; spark?.destroy(); fading?.des
 .fit-cover .tryon-video-host :deep(video) { object-fit: cover !important; }
 
 .is-working .tryon-video-host :deep(.tryon-local) { filter: saturate(.7) brightness(.82); }
-/* 首帧：试穿画面从身体中心圆形铺开（与粒子光环同速），同时由虚变实。 */
-.is-revealing .tryon-video-host :deep(.tryon-remote) { animation: tryon-develop 1.1s var(--ease-out), tryon-unveil .9s cubic-bezier(.33, 1, .68, 1); }
+.is-revealing .tryon-video-host :deep(.tryon-remote) { animation: tryon-develop 1.1s var(--ease-out); }
 
 .is-pip:not(.is-swapped) .tryon-video-host :deep(.tryon-local),
 .is-pip.is-swapped .tryon-video-host :deep(.tryon-remote) {
@@ -958,7 +923,9 @@ onBeforeUnmount(() => { disposed = true; action++; spark?.destroy(); fading?.des
 .tryon-viewfinder i:nth-child(3) { left: 0; bottom: 0; border-right: 0; border-top: 0; border-radius: 0 0 0 8px; }
 .tryon-viewfinder i:nth-child(4) { right: 0; bottom: 0; border-left: 0; border-top: 0; border-radius: 0 0 8px; }
 .tryon-scan { position: absolute; left: 0; right: 0; top: 0; height: 2px; background: linear-gradient(90deg, #9fe8c300, #9fe8c3, #9fe8c300); box-shadow: 0 0 18px 4px #9fe8c366; animation: tryon-scan 2.2s ease-in-out infinite alternate; }
-.tryon-spark { position: absolute; inset: 0; z-index: 4; width: 100%; height: 100%; pointer-events: none; }
+.tryon-sweep { position: absolute; left: 0; right: 0; top: var(--sweep-top, 0px); height: var(--sweep-height, 100%); z-index: 4; pointer-events: none; }
+.tryon-sweep::before { content: ''; position: absolute; left: 8%; right: 8%; top: 0; height: 2px; background: linear-gradient(90deg, #9fe8c300, #fff 30%, #fff 70%, #9fe8c300); box-shadow: 0 0 22px 6px #9fe8c380; animation: tryon-wear 1.1s var(--ease-out) forwards; }
+.tryon-sweep::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, #9fe8c300, #9fe8c32e 90%, #9fe8c300); transform-origin: top; animation: tryon-wear-tint 1.1s var(--ease-out) forwards; }
 .tryon-flash { position: absolute; inset: 0; z-index: 7; pointer-events: none; background: #fff; opacity: 0; animation: tryon-flash .32s ease-out; }
 .tryon-fly { position: absolute; left: 50%; top: 50%; z-index: 8; width: 46%; max-height: 60%; object-fit: contain; pointer-events: none; border: 3px solid #fff; border-radius: 10px; transform: translate(-50%, -50%); animation: tryon-fly .68s var(--ease-out) .1s forwards; }
 
@@ -1178,9 +1145,10 @@ onBeforeUnmount(() => { disposed = true; action++; spark?.destroy(); fading?.des
 /* 开机：像光圈打开，从中心圆形展开，同时由虚变实。 */
 @keyframes tryon-lens-open { from { clip-path: circle(0 at 50% 46%); filter: blur(14px) brightness(1.3); transform: scale(1.06); } 60% { filter: blur(0) brightness(1); } to { clip-path: circle(110% at 50% 46%); } }
 @keyframes tryon-flip { 50% { opacity: .35; filter: blur(12px); transform: perspective(900px) rotateY(80deg); } }
-@keyframes tryon-unveil { from { clip-path: circle(0 at var(--ux, 50%) var(--uy, 46%)); } to { clip-path: circle(150% at var(--ux, 50%) var(--uy, 46%)); } }
 @keyframes tryon-develop { from { filter: blur(16px) brightness(1.3) saturate(.6); } }
 @keyframes tryon-scan { to { top: calc(100% - 2px); } }
+@keyframes tryon-wear { from { top: 0; } 80% { opacity: 1; } to { top: 100%; opacity: 0; } }
+@keyframes tryon-wear-tint { from { transform: scaleY(0); } 70% { opacity: 1; } to { transform: scaleY(1); opacity: 0; } }
 @keyframes tryon-flash { 0% { opacity: .85; } 100% { opacity: 0; } }
 @keyframes tryon-fly { to { transform: translate(calc(-50% + var(--fly-x)), calc(-50% + var(--fly-y))) scale(.12); opacity: .7; } }
 @keyframes tryon-fade-in { from { opacity: 0; } }
@@ -1198,6 +1166,6 @@ onBeforeUnmount(() => { disposed = true; action++; spark?.destroy(); fading?.des
 
 @media (prefers-reduced-motion: reduce) {
   .tryon-page *, .tryon-page :deep(*) { animation: none !important; scroll-behavior: auto !important; transition: none !important; }
-  .tryon-flash, .tryon-spark, .tryon-scan { display: none; }
+  .tryon-flash, .tryon-sweep, .tryon-scan { display: none; }
 }
 </style>

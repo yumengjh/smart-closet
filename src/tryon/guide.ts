@@ -133,10 +133,3 @@ export function projectY(y: number, ratio: number, stage: { width: number; heigh
   const shown = fit === 'cover' ? Math.max(stage.height, natural) : Math.min(stage.height, natural)
   return Math.round((stage.height - shown) / 2 + y * shown)
 }
-/** 横向同理：contain 左右留黑边，cover 左右被裁。 */
-export function projectX(x: number, ratio: number, stage: { width: number; height: number }, fit: Fit) {
-  if (ratio <= 0 || stage.width <= 0 || stage.height <= 0) return x * stage.width
-  const natural = stage.height * ratio
-  const shown = fit === 'cover' ? Math.max(stage.width, natural) : Math.min(stage.width, natural)
-  return Math.round((stage.width - shown) / 2 + x * shown)
-}
