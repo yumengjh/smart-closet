@@ -25,6 +25,7 @@ import { revealNavigate } from '../shell/revealNavigate'
 import { partsFor, scopeOf, setupTip, type Device, type Scope } from '../tryon/guide'
 import { CAMERA_LAYOUT_QUERY } from '../tryon/stage'
 import { voiceSupported } from '../tryon/voice'
+import ParticleFigure from '../tryon/ParticleFigure.vue'
 
 const billing = useBillingStore(), processing = useProcessingStore()
 onMounted(() => { void refreshWorks(1) })
@@ -62,7 +63,12 @@ const pickedGarment = computed(() => pick.value?.kind === 'garment' ? garments.v
 const pickedOutfit = computed(() => pick.value?.kind === 'outfit' ? outfits.value.find(o => o.id === pick.value!.id) : undefined)
 // 舞台轮廓上的落点（占舞台高度的百分比）：衣服按穿戴位置落到头、颈、上身、手、腰、腿、脚。
 const ZONE: Record<string, number> = { HAT: 10, HEADWEAR: 10, GLASSES: 12, EAR: 12, NECK: 22, SCARF: 22, TOP: 36, INNER: 36, OUTER: 36, ONE_PIECE: 44, OVERALL: 44, BAG: 44, WRIST: 50, FINGER: 50, GLOVES: 50, ARM: 46, HANDHELD: 50, BELT: 52, BOTTOM: 68, SOCKS: 88, SHOES: 92 }
-const dropAt = computed(() => `${ZONE[pickedGarment.value?.wearingRole || ''] ?? 40}%`)
+const dropPercent = computed(() => pickedGarment.value ? ZONE[pickedGarment.value.wearingRole || ''] ?? 40 : pickedOutfit.value ? 46 : null)
+const dropAt = computed(() => `${dropPercent.value ?? 40}%`)
+/** 舞台卡人形轮廓（100×200 坐标），虚线轮廓和粒子共用。 */
+const FIGURE_PATH = 'M42 36 Q50 40 58 36 L72 43 Q78 45 79 53 L84 97 Q84 102 80 102 L76 102 L71 62 L68 104 L70 189 Q70 194 66 194 L56 194 L51 118 L49 118 L44 194 L34 194 Q30 194 30 189 L32 104 L29 62 L24 102 L20 102 Q16 102 16 97 L21 53 Q22 45 28 43 Z'
+const FIGURE_HEAD = { cx: 50, cy: 20, r: 12 }
+const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches
 // 拍摄小贴士按设备和所选衣物生成：手机前摄拍全身要靠墙放稳、后退两三步；电脑离屏幕两米左右。
 const coarse = window.matchMedia('(pointer: coarse)').matches, narrowScreen = window.matchMedia(CAMERA_LAYOUT_QUERY).matches
 const device: Device = coarse ? (narrowScreen ? 'phone' : 'tablet') : 'desktop'
@@ -88,9 +94,10 @@ const tips = computed(() => [
         <div class="try-live-frame" aria-hidden="true">
           <span class="try-live-corner tl" /><span class="try-live-corner tr" /><span class="try-live-corner bl" /><span class="try-live-corner br" />
           <svg class="try-live-figure" viewBox="0 0 100 200" preserveAspectRatio="xMidYMid meet">
-            <circle cx="50" cy="20" r="12" />
-            <path d="M42 36 Q50 40 58 36 L72 43 Q78 45 79 53 L84 97 Q84 102 80 102 L76 102 L71 62 L68 104 L70 189 Q70 194 66 194 L56 194 L51 118 L49 118 L44 194 L34 194 Q30 194 30 189 L32 104 L29 62 L24 102 L20 102 Q16 102 16 97 L21 53 Q22 45 28 43 Z" />
+            <circle :cx="FIGURE_HEAD.cx" :cy="FIGURE_HEAD.cy" :r="FIGURE_HEAD.r" />
+            <path :d="FIGURE_PATH" />
           </svg>
+          <ParticleFigure v-if="!calm" :path="FIGURE_PATH" :head="FIGURE_HEAD" :drop="dropPercent" :drop-key="pick?.id" />
           <span class="try-live-scan" />
           <Transition name="try-live-drop" mode="out-in">
             <span v-if="pickedGarment" :key="pickedGarment.id" class="try-live-worn" :style="{ top: dropAt }"><img :src="mediaUrl(pickedGarment.imageUrl)" alt="" /></span>
@@ -143,13 +150,26 @@ const tips = computed(() => [
 .try-hub-album { flex: none; }
 .try-live { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; max-width: 640px; margin: 0 auto; }
 .try-live > * { min-width: 0; }
-.try-live-stage { position: relative; display: flex; flex-direction: column; justify-content: flex-end; min-height: 300px; padding: 20px; overflow: hidden; border-radius: 20px; color: #fff; background: radial-gradient(120% 90% at 50% 0%, #3a3a3a 0%, #111 70%); }
+/* 舞台卡跟随主题：浅色是白底墨线、深绿扫描线，深色是黑底白线、薄荷绿扫描线。 */
+.try-live-stage {
+  --stage-bg: radial-gradient(120% 90% at 50% 0%, #ffffff 0%, #eeefec 72%); --stage-ink: var(--ink); --stage-copy: var(--muted-strong); --stage-quiet: var(--muted);
+  --stage-line: #1111114d; --stage-line-strong: #11111180; --stage-fill: #1111110a; --stage-fill-strong: #11111112; --stage-corner: #11111166;
+  --stage-glow: #2f7d5b; --stage-glow-soft: #2f7d5b33; --stage-worn-shadow: 0 8px 22px #00000024; --stage-warn: var(--warning);
+  position: relative; display: flex; flex-direction: column; justify-content: flex-end; min-height: 300px; padding: 20px; overflow: hidden; border-radius: 20px;
+  color: var(--stage-ink); background: var(--stage-bg); box-shadow: 0 0 0 1px var(--line);
+}
+:root[data-theme='dark'] .try-live-stage {
+  --stage-bg: radial-gradient(120% 90% at 50% 0%, #3a3a3a 0%, #111 70%); --stage-ink: #fff; --stage-copy: #ffffffb3; --stage-quiet: #ffffff99;
+  --stage-line: #ffffff59; --stage-line-strong: #ffffff8c; --stage-fill: #ffffff0a; --stage-fill-strong: #ffffff14; --stage-corner: #ffffffb3;
+  --stage-glow: #9fe8c3; --stage-glow-soft: #9fe8c355; --stage-worn-shadow: 0 8px 22px #0008; --stage-warn: #ffd59a;
+  box-shadow: none;
+}
 .try-live-frame { position: absolute; inset: 22px 22px 110px; display: grid; place-items: center; }
 /* 人形轮廓慢慢呼吸，扫描线上下走：还没开镜头，先让人知道“站进这里”。 */
-.try-live-figure { height: 100%; max-width: 60%; fill: #ffffff0a; stroke: #ffffff59; stroke-width: 1.2; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; animation: try-live-breathe 3.2s ease-in-out infinite; }
-.try-live-scan { position: absolute; left: 12%; right: 12%; top: 0; height: 2px; background: linear-gradient(90deg, #9fe8c300, #9fe8c3, #9fe8c300); box-shadow: 0 0 16px 3px #9fe8c355; opacity: .75; animation: try-live-scan 3.6s ease-in-out infinite alternate; }
+.try-live-figure { height: 100%; max-width: 60%; fill: var(--stage-fill); stroke: var(--stage-line); stroke-width: 1.2; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; animation: try-live-breathe 3.2s ease-in-out infinite; }
+.try-live-scan { position: absolute; left: 12%; right: 12%; top: 0; height: 2px; background: linear-gradient(90deg, transparent, var(--stage-glow), transparent); box-shadow: 0 0 16px 3px var(--stage-glow-soft); opacity: .75; animation: try-live-scan 3.6s ease-in-out infinite alternate; }
 /* 选的衣服落到轮廓对应部位。 */
-.try-live-worn { position: absolute; left: 50%; display: grid; place-items: center; width: 56px; height: 56px; overflow: hidden; border-radius: 14px; background: #ffffffeb; box-shadow: 0 0 0 2px #9fe8c3, 0 8px 22px #0008; transform: translate(-50%, -50%); }
+.try-live-worn { position: absolute; left: 50%; display: grid; place-items: center; width: 56px; height: 56px; overflow: hidden; border-radius: 14px; background: #ffffffeb; box-shadow: 0 0 0 2px var(--stage-glow), var(--stage-worn-shadow); transform: translate(-50%, -50%); }
 .try-live-worn img { width: 86%; height: 86%; object-fit: contain; }
 .try-live-worn.outfit { top: 46%; width: 92px; height: 116px; }
 .try-live-worn.outfit :deep(canvas), .try-live-worn.outfit :deep(img) { width: 100%; height: 100%; object-fit: contain; }
@@ -157,18 +177,18 @@ const tips = computed(() => [
 .try-live-drop-leave-active { transition: opacity .15s ease, transform .15s ease; }
 .try-live-drop-enter-from { opacity: 0; transform: translate(-50%, -140%) scale(1.25); }
 .try-live-drop-leave-to { opacity: 0; transform: translate(-50%, -50%) scale(.8); }
-@keyframes try-live-breathe { 50% { stroke: #ffffff8c; fill: #ffffff14; } }
+@keyframes try-live-breathe { 50% { stroke: var(--stage-line-strong); fill: var(--stage-fill-strong); } }
 @keyframes try-live-scan { to { top: calc(100% - 2px); } }
-.try-live-corner { position: absolute; width: 22px; height: 22px; border-color: #ffffffb3; border-style: solid; border-width: 0; }
+.try-live-corner { position: absolute; width: 22px; height: 22px; border-color: var(--stage-corner); border-style: solid; border-width: 0; }
 .try-live-corner.tl { top: 0; left: 0; border-top-width: 2px; border-left-width: 2px; border-top-left-radius: 8px; }
 .try-live-corner.tr { top: 0; right: 0; border-top-width: 2px; border-right-width: 2px; border-top-right-radius: 8px; }
 .try-live-corner.bl { bottom: 0; left: 0; border-bottom-width: 2px; border-left-width: 2px; border-bottom-left-radius: 8px; }
 .try-live-corner.br { bottom: 0; right: 0; border-bottom-width: 2px; border-right-width: 2px; border-bottom-right-radius: 8px; }
 .try-live-copy { position: relative; }
 .try-live-copy h2 { margin: 0; font-size: 20px; font-weight: 650; }
-.try-live-copy p { margin: 4px 0 0; font-size: 13px; color: #ffffffb3; }
-.try-live-copy :deep(.ant-typography) { color: #ffffff99; }
-.try-live-warn { color: #ffd59a !important; }
+.try-live-copy p { margin: 4px 0 0; font-size: 13px; color: var(--stage-copy); }
+.try-live-copy :deep(.ant-typography) { color: var(--stage-quiet); }
+.try-live-warn { color: var(--stage-warn) !important; }
 .try-live-pick { padding: 16px; border-radius: 20px; background: var(--surface); box-shadow: 0 0 0 1px var(--line); }
 .try-live-pick header { display: flex; align-items: baseline; gap: 8px; margin-bottom: 12px; }
 .try-live-pick h2 { margin: 0; font-size: 16px; font-weight: 650; }
