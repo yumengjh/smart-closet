@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { App } from 'ant-design-vue'
+import { useRouter } from 'vue-router'
 import { CheckOutlined } from '@ant-design/icons-vue'
 import { closetApi, type Garment } from '../../services/api'
 import { eligibleGarment } from '../../creation/eligible'
@@ -10,23 +11,23 @@ import { thumbUrl } from '../../services/urls'
 
 const props = defineProps<{ open: boolean; selectedIds: string[]; max: number; locked?: boolean }>()
 const emit = defineEmits<{ 'update:open': [boolean]; toggle: [Garment] }>()
-const { message } = App.useApp()
+const { message } = App.useApp(); const router = useRouter()
 const compact = ref(window.matchMedia('(max-width: 767px)').matches)
 const media = window.matchMedia('(max-width: 767px)'), onMedia = () => { compact.value = media.matches }
 media.addEventListener('change', onMedia); onUnmounted(() => media.removeEventListener('change', onMedia))
-const search = ref(''), category = ref(''), page = ref(1), total = ref(0), items = ref<Garment[]>([]), loading = ref(false), categories = ref<string[]>([])
+const search = ref(''), category = ref(''), page = ref(1), total = ref(0), items = ref<Garment[]>([]), loading = ref(false), failed = ref(false), categories = ref<string[]>([])
 let ticket = 0, started = false, timer: number | undefined
 const picked = computed(() => new Set(props.selectedIds))
 const filters = computed(() => [{ value: '', label: '全部' }, ...categories.value.map(value => ({ value, label: value }))])
 
 async function load() {
   const mine = ++ticket
-  loading.value = true
+  loading.value = true; failed.value = false
   try {
     const result = await closetApi.list({ status: 'ACTIVE', q: search.value.trim(), category: category.value, color: '', season: '', page: page.value, size: 24 })
     if (mine !== ticket) return
     items.value = result.items.filter(eligibleGarment); total.value = result.total
-  } catch (cause) { if (mine === ticket) message.error(cause instanceof Error ? cause.message : '暂时未能加载衣物。') }
+  } catch (cause) { if (mine === ticket) { failed.value = true; message.error(cause instanceof Error ? cause.message : '暂时未能加载衣物。') } }
   finally { if (mine === ticket) loading.value = false }
 }
 watch(() => props.open, open => {
@@ -36,6 +37,9 @@ watch(() => props.open, open => {
 })
 watch([search, category], () => { page.value = 1; clearTimeout(timer); timer = window.setTimeout(load, 250) })
 onUnmounted(() => clearTimeout(timer))
+/** 衣柜里一件能用的都没有（不是搜索、筛选或翻页筛空的）：给两条去处，先关抽屉再走。 */
+const closetEmpty = computed(() => !loading.value && !failed.value && !items.value.length && !search.value.trim() && !category.value && page.value === 1)
+function go(path: string) { emit('update:open', false); void router.push(path) }
 </script>
 
 <template>
@@ -50,6 +54,11 @@ onUnmounted(() => clearTimeout(timer))
           <span class="creation-picker-name">{{ formatGarmentLabel(g) }}</span>
           <span v-if="picked.has(g.id)" class="creation-picker-check"><CheckOutlined /></span>
         </a-button>
+      </div>
+      <div v-else-if="closetEmpty" class="creation-picker-empty">
+        <p>衣柜里还没有能用的衣服</p>
+        <a-button type="primary" @click="go('/add')">拍一件</a-button>
+        <a-button @click="go('/wardrobe?presets=1')">从常见单品挑几件</a-button>
       </div>
       <a-empty v-else-if="!loading" :image="null" description="没有找到可以选的衣服" />
     </a-spin>
@@ -68,6 +77,9 @@ onUnmounted(() => clearTimeout(timer))
 .creation-picker-name { width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 12px; }
 .creation-picker-item.on { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
 .creation-picker-check { position: absolute; top: 6px; right: 6px; width: 20px; height: 20px; display: grid; place-items: center; border-radius: 50%; background: var(--action-bg); color: var(--action-fg); font-size: 11px; }
+.creation-picker-empty { display: grid; justify-items: center; gap: 10px; padding: 40px 0 24px; }
+.creation-picker-empty p { margin: 0 0 6px; font-size: 15px; color: var(--muted-strong); }
+.creation-picker-empty .ant-btn { min-width: 200px; }
 .creation-picker-pages { margin-top: 14px; text-align: center; }
 @media (min-width: 768px) { .creation-picker-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 </style>
