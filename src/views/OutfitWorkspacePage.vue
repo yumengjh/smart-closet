@@ -18,6 +18,7 @@ import { normalizeScene, type Outfit, type OutfitDraft } from '../domain/outfit'
 import { canvasBridge } from '../agent/bridge'
 import { canvasExecution, stopCanvasRun } from '../agent/canvas-runtime'
 import { playSound, soundEnabled, toggleSound } from '../services/sound'
+import { track } from '../services/analytics'
 const route = useRoute(), router = useRouter(), closet = useClosetStore(), { modal, message } = App.useApp()
 // The floating companion steps aside on the canvas; this toolbar entry replaces it.
 function openAssistant() { window.dispatchEvent(new CustomEvent('closet-assistant-open')) }
@@ -158,6 +159,7 @@ async function writeBoard(board: WorkspaceBoard, overwrite = false, copy = false
     if (!id || !isMissingOutfit(cause)) throw cause
     result = await closetApi.saveOutfit(null, null, board.name.trim(), board.scene, board.recommendationLogId); recreated = true
   }
+  track('outfit_save', { from: 'workspace' })
   if (recreated) message.warning(`「${board.name}」原来的搭配在服务器上已不存在，已另存为新搭配，内容没有丢。`)
   board.outfitId = result.id; board.revision = result.revision; board.scene = normalizeScene(result.scene); board.contentVersion++
   window.dispatchEvent(new Event('closet-outfit-saved')); board.savedSignature = boardSignature(board); board.status = '已保存'; board.error = ''; board.sourceOutfitId = undefined; board.sourceRevision = undefined

@@ -15,7 +15,7 @@ export type ClosetStatus = 'DRAFT' | 'ACTIVE' | 'WANTED' | 'TRASHED'
 /** The closet list also takes owned and 种草 together. */
 export type ClosetListStatus = ClosetStatus | 'ACTIVE,WANTED'
 export type SearchOwnership = 'OWNED' | 'WANTED' | 'ALL'
-export type ClosetPreferences = { wantedLabel: string; defaultWantedLabel: string; customized: boolean }
+export type ClosetPreferences = { wantedLabel: string; defaultWantedLabel: string; customized: boolean; analyticsOptOut?: boolean }
 export type ImageProcessing = { jobId: string; status: string; stickerRequired: boolean; stickerReady: boolean; stickerAssetId: string | null }
 export type TransparencyReport = { verdict: string; hasAlpha: boolean; transparentRatio: number; reasons: string[] }
 export type GarmentTarget = { description: string; worn: boolean; bounds: { x: number; y: number; width: number; height: number } }
@@ -169,6 +169,11 @@ export const usingMocks = import.meta.env.VITE_USE_MOCKS === 'true'
 let csrfToken = '', csrfOwner = ''
 /** Reuse the last masked CSRF token for best-effort keepalive on pagehide. */
 export const currentCsrfToken = () => csrfToken
+/** 行为分析的批量上报（services/analytics.ts）需要同一把令牌：已有就用，没有就取一次。 */
+export async function ensureCsrfToken(): Promise<string> {
+  try { await ensureCsrf(() => {}) } catch { /* 取不到就不带，上报失败本来就静默 */ }
+  return csrfToken
+}
 /** Tests and sign-in/out paths drop the cached token; the next write fetches a fresh one. */
 export function forgetCsrfToken() { csrfToken = ''; csrfOwner = '' }
 /**
@@ -596,7 +601,7 @@ export const closetApi = {
     if (usingMocks) { const label = localStorage.getItem('yixu.mock-wanted-label') || '种草'; return { wantedLabel: label, defaultWantedLabel: '种草', customized: label !== '种草' } }
     return request<ClosetPreferences>('/api/closet/preferences')
   },
-  async savePreferences(patch: { wantedLabel?: string }): Promise<ClosetPreferences> {
+  async savePreferences(patch: { wantedLabel?: string; analyticsOptOut?: boolean }): Promise<ClosetPreferences> {
     if (usingMocks) { if (patch.wantedLabel !== undefined) localStorage.setItem('yixu.mock-wanted-label', patch.wantedLabel || '种草'); return this.preferences() }
     return request<ClosetPreferences>('/api/closet/preferences', { method: 'PUT', body: JSON.stringify(patch) })
   },

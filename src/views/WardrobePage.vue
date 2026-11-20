@@ -14,6 +14,7 @@ import WardrobeRack from '../wardrobe/WardrobeRack.vue'
 import FloatingPager from '../components/FloatingPager.vue'
 import GarmentCardSkeleton from '../components/GarmentCardSkeleton.vue'
 import PresetPicker from '../presets/PresetPicker.vue'
+import { track } from '../services/analytics'
 import PresetOnboarding from '../presets/PresetOnboarding.vue'
 import SortingStrip from '../wardrobe/SortingStrip.vue'
 import { isProcessing } from '../domain/workflow'
@@ -308,6 +309,7 @@ function chooseSort(value: string) { query.sort = value; saveSort(value); query.
 watch(() => [sel.category.join('|'), sel.color.join('|'), sel.season.join('|'), imageStyle.value], () => { syncSingle(); debounceLoad() })
 // 从常见单品添加（预设衣物库设计 6.1）：勾选后复制进衣柜并标“预设”。
 const presetsOpen = ref(false)
+watch(presetsOpen, open => { if (open) track('add_source', { source: 'preset' }) })
 function presetsImported() { presetsOpen.value = false; void load() }
 // 新用户引导：衣柜为空且本机没关过时弹出一次（预设衣物库设计 6.1）。
 const ONBOARDING_KEY = 'yuda.preset-onboarding.v1'

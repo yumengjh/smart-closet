@@ -11,6 +11,8 @@ export type WaitingEntry = {
   href: string; read: boolean; childIds: string[]
   /** Finished image shown beside the result (generated pictures only). */
   thumb?: string
+  /** 行为分析：这条是“做张图”的结果（上身图记 outfit，创作效果记 creative）；形象与身材调整图不是。 */
+  makeEffect?: 'outfit' | 'creative'
   /** 0..1 when the work can say how far it is (bulk re-recognition). */
   progress?: number
 }
@@ -65,7 +67,8 @@ export function renderEntry(job: RenderJob): WaitingEntry {
   return { key: `render:${job.id}`, kind: 'render', id: job.id, title, startedAt: job.createdAt, state, stage,
     note: state === 'processing' ? '通常 1 分钟左右，好了会提醒你' : job.error || '', read: false, childIds: [],
     href: job.purpose === 'BASELINE' ? '/settings?section=personal' : albumJobHref(job.id),
-    thumb: state === 'ready' && job.mediaUrl ? job.mediaUrl : undefined }
+    thumb: state === 'ready' && job.mediaUrl ? job.mediaUrl : undefined,
+    ...(job.purpose !== 'BASELINE' && job.summary?.kind !== 'ADJUST' ? { makeEffect: 'outfit' as const } : {}) }
 }
 
 /** Pictures the centre can open straight away (上身图、形象、作品). */
@@ -84,7 +87,7 @@ export function creationEntry(job: CreationJob): WaitingEntry {
     : job.status === 'UNKNOWN' ? '结果待确认，不会自动重做' : '没做成，可以再试一次'
   return { key: `creation:${job.id}`, kind: 'creation', id: job.id, title: ['作品', job.templateName].filter(Boolean).join(' · '),
     startedAt: job.createdAtMs, state, stage, note: state === 'processing' ? '通常 1 分钟左右，好了会提醒你' : (job.errorMessage || '').trim().slice(0, 60),
-    read: false, childIds: [], href: albumJobHref(job.id), thumb: state === 'ready' && job.mediaUrl ? job.mediaUrl : undefined }
+    read: false, childIds: [], href: albumJobHref(job.id), thumb: state === 'ready' && job.mediaUrl ? job.mediaUrl : undefined, makeEffect: 'creative' }
 }
 
 /** One entry for a whole batch of re-recognitions, so hundreds of tasks do not flood the centre (the tasks are its children). */

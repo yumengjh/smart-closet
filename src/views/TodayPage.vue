@@ -18,6 +18,7 @@ import { closetApi } from '../services/api'
 import type { Outfit } from '../domain/outfit'
 import { useClosetStore } from '../stores/closet'
 import { playSound } from '../services/sound'
+import { track } from '../services/analytics'
 import { celebrate, originOf } from '../services/celebrate'
 import { appendUnique, coverTint, FIRST_BATCH, MORE_BATCH, REFILL_AT, scenePieces, TODAY_OCCASIONS } from '../today/deck'
 import { readWorn, saveWorn, type WornToday } from '../today/worn'
@@ -85,13 +86,14 @@ function takeBack() {
   index.value = undo.value.index; undo.value = null; clearTimeout(undoTimer)
   void deck.value?.returnFromLeft()
 }
-async function wear(outfit: RecommendedOutfit, el: HTMLElement | null) {
+async function wear(outfit: RecommendedOutfit, el: HTMLElement | null, via: 'swipe' | 'button' = 'button') {
   dismissHint()
   busy.value = true
   try {
     await recommendApi.wear({ garmentIds: outfit.garments.map(g => g.id), recommendationLogId: outfit.logId })
     worn.value = { date: new Date().toDateString(), name: outfit.name, garments: outfit.garments, logId: outfit.logId }
     saveWorn(user.value, worn.value); showDeck.value = false; undo.value = null
+    track('today_worn', { via })
     void celebrate('wear', originOf(el))
   } catch (cause) {
     playSound('error'); message.error(cause instanceof Error ? cause.message : '没有记下来，请再试一次。')
@@ -107,6 +109,7 @@ async function save(outfit: Savable, quiet = false): Promise<string | null> {
   try {
     const scene = await outfitScene(outfit as unknown as RecommendedOutfit)
     const created = await closetApi.saveOutfit(null, null, outfit.name, scene, outfit.logId)
+    track('outfit_save', { from: 'recommend' })
     savedIds.set(key, created.id); saved.value = [created, ...saved.value]
     window.dispatchEvent(new CustomEvent('closet-outfit-saved'))
     if (!quiet) { playSound('pop'); message.success('已收进我的搭配') }

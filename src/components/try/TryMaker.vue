@@ -27,6 +27,7 @@ import { canChooseEffect, effectsFor, entryStep, generateBlock, isOutfitEffect, 
 import { addWork, refreshWorks } from '../../creation/works'
 import type { Light, PendingCreation } from '../../creation/types'
 import { ALBUM_PATH } from '../../try/routes'
+import { track } from '../../services/analytics'
 import { useProcessingStore } from '../../stores/processing'
 import { useOotdStudio, ACCESSORY_OPTIONS } from '../../ootd/useOotdStudio'
 import CreationGarmentPicker from '../creation/CreationGarmentPicker.vue'
@@ -46,7 +47,7 @@ function store(key: string, value: string | null) { try { if (value === null) se
 
 // 两种效果共用：带入的搭配、谁来穿、姿势。
 const outfitId = ref(''), baselineId = ref(''), pose = ref<PoseChoice>({ mode: 'AUTO' })
-const studio = useOotdStudio({ outfitId, baselineId, pose }, { accepted: () => { void router.push(ALBUM_PATH) } })
+const studio = useOotdStudio({ outfitId, baselineId, pose }, { accepted: () => { track('try_make_start', { effect: 'outfit' }); void router.push(ALBUM_PATH) } })
 // 创作效果：衣服（≤12，可临时挑）、光线、补充、再试一次。sourceOutfit 只在衣服与那套搭配完全一致时才随提交带上。
 const pending = ref<PendingCreation | null>(readPendingCreation(read('pending')))
 const templateId = ref(''), selected = ref<Garment[]>([]), light = ref<Light>('DEFAULT'), note = ref('')
@@ -161,6 +162,7 @@ async function settle() {
   try {
     const job = await creationApi.submit(pending.value)
     pending.value = null; parentJobId.value = undefined
+    track('try_make_start', { effect: 'creative' })
     addWork(job); processing.trackCreation(job, true); void refreshWorks(1)
     playSound('success'); message.success('开始创作了，做好会提醒你')
     await router.push(ALBUM_PATH)

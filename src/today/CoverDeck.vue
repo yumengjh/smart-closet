@@ -9,9 +9,10 @@ import type { RecommendedOutfit } from '../recommend/types'
 import PieceCards from './PieceCards.vue'
 import { haptic } from '../services/celebrate'
 import { coverTint, stampOpacity, swipeOutcome } from './deck'
+import { track } from '../services/analytics'
 
 const props = defineProps<{ outfits: RecommendedOutfit[]; index: number; busy?: boolean }>()
-const emit = defineEmits<{ wear: [outfit: RecommendedOutfit, el: HTMLElement | null]; skip: [outfit: RecommendedOutfit]; open: [outfit: RecommendedOutfit]; save: [outfit: RecommendedOutfit] }>()
+const emit = defineEmits<{ wear: [outfit: RecommendedOutfit, el: HTMLElement | null, via: 'swipe' | 'button']; skip: [outfit: RecommendedOutfit]; open: [outfit: RecommendedOutfit]; save: [outfit: RecommendedOutfit] }>()
 
 const reduced = window.matchMedia('(prefers-reduced-motion: reduce)')
 const visible = computed(() => props.outfits.slice(props.index, props.index + 3).map((outfit, depth) => ({ outfit, depth, no: props.index + depth + 1 })))
@@ -48,7 +49,7 @@ function up(event: PointerEvent) {
   const { moved, v } = drag; drag = undefined
   if (!moved) { if (current.value) emit('open', current.value); return }
   const outcome = swipeOutcome(dx.value, v)
-  if (outcome) void fling(outcome)
+  if (outcome) void fling(outcome, 'swipe')
   else void settle()
 }
 async function settle() {
@@ -59,17 +60,18 @@ async function settle() {
   el.style.transform = ''
 }
 /** 1 = 就穿它，-1 = 换一套。按钮和键盘也走这里，所以卡片总是先飞走再通知页面。 */
-async function fling(direction: 1 | -1) {
+async function fling(direction: 1 | -1, via: 'swipe' | 'button' = 'button') {
   const outfit = current.value, el = topCard()
   if (!outfit || flinging.value) return
   flinging.value = true
+  if (via === 'swipe') track('today_swipe', { dir: direction > 0 ? 'right' : 'left' }) // 只计数，不是推荐反馈（server#279）
   dx.value = direction * 140
   try {
     if (el) {
       const target = reduced.matches ? { opacity: 0 } : { transform: `translateX(${direction * 130}%) rotate(${direction * 22}deg)`, opacity: 0 }
       await animate(el, target, { duration: reduced.matches ? 0.18 : 0.42, ease: [0.2, 0.9, 0.15, 1] }).finished
     }
-    if (direction > 0) emit('wear', outfit, heart.value?.$el ?? el); else emit('skip', outfit)
+    if (direction > 0) emit('wear', outfit, heart.value?.$el ?? el, via); else emit('skip', outfit)
   } finally {
     dx.value = 0; flinging.value = false
     await nextTick()
@@ -78,8 +80,8 @@ async function fling(direction: 1 | -1) {
   }
 }
 function keys(event: KeyboardEvent) {
-  if (event.key === 'ArrowLeft') { event.preventDefault(); void fling(-1) }
-  else if (event.key === 'ArrowRight') { event.preventDefault(); void fling(1) }
+  if (event.key === 'ArrowLeft') { event.preventDefault(); void fling(-1, 'swipe') }
+  else if (event.key === 'ArrowRight') { event.preventDefault(); void fling(1, 'swipe') }
   else if (event.key === 'Enter' && current.value) { event.preventDefault(); emit('open', current.value) }
 }
 // 被页面放回来（撤回）的卡片从左边飞回。

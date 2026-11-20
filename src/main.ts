@@ -1,12 +1,14 @@
 import './domain/uuid-polyfill'
-import { createApp } from 'vue'
+import { createApp, watch } from 'vue'
 import { createPinia } from 'pinia'
 import VueKonva from 'vue-konva'
 import { Card, Steps, Alert, App as AntApp, AutoComplete, Button, ConfigProvider, DatePicker, Input, InputPassword, Progress, Select, SelectOption, Spin, Switch, Segmented, Skeleton, Modal, Drawer, Dropdown, Menu, Tooltip, Empty, Tag, Form, InputNumber, Slider, Descriptions, Checkbox, Popover, Collapse, Radio, Space, Upload, Divider, Badge, Table, Popconfirm, Pagination } from 'ant-design-vue'
 import 'ant-design-vue/dist/reset.css'
 import App from './App.vue'
 import { router } from './router'
-import { installPwa } from './services/pwa'
+import { installPwa, appInstalled } from './services/pwa'
+import { init as initAnalytics, setUser as setAnalyticsUser, track } from './services/analytics'
+import { useClosetStore } from './stores/closet'
 import { accountAwareErrorHandler, silenceAccountSwitch } from './domain/accountSession'
 import './style.css'
 import './shell/dock.css'
@@ -35,4 +37,11 @@ for (const [name, component] of Object.entries({
   'a-input-number': InputNumber, 'a-slider': Slider, 'a-descriptions': Descriptions, 'a-descriptions-item': Descriptions.Item,
 })) app.component(name, component)
 installPwa()
+// 行为分析（#279）：先读服务端开关，账号确定后再放行事件；冷启动记一次 app_open。登录、退出、切换账号时重新判断。
+void initAnalytics()
+const closetStore = useClosetStore()
+void router.isReady().then(() => {
+  watch(() => closetStore.user, user => setAnalyticsUser(user), { immediate: true })
+  track('app_open', { display: appInstalled.value ? 'standalone' : 'browser' })
+})
 app.mount('#app')
