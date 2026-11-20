@@ -17,6 +17,7 @@ const deactivateOpen = ref(false); const deactivatePassword = ref(''); const dea
 const firstLogin = computed(() => Boolean(closet.user?.mustChangePassword))
 // 帮助改进鱼搭：统计启用时才显示，管理员不统计所以不显示；开 = 参与。
 const showAnalytics = computed(() => analyticsAvailable.value && closet.user?.role !== 'ADMIN')
+function onAnalyticsChange(checked: unknown) { void setOptOut(!checked) }
 const ANALYTICS_HINT = '记录你用了哪些功能、在哪一步离开，会关联到你的账号，不包含衣服、照片和聊天内容。'
 async function loadProfile() {
   profileError.value = ''
@@ -110,7 +111,7 @@ function openDeactivation() { deactivatePassword.value = ''; deactivateError.val
       <section v-if="showAnalytics" class="settings-group">
         <div class="analytics-row">
           <span class="analytics-label">帮助改进鱼搭<a-tooltip :title="ANALYTICS_HINT" placement="top"><QuestionCircleOutlined class="analytics-hint" tabindex="0" :aria-label="ANALYTICS_HINT" /></a-tooltip></span>
-          <a-switch :checked="!analyticsOptOut" aria-label="帮助改进鱼搭" @change="checked => setOptOut(!checked)" />
+          <a-switch :checked="!analyticsOptOut" aria-label="帮助改进鱼搭" @change="onAnalyticsChange" />
         </div>
       </section>
       <section class="settings-group">
