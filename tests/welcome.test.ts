@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { fitsSex, markOnboarded, rankPresets, styleCover, toggleStyle, STYLE_DIRECTIONS } from '../src/onboarding/welcome.ts'
+import { coversByStyle, fitsSex, markOnboarded, rankPresets, styleCover, toggleStyle, STYLE_DIRECTIONS } from '../src/onboarding/welcome.ts'
 
 const p = (id: string, category: string, styles: string[], gender: string | null = null, alreadyImported = false) => ({ id, gender, styles, displayUrl: `${id}.png`, fields: { category: [category] }, alreadyImported })
 
@@ -38,4 +38,15 @@ test('welcome: finishing marks both the preset popup and the tour as done', () =
   markOnboarded('amy', { setItem: (k: string, v: string) => { map.set(k, v) } })
   assert.equal(map.get('yuda.preset-onboarding.v1'), 'done')
   assert.equal(map.get('yuda.guide.v1:amy'), 'done')
+})
+
+test('welcome: admin style covers are matched by style name, unknown or empty ones are ignored', () => {
+  const items = [
+    { key: 'sweet', style: '甜美', imageUrl: '/api/onboarding/style-covers/sweet/image?v=2', version: 2 },
+    { key: 'sweet', style: '甜美', imageUrl: '/api/other', version: 3 },
+    { key: 'x', style: '不存在的风格', imageUrl: '/api/x' },
+    { key: 'french', style: '法式', imageUrl: '' },
+  ]
+  assert.deepEqual(coversByStyle(items), { 甜美: '/api/onboarding/style-covers/sweet/image?v=2' })
+  assert.deepEqual(coversByStyle(undefined), {})
 })

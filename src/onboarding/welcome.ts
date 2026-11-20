@@ -23,6 +23,15 @@ export function styleCover<T extends Preset>(items: T[], style: string, sex: Sex
   return picked
 }
 
+/** 引导封面（管理员上传，GET /api/onboarding/style-covers）：只列出已设置的风格。 */
+export type StyleCoverItem = { key: string; style: string; imageUrl: string; version?: number | string }
+/** 按风格名对上 STYLE_DIRECTIONS；不认识的风格、空地址都丢掉，同一风格只取第一张。 */
+export function coversByStyle(items: readonly StyleCoverItem[] | null | undefined): Record<string, string> {
+  const known = new Set<string>(STYLE_DIRECTIONS); const out: Record<string, string> = {}
+  for (const item of items || []) if (item && known.has(item.style) && item.imageUrl && !out[item.style]) out[item.style] = item.imageUrl
+  return out
+}
+
 /** 第 3 步列表：合性别；选了风格时，带这些风格的排前面，没标风格的基础款也保留（不排除）。已在衣柜的放最后。 */
 export function rankPresets<T extends Preset>(items: T[], sex: Sex, styles: string[]): T[] {
   const score = (item: T) => (item.alreadyImported ? 0 : 2) + (styles.length && item.styles.some(s => styles.includes(s)) ? 1 : 0)
