@@ -42,7 +42,7 @@ function finish() { open.value = false; emit('done', imported.value) }
       <footer class="onboarding-actions"><a-button @click="step = 1">跳过</a-button><a-button type="primary" :loading="saving" @click="saveTaste">下一步</a-button></footer>
     </section>
     <section v-else-if="step === 1" class="onboarding-step">
-      <p class="muted">衣柜还是空的？勾选你有类似的单品，先用示意图搭起来，之后可以换成自己的照片。</p>
+      <p class="muted">衣柜还是空的？有类似的单品就点一下，先用示意图搭起来，之后可以换成自己的照片。</p>
       <PresetPicker ref="picker" compact :styles="styles" @imported="onImported" />
       <footer class="onboarding-actions"><a-button @click="step = 2">跳过</a-button><a-button type="primary" @click="addChosen">{{ picker?.chosenCount ? `加入 ${picker.chosenCount} 件并继续` : '下一步' }}</a-button></footer>
     </section>
