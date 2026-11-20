@@ -17,7 +17,7 @@ import { playSound } from '../services/sound'
 import { celebrate } from '../services/celebrate'
 import { track } from '../services/analytics'
 import OutfitCollage from '../today/OutfitCollage.vue'
-import { MAX_STYLES, STYLE_DIRECTIONS, coversByStyle, markOnboarded, rankPresets, styleCover, toggleStyle, type Sex } from '../onboarding/welcome'
+import { MAX_STYLES, STYLE_DIRECTIONS, coversByStyle, markOnboarded, rankPresets, toggleStyle, type Sex } from '../onboarding/welcome'
 
 const router = useRouter(); const closet = useClosetStore(); const { message } = AntApp.useApp()
 const name = computed(() => closet.user?.displayName || closet.user?.username || '')
@@ -34,7 +34,7 @@ onMounted(() => {
   void presetApi.list().then(list => { presets.value = list }, () => { presets.value = [] }).finally(() => { presetsLoaded.value = true })
 })
 const artOf = (s: string) => brokenArt.value.has(s) ? undefined : mediaUrl(styleArt.value[s])
-/** 封面加载失败就回到拼图或文字，不显示破图。 */
+/** 封面加载失败就只显示文字，不显示破图。 */
 function artFailed(s: string) { brokenArt.value = new Set(brokenArt.value).add(s) }
 
 const SEXES: { value: Sex; label: string; hint: string }[] = [{ value: 'FEMALE', label: '女生', hint: '推荐里不会出现男款' }, { value: 'MALE', label: '男生', hint: '推荐里不会出现女款' }, { value: '', label: '不想说', hint: '都可能推荐' }]
@@ -45,7 +45,6 @@ async function saveSex(value: Sex) {
 }
 function chooseSex(value: Sex) { track('welcome_step', { step: 'sex', action: value ? 'done' : 'skip' }); sex.value = value; playSound('tap'); void saveSex(value); step.value = 1 }
 
-const covers = computed(() => Object.fromEntries(STYLE_DIRECTIONS.map(s => [s, styleCover(presets.value, s, sex.value || '')])))
 function pickStyle(s: string) {
   const next = toggleStyle(styles.value, s)
   if (next.length === styles.value.length && !styles.value.includes(s)) { message.info(`最多选 ${MAX_STYLES} 个`); return }
@@ -120,10 +119,7 @@ function back() { if (step.value > 0 && step.value < 3) step.value-- }
           <button v-for="s in STYLE_DIRECTIONS" :key="s" type="button" class="ob-style" :class="{ on: styles.includes(s) }" :aria-pressed="styles.includes(s)" @click="pickStyle(s)">
             <span class="ob-style-art">
               <img v-if="artOf(s)" :src="artOf(s)" class="ob-style-cover" alt="" loading="lazy" decoding="async" @error="artFailed(s)" />
-              <template v-else>
-                <img v-for="(item, i) in covers[s]" :key="item.id" :src="thumbUrl(item.displayUrl, 240)" alt="" loading="lazy" :style="{ '--i': i, '--n': covers[s].length }" />
-                <em v-if="!covers[s].length" class="ob-style-word" aria-hidden="true">{{ s }}</em>
-              </template>
+              <em v-else class="ob-style-word" aria-hidden="true">{{ s }}</em>
             </span>
             <b>{{ s }}</b>
             <span class="ob-check"><CheckOutlined /></span>
@@ -203,8 +199,7 @@ html .ob-sex.ant-btn:hover, .ob-sex.on.ant-btn { box-shadow: 0 0 0 2px var(--ink
 .ob-style.on { box-shadow: 0 0 0 2px var(--ink); }
 .ob-style b { padding: 0 4px; font-size: 15px; font-weight: 600; }
 .ob-style-art { position: relative; display: block; aspect-ratio: 4 / 3; overflow: hidden; border-radius: 12px; background: var(--surface-alt); }
-.ob-style-art img { position: absolute; top: 12%; width: 46%; height: 76%; object-fit: contain; filter: drop-shadow(0 6px 10px #0000001a); left: calc(50% - 23% + (var(--i) - (var(--n) - 1) / 2) * 30%); }
-.ob-style-art img.ob-style-cover { inset: 0; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; filter: none; }
+.ob-style-cover { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .ob-style-word { position: absolute; inset: 0; display: grid; place-items: center; font-size: 26px; font-style: normal; font-weight: 700; letter-spacing: .08em; color: color-mix(in srgb, var(--ink) 14%, transparent); }
 .ob-check { position: absolute; top: 14px; right: 14px; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; color: transparent; background: var(--surface); box-shadow: 0 0 0 1.5px var(--line); font-size: 12px; transition: all .2s var(--spring); }
 .on > .ob-check { color: var(--action-fg); background: var(--action-bg); box-shadow: none; transform: scale(1.08); }

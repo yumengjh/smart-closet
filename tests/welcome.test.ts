@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { coversByStyle, fitsSex, markOnboarded, rankPresets, styleCover, toggleStyle, STYLE_DIRECTIONS } from '../src/onboarding/welcome.ts'
+import { coversByStyle, fitsSex, markOnboarded, rankPresets, toggleStyle, STYLE_DIRECTIONS } from '../src/onboarding/welcome.ts'
 
 const p = (id: string, category: string, styles: string[], gender: string | null = null, alreadyImported = false) => ({ id, gender, styles, displayUrl: `${id}.png`, fields: { category: [category] }, alreadyImported })
 
@@ -9,17 +9,6 @@ test('welcome: men never see women-only presets and women never see men-only one
   assert.equal(fitsSex({ gender: '男款' }, 'FEMALE'), false)
   assert.equal(fitsSex({ gender: '中性' }, 'MALE'), true)
   assert.equal(fitsSex({ gender: '女款' }, ''), true)
-})
-
-test('welcome: style covers pick one top, bottom and shoes when they exist', () => {
-  const items = [p('s', '运动鞋', ['甜美']), p('b', '百褶裙', ['甜美']), p('t1', 'T恤', ['甜美']), p('t2', '衬衫', ['甜美']), p('x', 'T恤', ['法式'])]
-  assert.deepEqual(styleCover(items, '甜美', '').map(i => i.id), ['t1', 'b', 's'])
-  assert.deepEqual(styleCover(items, '工装风', ''), [])
-})
-
-test('welcome: style covers respect the chosen sex', () => {
-  const items = [p('w', '连衣裙', ['甜美'], '女款'), p('t', 'T恤', ['甜美'])]
-  assert.deepEqual(styleCover(items, '甜美', 'MALE').map(i => i.id), ['t'])
 })
 
 test('welcome: chosen styles rank first, nothing is dropped except the other sex, owned items go last', () => {
