@@ -79,14 +79,14 @@ export async function init() {
 export function setUser(user: SessionUser | null) {
   if (usingMocks) return
   const next = user?.username ?? null
-  const changed = userKnown && next !== username
+  // 从一个账号换到另一个账号：会话已经是新账号，旧账号没发出的事件再发就会记到新账号头上，所以直接丢弃。
+  // 未登录 → 登录（同一个人刚登录）、登录 → 退出，保留队列。
+  if (userKnown && username && next && next !== username) { queue.clear(); waiting = [] }
   username = next
   currentUser = user
   admin = user?.role === 'ADMIN'
   analyticsOptOut.value = user ? user.analytics?.optOut === true : readLocalOptOut()
   userKnown = true
-  // 换了人：先把上一个人的事件发出去再继续，不让它们混进新账号。
-  if (changed && known() && active() && queue.size) void flush(true)
   settle()
 }
 
