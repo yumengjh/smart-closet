@@ -36,7 +36,7 @@ const loading = ref(true), cameraReady = ref(false), busy = ref(false), error = 
 const garments = ref<Candidate[]>([]), outfits = ref<Outfit[]>([]), selected = ref<Selection[]>([])
 const prepared = ref<Prepared | null>(null), lease = ref<Session | null>(null), picker = ref(false), tab = ref('衣柜'), historyOpen = ref(false)
 const media = ref<Media[]>([]), sessionHistory = ref<Session[]>([]), historyPage = ref(1), garmentPage = ref(1), historyBusy = ref(false), search = ref('')
-const temporary = ref<{ id: string; imageUrl: string; expiresAtMs: number; role?: string }[]>([]), uploading = ref(false), uploadPhase = ref(''), importChoice = ref<File | null>(null), importRole = ref<string>()
+const temporary = ref<{ id: string; imageUrl: string; expiresAtMs: number; role?: string }[]>([]), uploading = ref(false), uploadPhase = ref(''), importChoice = ref<File | null>(null), importRole = ref<string>(), importWhere = ref<'auto' | 'pick'>('auto'), importError = ref('')
 const recording = ref(false), recordingBusy = ref(false), recordingSeconds = ref(0), uploadedBytes = ref(0), recordingError = ref('')
 const selectedOutfit = ref<string | null>(null), selectingOutfit = ref<string | null>(null), pendingOutfit = ref<string | null>(null), preparing = ref(false)
 const captureMode = ref<CaptureMode>('拍照'), busyPhase = ref(''), latestBusy = ref(false), startupStage = ref<StartupStage | undefined>()
@@ -562,23 +562,43 @@ async function selectOutfit(id: string, allowLatest = false) {
 }
 // 选图后就在本机开始缩小（§3.1），用户选穿戴位置时压缩已在进行；入柜流程仍交原文件。
 let shrinking: { file: File; job: Promise<Shrunk> } | undefined
-async function chooseUpload(file: File) { leaveFullscreen(); await stop(); importRole.value = undefined; importChoice.value = file; shrinking = { file, job: shrinkImage(file) }; return false }
+async function chooseUpload(file: File) {
+  leaveFullscreen(); await stop(); importRole.value = undefined; importWhere.value = 'auto'; importChoice.value = file; shrinking = { file, job: shrinkImage(file) }
+  setImportPreview(file); warmIntake(); return false
+}
+// 弹窗一打开就预热“收进衣柜”要用的代码块，点下去只剩路由跳转。失败不影响任何操作，跳转时会再加载。
+let intakeWarmed = false
+function warmIntake() {
+  if (intakeWarmed) return
+  intakeWarmed = true
+  void import('./AddGarmentPage.vue').catch(() => { intakeWarmed = false })
+  void import('../tryon/intake').catch(() => {})
+}
+// 弹窗里的缩略图：本机预览，关闭弹窗即释放；浏览器显示不了（例如部分 HEIC）就不显示。
+const importPreview = ref(''), importPreviewBroken = ref(false)
+function setImportPreview(file: File | null) {
+  if (importPreview.value) URL.revokeObjectURL(importPreview.value)
+  importPreview.value = file ? URL.createObjectURL(file) : ''; importPreviewBroken.value = false
+}
+function closeImport() { if (uploading.value) return; importChoice.value = null; shrinking = undefined; setImportPreview(null) }
+function chooseWhere(value: unknown) { importWhere.value = value === 'pick' ? 'pick' : 'auto'; if (importWhere.value === 'auto') importRole.value = undefined }
 async function uploadTemporary() {
-  const file = importChoice.value, role = importRole.value; if (!file || !role) return
-  uploading.value = true; error.value = ''; uploadPhase.value = '正在压缩…'
+  // 位置默认“自动”：不传 role，服务端按 OTHER 处理，提示词用“穿在它原本的位置”。
+  const file = importChoice.value, role = importWhere.value === 'pick' ? importRole.value : undefined; if (!file || uploading.value) return
+  uploading.value = true; importError.value = ''; uploadPhase.value = '正在压缩…'
   try {
     const shrunk = await (shrinking?.file === file ? shrinking.job : shrinkImage(file)); shrinking = undefined
     uploadPhase.value = `正在上传 ${formatBytes(shrunk.after)}…`
-    const item = await tryOnApi.upload(shrunk.file); temporary.value.push({ ...item, role }); selected.value.push({ type: 'TEMPORARY', id: item.id, role }); prepared.value = null; importChoice.value = null
-    message.success(shrunk.changed ? `已加入当前页面（已从 ${formatBytes(shrunk.before)} 压缩到 ${formatBytes(shrunk.after)}），七天后删除。` : '已加入当前页面，七天后删除。')
+    const item = await tryOnApi.upload(shrunk.file); temporary.value.push({ ...item, role }); selected.value.push({ type: 'TEMPORARY', id: item.id, role }); prepared.value = null
+    importChoice.value = null; setImportPreview(null)
   }
-  catch (e) { fail(e) } finally { uploading.value = false; uploadPhase.value = '' }
+  catch (e) { playSound('error'); importError.value = e instanceof Error ? e.message : '没有传上去，可以再试一次。' } finally { uploading.value = false; uploadPhase.value = '' }
 }
 async function importGarment() {
   const file = importChoice.value; if (!file) return
   // Explicit intake handoff, consumed once by the existing upload page. No garment/model call before this choice.
   const { setTryOnIntake } = await import('../tryon/intake')
-  setTryOnIntake(file); importChoice.value = null; shrinking = undefined; await router.push('/add?from=tryon')
+  setTryOnIntake(file); importChoice.value = null; shrinking = undefined; setImportPreview(null); await router.push('/add?from=tryon')
 }
 async function takePhoto() {
   if (!generating.value || !camera?.video || !lease.value) return
@@ -691,7 +711,7 @@ onMounted(() => {
   for (const el of [stageArea.value, stage.value, dock.value, topbar.value]) if (el) layoutObserver.observe(el)
   measure(); layoutQuery.addEventListener('change', syncNarrow); portraitQuery.addEventListener('change', syncDevice); coarseQuery.addEventListener('change', syncDevice); document.addEventListener('fullscreenchange', syncFullscreen)
 })
-onBeforeUnmount(() => { disposed = true; action++; stopPose(); layoutObserver?.disconnect(); layoutQuery.removeEventListener('change', syncNarrow); portraitQuery.removeEventListener('change', syncDevice); coarseQuery.removeEventListener('change', syncDevice); document.removeEventListener('fullscreenchange', syncFullscreen); flyDone(); offAccount(); clearInterval(pulseTimer); clearInterval(clockTimer); clearTimeout(rebuildTimer); clearTimeout(searchTimer); document.removeEventListener('visibilitychange', background); window.removeEventListener('pagehide', background); if (lease.value && !finished(lease.value)) emergencyStop(lease.value.id); void finishRecording(true); void camera?.dispose() })
+onBeforeUnmount(() => { disposed = true; action++; stopPose(); if (importPreview.value) URL.revokeObjectURL(importPreview.value); layoutObserver?.disconnect(); layoutQuery.removeEventListener('change', syncNarrow); portraitQuery.removeEventListener('change', syncDevice); coarseQuery.removeEventListener('change', syncDevice); document.removeEventListener('fullscreenchange', syncFullscreen); flyDone(); offAccount(); clearInterval(pulseTimer); clearInterval(clockTimer); clearTimeout(rebuildTimer); clearTimeout(searchTimer); document.removeEventListener('visibilitychange', background); window.removeEventListener('pagehide', background); if (lease.value && !finished(lease.value)) emergencyStop(lease.value.id); void finishRecording(true); void camera?.dispose() })
 </script>
 
 <template>
@@ -807,7 +827,28 @@ onBeforeUnmount(() => { disposed = true; action++; stopPose(); layoutObserver?.d
     </div>
     <a-drawer v-model:open="picker" title="选择试穿衣物" :placement="narrow ? 'bottom' : 'right'" height="min(76dvh, 760px)" :width="420" :mask="narrow" :get-container="popupHost" root-class-name="tryon-material-drawer"><p v-if="generating" class="tryon-paid-notice">选衣期间仍在计时 · {{ duration(remaining) }} <a-button size="small" danger @click="stop()">停止试穿</a-button></p><TryOnPicker v-bind="pickerProps" v-model:search="search" v-model:tab="tab" :popup-host="popupHost" @toggle="toggle" @outfit="selectOutfit" @more="loadGarments(true)" @latest="latest" @clear="clearSelection" @role="setRole" /><template #footer><div class="tryon-picker-footer"><span>{{ selected.length ? `已选 ${selected.length} 件衣物` : '尚未选择衣物' }}<a-button v-if="selected.length" type="link" size="small" :disabled="pickerProps.blocked" @click="clearSelection">清空</a-button></span><a-button type="primary" :disabled="preparing" @click="picker=false">{{ selected.length ? '选好了，返回相机' : '返回相机' }}</a-button></div></template></a-drawer>
     <a-drawer v-model:open="historyOpen" title="拍摄历史" placement="right" :width="'min(100vw, 620px)'"><a-alert type="info" show-icon message="历史查看期间已停止实时连接。" /><a-segmented v-model:value="historyFilter" :options="['全部','照片','视频']" block /><a-spin :spinning="historyBusy"><a-empty v-if="!visibleMedia.length" description="主动拍摄的照片和录像会保存在这里" /><article v-for="item in visibleMedia" :key="item.id" class="tryon-history-item"><MediaPreview v-if="item.type==='VIDEO' && ['READY','PARTIAL'].includes(item.state)" :src="mediaUrl(item.url)" :duration-ms="item.durationMs" /><img v-else-if="item.type==='PHOTO'" :src="mediaUrl(item.url)" alt="AI试穿效果" /><div v-else class="tryon-pending-media">{{ item.state === 'UNRECOVERABLE' ? '片段不足以恢复录像，可删除释放空间' : '分段已上传，正在恢复可用片段' }}</div><div><strong>{{ item.type==='PHOTO' ? '试穿照片' : `${item.state==='PARTIAL'?'中断片段':'录像'} · ${duration(item.durationMs/1000)}` }}</strong><p>{{ new Date(item.createdAtMs).toLocaleString() }} <template v-if="item.type==='VIDEO'"> · {{ item.hasAudio?'有声':'无声' }} · {{ item.mimeType.split('/')[1]?.toUpperCase() }}</template></p><div class="tryon-history-actions"><a-button :href="mediaUrl(item.downloadUrl)" :disabled="!['READY','PARTIAL'].includes(item.state)"><DownloadOutlined /> 下载</a-button><a-button v-if="cap?.enabled" @click="repeat(item)">再次试穿</a-button><a-button type="text" danger aria-label="删除结果" @click="remove(item)"><DeleteOutlined /></a-button></div></div></article><a-button block :loading="historyBusy" @click="moreHistory">加载更多结果</a-button><a-collapse v-if="sessionHistory.length" ghost><a-collapse-panel key="sessions" header="查看会话与用量记录"><p v-for="s in sessionHistory" :key="s.id" class="tryon-session-history">{{ new Date(s.createdAtMs).toLocaleString() }} · {{ stateName(s.state) }} · {{ duration(s.userSeconds) }}</p></a-collapse-panel></a-collapse></a-spin></a-drawer>
-    <a-modal :open="!!importChoice" title="这件衣物是否收进衣柜？" :footer="null" @cancel="importChoice=null"><p>收进衣柜会进入现有衣物处理流程。仅试穿不会自动识图或生图，离开页面后不恢复。</p><p class="tryon-import-label">仅试穿时，这件衣物戴在或穿在哪里？</p><a-select v-model:value="importRole" class="tryon-import-role" show-search option-filter-prop="label" :options="WEAR_GROUPS" placeholder="选择穿戴位置，例如头饰、手表、手持物" /><div class="tryon-modal-actions"><a-button :loading="uploading" :disabled="!importRole" @click="uploadTemporary">{{ uploading && uploadPhase ? uploadPhase : '仅当前页面试穿' }}</a-button><a-button type="primary" @click="importGarment">进入收进衣柜流程</a-button></div></a-modal>
+    <a-modal :open="!!importChoice" title="这件衣服怎么用？" :footer="null" :width="520" :closable="!uploading" :mask-closable="!uploading" :keyboard="!uploading" @cancel="closeImport">
+      <div class="tryon-import">
+        <img v-if="importPreview && !importPreviewBroken" :src="importPreview" class="tryon-import-thumb" alt="刚选的照片" @error="importPreviewBroken = true" />
+        <div class="tryon-import-cards">
+          <a-button class="tryon-import-card" :class="{ 'is-busy': uploading }" :disabled="uploading" :aria-busy="uploading" @click="uploadTemporary">
+            <b>只在这次试穿用</b>
+            <small v-if="uploading" role="status"><LoadingOutlined /> {{ uploadPhase || '正在准备…' }}</small>
+            <small v-else>马上能试，不进衣柜，七天后自动删除</small>
+          </a-button>
+          <a-button class="tryon-import-card" :disabled="uploading" @click="importGarment">
+            <b>收进衣柜</b>
+            <small>自动抠图、识别品类，之后推荐和搭配都能用</small>
+          </a-button>
+        </div>
+        <p v-if="importError" class="tryon-import-error" role="alert">{{ importError }}</p>
+        <div class="tryon-import-where">
+          <span>穿在哪里</span>
+          <a-segmented size="small" :value="importWhere" :options="[{ value: 'auto', label: '自动' }, { value: 'pick', label: '指定位置' }]" :disabled="uploading" @change="chooseWhere" />
+        </div>
+        <a-select v-if="importWhere === 'pick'" v-model:value="importRole" class="tryon-import-role" show-search option-filter-prop="label" :options="WEAR_GROUPS" :disabled="uploading" placeholder="例如头饰、手表、手持物；不选就按自动" aria-label="这件衣服穿在哪里" />
+      </div>
+    </a-modal>
     <a-modal v-model:open="silentChoice" title="麦克风暂不可用" :footer="null"><p>{{ microphoneError }}</p><div class="tryon-modal-actions"><a-button @click="silentChoice=false; record(true)">继续无声录像</a-button><a-button type="primary" @click="silentChoice=false; record()">重新申请麦克风</a-button></div></a-modal>
   </section>
 </template>
@@ -1082,9 +1123,20 @@ onBeforeUnmount(() => { disposed = true; action++; stopPose(); layoutObserver?.d
 .tryon-history-item p { margin: 8px 0; font-size: 12px; line-height: 1.7; color: var(--muted-strong); }
 .tryon-history-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .tryon-pending-media { padding: 16px; font-size: 12px; color: var(--muted-strong); background: var(--surface-alt); }
-.tryon-import-label { margin: 16px 0 8px; font-size: 13px; color: var(--muted-strong); }
+.tryon-import { display: flex; flex-direction: column; gap: 14px; }
+.tryon-import-thumb { align-self: center; width: 112px; height: 112px; object-fit: contain; border-radius: 12px; background: var(--surface-alt); }
+.tryon-import-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.tryon-import-card.ant-btn { display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: 6px; height: auto; min-height: 104px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--ink); box-shadow: none; text-align: left; white-space: normal; }
+.tryon-import-card.ant-btn b { font-size: 15px; font-weight: 600; line-height: 1.4; }
+.tryon-import-card.ant-btn small { font-size: 12px; line-height: 1.6; color: var(--muted-strong); }
+html .tryon-import-card.ant-btn:not(:disabled):hover, .tryon-import-card.ant-btn:focus-visible { border-color: var(--ink); color: var(--ink); background: var(--surface); }
+.tryon-import-card.is-busy.ant-btn { border-color: var(--ink); background: var(--surface); color: var(--ink); cursor: progress; }
+.tryon-import-card.is-busy.ant-btn small { color: var(--ink); }
+.tryon-import-error { margin: 0; font-size: 13px; color: var(--danger); }
+.tryon-import-where { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; color: var(--muted-strong); }
 .tryon-import-role { width: 100%; }
 .tryon-modal-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 12px; margin-top: 24px; }
+@media (max-width: 420px) { .tryon-import-cards { grid-template-columns: 1fr; } .tryon-import-card.ant-btn { min-height: 0; } }
 .tryon-session-history { padding: 8px 0; font-size: 12px; color: var(--muted-strong); }
 
 /* 平板：侧栏隐藏、底部导航仍在，舞台让出导航高度。 */

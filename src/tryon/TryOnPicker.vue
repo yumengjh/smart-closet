@@ -31,8 +31,9 @@ function rows() {
   return props.selected.map(s => {
     const garment = s.type === 'GARMENT' ? props.garments.find(g => g.id === s.id) : undefined, temp = s.type === 'TEMPORARY' ? props.temporary.find(t => t.id === s.id) : undefined
     const auto = roleLabel(props.autoRoles?.[s.id])
-    const options = s.type === 'GARMENT' ? [{ value: AUTO, label: auto ? `按分类：${auto}` : '按分类自动' }, ...WEAR_GROUPS] : WEAR_GROUPS
-    return { s, name: garment?.name || (temp ? '自定义衣物' : '衣物'), image: garment ? thumbUrl(garment.imageUrl, 160) : temp ? mediaUrl(temp.imageUrl) : undefined, options, value: s.role || (s.type === 'GARMENT' ? AUTO : undefined) }
+    // 临时衣物没有分类可推：“自动”就是不传位置，服务端让它穿在原本的位置。
+    const autoOption = s.type === 'GARMENT' ? { value: AUTO, label: auto ? `按分类：${auto}` : '按分类自动' } : { value: AUTO, label: '自动' }
+    return { s, name: garment?.name || (temp ? '自定义衣物' : '衣物'), image: garment ? thumbUrl(garment.imageUrl, 160) : temp ? mediaUrl(temp.imageUrl) : undefined, options: [autoOption, ...WEAR_GROUPS], value: s.role || AUTO }
   })
 }
 /** 能在本机转码的 HEIC / WebP 会转成 JPEG 或 PNG 再上传；转不了的仍由服务端拒绝并提示。 */
