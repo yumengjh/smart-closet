@@ -6,6 +6,8 @@ import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { PictureOutlined, CameraOutlined, CloseOutlined, InfoCircleOutlined, ExperimentOutlined, ReloadOutlined } from '@ant-design/icons-vue'
 import CameraCapture from './CameraCapture.vue'
+import { track } from '../services/analytics'
+import { intakeCountBucket } from '../services/analyticsCore'
 import WaitingActivities from './WaitingActivities.vue'
 import { useProcessingStore } from '../stores/processing'
 import { batchIsProcessing, elapsedLabel } from '../domain/waiting'
@@ -109,6 +111,7 @@ async function upload(){
     }
     localStorage.setItem(`closet-batch:${batch.value!.id}:trial`,String(trialEnabled.value))
     if(strategy.value!=='MANUAL')await submitStart()
+    track('intake_submit',{count:intakeCountBucket(selected.value.length),recognize:'online',wanted:false})
     await router.replace(`/batches/${batch.value!.id}`)
   }catch(e){error.value=e instanceof Error?e.message:'上传未完成，照片已保留，可继续上传。'}
   finally{busy.value=false;uploadIndex.value=0;if(alive&&!timer)void poll()}
@@ -151,7 +154,9 @@ async function resumeLocal(callId: string){
   try{batch.value=await batchApi.resumeLocal(batch.value.id,callId)}catch(e){error.value=e instanceof Error?e.message:'暂未完成，整理图已保留。'}finally{busy.value=false}
 }
 function review(target: BatchTarget){void router.push({path:`/garment/${target.garmentId}`,query:{task:target.jobId,batch:batch.value!.id}})}
-function cameraMenu(info:{key:string|number}){(info.key==='selfie'?selfie.value:rear.value)?.click()}
+function pickAlbum(){track('add_source',{source:'album'});input.value?.click()}
+function openCamera(){track('add_source',{source:'camera'});cameraOpen.value=true}
+function cameraMenu(info:{key:string|number}){track('add_source',{source:'camera'});(info.key==='selfie'?selfie.value:rear.value)?.click()}
 onMounted(async()=>{
   mobile.value=prefersNativeCamera()
   void hasCamera(navigator.mediaDevices).then(v=>{if(alive)camera.value=v})
@@ -180,7 +185,7 @@ onBeforeUnmount(()=>{clearInterval(waitingClock);alive=false;if(timer)clearTimeo
     <a-skeleton v-if="loading" active :paragraph="{rows:3}" />
     <div v-if="!batch || batch.status==='UPLOADED'" class="batch-upload-layout"><div :class="['upload-area', {'has-photos':selected.length}]" @dragover.prevent @drop.prevent="accept(Array.from($event.dataTransfer?.files || []))">
       <template v-if="!batch"><div class="upload-heading"><PictureOutlined v-if="!selected.length" /><h2>{{selected.length?`已选 ${selected.length} 张照片`:'把想收的衣物拍下来'}}</h2><p v-if="!selected.length">单件照、多件同框或自拍都可以，也能一次选多张。</p></div>
-      <div class="batch-actions"><a-button :type="selected.length?'default':'primary'" size="large" :disabled="locked" @click="input?.click()"><PictureOutlined /> {{selected.length?'继续选照片':'选择照片'}}</a-button><a-dropdown v-if="mobile" :trigger="['click']"><a-button size="large" :disabled="locked"><CameraOutlined /> 拍照 / 自拍</a-button><template #overlay><a-menu @click="cameraMenu"><a-menu-item key="rear">拍衣物</a-menu-item><a-menu-item key="selfie">自拍</a-menu-item></a-menu></template></a-dropdown><a-button v-else-if="camera" size="large" :disabled="locked" @click="cameraOpen=true"><CameraOutlined /> 拍一张</a-button></div></template>
+      <div class="batch-actions"><a-button :type="selected.length?'default':'primary'" size="large" :disabled="locked" @click="pickAlbum()"><PictureOutlined /> {{selected.length?'继续选照片':'选择照片'}}</a-button><a-dropdown v-if="mobile" :trigger="['click']"><a-button size="large" :disabled="locked"><CameraOutlined /> 拍照 / 自拍</a-button><template #overlay><a-menu @click="cameraMenu"><a-menu-item key="rear">拍衣物</a-menu-item><a-menu-item key="selfie">自拍</a-menu-item></a-menu></template></a-dropdown><a-button v-else-if="camera" size="large" :disabled="locked" @click="openCamera()"><CameraOutlined /> 拍一张</a-button></div></template>
       <p v-else-if="strategy==='MANUAL'">点击照片里想收的衣物，标记好后开始整理。补出的部分会标注为推测。</p>
       <div class="photo-grid"><figure v-for="(item,index) in !batch?selected:[]" :key="item.key"><img :src="mediaUrl(item.url)" :alt="item.file.name" /><a-button type="text" :disabled="locked" :aria-label="`移除${item.file.name}`" @click="remove(index)"><CloseOutlined /></a-button><figcaption>{{item.file.name}}</figcaption></figure>
       <figure v-for="source in batch?.status==='UPLOADED'?batch.sources:[]" :key="source.id"><div class="marker-image"><img :src="mediaUrl(source.previewUrl)" :alt="source.name" :class="{markable:strategy==='MANUAL'}" :tabindex="strategy==='MANUAL'?0:undefined" @click="mark($event,source.id)" @keydown.enter="addMarker(source.id,{x:.5,y:.5})" /><a-button v-for="(marker,index) in markers.filter(m=>m.sourceId===source.id)" :key="index" class="marker" :style="{left:marker.x*100+'%',top:marker.y*100+'%'}" :aria-label="`移除第${index+1}个标记`" @click="markers=markers.filter(m=>m!==marker)">{{index+1}}</a-button></div><figcaption>{{source.name}}</figcaption></figure></div>

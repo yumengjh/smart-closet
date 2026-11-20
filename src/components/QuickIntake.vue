@@ -10,6 +10,8 @@ import { useNotificationStore } from '../stores/notifications'
 import { thumbUrl } from '../services/urls'
 import { prefersNativeCamera } from '../services/camera'
 import { playSound } from '../services/sound'
+import { track } from '../services/analytics'
+import { intakeCountBucket } from '../services/analyticsCore'
 import CameraCapture from './CameraCapture.vue'
 import TargetMarker from './TargetMarker.vue'
 import { loadWantedLabel, wantedLabel } from '../wardrobe/wanted'
@@ -71,7 +73,12 @@ function status(row: LocalPhoto) {
   if (base?.status === 'SKIPPED') return { title: wantedNow ? `原图已存为${wantedLabel.value}` : '原图已收进衣柜', detail: '去背景未完成，资料识别继续进行', tone: 'warning' }
   return { title: view.garment.status === 'ACTIVE' ? '原图已收进衣柜，透明图制作中' : wantedNow ? `原图已存为${wantedLabel.value}，透明图制作中` : '照片已保存，正在准备透明图', detail: base?.status === 'RUNNING' ? '正在去背景、加白边，做好后自动显示' : '已排队，无需再次提交', tone: base?.status === 'RUNNING' ? 'processing' : 'waiting' }
 }
-function takePhoto() { if (nativeCamera) nativeInput.value?.click(); else camera.value = true }
+function takePhoto() { track('add_source', { source: 'quick' }); if (nativeCamera) nativeInput.value?.click(); else camera.value = true }
+function pickFiles() { track('add_source', { source: 'quick' }); input.value?.click() }
+/** 一次入柜动作成功保存了 n 张照片（行为分析只报分档，不报内容）。识别走服务端，所以是 online。 */
+function submitted(count: number) { track('intake_submit', { count: intakeCountBucket(count), recognize: 'online', wanted: ownership.value === 'WANTED' }) }
+/** 连拍相机的每一张都是一次提交。 */
+async function captureShot(file: File, specify?: boolean) { await capture(file, specify); if (!error.value) submitted(1) }
 async function capture(file: File, specify = false, quiet = false) {
   const account = owner(); if (!account) return
   saving.value = true; received.value = '已收到照片，正在保存在本机…'; celebration.value = null
@@ -97,13 +104,13 @@ async function receive(files: File[]) {
   if (!files.length || saving.value || uploadError.value) return
   const usable = files.filter(acceptedType), skipped = files.length - usable.length
   if (!usable.length) { error.value = '请选择 JPEG 或 PNG 照片，HEIC 请先转换为 JPEG。'; playSound('denied'); return }
-  if (usable.length === 1) await capture(usable[0])
+  if (usable.length === 1) { await capture(usable[0]); if (!error.value) submitted(1) }
   else {
     const dismiss = message.loading({ content: `正在收下 ${usable.length} 张照片…`, duration: 0 })
     let saved = 0
     try { for (const file of usable) { await capture(file, false, true); if (error.value) break; saved++ } }
     finally { dismiss() }
-    if (saved) { message.success({ content: `收到 ${saved} 张照片，正在依次上传。可以继续添加。`, duration: 3 }); welcomed() }
+    if (saved) { submitted(saved); message.success({ content: `收到 ${saved} 张照片，正在依次上传。可以继续添加。`, duration: 3 }); welcomed() }
   }
   if (skipped && !error.value) message.warning(`已跳过 ${skipped} 张非 JPEG/PNG 照片。`)
 }
@@ -247,8 +254,8 @@ onBeforeUnmount(() => { alive = false; clearTimeout(timer); for (const url of th
         <a-tooltip :title="`${wantedLabel}：网上看中、还没买的衣服。存进衣柜但不参与推荐和统计，买到后一键标为已拥有。`" placement="bottom"><QuestionCircleOutlined class="ownership-help" tabindex="0" :aria-label="`${wantedLabel}是什么`" /></a-tooltip>
       </div>
       <div class="capture-actions">
-        <a-button type="primary" size="large" class="capture-main" :disabled="saving || Boolean(uploadError)" :loading="saving" @click="ownership === 'WANTED' ? input?.click() : takePhoto()"><template v-if="ownership === 'WANTED'"><PictureOutlined v-if="!saving" />选截图</template><template v-else><CameraOutlined v-if="!saving" />拍照</template></a-button>
-        <a-button size="large" class="capture-soft" :disabled="saving || Boolean(uploadError)" @click="ownership === 'WANTED' ? takePhoto() : input?.click()"><template v-if="ownership === 'WANTED'"><CameraOutlined />拍照</template><template v-else><PictureOutlined />相册</template></a-button>
+        <a-button type="primary" size="large" class="capture-main" :disabled="saving || Boolean(uploadError)" :loading="saving" @click="ownership === 'WANTED' ? pickFiles() : takePhoto()"><template v-if="ownership === 'WANTED'"><PictureOutlined v-if="!saving" />选截图</template><template v-else><CameraOutlined v-if="!saving" />拍照</template></a-button>
+        <a-button size="large" class="capture-soft" :disabled="saving || Boolean(uploadError)" @click="ownership === 'WANTED' ? takePhoto() : pickFiles()"><template v-if="ownership === 'WANTED'"><CameraOutlined />拍照</template><template v-else><PictureOutlined />相册</template></a-button>
       </div>
       <p class="capture-hint">{{ compact ? '可多选，不用等上一件' : '可多选、拖入或粘贴，不用等上一件' }}</p>
       <Transition name="note">
@@ -264,7 +271,7 @@ onBeforeUnmount(() => { alive = false; clearTimeout(timer); for (const url of th
     </div>
     <input ref="input" type="file" class="hidden-file-input" multiple accept="image/jpeg,image/png" tabindex="-1" @change="selected" />
     <input ref="nativeInput" type="file" class="hidden-file-input" accept="image/*" capture="environment" tabindex="-1" @change="selected" />
-    <CameraCapture v-if="camera" continuous :count="sessionRows.length" :disabled="saving || Boolean(uploadError)" @close="camera = false" @capture="capture" />
+    <CameraCapture v-if="camera" continuous :count="sessionRows.length" :disabled="saving || Boolean(uploadError)" @close="camera = false" @capture="captureShot" />
     <TargetMarker v-if="marker" :key="marker.id" :blob="marker.blob!" @finish="marked" @close="marker = undefined" />
     <Transition name="celebrate">
       <section v-if="celebration" class="celebration" role="status" aria-live="polite">

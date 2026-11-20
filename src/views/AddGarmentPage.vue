@@ -9,6 +9,7 @@ import BatchIntake from '../components/BatchIntake.vue'
 import GarmentEdgeHelp from '../components/GarmentEdgeHelp.vue'
 import { useProcessingStore } from '../stores/processing'
 import { takeTryOnIntake } from '../tryon/intake'
+import { track } from '../services/analytics'
 const intake = ref(useRoute().query.mode === 'multiple')
 const preferQuick = useRoute().query.mode !== 'multiple' && useRoute().query.mode !== 'single' && useRoute().query.from !== 'tryon'
 const quick = ref(false); const quickEnabled = ref(false)
@@ -58,7 +59,9 @@ async function detectCamera() {
   const available = await hasCamera(navigator.mediaDevices)
   if (alive && attempt === cameraEpoch) cameraAvailable.value = available
 }
-function chooseCamera({ key }: { key: string | number }) { (key === 'selfie' ? selfieInput.value : rearInput.value)?.click() }
+function pickAlbum() { track('add_source', { source: 'album' }); fileInput.value?.click() }
+function openCamera() { track('add_source', { source: 'camera' }); cameraOpen.value = true }
+function chooseCamera({ key }: { key: string | number }) { track('add_source', { source: 'camera' }); (key === 'selfie' ? selfieInput.value : rearInput.value)?.click() }
 onMounted(async () => {
   const fromTryOn = takeTryOnIntake(); if (fromTryOn) setFile(fromTryOn)
   void request<{quickIntake:boolean}>('/api/processing/capabilities').then(flags => { if(alive){quickEnabled.value=flags.quickIntake;quick.value=flags.quickIntake && preferQuick} }).catch(() => {})
@@ -96,6 +99,7 @@ async function submit() {
     const task = await closetApi.create(file.value, mode.value, { restage: restage.value, precut: precut.value, postcut: postcut.value, rotationDegrees: rotationDegrees.value, transparencyPolicy: reuseTransparency.value ? 'AUTO' : 'FORCE',
       generationProvider: generation.provider, generationModel: generation.model, recognitionProvider: recognition.provider, recognitionModel: recognition.model })
     useProcessingStore().trackTask(task, true)
+    track('intake_submit', { count: '1', recognize: mode.value === '本地透明图' ? 'local' : 'online', wanted: false })
     await router.replace({ path: `/garment/${task.garmentId}`, query: { task: task.id } })
   } catch (cause) { error.value = cause instanceof Error ? cause.message : '提交失败，照片仍保留在此处。' }
   finally { busy.value = false }
@@ -120,9 +124,9 @@ async function submit() {
         <div v-if="!file" class="drop-zone">
           <div class="upload-icon"><PictureOutlined /></div><h2>选一张想收进衣柜的照片</h2><p>平铺、悬挂或自拍都可以，让想录入的衣物完整入镜</p>
           <div class="upload-actions">
-            <a-button type="primary" size="large" @click="fileInput?.click()"><PictureOutlined /> 选择照片</a-button>
+            <a-button type="primary" size="large" @click="pickAlbum()"><PictureOutlined /> 选择照片</a-button>
             <a-dropdown v-if="mobileCamera" :trigger="['click']"><a-button size="large"><CameraOutlined /> 拍一张照片</a-button><template #overlay><a-menu @click="chooseCamera"><a-menu-item key="rear">拍衣物（后置摄像头）</a-menu-item><a-menu-item key="selfie">自拍（前置摄像头）</a-menu-item></a-menu></template></a-dropdown>
-            <a-button v-else-if="cameraAvailable" size="large" @click="cameraOpen = true"><CameraOutlined /> 拍一张照片</a-button>
+            <a-button v-else-if="cameraAvailable" size="large" @click="openCamera()"><CameraOutlined /> 拍一张照片</a-button>
           </div><span class="upload-limits">也可将照片拖到这里 · JPEG / PNG · 最大 50 MB</span>
         </div>
         <div v-else class="upload-preview"><img :src="preview" alt="上传原图预览" :style="{ transform: `rotate(${rotationDegrees}deg)` }" /><div class="preview-toolbar"><a-button :disabled="busy" @click="fileInput?.click()"><PictureOutlined /> 更换照片</a-button><a-button :disabled="busy" @click="rotationDegrees = (rotationDegrees + 90) % 360"><RotateRightOutlined /> 旋转</a-button></div><div class="preview-file"><PictureOutlined /><span>{{ file.name }}</span><small>{{ (file.size / 1024 / 1024).toFixed(1) }} MB</small></div></div>

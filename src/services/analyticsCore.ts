@@ -47,6 +47,9 @@ export function externalReferrer(referrer: string, ownOrigin: string): string | 
   } catch { return undefined }
 }
 
+/** intake_submit 的 count 分档：1 / 2-5 / 6+。 */
+export const intakeCountBucket = (count: number): '1' | '2-5' | '6+' => count <= 1 ? '1' : count <= 5 ? '2-5' : '6+'
+
 export const screenSize = (width: number, height: number) => `${Math.round(width)}x${Math.round(height)}`
 
 /** 属性集合必须与定义完全一致，类型与枚举都要对上。 */
