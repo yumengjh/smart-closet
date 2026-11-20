@@ -3,6 +3,7 @@ import { useClosetStore } from './stores/closet'
 import { sessionRedirect } from './domain/session'
 import { closetApi } from './services/api'
 import { installRouteProgress } from './composables/useRouteProgress'
+import { page } from './services/analytics'
 import { legacyCreation, legacyOotd, legacyWorks } from './try/routes'
 
 export const router = createRouter({
@@ -48,6 +49,9 @@ export const router = createRouter({
 })
 
 installRouteProgress(router)
+
+// 行为分析：重定向路由只在最终落到的页面触发一次；失败的导航不报（#279）。
+router.afterEach((to, _from, failure) => { if (!failure) page(to) })
 
 router.beforeEach(async (to) => {
   const closet = useClosetStore()
