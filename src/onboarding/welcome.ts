@@ -1,6 +1,4 @@
-// 首次体验（ToC 改版 P3，#239）的纯逻辑：风格卡的配图、按性别与风格筛常见单品、本机标记。不发请求，便于单测。
-import { presetGroup, type PresetGroup } from '../services/presetGroups.ts'
-
+// 首次体验（ToC 改版 P3，#239）的纯逻辑：风格卡的封面、按性别与风格筛常见单品、本机标记。不发请求，便于单测。
 /** 与“我的风格 → 常穿风格”、常见单品的风格标签同一套词。 */
 export const STYLE_DIRECTIONS = ['日系清新', '甜美', '法式', '都市通勤', '高智极简', '美式休闲', '老钱风', '潮流运动', '新中式', '工装风', '巴恩风', '户外机能'] as const
 export const MAX_STYLES = 3
@@ -10,17 +8,13 @@ type Preset = { id: string; gender: string | null; styles: string[]; displayUrl:
 /** 男生不看女款、女生不看男款；中性和没标的基础款都给。与 PresetPicker 的规则一致。 */
 export const fitsSex = (item: Pick<Preset, 'gender'>, sex: Sex) => !sex || item.gender !== (sex === 'MALE' ? '女款' : '男款')
 
-/** 风格卡配图：这个风格下最多 3 件，尽量上装、下装、鞋各一件。没有就返回空，卡片只显示文字。 */
-export function styleCover<T extends Preset>(items: T[], style: string, sex: Sex, max = 3): T[] {
-  const pool = items.filter(item => item.styles.includes(style) && fitsSex(item, sex))
-  const order: PresetGroup[] = ['上装', '连体', '下装', '外套', '鞋', '配饰', '其他']
-  const picked: T[] = []
-  for (const group of order) {
-    const hit = pool.find(item => presetGroup(item) === group && !picked.includes(item))
-    if (hit) picked.push(hit)
-    if (picked.length >= max) break
-  }
-  return picked
+/** 引导封面（管理员上传，GET /api/onboarding/style-covers）：只列出已设置的风格；没设置的风格卡只显示文字，不用预设库的图拼。 */
+export type StyleCoverItem = { key: string; style: string; imageUrl: string; version?: number | string }
+/** 按风格名对上 STYLE_DIRECTIONS；不认识的风格、空地址都丢掉，同一风格只取第一张。 */
+export function coversByStyle(items: readonly StyleCoverItem[] | null | undefined): Record<string, string> {
+  const known = new Set<string>(STYLE_DIRECTIONS); const out: Record<string, string> = {}
+  for (const item of items || []) if (item && known.has(item.style) && item.imageUrl && !out[item.style]) out[item.style] = item.imageUrl
+  return out
 }
 
 /** 第 3 步列表：合性别；选了风格时，带这些风格的排前面，没标风格的基础款也保留（不排除）。已在衣柜的放最后。 */

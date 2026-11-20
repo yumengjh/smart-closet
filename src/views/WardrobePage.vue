@@ -381,7 +381,7 @@ watch(() => route.query.presets, value => { if (value !== '1') return; presetsOp
       <a-slider class="closet-spread-slider" :value="spread" :min="0" :max="100" :step="1" :tooltip-open="false" aria-label="衣架松紧：左边叠放，右边散开" @change="chooseSpread" />
       <svg class="closet-spread-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="1.5" y="6" width="6" height="12" rx="1.5" /><rect x="9" y="6" width="6" height="12" rx="1.5" /><rect x="16.5" y="6" width="6" height="12" rx="1.5" /></svg>
     </div>
-    <a-tooltip title="从常见单品添加：勾选你有类似的，直接放进衣柜"><a-button class="closet-soft" @click="presetsOpen = true"><AppstoreAddOutlined /><em>常见单品</em></a-button></a-tooltip>
+    <a-tooltip title="从常见单品添加：有类似的点一下，直接放进衣柜"><a-button class="closet-soft" @click="presetsOpen = true"><AppstoreAddOutlined /><em>常见单品</em></a-button></a-tooltip>
     <a-dropdown :trigger="['click']" placement="bottomRight">
       <a-button class="closet-round" type="text" aria-label="更多衣柜操作"><MoreOutlined /><i v-if="reviewCount" class="closet-round-dot" aria-hidden="true"></i></a-button>
       <template #overlay><a-menu>
@@ -451,8 +451,8 @@ watch(() => route.query.presets, value => { if (value !== '1') return; presetsOp
     <a-button v-if="hasFilters" class="outline-button" @click="clearFilters">清除筛选</a-button><a-button v-else type="primary" size="large" @click="router.push('/add')"><PlusOutlined /> 拍一件衣服</a-button><a-button v-if="!hasFilters" type="link" @click="presetsOpen = true"><AppstoreAddOutlined /> 先从常见单品里挑几件</a-button>
   </section>
   <PresetOnboarding v-model:open="onboardingOpen" @done="onboardingDone" />
-  <a-drawer v-model:open="presetsOpen" title="从常见单品添加" :width="narrow ? '100%' : 720" placement="right" destroy-on-close>
-    <p class="muted">勾选你有类似的单品，加入后会标“预设”并参与推荐；之后随时可以在衣物详情里换成自己的照片。</p>
+  <!-- 手机从底部弹出（88%），电脑在右侧（720）；说明、筛选和底部操作栏由 PresetPicker 自己固定，body 不留内边距。 -->
+  <a-drawer v-model:open="presetsOpen" title="从常见单品添加" :placement="narrow ? 'bottom' : 'right'" :width="720" height="88%" :body-style="{ padding: 0, display: 'flex', flexDirection: 'column' }" root-class-name="preset-drawer" destroy-on-close>
     <PresetPicker @imported="presetsImported" />
   </a-drawer>
   <FloatingPager v-if="showFloat" :label="`${query.page} / ${pageCount}`" :hint="narrow ? '' : `共 ${total} 件`" :has-previous="query.page > 1" :has-next="query.page < pageCount" previous-text="上一页" next-text="下一页" :busy="loading" @previous="stepPage(-1)" @next="stepPage(1)" />
@@ -565,4 +565,6 @@ watch(() => route.query.presets, value => { if (value !== '1') return; presetsOp
 .closet-filter-panel > footer .ant-btn-primary { border-radius: 999px; padding-inline: 20px; }
 .batch-explain .ant-popover-inner { border-radius: 18px; }
 @media (max-width: 767px) { .closet-filter-panel { grid-template-columns: 1fr; gap: 6px; width: calc(100vw - 64px); } .closet-filter-panel > label { margin-top: 6px; } }
+/* 常见单品抽屉在手机上从底部弹出，顶部圆角。 */
+.preset-drawer.ant-drawer-bottom .ant-drawer-content-wrapper { overflow: hidden; border-radius: 16px 16px 0 0; }
 </style>
