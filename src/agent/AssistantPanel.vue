@@ -22,6 +22,7 @@ import LatticeLoader from './effects/LatticeLoader.vue'
 import ThoughtLine from './effects/ThoughtLine.vue'
 import AgentWorkspaceResult from './AgentWorkspaceResult.vue'
 import AssistantOrb from './AssistantOrb.vue'
+import { track } from '../services/analytics'
 import BloubAvatar from './BloubAvatar.vue'
 import { applyAvatarMode, validCue, type AvatarCue } from './avatar'
 import TaskNotice from '../components/TaskNotice.vue'
@@ -429,12 +430,14 @@ async function send() {
 }
 function showPage() { if (compact.value) open.value = false }
 function enter(e: KeyboardEvent) { if (e.isComposing) return; e.preventDefault(); void send() }
+/** 行为分析：从胶囊（电脑）或顶栏（手机）点开才记；只记打开，不记关闭。 */
+function toggleFromOrb() { if (!open.value) track('assistant_open', { entry: compact.value ? 'top' : 'dock' }); return toggle() }
 async function toggle() { if (open.value) { close(); return } open.value = true; playSound('pop'); await load(); await nextTick(); await scrollBottom(); if (compact.value) panel.value?.focus({ preventScroll: true }); else textarea.value?.focus() }
 function keyboard(e: KeyboardEvent) {
   if (e.key.toLowerCase() === 'k' && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && !compact.value) {
     if ([...document.querySelectorAll('.ant-modal-wrap')].some(el => el.getClientRects().length)) return
     e.preventDefault()
-    if (!open.value) void toggle()
+    if (!open.value) { track('assistant_open', { entry: 'shortcut' }); void toggle() }
     else if (panel.value?.contains(document.activeElement)) close()
     else textarea.value?.focus()
     return
@@ -481,7 +484,7 @@ onUnmounted(() => { abort?.abort(); endResize(); floating.end(); document.docume
 </script>
 <template>
   <AgentTraceModal v-model:open="debugOpen" :session-id="selected" :request-id="debugRequest" :updates="debugUpdates" />
-  <AssistantOrb ref="launcher" dock :open="open || landing" :suppressed="editorRoute || props.suspended" :mood="mood" :busy="busy" :phase="isOperating?'operating':activityPhase" :tool="activityTool" :cue="avatarCue" @toggle="toggle" />
+  <AssistantOrb ref="launcher" dock :open="open || landing" :suppressed="editorRoute || props.suspended" :mood="mood" :busy="busy" :phase="isOperating?'operating':activityPhase" :tool="activityTool" :cue="avatarCue" @toggle="toggleFromOrb" />
   <Teleport to="body">
     <Transition name="assistant-scrim"><div v-if="open && compact" v-show="!props.suspended" class="assistant-scrim" @click="close" /></Transition>
     <!-- 下方居中窗口打开时页面轻微模糊（导航胶囊保持清晰可点），点模糊处收起。 -->

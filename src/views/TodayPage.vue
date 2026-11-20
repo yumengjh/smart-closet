@@ -109,6 +109,7 @@ async function save(outfit: Savable, quiet = false): Promise<string | null> {
   try {
     const scene = await outfitScene(outfit as unknown as RecommendedOutfit)
     const created = await closetApi.saveOutfit(null, null, outfit.name, scene, outfit.logId)
+    track('outfit_save', { from: 'recommend' })
     savedIds.set(key, created.id); saved.value = [created, ...saved.value]
     window.dispatchEvent(new CustomEvent('closet-outfit-saved'))
     if (!quiet) { playSound('pop'); message.success('已收进我的搭配') }

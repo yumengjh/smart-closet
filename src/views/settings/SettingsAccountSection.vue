@@ -2,7 +2,8 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { App } from 'ant-design-vue'
-import { ArrowRightOutlined } from '@ant-design/icons-vue'
+import { ArrowRightOutlined, QuestionCircleOutlined } from '@ant-design/icons-vue'
+import { analyticsAvailable, analyticsOptOut, setOptOut } from '../../services/analytics'
 import { closetApi, type AccountProfile, type AccountSession } from '../../services/api'
 import { accountTime, passwordProblem, registeredViaLabels } from '../../domain/account'
 import { useClosetStore } from '../../stores/closet'
@@ -14,6 +15,9 @@ const profile = ref<AccountProfile>(); const displayName = ref(''); const profil
 const sessions = ref<AccountSession[]>([]); const sessionsLoading = ref(false); const sessionsError = ref('')
 const deactivateOpen = ref(false); const deactivatePassword = ref(''); const deactivateError = ref(''); const deactivating = ref(false)
 const firstLogin = computed(() => Boolean(closet.user?.mustChangePassword))
+// 帮助改进鱼搭：统计启用时才显示，管理员不统计所以不显示；开 = 参与。
+const showAnalytics = computed(() => analyticsAvailable.value && closet.user?.role !== 'ADMIN')
+const ANALYTICS_HINT = '记录你用了哪些功能、在哪一步离开，会关联到你的账号，不包含衣服、照片和聊天内容。'
 async function loadProfile() {
   profileError.value = ''
   try { profile.value = await closetApi.profile(); displayName.value = profile.value.displayName || '' }
@@ -103,6 +107,12 @@ function openDeactivation() { deactivatePassword.value = ''; deactivateError.val
       </form>
     </section>
     <template v-if="!firstLogin">
+      <section v-if="showAnalytics" class="settings-group">
+        <div class="analytics-row">
+          <span class="analytics-label">帮助改进鱼搭<a-tooltip :title="ANALYTICS_HINT" placement="top"><QuestionCircleOutlined class="analytics-hint" tabindex="0" :aria-label="ANALYTICS_HINT" /></a-tooltip></span>
+          <a-switch :checked="!analyticsOptOut" aria-label="帮助改进鱼搭" @change="checked => setOptOut(!checked)" />
+        </div>
+      </section>
       <section class="settings-group">
         <header class="settings-group-head settings-group-head-row"><div><h3>登录设备</h3><p>查看仍在登录的设备，移除不再使用的会话。</p></div><a-button @click="signOutOtherDevices">退出其他设备</a-button></header>
         <a-alert v-if="sessionsError" type="error" :message="sessionsError" show-icon />
@@ -129,6 +139,10 @@ function openDeactivation() { deactivatePassword.value = ''; deactivateError.val
 </template>
 <style scoped>
 .account-details { margin-top: var(--space-5); }
+.analytics-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.analytics-label { display: inline-flex; align-items: center; gap: 6px; color: var(--ink); }
+.analytics-hint { font-size: 14px; color: var(--muted-subtle); cursor: help; }
+.analytics-hint:hover, .analytics-hint:focus-visible { color: var(--accent-strong); }
 .account-device { padding: var(--space-3) 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
 .account-device:last-child { border-bottom: 0; }
 .account-device p { margin-top: var(--space-2); color: var(--muted-copy); font-size: 12px; line-height: 1.8; }

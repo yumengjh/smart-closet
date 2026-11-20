@@ -45,6 +45,7 @@ import { canvasBridge } from '../agent/bridge'
 import { playSound } from '../services/sound'
 import type { CueName } from '@foleyjs/core'
 import { MIN_VIEW_ZOOM, MAX_VIEW_ZOOM, outfitViewGeometry, outfitWheelZoom } from '../domain/outfit-view'
+import { track } from '../services/analytics'
 
 const props = defineProps<{ board?: import('../domain/outfit-workspace').WorkspaceBoard; saveBoard?: () => Promise<void> }>()
 const actualRoute = useRoute()
@@ -813,6 +814,7 @@ async function saveOutfit() {
       if (isNew.value || !isMissingOutfit(cause)) throw cause
       result = await closetApi.saveOutfit(null, null, name.value.trim(), scene.value, recommendationSource.recommendationLogId); recreated = true
     }
+    track('outfit_save', { from: 'workspace' })
     if (request !== loadRevision) { window.dispatchEvent(new Event('closet-outfit-saved')); return }
     // Edits made while the request was in flight stay on the canvas and in the draft, against the new revision.
     const editedMeanwhile = JSON.stringify({ name: name.value, elements: elements.value }) !== submitted

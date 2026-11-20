@@ -76,7 +76,9 @@ export function validEvent(specs: Readonly<Record<string, AnalyticsEventSpec>>, 
 /** 有上限的事件队列：超过上限丢最早的；满一批或定时由调用方取走。 */
 export class EventQueue {
   private items: WireEvent[] = []
-  constructor(private readonly limit = QUEUE_LIMIT, private readonly batch = BATCH_SIZE) {}
+  private readonly limit: number
+  private readonly batch: number
+  constructor(limit = QUEUE_LIMIT, batch = BATCH_SIZE) { this.limit = limit; this.batch = batch }
   get size() { return this.items.length }
   /** 返回是否已攒满一批。 */
   push(event: WireEvent): boolean {

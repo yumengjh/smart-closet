@@ -1,4 +1,4 @@
-// 行为分析的唯一出口（smart-closet-server#279，设计 docs/design/2026-11-19-行为分析埋点：Umami接入设计.md）。
+// 行为分析的唯一出口（smart-closet-server#279，设计见 server 仓库 docs/design 的“行为分析埋点”）。
 // 浏览器只把事件发给鱼搭自己的 POST /api/t，由服务端校验后转发；这里不加载任何外部脚本。
 // 事件与页面以服务端 events.json 为准（analyticsEvents.generated.ts）；属性只能是枚举或布尔。
 // 一切失败都静默：不重试、不抛错、不弹提示，也不能影响任何其他请求。

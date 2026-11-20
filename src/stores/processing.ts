@@ -7,6 +7,7 @@ import { creationApi } from '../creation/api'
 import type { CreationJob } from '../creation/types'
 import { platformRequest, type RenderJob } from '../services/platform'
 import { playSound } from '../services/sound'
+import { track } from '../services/analytics'
 import { mayPoll } from '../domain/accountSession'
 
 export const useProcessingStore = defineStore('processing', () => {
@@ -51,6 +52,8 @@ export const useProcessingStore = defineStore('processing', () => {
     if (entry.state !== 'processing' && (previous?.state === 'processing' || !previous && submitted)) {
       if (startPrompt.value?.key === entry.key) startPrompt.value = null
       latestNotice.value = entry
+      // 行为分析：“做张图”真正出结果的那一次（取消不算）。
+      if (entry.makeEffect && entry.state !== 'cancelled') track('try_make_result', { effect: entry.makeEffect, result: entry.state === 'ready' ? 'ok' : 'fail' })
       playSound(entry.state === 'ready' ? 'complete' : entry.state === 'attention' ? 'error' : 'off')
     }
     if (index >= 0) entries.value[index] = entry
