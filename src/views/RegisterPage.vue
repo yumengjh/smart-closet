@@ -5,6 +5,7 @@ import { CheckCircleFilled, MinusCircleOutlined } from '@ant-design/icons-vue'
 import { useClosetStore } from '../stores/closet'
 import AuthShell from '../components/AuthShell.vue'
 import { closetApi, usingMocks, type RegistrationMode } from '../services/api'
+import { track } from '../services/analytics'
 import { PASSWORD_MAX_BYTES, PASSWORD_MIN_CHARS, passwordBytes, passwordProblem, usernameProblem } from '../domain/account'
 
 /**
@@ -53,6 +54,7 @@ async function submit() {
   try {
     closet.user = await closetApi.register({ username: username.value, password: password.value, displayName: displayName.value.trim() || undefined, inviteCode: inviteCode.value.trim() || undefined })
     password.value = ''; repeat.value = ''
+    track('auth_register_success', { mode: mode.value === 'OPEN' ? 'open' : 'invite' })
     // The new-user tour waits for this account (issue #87); GuideTour marks it done when shown.
     try { localStorage.setItem(`yuda.guide.v1:${closet.user.username}`, 'pending') } catch { /* private mode: no tour */ }
     await router.replace('/welcome')

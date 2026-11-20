@@ -14,6 +14,7 @@ import { thumbUrl } from '../services/urls'
 import { useClosetStore } from '../stores/closet'
 import { playSound } from '../services/sound'
 import { celebrate } from '../services/celebrate'
+import { track } from '../services/analytics'
 import OutfitCollage from '../today/OutfitCollage.vue'
 import { MAX_STYLES, STYLE_DIRECTIONS, markOnboarded, rankPresets, styleCover, toggleStyle, type Sex } from '../onboarding/welcome'
 
@@ -36,7 +37,7 @@ async function saveSex(value: Sex) {
   try { const current = await platformRequest<Profile>('/api/me/wearer-profile'); await platformRequest('/api/me/wearer-profile', 'PUT', { ...current, sex: value }) }
   catch { message.warning('性别暂时没保存上，可以稍后在“我的 → 我的形象”里改。') }
 }
-function chooseSex(value: Sex) { sex.value = value; playSound('tap'); void saveSex(value); step.value = 1 }
+function chooseSex(value: Sex) { track('welcome_step', { step: 'sex', action: value ? 'done' : 'skip' }); sex.value = value; playSound('tap'); void saveSex(value); step.value = 1 }
 
 const covers = computed(() => Object.fromEntries(STYLE_DIRECTIONS.map(s => [s, styleCover(presets.value, s, sex.value || '')])))
 function pickStyle(s: string) {
@@ -45,6 +46,7 @@ function pickStyle(s: string) {
   styles.value = next; playSound('tick')
 }
 async function saveStyles() {
+  track('welcome_step', { step: 'feel', action: styles.value.length ? 'done' : 'skip' })
   if (styles.value.length) recommendApi.updateProfile({ preferredStyles: styles.value }).catch(() => message.warning('风格暂时没保存上，可以稍后在“我的 → 我的风格”里改。'))
   step.value = 2
 }
@@ -58,11 +60,12 @@ function togglePreset(item: PresetItem) {
   picked.value = next; playSound('tick')
 }
 async function importPicked() {
-  if (!picked.value.size) { await reveal(); return }
+  if (!picked.value.size) { track('welcome_step', { step: 'basics', action: 'skip' }); await reveal(); return }
   importing.value = true
   try { const result = await presetApi.importInto([...picked.value].slice(0, 100)); imported.value = result.garmentIds.length; playSound('success') }
   catch (e) { message.error(e instanceof Error ? e.message : '没有收进衣柜，可以再试一次。'); importing.value = false; return }
   importing.value = false
+  track('welcome_step', { step: 'basics', action: 'done' })
   await reveal()
 }
 async function reveal() {
@@ -72,7 +75,14 @@ async function reveal() {
   finally { revealing.value = false }
   if (outfit.value) void celebrate('milestone')
 }
-function finish(to = '/today') { if (closet.user) markOnboarded(closet.user.username); void router.replace(to) }
+const STEP_NAMES = ['sex', 'feel', 'basics', 'first'] as const
+/** 离开首次体验：当前这一步没走完就记“跳过”（第 4 步走到这里算“完成”），再记走完。 */
+function finish(to = '/today') {
+  track('welcome_step', { step: STEP_NAMES[step.value], action: step.value === 3 ? 'done' : 'skip' })
+  track('welcome_finish')
+  if (closet.user) markOnboarded(closet.user.username)
+  void router.replace(to)
+}
 function back() { if (step.value > 0 && step.value < 3) step.value-- }
 </script>
 
