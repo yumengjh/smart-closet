@@ -17,6 +17,7 @@
     "build:standalone": "vue-tsc -b && CLOSET_STANDALONE_BUILD=true VITE_USE_MOCKS=false vite build",
     "deploy:local": "bash scripts/deploy-local.sh",
     "preview": "vite preview --host 0.0.0.0",
+    "sync:analytics": "node scripts/sync-analytics.mjs",
     "typecheck": "vue-tsc -b",
     "test": "node --experimental-strip-types --test tests/*.test.ts"
   },
