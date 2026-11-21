@@ -10,7 +10,7 @@ const gradientId = computed(() => `pose-bg-${(props.pose.id || props.pose.name).
 </script>
 
 <template>
-  <svg class="pose-figure" :class="{ animate }" :viewBox="`0 0 ${FRAME.width} ${FRAME.height}`" role="img" :aria-label="`动作示意：${pose.name}`">
+  <svg class="pose-figure" :class="{ animate }" :viewBox="`0 0 ${FRAME.width} ${FRAME.height}`" role="img" :aria-label="`姿势示意：${pose.name}`">
     <defs>
       <linearGradient :id="gradientId" x1="0" y1="0" x2="1" y2="1">
         <stop offset="0" :stop-color="colors[0]" />

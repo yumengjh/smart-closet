@@ -55,7 +55,7 @@ async function saveFeedback() {
         <div class="viewer-meta">
           <a-tag v-if="job.summary?.kind === 'ADJUST'" color="purple">身材调整</a-tag>
           <a-tag v-if="job.summary?.model">{{ job.summary.model }}</a-tag>
-          <a-tag v-if="job.summary?.pose">动作 · {{ job.summary.pose }}</a-tag>
+          <a-tag v-if="job.summary?.pose">姿势 · {{ job.summary.pose }}</a-tag>
           <a-tag v-if="job.summary?.retryOf" color="processing">重新生成</a-tag>
         </div>
         <RenderSource :job="job" :thumbs="thumbs" />

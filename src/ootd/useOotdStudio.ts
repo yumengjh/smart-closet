@@ -111,14 +111,14 @@ export function useOotdStudio(shared: { outfitId: Ref<string>; baselineId: Ref<s
   // Instead of a spinner on this page, the outfit is handed off with a short ritual and tracked in the processing centre.
   function handOff(job: RenderJob) {
     const cards = chosenCards()
-    sendOff.launch({ title: [`${cards.length} 件衣物`, preparation.value?.pose?.name || '自动动作'].join(' · '), cards, person: person.value?.mediaUrl || undefined, pose: poseCard() })
+    sendOff.launch({ title: [`${cards.length} 件衣物`, preparation.value?.pose?.name || '自动姿势'].join(' · '), cards, person: person.value?.mediaUrl || undefined, pose: poseCard() })
     processing.trackRender(job, true)
   }
   // Plays the whole hand-off (cards, dressing, fly-in, finished notice) without calling any model.
   function rehearse() {
     const chosen = chosenCards(), card = poseCard(true)
     const cards = chosen.length ? chosen : ['上衣', '下装', '鞋子'].map(label => ({ label }))
-    sendOff.launch({ title: `模拟演示 · ${cards.length} 件衣物 · ${card?.name || '自动动作'}`, cards, person: person.value?.mediaUrl || undefined, pose: card })
+    sendOff.launch({ title: `模拟演示 · ${cards.length} 件衣物 · ${card?.name || '自动姿势'}`, cards, person: person.value?.mediaUrl || undefined, pose: card })
     processing.simulateRender(person.value?.mediaUrl || undefined)
   }
   async function accepted(job: RenderJob) { handOff(job); confirmOpen.value = false; preparation.value = null; error.value = ''; void billing.refresh(); hooks.accepted?.(job) }

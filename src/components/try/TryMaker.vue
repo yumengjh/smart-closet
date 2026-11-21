@@ -202,8 +202,9 @@ async function generate() {
   busy.value = true; error.value = ''
   try {
     const personal = template.value.personRequired
-    // 需要人物时按当前选择再查一次（不等防抖）；没通过就停在清单上，原因已写在那里。
-    if (personal && !reviewPassed(await creationCheck.run().catch(() => null))) { busy.value = false; if (fitBlocked.value) partList.value?.focusFirst(); return }
+    // 需要人物时按当前选择再查一次（不等防抖）；没通过就停在清单上，原因已写在那里。查不到时交给准备接口再查。
+    const checked = personal ? await creationCheck.run().catch(() => undefined) : undefined
+    if (checked && !reviewPassed(checked)) { busy.value = false; partList.value?.focusFirst(); return }
     const garments = personal ? selected.value.filter(item => wornIds.value.includes(item.id)) : selected.value
     const source = personal && skipped.value.length ? undefined : sourceOutfit.value || undefined
     const preparation = await creationApi.prepare(creationInput(template.value, garments, person.value, light.value, pose.value, note.value, source, parentJobId.value, personal ? creationRoles.value : {}))
