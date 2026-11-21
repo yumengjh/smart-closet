@@ -61,7 +61,8 @@ defineExpose({ focusFirst })
         <span class="pl-part">{{ row.label }}</span>
         <div class="pl-items">
           <template v-if="row.items.length">
-            <div v-for="item in row.items" :key="item.garmentId" class="pl-item">
+            <template v-for="item in row.items" :key="item.garmentId">
+            <div :data-fit="item.key" class="pl-item">
               <a-dropdown :trigger="['click']" :disabled="disabled">
                 <a-button type="text" class="pl-garment" :aria-label="`${item.label}，点一下可这次不穿`">
                   <img v-if="item.thumb" :src="item.thumb" alt="" loading="lazy" /><span v-else class="pl-thumb-empty" />
@@ -78,6 +79,11 @@ defineExpose({ focusFirst })
               <a-select v-if="item.accessory" size="small" class="pl-position" :bordered="false" :disabled="disabled" :value="positionValue(item, wearRoles)" :options="positionOptions(item)" :aria-label="`${item.label}戴在哪里`" @update:value="(value: string) => apply(setPosition(state(), item.garmentId, value))" />
               <span v-else-if="item.note" class="pl-note">{{ item.note }}</span>
             </div>
+            <div v-for="issue in item.issues" :key="issue.message" class="pl-item-issue">
+              <span class="pl-msg warn">{{ issue.message }}</span>
+              <a-button v-if="issue.fix && !disabled" type="link" size="small" class="pl-fix" @click="emit('fix', issue.fix)">去换 <RightOutlined /></a-button>
+            </div>
+            </template>
           </template>
           <span v-else class="pl-msg" :class="{ warn: row.blocking }">{{ row.message }}</span>
         </div>
@@ -128,6 +134,7 @@ defineExpose({ focusFirst })
 .pl-garment img, .pl-thumb-empty { flex: none; width: 36px; height: 36px; border-radius: 6px; background: var(--surface-alt); object-fit: contain; }
 .pl-thumb-empty { display: inline-block; }
 .pl-garment b { overflow: hidden; font-size: 14px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.pl-item-issue { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0 8px; padding-left: 46px; }
 .pl-note { flex: none; margin-left: auto; font-size: 12px; color: var(--muted); white-space: nowrap; }
 .pl-position { flex: none; margin-left: auto; min-width: 104px; }
 .pl-position :deep(.ant-select-selector) { padding-inline: 4px !important; }

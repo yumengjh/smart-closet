@@ -58,7 +58,8 @@ export type PartItem = { garmentId: string; label: string; layer: Layer; positio
 export type Part = { part: PartKey; label: string; state: 'OK' | 'MISSING' | 'NONE'; items: PartItem[] }
 export type Ask = { code: 'CHOOSE_INNER' | 'CHOOSE_ONE' | 'CHOOSE_PART'; garmentIds: string[]; message: string }
 export type ReviewFix = 'ADD_TOP' | 'ADD_BOTTOM' | 'ADD_MAIN' | 'REPLACE'
-export type ReviewBlocker = { code: string; message: string; action: string; fix?: ReviewFix | null }
+/** garmentId：与某件衣服有关的拦截（REPLACE、ROLE_CONFLICT、ACCESSORY_POSITION_CONFLICT、GARMENT_INACTIVE、REFERENCE_MISSING）才有。 */
+export type ReviewBlocker = { code: string; message: string; action: string; fix?: ReviewFix | null; garmentId?: string | null }
 export type Review = {
   items: Worn[]; slots: { role: string; label: string; state: string; items: Worn[] }[]; blockers: ReviewBlocker[]; warnings: { code: string; message: string }[]
   fingerprint: string; ruleVersion: string; outfitId?: string | null; revision?: number | null

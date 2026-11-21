@@ -42,6 +42,22 @@ test('nothing to wear: the long blocker lands on the first missing row; REPLACE 
   assert.deepEqual(view.issues, [{ key: 'issue:0', message: '白衬衫已移入回收站', fix: 'REPLACE' }])
   assert.equal(view.first, 'issue:0'); assert.equal(barReason(review, '先设置谁来穿'), '白衬衫已移入回收站')
 })
+test('a blocker naming a garment sits on that garment; unknown or missing ids stay on top', () => {
+  const review = base({ parts: ok, items: good.items, blockers: [
+    { code: 'REFERENCE_MISSING', message: '牛仔夹克没有可用的图片', action: '', fix: 'REPLACE', garmentId: 'jacket' },
+    { code: 'ACCESSORY_POSITION_CONFLICT', message: '项链戴不到手腕上', action: '', fix: null, garmentId: 'necklace' },
+    { code: 'GARMENT_INACTIVE', message: '有一件已移入回收站', action: '', fix: 'REPLACE', garmentId: 'gone' },
+    { code: 'REVISION_CHANGED', message: '这套刚改过，再看一下', action: '', garmentId: null },
+  ] })
+  const view = fitView(review, garments, ['shirt', 'pants', 'jacket', 'necklace'])
+  const jacket = view.rows.find(row => row.part === 'OUTER')!.items[0], necklace = view.rows.find(row => row.part === 'EXTRA')!.items[0]
+  assert.deepEqual(jacket.issues, [{ key: 'item:jacket', message: '牛仔夹克没有可用的图片', fix: 'REPLACE' }])
+  assert.deepEqual(necklace.issues, [{ key: 'item:necklace', message: '项链戴不到手腕上', fix: null }])
+  assert.deepEqual(view.issues.map(issue => [issue.message, issue.fix]), [['有一件已移入回收站', 'REPLACE'], ['这套刚改过，再看一下', null]])
+  assert.equal(view.first, 'item:jacket'); assert.equal(view.rows[0].items[0].issues.length, 0)
+  // 那件这次不穿时，拦截回到清单顶部。
+  assert.deepEqual(fitView(review, garments, ['shirt', 'pants', 'necklace']).issues[0], { key: 'issue:0', message: '牛仔夹克没有可用的图片', fix: 'REPLACE' })
+})
 test('bar reason: first blocker, then how many to choose, then the page reason', () => {
   const asks = [{ code: 'CHOOSE_INNER' as const, garmentIds: ['shirt', 'tee'], message: '两件上衣，哪件穿里面？' }, { code: 'CHOOSE_PART' as const, garmentIds: ['thing'], message: '这件穿在哪？' }]
   assert.equal(barReason(base({ asks: asks.slice(0, 1) }), 'x'), '有一件要你选')

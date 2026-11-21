@@ -8,7 +8,8 @@ export type FitGarment = { id: string; label: string; thumb?: string | null }
 export type WearState = { selected: string[]; wearRoles: Record<string, string> }
 /** 去加 ›：缺主体（ADD_*）、要换掉的衣服（REPLACE）；鞋那一行“不穿鞋”也能去加一双。 */
 export type FitFix = ReviewFix | 'ADD_SHOES'
-export type FitItem = PartItem & { thumb: string | null; accessory: boolean }
+/** issues：标在这件衣服上的拦截（blocker 带 garmentId 时），定位键是 item:<garmentId>。 */
+export type FitItem = PartItem & { key: string; thumb: string | null; accessory: boolean; issues: FitIssue[] }
 export type FitRow = { key: string; part: PartKey | string; label: string; state: 'OK' | 'MISSING' | 'NONE'; items: FitItem[]; message: string; fix: FitFix | null; blocking: boolean }
 export type FitIssue = { key: string; message: string; fix: FitFix | null }
 export type FitAsk = { key: string; code: Ask['code']; message: string; garmentIds: string[]; garments: FitGarment[]; options: { value: string; label: string }[] }
@@ -64,7 +65,7 @@ export function fitView(review: Review | null | undefined, garments: FitGarment[
   const status = fitStatus(review, extra)
   if (!review) return { legacy: false, rows: [], issues: [], asks: [], skipped, notes: [], status, first: null }
   const accessory = new Set(review.items.filter(item => item.role === 'ACCESSORY').map(item => item.garmentId))
-  const item = (worn: PartItem): FitItem => ({ ...worn, thumb: thumbOf(worn.garmentId, garments), accessory: accessory.has(worn.garmentId) })
+  const item = (worn: PartItem): FitItem => ({ ...worn, key: `item:${worn.garmentId}`, thumb: thumbOf(worn.garmentId, garments), accessory: accessory.has(worn.garmentId), issues: [] })
   if (legacyReview(review)) {
     // 旧样式：按 v1 的 slots 列出有衣服的位置，拦截逐条列出，提示放在末尾。
     const rows: FitRow[] = review.slots.filter(slot => slot.items.some(worn => chosen.has(worn.garmentId))).map(slot => ({
@@ -82,7 +83,8 @@ export function fitView(review: Review | null | undefined, garments: FitGarment[
     fix: part.state === 'MISSING' ? MISSING_FIX[part.part] || 'ADD_MAIN' : part.state === 'NONE' ? 'ADD_SHOES' : null,
     blocking: part.state === 'MISSING',
   }))
-  // 缺主体的拦截放到对应那一行（还差上衣 → 上身，还差下装 → 下身，都没有 → 第一行缺的）；其余拦截单独一行。
+  // 缺主体的拦截放到对应那一行（还差上衣 → 上身，还差下装 → 下身，都没有 → 第一行缺的）；
+  // 带 garmentId 的标到那件衣服上（如“去换 ›”）；那件不在清单里或没有 garmentId 时才放到清单顶部。
   const issues: FitIssue[] = [], targets: string[] = []
   review.blockers.forEach((blocker, index) => {
     const fix = blocker.fix || null
@@ -90,6 +92,8 @@ export function fitView(review: Review | null | undefined, garments: FitGarment[
     const wanted = fix && FIX_PART[fix]
     const row = structural ? rows.find(row => row.state === 'MISSING' && (!wanted || row.part === wanted)) || rows.find(row => row.state === 'MISSING') : undefined
     if (row) { row.message = blocker.message; if (fix) row.fix = fix; targets.push(row.key); return }
+    const owner = blocker.garmentId ? rows.flatMap(row => row.items).find(worn => worn.garmentId === blocker.garmentId) : undefined
+    if (owner) { owner.issues.push({ key: owner.key, message: blocker.message, fix: fix === 'REPLACE' ? fix : null }); targets.push(owner.key); return }
     const issue = { key: `issue:${index}`, message: blocker.message, fix: fix === 'REPLACE' ? fix : null }
     issues.push(issue); targets.push(issue.key)
   })
