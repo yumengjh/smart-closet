@@ -1,21 +1,14 @@
 <script setup lang="ts">
-// 上身图“更多”（原上身图页“穿法与更多”，server#271 放进“谁来穿”这一步）：姿势、这次穿哪些、多层、穿法细节、
-// 补充说明、生成模型，以及只检查、模拟一次、管理我的形象。规则不变。
-import { RightOutlined } from '@ant-design/icons-vue'
+// 上身图“更多”（server 设计 2026-11-21 4.3）：穿法细节（塞法、袖子、门襟）、补充说明、生成模型（多于一个时）、
+// 模拟一次、管理我的形象。姿势单独一行（PoseRow），这次穿哪些与哪件穿里面改在部位清单（PartList）里，不再有多层开关与“只检查”。
 import { DETAIL_OPTIONS, type OotdStudio } from './useOotdStudio'
 
 defineProps<{ studio: OotdStudio }>()
-const emit = defineEmits<{ pose: [] }>()
 </script>
 
 <template>
   <div class="ootd-more">
-    <button type="button" class="ootd-more-row" @click="emit('pose')"><span>姿势</span><b>{{ studio.poseName }}</b><RightOutlined /></button>
     <template v-if="studio.current">
-      <p class="ootd-more-label">这次穿哪些</p>
-      <a-checkbox-group v-model:value="studio.selected" class="ootd-more-selections"><a-checkbox v-for="g in studio.garments" :key="g.garmentId" :value="g.garmentId">{{ g.garmentLabel }}</a-checkbox></a-checkbox-group>
-      <a-checkbox v-model:checked="studio.multiLayer">多层穿法（打底 + 主体 + 外搭）</a-checkbox>
-      <div v-if="studio.multiLayer" class="ootd-more-roles"><div v-for="g in studio.garments.filter(g => studio.selected.includes(g.garmentId))" :key="g.garmentId"><span>{{ g.garmentLabel }}</span><a-select v-model:value="studio.wearRoles[g.garmentId]" allow-clear :options="[{ value: 'INNER', label: '打底内层' }]" placeholder="按品类判断" /></div></div>
       <template v-if="studio.detailGarments.length">
         <p class="ootd-more-label">穿法细节 <small>只影响这张图，不改搭配</small></p>
         <div v-for="g in studio.detailGarments" :key="g.garmentId" class="ootd-more-detail">
@@ -27,8 +20,7 @@ const emit = defineEmits<{ pose: [] }>()
     </template>
     <template v-if="studio.available.length > 1"><p class="ootd-more-label">生成模型</p><a-select v-model:value="studio.model" class="ootd-more-full" aria-label="生成模型" :options="studio.available.map(c => ({ value: c.provider + ':' + c.model, label: c.model }))" /></template>
     <div class="ootd-more-actions">
-      <a-button size="small" :disabled="!studio.current || studio.busy" @click="studio.moreAction('check')">只检查这套能不能生成</a-button>
-      <a-button size="small" @click="studio.moreAction('rehearse')">模拟一次（不花额度）</a-button>
+      <a-button size="small" @click="studio.moreAction('rehearse')">模拟一次（不用次数）</a-button>
       <a-button size="small" type="text" @click="studio.moreAction('manage')">管理我的形象</a-button>
     </div>
   </div>
@@ -36,17 +28,8 @@ const emit = defineEmits<{ pose: [] }>()
 
 <style scoped>
 .ootd-more { display: grid; gap: 10px; }
-.ootd-more-row { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 48px; padding: 0 2px; border: 0; border-bottom: 1px solid var(--line); background: none; color: var(--ink); cursor: pointer; font: inherit; text-align: left; }
-.ootd-more-row:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
-.ootd-more-row > span { flex: none; font-size: 14px; }
-.ootd-more-row > b { flex: 1; min-width: 0; overflow: hidden; font-size: 14px; font-weight: 400; color: var(--muted); text-align: right; text-overflow: ellipsis; white-space: nowrap; }
-.ootd-more-row > .anticon { flex: none; font-size: 12px; color: var(--muted-subtle); }
 .ootd-more-label { margin: 6px 0 0; font-size: 13px; font-weight: 600; }
 .ootd-more-label small { margin-left: 6px; font-weight: 400; color: var(--muted); }
-.ootd-more-selections { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; width: 100%; }
-.ootd-more-selections :deep(.ant-checkbox-wrapper) { margin: 0; padding: 8px 12px; border-radius: 10px; background: var(--surface-alt); }
-.ootd-more-roles > div { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); }
-.ootd-more-roles :deep(.ant-select) { min-width: 180px; }
 .ootd-more-detail { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
 .ootd-more-detail > span { flex: 1 1 100%; font-size: 13px; }
 .ootd-more-select { min-width: 132px; }

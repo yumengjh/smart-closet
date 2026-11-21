@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { answerAsk, answered, barReason, firstTarget, fitStatus, fitView, legacyReview, positionOptions, positionValue, pruneWear, resetAnswer, reviewPassed, setPosition, skipGarment, wearAgain, type FitGarment } from '../src/ootd/part-list.ts'
+import { answerAsk, answered, askValue, barReason, firstTarget, fitStatus, fitView, legacyReview, positionOptions, positionValue, pruneWear, resetAnswer, reviewPassed, setPosition, skipGarment, wearAgain, type FitGarment } from '../src/ootd/part-list.ts'
 import type { Part, Review } from '../src/services/platform.ts'
 
 const worn = (garmentId: string, role: string, position = role) => ({ garmentId, revision: 1, label: garmentId, role, referenceAssetId: 'a-' + garmentId, position, layer: 'MAIN' as const })
@@ -83,6 +83,18 @@ test('answering asks rewrites the wear state exactly as 3.1 says', () => {
   assert.equal(answerAsk(state, { code: 'CHOOSE_ONE', garmentIds: ['jacket', 'coat'] }, 'nope'), state)
   assert.equal(answerAsk(state, { code: 'CHOOSE_PART', garmentIds: ['thing'] }, 'HAIR'), state)
   assert.equal('multiLayer' in answerAsk(state, { code: 'CHOOSE_INNER', garmentIds: ['shirt', 'tee'] }, 'shirt'), false)
+})
+test('the answer shows at once and can be changed before the new result arrives', () => {
+  const order = ['shirt', 'jacket', 'coat', 'thing']
+  const one = { code: 'CHOOSE_ONE' as const, garmentIds: ['jacket', 'coat'] }, part = { code: 'CHOOSE_PART' as const, garmentIds: ['thing'] }
+  let state = { selected: order, wearRoles: {} as Record<string, string> }
+  assert.equal(askValue(one, state), ''); assert.equal(askValue(part, state), '')
+  state = answerAsk(state, one, 'jacket', order); assert.equal(askValue(one, state), 'jacket')
+  state = answerAsk(state, one, 'coat', order); assert.deepEqual(state.selected, ['shirt', 'coat', 'thing']); assert.equal(askValue(one, state), 'coat')
+  state = answerAsk(state, part, 'SKIP', order); assert.equal(askValue(part, state), 'SKIP')
+  state = answerAsk(state, part, 'BOTTOM', order); assert.deepEqual(state.selected, ['shirt', 'coat', 'thing']); assert.equal(askValue(part, state), 'BOTTOM')
+  assert.equal(askValue({ code: 'CHOOSE_INNER', garmentIds: ['a', 'b'] }, { selected: ['a', 'b'], wearRoles: { b: 'INNER' } }), 'b')
+  assert.deepEqual(wearAgain({ selected: ['a'], wearRoles: {} }, 'new', []).selected, ['a', 'new'])
 })
 test('skip and wear again keep outfit order; answered roles can be reset; stale roles are pruned', () => {
   const order = ['shirt', 'pants', 'jacket']

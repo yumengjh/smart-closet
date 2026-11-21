@@ -117,15 +117,16 @@ export function skipGarment(state: WearState, id: string): WearState {
 export function wearAgain(state: WearState, id: string, order: string[]): WearState {
   if (state.selected.includes(id)) return state
   const chosen = new Set([...state.selected, id])
-  return { selected: [...order.filter(item => chosen.has(item)), ...state.selected.filter(item => !order.includes(item))], wearRoles: state.wearRoles }
+  return { selected: [...order.filter(item => chosen.has(item)), ...[...state.selected, id].filter(item => !order.includes(item))], wearRoles: state.wearRoles }
 }
 /**
  * 当场回答一个问题：
  * CHOOSE_INNER → wearRoles[选中]='INNER'（同一问题里其他件不再是 INNER）；
  * CHOOSE_ONE → 没选的这次不穿；
  * CHOOSE_PART → wearRoles[id]='PART:X'，选“这次不穿”就去掉这件。
+ * 结果回来前可以改答案：被去掉的那件按 order（搭配里的顺序）放回。
  */
-export function answerAsk(state: WearState, ask: Pick<Ask, 'code' | 'garmentIds'>, value: string): WearState {
+export function answerAsk(state: WearState, ask: Pick<Ask, 'code' | 'garmentIds'>, value: string, order: string[] = []): WearState {
   if (ask.code === 'CHOOSE_INNER') {
     if (!ask.garmentIds.includes(value)) return state
     let roles = state.wearRoles
@@ -137,13 +138,23 @@ export function answerAsk(state: WearState, ask: Pick<Ask, 'code' | 'garmentIds'
     const drop = ask.garmentIds.filter(id => id !== value)
     let roles = state.wearRoles
     for (const id of drop) roles = withRole(roles, id, null)
-    return { selected: state.selected.filter(id => !drop.includes(id)), wearRoles: roles }
+    return { selected: wearAgain(state, value, order).selected.filter(id => !drop.includes(id)), wearRoles: roles }
   }
   const id = ask.garmentIds[0]
   if (!id) return state
   if (value === SKIP) return skipGarment(state, id)
   if (!PART_OPTIONS.some(option => option.value === value)) return state
-  return { selected: state.selected, wearRoles: withRole(state.wearRoles, id, `PART:${value}`) }
+  return { selected: wearAgain(state, id, order).selected, wearRoles: withRole(state.wearRoles, id, `PART:${value}`) }
+}
+/** 问题当前的答案（结果回来前先显示用户刚点的）：没答时为空。 */
+export function askValue(ask: Pick<Ask, 'code' | 'garmentIds'>, state: WearState): string {
+  if (ask.code === 'CHOOSE_INNER') return ask.garmentIds.find(id => state.wearRoles[id] === 'INNER') || ''
+  if (ask.code === 'CHOOSE_ONE') { const kept = ask.garmentIds.filter(id => state.selected.includes(id)); return kept.length === 1 ? kept[0] : '' }
+  const id = ask.garmentIds[0]
+  if (!id) return ''
+  if (!state.selected.includes(id)) return SKIP
+  const role = state.wearRoles[id]
+  return role?.startsWith('PART:') ? role.slice('PART:'.length) : ''
 }
 /** 配饰行的位置下拉：用户指定的优先，否则是服务端推断出的位置；都没有时是“自然佩戴”（空值，不设）。 */
 export function positionValue(item: Pick<PartItem, 'garmentId' | 'position'>, wearRoles: Record<string, string>) {
