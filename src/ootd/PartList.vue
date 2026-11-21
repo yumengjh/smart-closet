@@ -76,7 +76,7 @@ defineExpose({ focusFirst })
                   </a-menu>
                 </template>
               </a-dropdown>
-              <a-select v-if="item.accessory" size="small" class="pl-position" :bordered="false" :disabled="disabled" :value="positionValue(item, wearRoles)" :options="positionOptions(item)" :aria-label="`${item.label}戴在哪里`" @update:value="(value: string) => apply(setPosition(state(), item.garmentId, value))" />
+              <a-select v-if="item.accessory && !wearRoles[item.garmentId]?.startsWith('PART:')" size="small" class="pl-position" :bordered="false" :disabled="disabled" :value="positionValue(item, wearRoles)" :options="positionOptions(item)" :aria-label="`${item.label}戴在哪里`" @update:value="(value: string) => apply(setPosition(state(), item.garmentId, value))" />
               <span v-else-if="item.note" class="pl-note">{{ item.note }}</span>
             </div>
             <div v-for="issue in item.issues" :key="issue.message" class="pl-item-issue">
