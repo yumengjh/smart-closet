@@ -1,6 +1,7 @@
 // Local-only UI fixture. Every API request is answered here; no provider or real account is used.
 import { createServer } from 'vite'
 import { fileURLToPath } from 'node:url'
+import { mockOutfitReview } from './fixtures/outfit-review-v2.mjs'
 process.chdir(fileURLToPath(new URL('../', import.meta.url)))
 process.env.VITE_USE_MOCKS = 'false'
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jZ1kAAAAASUVORK5CYII=', 'base64')
@@ -37,6 +38,7 @@ const fixture = { name: 'creation-local-only', configureServer(server) { server.
   if (path === '/api/closet/garments') return reply({ items: garments, total: garments.length, page: 1, size: 24 })
   if (path.startsWith('/api/garments/')) return reply(garments.find(item => item.id === path.split('/').at(-1)))
   if (path === '/api/me/person-baselines') return reply([{ id: 'person', revision: 1, status: 'CONFIRMED', name: '测试形象', currentDefault: true, mediaUrl: svgUrl('#bdc3c9'), profile: {}, createdAt: Date.now() }])
+  if (path === '/api/outfit-reviews') return reply(mockOutfitReview(body, id => { const g = garments.find(item => item.id === id); return g && { label: g.name, role: /外套|夹克|开衫/.test(g.category[0]) ? 'OUTER' : /裤|半身裙/.test(g.category[0]) ? 'BOTTOM' : /衬衫|T恤|上衣/.test(g.category[0]) ? 'TOP' : 'OTHER' } }))
   if (path === '/api/ootd/poses') return reply({ presets: [], mine: [], extractionsToday: 0, dailyExtractions: 20 })
   if (path === '/api/quota') return reply({ image: { used: 0, limit: 20 }, agent: { used: 0, limit: 20 }, resetAtMs: Date.now() + 3600000 })
   if (path === '/api/billing/wallet') return reply({ enabled: false, balance: 0, reserved: 0, entitlements: [], recent: [] })
