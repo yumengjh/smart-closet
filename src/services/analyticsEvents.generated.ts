@@ -1,7 +1,7 @@
 // 自动生成，勿手改：npm run sync:analytics（来源 smart-closet-server 的 analytics/events.json）。
-// version: 1
+// version: 2
 
-export const analyticsVersion = 1
+export const analyticsVersion = 2
 
 /** 事件名 → 属性。属性只能是枚举或布尔。 */
 export type AnalyticsEventProps = {
@@ -24,8 +24,9 @@ export type AnalyticsEventProps = {
   outfit_save: { from: "recommend" | "workspace" | "assistant" }
   try_make_start: { effect: "outfit" | "creative" }
   try_make_result: { effect: "outfit" | "creative"; result: "ok" | "fail" }
-  try_live_start: Record<string, never>
+  try_live_start: { source: "wardrobe" | "outfit" | "look" | "upload" }
   try_live_result: { result: "ready" | "fail"; stage: "none" | "camera" | "network" | "pose" | "quota" }
+  try_live_follow: { result: "matched" }
   album_share: { kind: "download" | "share" }
   assistant_open: { entry: "dock" | "top" | "shortcut" }
   assistant_send: { image: boolean }
@@ -413,7 +414,16 @@ export const analyticsEventSpecs: Readonly<Record<AnalyticsEventName, AnalyticsE
   "try_live_start": {
     "phase": 2,
     "billing": false,
-    "props": {}
+    "props": {
+      "source": {
+        "enum": [
+          "wardrobe",
+          "outfit",
+          "look",
+          "upload"
+        ]
+      }
+    }
   },
   "try_live_result": {
     "phase": 2,
@@ -432,6 +442,17 @@ export const analyticsEventSpecs: Readonly<Record<AnalyticsEventName, AnalyticsE
           "network",
           "pose",
           "quota"
+        ]
+      }
+    }
+  },
+  "try_live_follow": {
+    "phase": 2,
+    "billing": false,
+    "props": {
+      "result": {
+        "enum": [
+          "matched"
         ]
       }
     }
