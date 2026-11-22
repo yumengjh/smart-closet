@@ -25,8 +25,8 @@ export type AnalyticsEventProps = {
   try_make_start: { effect: "outfit" | "creative" }
   try_make_result: { effect: "outfit" | "creative"; result: "ok" | "fail" }
   try_live_start: { source: "wardrobe" | "outfit" | "look" | "upload" }
-  try_live_result: { result: "ready" | "fail"; stage: "none" | "camera" | "network" | "pose" | "quota" }
   try_live_follow: { result: "matched" }
+  try_live_result: { result: "ready" | "fail"; stage: "none" | "camera" | "network" | "pose" | "quota" }
   album_share: { kind: "download" | "share" }
   assistant_open: { entry: "dock" | "top" | "shortcut" }
   assistant_send: { image: boolean }
@@ -425,6 +425,17 @@ export const analyticsEventSpecs: Readonly<Record<AnalyticsEventName, AnalyticsE
       }
     }
   },
+  "try_live_follow": {
+    "phase": 2,
+    "billing": false,
+    "props": {
+      "result": {
+        "enum": [
+          "matched"
+        ]
+      }
+    }
+  },
   "try_live_result": {
     "phase": 2,
     "billing": false,
@@ -442,17 +453,6 @@ export const analyticsEventSpecs: Readonly<Record<AnalyticsEventName, AnalyticsE
           "network",
           "pose",
           "quota"
-        ]
-      }
-    }
-  },
-  "try_live_follow": {
-    "phase": 2,
-    "billing": false,
-    "props": {
-      "result": {
-        "enum": [
-          "matched"
         ]
       }
     }
