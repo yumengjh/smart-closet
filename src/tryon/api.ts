@@ -6,19 +6,34 @@ import type { ConnectionDiagnostic } from './diagnostic'
 
 export type Limits = { dailySeconds: number; sessionSeconds: number; startupSeconds: number; firstFrameSeconds: number; queueSeconds: number; offerSeconds: number; recordingSeconds: number; recordingBytes: number; storageBytes: number }
 export type Capabilities = { enabled: boolean; ready: boolean; reason: string; quota: { limit: number; used: number; reserved: number; remaining: number }; points?: { paidSeconds: number; milliPointsPerSecond: number }; limits: Limits; hasHistory: boolean }
-/** role：用户从固定列表里选的穿戴位置，不填则按衣物分类自动判断。 */
-export type Selection = { type: 'GARMENT' | 'TEMPORARY'; id: string; revision?: number; assetId?: string; role?: string }
+/** role：用户从固定列表里选的穿戴位置，不填则按衣物分类自动判断。LOOK 是精选整套，只能单独试，不传 role。 */
+export type Selection = { type: 'GARMENT' | 'TEMPORARY' | 'LOOK'; id: string; revision?: number; assetId?: string; role?: string }
 export type Item = Selection & { assetId: string; hash: string; name: string; wearingRole?: string | null }
 export type Prepared = { id: string; revision: number; items: Item[]; previewUrl: string; referencePath?: string; expiresAtMs: number }
 export type Candidate = { id: string; revision: number; name: string; ready: boolean; reason: string; imageUrl: string; assetId?: string; wearingRole?: string | null; wanted?: boolean }
 export type Session = { id: string; state: string; preparationId: string; reservedPoints: number; consumedPoints: number; userSeconds: number; firstFrame: boolean; createdAtMs: number; connectedAtMs: number | null; deadlineAtMs: number; remainingSeconds: number; reason: string | null; environment: 'china' | 'global'; rtcConnectedAtMs?: number | null; diagnostic?: ConnectionDiagnostic | null }
 export type Media = { id: string; type: 'PHOTO' | 'VIDEO'; state: string; mimeType: string; sessionId: string; hasAudio: boolean; durationMs: number; bytes: number; createdAtMs: number; url: string; downloadUrl: string }
+/** 精选整套（server 设计 2026-11-22 3.3）：管理员维护的整套平铺图；preview 只出现在管理员账号上，表示未上架。 */
+export type LookCoverage = 'FULL' | 'UPPER' | 'LOWER'
+export type Look = { id: string; name: string; category: string; tags: string[]; coverage: LookCoverage; imageUrl: string; thumbUrl: string; preview?: boolean }
+export type LookCategory = { key: string; name: string }
+export type LookPage = { categories: LookCategory[]; items: Look[]; total: number }
+export type LookQuery = { category?: string; page?: number; size?: number }
+function lookQuery(params: LookQuery) {
+  const query = new URLSearchParams()
+  if (params.category) query.set('category', params.category)
+  if (params.page && params.page > 1) query.set('page', String(params.page))
+  if (params.size) query.set('size', String(Math.min(60, Math.max(1, params.size))))
+  const text = query.toString()
+  return text ? `?${text}` : ''
+}
 const post = <T>(path: string, body: unknown = {}, init: RequestInit = {}) => request<T>(path, { ...init, method: 'POST', body: JSON.stringify(body) })
 export const tryOnApi = {
   capabilities: () => request<Capabilities>('/api/tryon/capabilities'),
   garments: (page = 1, query = '') => request<Candidate[]>(`/api/tryon/garments?page=${page}&size=60&query=${encodeURIComponent(query)}`),
   garment: (id: string) => request<Candidate>(`/api/tryon/garments/${encodeURIComponent(id)}`),
   outfits: () => request<Outfit[]>('/api/outfits'),
+  looks: (params: LookQuery = {}) => request<LookPage>(`/api/tryon/looks${lookQuery(params)}`),
   prepare: (items: Selection[], outfitId?: string, allowLatest = false) => post<Prepared>('/api/tryon/preparations', { items, outfitId, allowLatest }),
   start: (p: Prepared, key: string) => post<Session>('/api/tryon/sessions', { preparationId: p.id, revision: p.revision }, { headers: { 'Idempotency-Key': key } }),
   session: (id: string) => request<Session>(`/api/tryon/sessions/${id}`),

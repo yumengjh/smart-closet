@@ -37,16 +37,17 @@ const RULES: readonly Rule[] = [
   { roles: ['HANDHELD'], ok: p => raisedHand(p, false), hint: '请把手抬进画面，做出拿东西的手势' },
   { roles: ['WRIST', 'FINGER', 'GLOVES', 'ARM'], ok: p => raisedHand(p, true), hint: '请把手抬到胸前' },
   { roles: ['SHOES', 'SOCKS'], ok: p => all(p, LEFT_ANKLE, RIGHT_ANKLE) && any(p, ...FEET), hint: '请让双脚进入画面' },
-  { roles: ['BOTTOM'], ok: p => all(p, LEFT_HIP, RIGHT_HIP, LEFT_KNEE, RIGHT_KNEE) && any(p, LEFT_ANKLE, RIGHT_ANKLE), hint: '请后退一些，让腰部到脚踝进入画面' },
+  { roles: ['LOOK_FULL'], ok: p => all(p, LEFT_SHOULDER, RIGHT_SHOULDER, LEFT_HIP, RIGHT_HIP, LEFT_KNEE, RIGHT_KNEE) && any(p, LEFT_ANKLE, RIGHT_ANKLE), hint: '请后退一些，让头到脚都进入画面' },
+  { roles: ['BOTTOM', 'LOOK_LOWER'], ok: p => all(p, LEFT_HIP, RIGHT_HIP, LEFT_KNEE, RIGHT_KNEE) && any(p, LEFT_ANKLE, RIGHT_ANKLE), hint: '请后退一些，让腰部到脚踝进入画面' },
   { roles: ['BELT'], ok: p => all(p, LEFT_HIP, RIGHT_HIP, LEFT_KNEE, RIGHT_KNEE), hint: '请后退一些，让腰部和大腿进入画面' },
   { roles: ['ONE_PIECE', 'OVERALL'], ok: p => all(p, LEFT_SHOULDER, RIGHT_SHOULDER, LEFT_HIP, RIGHT_HIP, LEFT_KNEE, RIGHT_KNEE), hint: '请后退一些，让肩部到膝盖进入画面' },
-  { roles: ['TOP', 'INNER', 'OUTER', 'BAG'], ok: p => all(p, LEFT_SHOULDER, RIGHT_SHOULDER, LEFT_HIP, RIGHT_HIP), hint: '请后退一些，让上半身完整入镜' },
+  { roles: ['TOP', 'INNER', 'OUTER', 'BAG', 'LOOK_UPPER'], ok: p => all(p, LEFT_SHOULDER, RIGHT_SHOULDER, LEFT_HIP, RIGHT_HIP), hint: '请后退一些，让上半身完整入镜' },
   { roles: ['NECK', 'SCARF'], ok: p => all(p, NOSE, LEFT_SHOULDER, RIGHT_SHOULDER), hint: '请让颈部和双肩进入画面' },
   { roles: ['EAR'], ok: p => seen(p, NOSE) && any(p, LEFT_EAR, RIGHT_EAR), hint: '请把头发拨到耳后，让耳朵露出来' },
   { roles: ['HAT', 'HEADWEAR', 'GLASSES'], ok: frontal, hint: '请正对镜头，让头部完整入镜' },
 ]
 /** 需要看到身体的位置：只有这些才提示“离得太近”，试眼镜、耳饰时凑近是对的。 */
-const BODY = new Set(['TOP', 'INNER', 'OUTER', 'BAG', 'BOTTOM', 'BELT', 'ONE_PIECE', 'OVERALL', 'SHOES', 'SOCKS'])
+const BODY = new Set(['TOP', 'INNER', 'OUTER', 'BAG', 'BOTTOM', 'BELT', 'ONE_PIECE', 'OVERALL', 'SHOES', 'SOCKS', 'LOOK_FULL', 'LOOK_UPPER', 'LOOK_LOWER'])
 
 /** 画面里有人：鼻尖或任一肩膀可见。 */
 export function present(points: readonly Point[]) { return points.length >= 33 && any(points, NOSE, LEFT_SHOULDER, RIGHT_SHOULDER) }
