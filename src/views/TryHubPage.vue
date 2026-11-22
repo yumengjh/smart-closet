@@ -4,9 +4,11 @@
 // 没有实时试穿权限时不显示切换，直接是“做张图”。右上“我的图”（/try/album）收着上身图与作品，有进行中的任务时带小红点。
 // 启动动效与取景引导（server#277）：舞台上是呼吸的人形轮廓，选的衣服落到对应部位；“打开镜头”从按钮圆形展开进 /try-on 并直接开预览。
 // 精选整套（server 设计 2026-11-22 6.1）：最上面一排管理员挑好的整套，衣柜空着也能先试；选精选和选衣服、搭配互斥。
-import { computed, onMounted, ref, watch } from 'vue'
+// 传一张试试（同设计 6.5）：在这里直接把一张衣服图传成临时衣物（只用来试穿，穿戴位置自动），进镜头就是这件。
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { BulbOutlined, CameraOutlined, HistoryOutlined, LockOutlined, PictureOutlined, SoundOutlined, VideoCameraOutlined } from '@ant-design/icons-vue'
+import { App } from 'ant-design-vue'
+import { BulbOutlined, CameraOutlined, HistoryOutlined, LockOutlined, PictureOutlined, PlusOutlined, SoundOutlined, VideoCameraOutlined } from '@ant-design/icons-vue'
 import { useBillingStore } from '../billing/store'
 import { realtimePrice } from '../billing/model'
 import TryMaker from '../components/try/TryMaker.vue'
@@ -25,6 +27,8 @@ import { isPictureEntry } from '../domain/waiting'
 import { revealNavigate } from '../shell/revealNavigate'
 import { partsFor, scopeOf, setupTip, type Device, type Scope } from '../tryon/guide'
 import { lookRole } from '../tryon/context'
+import { handOffTemporary, type TemporaryUpload } from '../tryon/selection'
+import { shrinkImage } from '../tryon/shrink'
 import { CAMERA_LAYOUT_QUERY } from '../tryon/stage'
 import { voiceSupported } from '../tryon/voice'
 
@@ -32,7 +36,7 @@ const billing = useBillingStore(), processing = useProcessingStore()
 onMounted(() => { void refreshWorks(1) })
 // 上身图的进度在整理中心（processing store）里，作品的进度在 works；任一有进行中的就点亮。
 const albumBusy = computed(() => liveWorks.value > 0 || processing.entries.some(entry => isPictureEntry(entry) && entry.state === 'processing' && entry.href.startsWith(ALBUM_PATH)))
-const route = useRoute(), router = useRouter()
+const route = useRoute(), router = useRouter(), { message } = App.useApp()
 const liveAvailable = computed(() => Boolean(tryOnAccess.value?.enabled))
 const mode = computed<'image' | 'live'>({
   get: () => liveAvailable.value && route.query.mode === 'live' ? 'live' : 'image',
@@ -41,7 +45,7 @@ const mode = computed<'image' | 'live'>({
 const cap = computed(() => tryOnAccess.value)
 const garments = ref<Candidate[]>([]); const outfits = ref<Outfit[]>([]); const loaded = ref(false)
 const looks = ref<Look[]>([]); const lookCategories = ref<LookCategory[]>([]); const lookCategory = ref(''); const looksLoading = ref(false)
-type PickKind = 'garment' | 'outfit' | 'look'
+type PickKind = 'garment' | 'outfit' | 'look' | 'temporary'
 // 只有一个选择：选精选会换下衣服或搭配，反过来也一样。
 const pick = ref<{ kind: PickKind; id: string } | null>(null)
 async function loadChoices() {
@@ -69,10 +73,32 @@ function choose(kind: PickKind, id: string) {
   pickedLookCache.value = pick.value?.kind === 'look' ? looks.value.find(l => l.id === id) ?? null : null
 }
 const isPicked = (kind: PickKind, id: string) => pick.value?.kind === kind && pick.value.id === id
+// 传一张试试：先用本地预览立刻落到舞台上，传好后才算选中；同一时间只传一张。
+const UPLOAD_ACCEPT = 'image/png,image/jpeg,image/heic,image/heif,image/webp'
+const uploaded = ref<(TemporaryUpload & { preview: string }) | null>(null), uploading = ref(false), uploadPreview = ref('')
+const canUpload = computed(() => Boolean(cap.value?.enabled))
+function dropPreview(url: string) { if (url && url !== uploaded.value?.preview) URL.revokeObjectURL(url) }
+async function uploadOne(file: File) {
+  if (uploading.value) return
+  uploading.value = true; dropPreview(uploadPreview.value); uploadPreview.value = URL.createObjectURL(file)
+  try {
+    const item = await tryOnApi.upload((await shrinkImage(file)).file)
+    if (uploaded.value) URL.revokeObjectURL(uploaded.value.preview)
+    uploaded.value = { ...item, preview: uploadPreview.value }; uploadPreview.value = ''
+    pick.value = { kind: 'temporary', id: item.id }; pickedLookCache.value = null
+  } catch (e) {
+    dropPreview(uploadPreview.value); uploadPreview.value = ''
+    message.error(e instanceof Error && e.message ? e.message : '图片没传上去，换一张再试')
+  } finally { uploading.value = false }
+}
+function beforeUpload(file: File) { void uploadOne(file); return false }
+// 试穿页用服务端的图片地址，本地预览离开就可以释放。
+onBeforeUnmount(() => { if (uploadPreview.value) URL.revokeObjectURL(uploadPreview.value); if (uploaded.value) URL.revokeObjectURL(uploaded.value.preview) })
 const needsPoints = computed(() => billing.realtime?.enabled && cap.value?.enabled && cap.value.quota.remaining <= 0 && (cap.value.points?.milliPointsPerSecond || 0) > 0 && (cap.value.points?.paidSeconds || 0) <= 0)
 /** 从按钮圆形展开进试穿页，并带上 open=1：试穿页直接打开本地预览（免费、不计时）。 */
 function start(event: MouseEvent) {
   if (needsPoints.value) { billing.purchase = 'tryon'; return }
+  if (pick.value?.kind === 'temporary' && uploaded.value) handOffTemporary({ id: uploaded.value.id, imageUrl: uploaded.value.imageUrl, expiresAtMs: uploaded.value.expiresAtMs })
   const query = new URLSearchParams({ open: '1', ...(pick.value ? { [pick.value.kind]: pick.value.id } : {}) })
   const box = (event.currentTarget as HTMLElement | null)?.getBoundingClientRect()
   const origin = box ? { x: box.left + box.width / 2, y: box.top + box.height / 2, from: Math.min(box.width, box.height) / 2 } : { x: innerWidth / 2, y: innerHeight / 2, from: 0 }
@@ -81,6 +107,8 @@ function start(event: MouseEvent) {
 const pickedGarment = computed(() => pick.value?.kind === 'garment' ? garments.value.find(g => g.id === pick.value!.id) : undefined)
 const pickedOutfit = computed(() => pick.value?.kind === 'outfit' ? outfits.value.find(o => o.id === pick.value!.id) : undefined)
 const pickedLook = computed(() => pick.value?.kind === 'look' ? pickedLookCache.value ?? undefined : undefined)
+/** 舞台上的临时衣物：传的过程中先显示本地预览。 */
+const stageUpload = computed(() => uploadPreview.value || (pick.value?.kind === 'temporary' ? uploaded.value?.preview : '') || '')
 // 舞台轮廓上的落点（占舞台高度的百分比）：衣服按穿戴位置落到头、颈、上身、手、腰、腿、脚。
 const ZONE: Record<string, number> = { HAT: 10, HEADWEAR: 10, GLASSES: 12, EAR: 12, NECK: 22, SCARF: 22, TOP: 36, INNER: 36, OUTER: 36, ONE_PIECE: 44, OVERALL: 44, BAG: 44, WRIST: 50, FINGER: 50, GLOVES: 50, ARM: 46, HANDHELD: 50, BELT: 52, BOTTOM: 68, SOCKS: 88, SHOES: 92 }
 const dropAt = computed(() => `${ZONE[pickedGarment.value?.wearingRole || ''] ?? 40}%`)
@@ -103,7 +131,7 @@ const tips = computed(() => [
       <a-segmented v-if="liveAvailable" v-model:value="mode" block class="try-hub-switch" :options="[{ value: 'image', label: '做张图' }, { value: 'live', label: '镜头试穿' }]" aria-label="试穿方式" />
       <a-badge :dot="albumBusy" :offset="[-4, 4]" class="try-hub-album"><a-button @click="router.push(ALBUM_PATH)"><PictureOutlined /> 我的图</a-button></a-badge>
     </div>
-    <div v-if="mode === 'live'" class="try-live" :class="{ 'has-looks': looks.length || lookCategory }">
+    <div v-if="mode === 'live'" class="try-live" :class="{ 'has-looks': looks.length || lookCategory, 'has-upload': canUpload }">
       <PageTitle title="实时试穿" />
       <section class="try-live-stage">
         <div class="try-live-frame" aria-hidden="true">
@@ -117,10 +145,11 @@ const tips = computed(() => [
             <span v-if="pickedGarment" :key="pickedGarment.id" class="try-live-worn" :style="{ top: dropAt }"><img :src="mediaUrl(pickedGarment.imageUrl)" alt="" /></span>
             <span v-else-if="pickedOutfit" :key="pickedOutfit.id" class="try-live-worn outfit"><OutfitCollage :pieces="scenePieces(pickedOutfit.scene)" :title="pickedOutfit.name" :size="240" /></span>
             <span v-else-if="pickedLook" :key="pickedLook.id" class="try-live-worn look"><img :src="mediaUrl(pickedLook.imageUrl)" alt="" /></span>
+            <span v-else-if="stageUpload" :key="stageUpload" class="try-live-worn upload" :class="{ busy: uploading }"><img :src="stageUpload" alt="" /></span>
           </Transition>
         </div>
         <div class="try-live-copy">
-          <h2>{{ pickedGarment ? `对着镜头，换上${pickedGarment.name}` : pickedOutfit ? `对着镜头，换上「${pickedOutfit.name}」` : pickedLook ? `对着镜头，换上「${pickedLook.name}」` : '对着镜头，直接换上' }}</h2>
+          <h2>{{ pickedGarment ? `对着镜头，换上${pickedGarment.name}` : pickedOutfit ? `对着镜头，换上「${pickedOutfit.name}」` : pickedLook ? `对着镜头，换上「${pickedLook.name}」` : uploading ? '正在传这张图…' : stageUpload ? '对着镜头，换上这件' : '对着镜头，直接换上' }}</h2>
           <p v-if="cap?.ready || needsPoints"><TryOnQuota :remaining="cap?.quota.remaining || 0" :points="cap?.points" /></p>
           <p v-else-if="cap" class="try-live-warn">{{ cap.reason || '实时试穿暂时不可用' }}</p>
         </div>
@@ -136,6 +165,21 @@ const tips = computed(() => [
           </button>
         </div>
         <p v-if="!looks.length && !looksLoading" class="try-live-quiet">这个分类暂时没有</p>
+      </section>
+
+      <section v-if="canUpload" class="try-live-pick try-live-upload">
+        <header><h2>传一张试试</h2><small>网上看到的、手机里的衣服图都行</small></header>
+        <div class="try-live-upload-row">
+          <button v-if="uploaded" type="button" class="try-live-item" :class="{ on: isPicked('temporary', uploaded.id) }" :aria-pressed="isPicked('temporary', uploaded.id)" aria-label="刚传的这件" @click="choose('temporary', uploaded.id)">
+            <span class="try-live-thumb"><img :src="uploaded.preview" alt="" /></span>
+            <b>刚传的</b>
+          </button>
+          <div class="try-live-upload-actions">
+            <a-upload :accept="UPLOAD_ACCEPT" :show-upload-list="false" :before-upload="beforeUpload" :disabled="uploading"><a-button block :loading="uploading"><PlusOutlined v-if="!uploading" /> {{ uploading ? '正在传' : uploaded ? '换一张' : '选一张图' }}</a-button></a-upload>
+            <a-upload v-if="coarse" accept="image/*" capture="environment" :show-upload-list="false" :before-upload="beforeUpload" :disabled="uploading"><a-button block :disabled="uploading"><CameraOutlined /> 拍一张</a-button></a-upload>
+            <small>只用来试穿，7 天后自动删除</small>
+          </div>
+        </div>
       </section>
 
       <section class="try-live-pick">
@@ -203,6 +247,8 @@ const tips = computed(() => [
 .try-live-worn.outfit { top: 46%; width: 92px; height: 116px; }
 .try-live-worn.look { top: 46%; width: 108px; height: 144px; border-radius: 16px; }
 .try-live-worn.look img { width: 100%; height: 100%; object-fit: cover; }
+.try-live-worn.upload { top: 42%; width: 88px; height: 88px; }
+.try-live-worn.upload.busy img { opacity: .55; }
 .try-live-worn.outfit :deep(canvas), .try-live-worn.outfit :deep(img) { width: 100%; height: 100%; object-fit: contain; }
 .try-live-drop-enter-active { transition: opacity .3s ease, transform .5s cubic-bezier(.34, 1.4, .64, 1); }
 .try-live-drop-leave-active { transition: opacity .15s ease, transform .15s ease; }
@@ -246,6 +292,10 @@ const tips = computed(() => [
 .try-live-item b { overflow: hidden; font-size: 12px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .try-live-item em { position: absolute; top: 6px; left: 6px; padding: 0 6px; border-radius: 6px; background: var(--surface); font-size: 10px; font-style: normal; line-height: 18px; color: var(--accent-strong); }
 .try-live-quiet { margin: 0; color: var(--muted); font-size: 13px; }
+.try-live-upload-row { display: flex; align-items: flex-start; gap: 12px; }
+.try-live-upload-actions { display: grid; flex: 1; gap: 8px; min-width: 0; }
+.try-live-upload-actions :deep(.ant-upload-wrapper), .try-live-upload-actions :deep(.ant-upload) { display: block; width: 100%; }
+.try-live-upload-actions small { color: var(--muted); font-size: 12px; }
 .try-live-tips { display: grid; gap: 10px; margin: 0; padding: 4px 4px; list-style: none; }
 .try-live-tips li { display: flex; align-items: flex-start; gap: 10px; font-size: 13px; color: var(--muted-strong); }
 .try-live-tips .anticon { flex: none; margin-top: 3px; color: var(--muted); }
@@ -254,10 +304,11 @@ const tips = computed(() => [
 @media (min-width: 1024px) {
   .try-live { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); max-width: 1080px; align-items: start; gap: 20px; }
   .try-live-stage { grid-row: span 3; min-height: 520px; position: sticky; top: 24px; }
-  .try-live.has-looks .try-live-stage { grid-row: span 4; }
+  .try-live.has-looks .try-live-stage, .try-live.has-upload .try-live-stage { grid-row: span 4; }
+  .try-live.has-looks.has-upload .try-live-stage { grid-row: span 5; }
   .try-live-cta { position: static; padding: 0; background: none; backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none; }
 }
-@media (min-width: 1024px) { .try-live-worn { width: 76px; height: 76px; } .try-live-worn.outfit { width: 132px; height: 164px; } .try-live-worn.look { width: 150px; height: 200px; } }
+@media (min-width: 1024px) { .try-live-worn { width: 76px; height: 76px; } .try-live-worn.upload { width: 120px; height: 120px; } .try-live-worn.outfit { width: 132px; height: 164px; } .try-live-worn.look { width: 150px; height: 200px; } }
 @media (prefers-reduced-motion: reduce) {
   .try-live-thumb { transition: none; }
   .try-live-figure, .try-live-scan { animation: none; }

@@ -39,13 +39,28 @@ export function liveSource(selected: readonly Selection[], outfitChosen: boolean
 }
 
 export const LOOK_TAB = '精选'
+export const TEMPORARY_TAB = '临时上传'
+
+/**
+ * 启动页“传一张试试”（server 设计 2026-11-22 6.5）：启动页已经把图传成临时衣物，跳进 /try-on 时把这条交过去，
+ * 试穿页不必再请求一次。只在同一次页面内有效；刷新后按地址里的 id 自行拼出（图片地址与服务端 upload 返回的规则相同）。
+ */
+export type TemporaryUpload = { id: string; imageUrl: string; expiresAtMs: number }
+let handedOff: TemporaryUpload | null = null
+export function handOffTemporary(item: TemporaryUpload) { handedOff = item }
+export function takeTemporary(id: string): TemporaryUpload {
+  const item = handedOff?.id === id ? handedOff : { id, imageUrl: `/api/tryon/media/${id}`, expiresAtMs: 0 }
+  handedOff = null
+  return item
+}
 /** 选衣面板的标签：没有精选时不显示“精选”。 */
 export function pickerTabs(hasLooks: boolean) {
   return hasLooks ? [LOOK_TAB, '衣柜', '已存搭配', '临时上传'] : ['衣柜', '已存搭配', '临时上传']
 }
-/** 默认停在哪个标签：点名精选的停“精选”；从衣柜卡片或搭配进来的照旧；其余有精选时停“精选”。 */
-export function initialPickerTab(from: { looks: number; look?: boolean; garment?: boolean; outfit?: boolean }) {
+/** 默认停在哪个标签：点名精选的停“精选”；从启动页传图进来的停“临时上传”；从衣柜卡片或搭配进来的照旧；其余有精选时停“精选”。 */
+export function initialPickerTab(from: { looks: number; look?: boolean; garment?: boolean; outfit?: boolean; temporary?: boolean }) {
   if (from.look && from.looks > 0) return LOOK_TAB
+  if (from.temporary) return TEMPORARY_TAB
   if (from.outfit) return '已存搭配'
   if (from.garment) return '衣柜'
   return from.looks > 0 ? LOOK_TAB : '衣柜'

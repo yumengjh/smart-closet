@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { addSelection, droppedHint, hasLook, initialPickerTab, liveSource, neighborLook, pickerTabs, toggleSelection } from '../src/tryon/selection.ts'
+import { addSelection, droppedHint, handOffTemporary, hasLook, initialPickerTab, liveSource, neighborLook, pickerTabs, takeTemporary, toggleSelection } from '../src/tryon/selection.ts'
 import type { Look, Selection } from '../src/tryon/api.ts'
 
 const shirt: Selection = { type: 'GARMENT', id: 'g1', revision: 1 }
@@ -47,6 +47,18 @@ test('选衣标签：有精选时多一个“精选”并默认停在那里；�
   assert.equal(initialPickerTab({ looks: 3, look: true }), '精选')
   assert.equal(initialPickerTab({ looks: 0, look: true }), '衣柜')
   assert.equal(initialPickerTab({ looks: 3, outfit: true }), '已存搭配')
+  assert.equal(initialPickerTab({ looks: 3, temporary: true }), '临时上传')
+  assert.equal(initialPickerTab({ looks: 0, temporary: true }), '临时上传')
+})
+
+test('传一张试试：启动页交过来的临时衣物只取一次；刷新后按 id 拼出图片地址', () => {
+  const id = '11111111-2222-3333-4444-555555555555'
+  handOffTemporary({ id, imageUrl: `/api/tryon/media/${id}`, expiresAtMs: 42 })
+  assert.deepEqual(takeTemporary(id), { id, imageUrl: `/api/tryon/media/${id}`, expiresAtMs: 42 })
+  assert.deepEqual(takeTemporary(id), { id, imageUrl: `/api/tryon/media/${id}`, expiresAtMs: 0 })
+  handOffTemporary({ id, imageUrl: 'x', expiresAtMs: 1 })
+  const other = 'aaaaaaaa-2222-3333-4444-555555555555'
+  assert.deepEqual(takeTemporary(other), { id: other, imageUrl: `/api/tryon/media/${other}`, expiresAtMs: 0 })
 })
 
 const item = (id: string, category: string): Look => ({ id, name: id, category, tags: [], coverage: 'FULL', imageUrl: `/api/tryon/looks/${id}/image?v=1`, thumbUrl: `/api/tryon/looks/${id}/image?size=thumb&v=1` })

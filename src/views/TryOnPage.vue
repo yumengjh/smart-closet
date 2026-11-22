@@ -27,7 +27,7 @@ import { PoseSampler, poseFailureLabel, type PoseStatus } from '../tryon/pose/sa
 import { shrinkImage, formatBytes, type Shrunk } from '../tryon/shrink'
 import { probeNetwork, describeProbe, describeStream, saveData, sdkQualityLabel, type NetworkProbe } from '../tryon/network'
 import { apiUrl, thumbUrl } from '../services/urls'
-import { SWIPE_TIP_KEY, addSelection, droppedHint, hasLook, initialPickerTab, liveSource, neighborLook, toggleSelection, type SelectedChip, type SelectionChange } from '../tryon/selection'
+import { SWIPE_TIP_KEY, addSelection, droppedHint, hasLook, initialPickerTab, liveSource, neighborLook, takeTemporary, toggleSelection, type SelectedChip, type SelectionChange } from '../tryon/selection'
 import { PoseHold, followable, matchScore, overlayBox } from '../tryon/pose/follow'
 import TryOnFollow from '../tryon/TryOnFollow.vue'
 import PoseFigure from '../ootd/PoseFigure.vue'
@@ -759,7 +759,10 @@ onMounted(async () => {
     prewarmSdk(); void checkNetwork()
     if (cap.value?.enabled) { void loadFollowPoses(); await Promise.all([loadGarments(), tryOnApi.outfits().then(rows => { outfits.value = rows }), loadLooks()]); if (typeof route.query.garment === 'string') { const g = garments.value.find(g => g.id === route.query.garment) || await tryOnApi.garment(route.query.garment); if (!garments.value.some(v => v.id === g.id)) garments.value.unshift(g); if (g?.ready) selected.value = [{ type: 'GARMENT', id: g.id, revision: g.revision, assetId: g.assetId }]; else error.value = '该衣物尚无可用成品，请完成处理后再试。' }
       if (typeof route.query.look === 'string') selected.value = [{ type: 'LOOK', id: route.query.look }]
-      tab.value = initialPickerTab({ looks: looks.value.length, look: typeof route.query.look === 'string', garment: typeof route.query.garment === 'string', outfit: typeof route.query.outfit === 'string' })
+      // 启动页“传一张试试”已经传好了临时衣物（设计 6.5）：直接选上，穿戴位置自动。
+      const temporaryId = typeof route.query.temporary === 'string' && /^[a-f0-9-]{36}$/.test(route.query.temporary) ? route.query.temporary : null
+      if (temporaryId) { const item = takeTemporary(temporaryId); if (!temporary.value.some(t => t.id === item.id)) temporary.value.push(item); selected.value = [{ type: 'TEMPORARY', id: item.id }] }
+      tab.value = initialPickerTab({ looks: looks.value.length, look: typeof route.query.look === 'string', garment: typeof route.query.garment === 'string', outfit: typeof route.query.outfit === 'string', temporary: Boolean(temporaryId) })
       if (typeof route.query.outfit === 'string') await selectOutfit(route.query.outfit)
     }
     const history = await tryOnApi.history(); media.value = history.media; sessionHistory.value = history.sessions
