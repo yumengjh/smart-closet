@@ -47,7 +47,7 @@ async function keepFresh() {
   fresh.value = null
 }
 async function createText() {
-  if (textForm.value.description.trim().length < 4) { message.info('动作描述至少 4 个字。'); return }
+  if (textForm.value.description.trim().length < 4) { message.info('姿势描述至少 4 个字。'); return }
   saving.value = true
   try {
     const pose = await platformRequest<Pose>('/api/ootd/poses', 'POST', { name: textForm.value.name, description: textForm.value.description, tags: [] })
@@ -62,7 +62,7 @@ async function rename() {
 function remove() {
   const pose = selected.value
   if (!pose) return
-  modal.confirm({ title: `删除动作卡「${pose.name}」？`, content: '已生成的图片不受影响。', okText: '删除', okType: 'danger', cancelText: '取消', async onOk() {
+  modal.confirm({ title: `删除姿势卡「${pose.name}」？`, content: '已生成的图片不受影响。', okText: '删除', okType: 'danger', cancelText: '取消', async onOk() {
     await platformRequest(`/api/ootd/poses/${pose.id}`, 'DELETE'); emit('update:modelValue', { mode: 'AUTO' }); emit('changed')
   } })
 }
@@ -73,26 +73,26 @@ onUnmounted(() => { if (preview.value) URL.revokeObjectURL(preview.value) })
   <div class="pose-picker">
     <div class="pose-modes">
       <button type="button" class="pose-auto" :class="{ selected: modelValue.mode === 'AUTO' }" :aria-pressed="modelValue.mode === 'AUTO'" @click="emit('update:modelValue', { mode: 'AUTO' })">
-        <ThunderboltOutlined /><span><strong>自动</strong><small>按衣服风格挑动作</small></span>
+        <ThunderboltOutlined /><span><strong>自动</strong><small>按衣服风格挑姿势</small></span>
       </button>
       <a-upload :before-upload="chooseImage" :show-upload-list="false" accept="image/png,image/jpeg,image/webp" :disabled="extracting || left === 0">
-        <button type="button" class="pose-auto pose-extract" :disabled="extracting || left === 0"><CameraOutlined /><span><strong>从图片提取</strong><small>{{ left === 0 ? '今天次数已用完' : '生成动作卡' }}</small></span></button>
+        <button type="button" class="pose-auto pose-extract" :disabled="extracting || left === 0"><CameraOutlined /><span><strong>从图片提取</strong><small>{{ left === 0 ? '今天次数已用完' : '生成姿势卡' }}</small></span></button>
       </a-upload>
-      <button type="button" class="pose-auto" @click="textOpen = true"><EditOutlined /><span><strong>文字描述</strong><small>写下想要的动作</small></span></button>
+      <button type="button" class="pose-auto" @click="textOpen = true"><EditOutlined /><span><strong>文字描述</strong><small>写下想要的姿势</small></span></button>
     </div>
 
     <div v-if="extracting" class="pose-scanning" role="status" aria-live="polite">
-      <div class="pose-scan-frame"><img v-if="preview" :src="preview" alt="正在提取动作的图片" /><span class="pose-scan-line"></span></div>
-      <div><strong>正在提取动作…</strong><p>只保留姿势，不保存这张图片。</p></div>
+      <div class="pose-scan-frame"><img v-if="preview" :src="preview" alt="正在提取姿势的图片" /><span class="pose-scan-line"></span></div>
+      <div><strong>正在提取姿势…</strong><p>只保留姿势，不保存这张图片。</p></div>
     </div>
 
-    <a-button v-if="compact && !expanded && modelValue.mode === 'AUTO'" type="link" class="pose-more" @click="expanded = true">浏览动作卡</a-button>
+    <a-button v-if="compact && !expanded && modelValue.mode === 'AUTO'" type="link" class="pose-more" @click="expanded = true">浏览姿势卡</a-button>
     <template v-else>
-      <a-segmented v-model:value="tab" :options="[{ value: 'PRESET', label: '预设动作' }, { value: 'CUSTOM', label: `我的动作卡 ${catalog?.mine.length || 0}` }]" class="pose-tabs" />
+      <a-segmented v-model:value="tab" :options="[{ value: 'PRESET', label: '预设姿势' }, { value: 'CUSTOM', label: `我的姿势卡 ${catalog?.mine.length || 0}` }]" class="pose-tabs" />
       <div v-if="list.length" class="pose-grid">
         <PoseCard v-for="p in list" :key="p.id" :pose="p" :selected="isSelected(p)" @select="pick(p)" />
       </div>
-      <a-empty v-else class="pose-empty" description="上传一张喜欢的姿势图，生成你的第一张动作卡" />
+      <a-empty v-else class="pose-empty" description="上传一张喜欢的姿势图，生成你的第一张姿势卡" />
     </template>
 
     <div v-if="selected" class="pose-selected">
@@ -103,21 +103,21 @@ onUnmounted(() => { if (preview.value) URL.revokeObjectURL(preview.value) })
       </a-space>
     </div>
 
-    <a-modal :open="!!fresh" title="动作卡已生成" ok-text="就用这个" cancel-text="关闭" width="420px" @ok="keepFresh" @cancel="keepFresh">
+    <a-modal :open="!!fresh" title="姿势卡已生成" ok-text="就用这个" cancel-text="关闭" width="420px" @ok="keepFresh" @cancel="keepFresh">
       <div v-if="fresh" class="pose-fresh">
         <div class="pose-fresh-art"><PoseFigure :pose="fresh" animate /></div>
-        <a-input v-model:value="freshName" :maxlength="12" aria-label="动作名称" />
+        <a-input v-model:value="freshName" :maxlength="12" aria-label="姿势名称" />
         <div class="pose-fresh-tags"><a-tag v-for="t in fresh.tags" :key="t">{{ t }}</a-tag></div>
         <p>{{ fresh.description }}</p>
       </div>
     </a-modal>
-    <a-modal v-model:open="textOpen" title="用文字新建动作" ok-text="保存动作卡" cancel-text="取消" :confirm-loading="saving" @ok="createText">
+    <a-modal v-model:open="textOpen" title="用文字新建姿势" ok-text="保存姿势卡" cancel-text="取消" :confirm-loading="saving" @ok="createText">
       <a-form layout="vertical">
         <a-form-item label="名称"><a-input v-model:value="textForm.name" :maxlength="12" placeholder="例如：比心" /></a-form-item>
-        <a-form-item label="动作描述"><a-textarea v-model:value="textForm.description" :maxlength="300" show-count :auto-size="{ minRows: 3, maxRows: 6 }" placeholder="例如：正面站立，双手在胸前比心，头微微歪向一侧" /></a-form-item>
+        <a-form-item label="姿势描述"><a-textarea v-model:value="textForm.description" :maxlength="300" show-count :auto-size="{ minRows: 3, maxRows: 6 }" placeholder="例如：正面站立，双手在胸前比心，头微微歪向一侧" /></a-form-item>
       </a-form>
     </a-modal>
-    <a-modal v-model:open="renaming" title="动作卡改名" ok-text="保存" cancel-text="取消" width="360px" @ok="rename"><a-input v-model:value="renameValue" :maxlength="12" aria-label="动作名称" /></a-modal>
+    <a-modal v-model:open="renaming" title="姿势卡改名" ok-text="保存" cancel-text="取消" width="360px" @ok="rename"><a-input v-model:value="renameValue" :maxlength="12" aria-label="姿势名称" /></a-modal>
   </div>
 </template>
 

@@ -40,7 +40,7 @@ export function failureReason(job: Pick<RenderJob, 'status' | 'error'>): string 
   const error = (job.error || '').trim()
   if (!error) return '模型没有返回可用的图片'
   if (/超时|timeout/i.test(error)) return '服务商响应超时'
-  if (/审核|安全策略|违规|policy|safety|moderation/i.test(error)) return '被服务商的内容审核拦下，可换动作或衣物再试'
+  if (/审核|安全策略|违规|policy|safety|moderation/i.test(error)) return '被服务商的内容审核拦下，可换姿势或衣物再试'
   if (/额度|quota/i.test(error)) return '图像额度不足'
   if (/连接|网络|connect|network/i.test(error)) return '连接服务商失败'
   if (/变化|已改变|已删除|已清理/.test(error)) return '原资料已变化，请回到上方重新准备'

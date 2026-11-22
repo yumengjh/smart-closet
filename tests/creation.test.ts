@@ -16,6 +16,15 @@ test('person templates require a confirmed selection and freeze its actual revis
   const input = creationInput(template, [{ id: 'g', revision: 1 }], person, 'DEFAULT', { mode: 'AUTO' }, '', { id: 'outfit', revision: 7 }, 'prior')
   assert.equal(input.baselineRevision, 5); assert.equal(input.outfitRevision, 7); assert.equal(input.parentJobId, 'prior')
 })
+test('wear answers ride along only for person effects and only for the clothes being sent', () => {
+  const template = { ...flatlay, personRequired: true }
+  const plain = creationInput(template, [{ id: 'g', revision: 1 }], person, 'DEFAULT', { mode: 'AUTO' }, '')
+  assert.equal('wearRoles' in plain, false)
+  const input = creationInput(template, [{ id: 'g', revision: 1 }, { id: 'h', revision: 1 }], person, 'DEFAULT', { mode: 'AUTO' }, '', undefined, undefined, { g: 'INNER', h: 'PART:HANDHELD', gone: 'INNER' })
+  assert.deepEqual(input.wearRoles, { g: 'INNER', h: 'PART:HANDHELD' })
+  assert.equal('wearRoles' in creationInput(flatlay, [{ id: 'g', revision: 1 }], undefined, 'DEFAULT', { mode: 'AUTO' }, '', undefined, undefined, { g: 'INNER' }), false)
+  assert.equal('multiLayer' in input, false)
+})
 test('unavailable effects, oversized selections and long instructions cannot reach preparation', () => {
   assert.throws(() => creationInput({ ...flatlay, available: false, unavailableReason: '效果待验证' }, [], undefined, 'DEFAULT', { mode: 'AUTO' }, ''), /待验证/)
   assert.throws(() => creationInput(flatlay, [], undefined, 'DEFAULT', { mode: 'AUTO' }, ''), /衣物/)

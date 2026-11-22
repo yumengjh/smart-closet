@@ -1,7 +1,7 @@
 import type { CreationInput, CreationJob, CreationTemplate, Light, PendingCreation } from './types'
 import type { PoseChoice } from '../services/platform'
 
-export function creationInput(template: CreationTemplate, garments: { id: string; revision: number }[], person: { id: string; revision: number } | undefined, light: Light, pose: PoseChoice, note: string, source?: { id: string; revision: number }, parentJobId?: string): CreationInput {
+export function creationInput(template: CreationTemplate, garments: { id: string; revision: number }[], person: { id: string; revision: number } | undefined, light: Light, pose: PoseChoice, note: string, source?: { id: string; revision: number }, parentJobId?: string, wearRoles: Record<string, string> = {}): CreationInput {
   if (!template.available) throw new Error(template.unavailableReason || '这个效果暂时不可用，请换一个。')
   const unique = [...new Map(garments.map(item => [item.id, { id: item.id, revision: item.revision }])).values()]
   if (!unique.length) throw new Error('先选几件衣物。')
@@ -12,10 +12,13 @@ export function creationInput(template: CreationTemplate, garments: { id: string
     templateId: template.id, templateVersion: template.version, garments: unique,
     ...(source ? { outfitId: source.id, outfitRevision: source.revision } : {}),
     ...(template.personRequired ? { baselineId: person!.id, baselineRevision: person!.revision, pose } : {}),
+    // 只带这次提交的衣服的穿法；没回答过时不带，请求与改动前一致。不需要人物的效果带了会被拒绝（400）。
+    ...(template.personRequired && roles(wearRoles, unique).length ? { wearRoles: Object.fromEntries(roles(wearRoles, unique)) } : {}),
     options: { light: template.options.light?.includes(light) ? light : 'DEFAULT' },
     ...(note.trim() ? { note: note.trim() } : {}), ...(parentJobId ? { parentJobId } : {}),
   }
 }
+const roles = (wearRoles: Record<string, string>, garments: { id: string }[]) => Object.entries(wearRoles).filter(([id, role]) => role && garments.some(item => item.id === id))
 export const liveCreation = (job: Pick<CreationJob, 'status' | 'waitReason'>) => job.waitReason !== 'FEATURE_DISABLED' && ['QUEUED', 'WAITING_RESOURCE', 'RUNNING'].includes(job.status)
 export function creationStatus(job: Pick<CreationJob, 'status' | 'waitReason'>) {
   if (job.status === 'QUEUED' && job.waitReason === 'FEATURE_DISABLED') return '等待功能恢复'

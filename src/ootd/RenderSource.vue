@@ -25,7 +25,7 @@ const time = computed(() => new Date(props.job.createdAt).toLocaleString('zh-CN'
       </dd>
     </template>
     <template v-if="s?.model"><dt>形象</dt><dd>{{ s.model }}</dd></template>
-    <template v-if="s?.pose"><dt>动作</dt><dd>{{ s.pose }}<small v-if="s.poseText && !compact" class="render-source-pose">{{ s.poseText }}</small></dd></template>
+    <template v-if="s?.pose"><dt>姿势</dt><dd>{{ s.pose }}<small v-if="s.poseText && !compact" class="render-source-pose">{{ s.poseText }}</small></dd></template>
     <dt>生成于</dt><dd>{{ time }}</dd>
     <template v-if="s?.retryOf && !compact"><dt>说明</dt><dd>这是一次重新生成</dd></template>
   </dl>

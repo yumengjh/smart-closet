@@ -55,7 +55,7 @@ export function useOotdRecords() {
     if (groups.value.retryState.get(job.id) !== 'open') { message.info(groups.value.retryState.get(job.id) === 'retrying' ? '这条已经在重新生成，请稍等。' : '这条已经重新生成成功了。'); return }
     modal.confirm({
       title: '重新生成这张图？', okText: '重新生成（1 个额度）', cancelText: '先不了',
-      content: job.status === 'UNKNOWN' ? '上一次请求可能已经在服务商那边出图并扣了额度，重新生成会再用 1 个图像额度。' : '会按原来的搭配、形象和动作再生成一张，再用 1 个图像额度。',
+      content: job.status === 'UNKNOWN' ? '上一次请求可能已经在服务商那边出图并扣了额度，重新生成会再用 1 个图像额度。' : '会按原来的搭配、形象和姿势再生成一张，再用 1 个图像额度。',
       async onOk() {
         // One key per job until it is accepted, so a double click or a retried request never submits twice.
         const retryKey = retryKeys.get(job.id) || createUuid(); retryKeys.set(job.id, retryKey); retrying.value = job.id

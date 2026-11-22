@@ -11,6 +11,8 @@ export type CreationInput = {
   templateId: string; templateVersion: number; garments: { id: string; revision: number }[]
   outfitId?: string; outfitRevision?: number; baselineId?: string; baselineRevision?: number
   pose?: PoseChoice; options: { light: Light }; note?: string; parentJobId?: string
+  /** 穿前检查的回答（INNER、PART:*、ACCESSORY:*），只在需要人物的效果里带（server 设计 2026-11-21 3.1）。 */
+  wearRoles?: Record<string, string>
 }
 export type CreationPreparation = { preparationId: string; expiresAt: number; quotaUnits: number }
 export type CreationStatus = 'QUEUED' | 'WAITING_RESOURCE' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'UNKNOWN' | 'CANCELLED' | 'DELETED'

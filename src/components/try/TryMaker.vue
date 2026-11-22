@@ -3,6 +3,8 @@
 // 效果列表第一张固定是上身图（内置，衣服只能从已保存的搭配选，生成走 /api/ootd/*，逻辑在 useOotdStudio），
 // 其后是后台已上线的创作效果（与原 /creation 一致，走 /api/creations/*）。创作关闭或目录为空时只剩上身图，跳过选效果。
 // 每次进入从选效果开始；带入的搭配或衣服、上次的效果保留为已选（#257 90e56dd）。
+// “谁来穿”一屏看完（server 设计 2026-11-21 第 4 节）：这套 + 谁来穿、部位清单（PartList，进入即查、改动 300ms 防抖重查）、
+// 姿势一行（PoseRow），其余收进“更多”；底栏不能生成时只写一句原因，点禁用的按钮滚到第一个要处理的地方。
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { App } from 'ant-design-vue'
@@ -11,7 +13,7 @@ import { closetApi, type Garment } from '../../services/api'
 import { PlatformRequestError, type PoseChoice } from '../../services/platform'
 import { activeAccount } from '../../domain/accountSession'
 import { createUuid } from '../../domain/id'
-import { formatGarmentLabel, type Outfit } from '../../domain/outfit'
+import { formatGarmentLabel, roleFromGarment, type Outfit } from '../../domain/outfit'
 import { artworkForGarment } from '../../domain/outfit-images'
 import { mediaUrl, thumbUrl } from '../../services/urls'
 import { playSound } from '../../services/sound'
@@ -29,7 +31,11 @@ import type { Light, PendingCreation } from '../../creation/types'
 import { ALBUM_PATH } from '../../try/routes'
 import { track } from '../../services/analytics'
 import { useProcessingStore } from '../../stores/processing'
-import { useOotdStudio, ACCESSORY_OPTIONS } from '../../ootd/useOotdStudio'
+import { useOotdStudio } from '../../ootd/useOotdStudio'
+import { useWearCheck } from '../../ootd/useWearCheck'
+import { barReason, pruneWear, reviewPassed, reviewReason, type FitFix, type FitGarment } from '../../ootd/part-list'
+import PartList from '../../ootd/PartList.vue'
+import PoseRow from '../../ootd/PoseRow.vue'
 import CreationGarmentPicker from '../creation/CreationGarmentPicker.vue'
 import OutfitCollage from '../../today/OutfitCollage.vue'
 import { scenePieces } from '../../today/deck'
@@ -46,14 +52,16 @@ function read(key: string) { try { return sessionStorage.getItem(storagePrefix +
 function store(key: string, value: string | null) { try { if (value === null) sessionStorage.removeItem(storagePrefix + key); else sessionStorage.setItem(storagePrefix + key, value) } catch { /* 内存里的待确认状态仍能防止重复提交。 */ } }
 
 // 两种效果共用：带入的搭配、谁来穿、姿势。
-const outfitId = ref(''), baselineId = ref(''), pose = ref<PoseChoice>({ mode: 'AUTO' })
-const studio = useOotdStudio({ outfitId, baselineId, pose }, { accepted: () => { track('try_make_start', { effect: 'outfit' }); void router.push(ALBUM_PATH) } })
+const outfitId = ref(''), baselineId = ref(''), pose = ref<PoseChoice>({ mode: 'AUTO' }), reviewingOutfit = ref(false)
+const studio = useOotdStudio({ outfitId, baselineId, pose }, { accepted: () => { track('try_make_start', { effect: 'outfit' }); void router.push(ALBUM_PATH) }, reviewing: () => reviewingOutfit.value })
 // 创作效果：衣服（≤12，可临时挑）、光线、补充、再试一次。sourceOutfit 只在衣服与那套搭配完全一致时才随提交带上。
 const pending = ref<PendingCreation | null>(readPendingCreation(read('pending')))
 const templateId = ref(''), selected = ref<Garment[]>([]), light = ref<Light>('DEFAULT'), note = ref('')
 const sourceOutfit = ref<Outfit | null>(null), parentJobId = ref<string | undefined>()
 const loading = ref(true), busy = ref(false), error = ref(''), sourceError = ref(''), ready = ref(false)
 const step = ref<StepKey>('effect'), pickerOpen = ref(false), sheet = ref<'' | 'person' | 'pose'>('')
+// 需要人物的创作效果：这次不穿的（skipped，不随提交带上）与穿前检查的回答（wearRoles，随提交带上）。
+const skipped = ref<string[]>([]), creationRoles = ref<Record<string, string>>({}), partList = ref<InstanceType<typeof PartList>>()
 
 const effects = computed(() => effectsFor(creationCatalog.value))
 const chooseEffect = computed(() => canChooseEffect(creationCatalog.value))
@@ -71,12 +79,26 @@ const state = computed(() => outfitMode.value
   : { template: template.value, garmentCount: selected.value.length, hasPerson: Boolean(person.value) })
 const block = computed(() => {
   if (!isLast.value) return stepBlock(step.value, state.value)
-  const reason = generateBlock(state.value)
-  return reason || (outfitMode.value && !studio.capability ? '暂时没有可用的生成服务' : '')
+  // 不能生成时只写一句：最先是检查的拦截，其次“有 N 件要你选”，再其次页面自己的原因（如先设置谁来穿）。
+  return barReason(fitReview.value, generateBlock(state.value) || (outfitMode.value && !studio.capability ? '暂时没有可用的生成服务' : ''))
 })
+const personStep = computed(() => step.value === 'person' && Boolean(template.value?.personRequired))
+const wornIds = computed(() => selected.value.map(item => item.id).filter(id => !skipped.value.includes(id)))
+const creationCheck = useWearCheck(() => selected.value.length ? { scene: { elements: selected.value.map(item => ({ kind: 'GARMENT', garmentId: item.id })) }, selectedGarmentIds: wornIds.value, wearRoles: creationRoles.value } : null, () => personStep.value && !outfitMode.value)
+watch([personStep, outfitMode], ([on, outfit]) => { reviewingOutfit.value = on && outfit }, { immediate: true })
+const fitReview = computed(() => !personStep.value ? null : outfitMode.value ? studio.review : creationCheck.review.value)
+const fitBlocked = computed(() => Boolean(reviewReason(fitReview.value)))
+const fitGarments = computed<FitGarment[]>(() => outfitMode.value
+  ? studio.garments.map(item => ({ id: item.garmentId, label: item.garmentLabel, thumb: thumbUrl(item.assetUrl, 120) || null }))
+  : selected.value.map(item => ({ id: item.id, label: formatGarmentLabel(item), thumb: thumbUrl(artworkForGarment(item).url, 120) || null })))
+const creationPieces = computed(() => selected.value.map(item => ({ id: item.id, role: roleFromGarment(item), displayUrl: artworkForGarment(item).url })))
+// “更多”折叠的摘要只写改过的内容；姿势单独一行，不再重复。
+const moreSummary = computed(() => outfitMode.value
+  ? studio.wearSummary ? '已调整穿法' : ''
+  : [light.value !== 'DEFAULT' ? `光线${lightOptions.value.find(item => item.value === light.value)?.label || ''}` : '', note.value.trim() ? '已写补充' : ''].filter(Boolean).join(' · '))
 const carried = computed(() => studio.current ? `${studio.current.name} · ${studio.garments.length} 件` : sourceOutfit.value ? `${sourceOutfit.value.name} · ${selected.value.length} 件` : selected.value.length ? `${selected.value.length} 件衣服` : '')
-const poseOptions = computed(() => [{ value: 'AUTO', label: '自动' }, ...(studio.poseCatalog?.presets || []).map(p => ({ value: `PRESET:${p.id}`, label: p.name })), ...(studio.poseCatalog?.mine || []).map(p => ({ value: `CUSTOM:${p.id}`, label: p.name }))])
-const poseValue = computed({ get: () => pose.value.mode === 'AUTO' ? 'AUTO' : `${pose.value.mode}:${pose.value.id}`, set: (value: string) => { const [mode, ...id] = value.split(':'); pose.value = mode === 'AUTO' ? { mode } : { mode: mode as 'CUSTOM' | 'PRESET', id: id.join(':') } } })
+/** 草稿里的姿势仍在姿势库里才沿用。 */
+const knownPose = (choice: PoseChoice) => choice.mode === 'AUTO' || (choice.mode === 'PRESET' ? studio.poseCatalog?.presets : studio.poseCatalog?.mine)?.some(item => item.id === choice.id)
 const lightOptions = computed(() => (template.value?.options.light || ['DEFAULT']).map(value => ({ value, label: { DEFAULT: '自然', WARM: '暖光', COOL: '冷光' }[value] })))
 const describe = (cause: unknown) => cause instanceof Error ? cause.message : '暂时未能完成，请稍后重试。'
 const calm = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -89,6 +111,8 @@ watch(templateId, () => { if (ready.value) light.value = 'DEFAULT' })
 watch(steps, list => { if (!list.includes(step.value)) step.value = list[list.length - 1] })
 watch(pending, value => store('pending', value ? JSON.stringify(value) : null), { deep: true })
 watch(baselineId, (_value, old) => { if (old && sheet.value === 'person') sheet.value = '' })
+// 挑的衣服变了：只保留仍在的衣服的“这次不穿”与穿法。
+watch(selected, list => { const ids = list.map(item => item.id); skipped.value = skipped.value.filter(id => ids.includes(id)); creationRoles.value = pruneWear(creationRoles.value, ids) })
 function go(target: StepKey | undefined) { if (!target) return; step.value = target; window.scrollTo({ top: 0, behavior: calm() ? 'auto' : 'smooth' }) }
 
 /** 创作用的衣服：来自搭配时取那套里能用的，否则取草稿里的；有衣服用不了时不再算“来自搭配”。 */
@@ -117,7 +141,7 @@ async function load() {
   // 草稿或再试一次带来的效果仍然可用才沿用；否则默认上身图，不替用户挑别的创作效果。
   templateId.value = effects.value.find(item => item.id === wantedTemplate && item.available)?.id || OUTFIT_EFFECT_ID
   light.value = draft.light; note.value = draft.note
-  if (poseOptions.value.some(item => item.value === (draft.pose.mode === 'AUTO' ? 'AUTO' : `${draft.pose.mode}:${draft.pose.id}`))) pose.value = draft.pose
+  if (knownPose(draft.pose)) pose.value = draft.pose
   if (chooseEffect.value) await loadCreationGarments(outfitId.value, draft.ids)
   await nextTick() // 让“这次穿哪些”按带入的搭配先填好，再判断落在哪一步。
   step.value = entryStep(steps.value, state.value)
@@ -177,11 +201,33 @@ async function generate() {
   if (block.value || !template.value) return
   busy.value = true; error.value = ''
   try {
-    const preparation = await creationApi.prepare(creationInput(template.value, selected.value, person.value, light.value, pose.value, note.value, sourceOutfit.value || undefined, parentJobId.value))
+    const personal = template.value.personRequired
+    // 需要人物时按当前选择再查一次（不等防抖）；没通过就停在清单上，原因已写在那里。查不到时交给准备接口再查。
+    const checked = personal ? await creationCheck.run().catch(() => undefined) : undefined
+    if (checked && !reviewPassed(checked)) { busy.value = false; partList.value?.focusFirst(); return }
+    const garments = personal ? selected.value.filter(item => wornIds.value.includes(item.id)) : selected.value
+    const source = personal && skipped.value.length ? undefined : sourceOutfit.value || undefined
+    const preparation = await creationApi.prepare(creationInput(template.value, garments, person.value, light.value, pose.value, note.value, source, parentJobId.value, personal ? creationRoles.value : {}))
     pending.value = { key: createUuid(), preparationId: preparation.preparationId }
   } catch (cause) { error.value = describe(cause); busy.value = false; return }
   busy.value = false
   await settle()
+}
+/** 部位清单的改动：上身图写回 useOotdStudio，创作效果记在本页。 */
+function setWorn(ids: string[]) { if (outfitMode.value) studio.selected = ids; else skipped.value = selected.value.map(item => item.id).filter(id => !ids.includes(id)) }
+function setRoles(roles: Record<string, string>) { if (outfitMode.value) studio.wearRoles = roles; else creationRoles.value = roles }
+function recheck() { void (outfitMode.value ? studio.check() : creationCheck.run()).catch(() => {}) }
+/** 去加 ›：上身图去搭配编辑器打开这套；创作效果回到“选衣服”。 */
+function onFix(_fix: FitFix) {
+  if (locked.value) return
+  if (outfitMode.value && studio.current) void router.push(`/outfits/${encodeURIComponent(studio.current.id)}`)
+  else go('garments')
+}
+/** 点禁用的生成按钮：有检查原因时滚到第一个要处理的地方；没设置形象时打开“谁来穿”。 */
+function nudge() {
+  if (!block.value || locked.value) return
+  if (fitBlocked.value) partList.value?.focusFirst()
+  else if (personStep.value && !person.value) sheet.value = 'person'
 }
 function back() { const before = prevStep(steps.value, step.value); if (before && !locked.value) go(before) }
 
@@ -242,11 +288,15 @@ onUnmounted(() => wideQuery.removeEventListener('change', onWide))
         </a-collapse-panel></a-collapse>
       </section>
 
-      <section v-else-if="outfitMode" class="tm-step" aria-label="谁来穿">
+      <section v-else class="tm-step" aria-label="谁来穿">
         <div class="tm-pair">
-          <button type="button" class="tm-tile" :class="{ empty: !studio.current }" :disabled="locked" @click="go('garments')">
-            <span class="tm-tile-media"><OutfitCollage v-if="studio.current" :pieces="scenePieces(studio.current.scene)" :title="studio.current.name" /><span v-else class="tm-tile-empty"><SkinOutlined /><b>选一套搭配</b></span></span>
-            <span class="tm-tile-label"><small>这套</small><b>{{ studio.current ? studio.current.name : '还没选' }}</b><em>换</em></span>
+          <button type="button" class="tm-tile" :class="{ empty: outfitMode ? !studio.current : !selected.length }" :disabled="locked" @click="go('garments')">
+            <span class="tm-tile-media">
+              <OutfitCollage v-if="outfitMode && studio.current" :pieces="scenePieces(studio.current.scene)" :title="studio.current.name" />
+              <OutfitCollage v-else-if="!outfitMode && selected.length" :pieces="creationPieces" :title="sourceOutfit?.name || ''" />
+              <span v-else class="tm-tile-empty"><SkinOutlined /><b>{{ outfitMode ? '选一套搭配' : '挑几件衣服' }}</b></span>
+            </span>
+            <span class="tm-tile-label"><small>这套</small><b>{{ outfitMode ? studio.current?.name || '还没选' : sourceOutfit?.name || (selected.length ? `${selected.length} 件衣服` : '还没选') }}</b><em>换</em></span>
           </button>
           <span class="tm-plus" aria-hidden="true"><PlusOutlined /></span>
           <button type="button" class="tm-tile" :class="{ empty: !person }" :disabled="locked" @click="sheet = 'person'">
@@ -254,36 +304,15 @@ onUnmounted(() => wideQuery.removeEventListener('change', onWide))
             <span class="tm-tile-label"><small>谁来穿</small><b>{{ person ? modelLabel(person) : '还没设置' }}</b><em>换</em></span>
           </button>
         </div>
+        <PartList v-if="outfitMode ? studio.current : selected.length" ref="partList" :review="fitReview" :garments="fitGarments"
+          :selected="outfitMode ? studio.selected : wornIds" :wear-roles="outfitMode ? studio.wearRoles : creationRoles"
+          :error="outfitMode ? studio.reviewError : creationCheck.error.value" :disabled="locked"
+          @update:selected="setWorn" @update:wear-roles="setRoles" @fix="onFix" @retry="recheck" />
+        <PoseRow :pose="pose" :catalog="studio.poseCatalog" :disabled="locked" @open="sheet = 'pose'" />
         <a-collapse ghost class="tm-more"><a-collapse-panel key="more" header="更多">
-          <template #extra><span class="tm-more-extra">{{ studio.poseName }}<template v-if="studio.current"> · {{ studio.selected.length }}/{{ studio.garments.length }} 件</template><template v-if="studio.wearSummary"> · 已调整</template></span></template>
-          <OotdMore :studio="studio" @pose="sheet = 'pose'" />
-        </a-collapse-panel></a-collapse>
-        <template v-if="studio.review">
-          <a-alert v-for="issue in studio.review.blockers" :key="issue.message" type="error" :message="issue.message" :description="issue.action" show-icon class="tm-review" />
-          <a-alert v-for="issue in studio.review.warnings" :key="issue.code" type="warning" :message="issue.message" show-icon class="tm-review" />
-          <a-alert v-if="!studio.review.blockers.length && !studio.review.warnings.length" type="success" message="这套可以直接生成" show-icon class="tm-review" />
-          <div v-for="slot in studio.filledSlots.filter(s => s.items.some(i => i.role === 'ACCESSORY'))" :key="slot.role" class="tm-accessories">
-            <div v-for="i in slot.items.filter(i => i.role === 'ACCESSORY')" :key="i.garmentId" class="tm-accessory"><span>{{ i.label }}</span> <a-select v-model:value="studio.wearRoles[i.garmentId]" :options="ACCESSORY_OPTIONS" placeholder="戴在哪里" /></div>
-          </div>
-        </template>
-      </section>
-
-      <section v-else class="tm-step" aria-label="谁来穿">
-        <div v-if="studio.baselines.length" class="tm-effects" role="group" aria-label="谁来穿">
-          <a-button v-for="model in studio.baselines" :key="model.id" type="text" class="tm-card" :class="{ on: model.id === baselineId }" :disabled="locked" :aria-pressed="model.id === baselineId" @click="baselineId = model.id">
-            <span class="tm-card-art"><img v-if="model.mediaUrl" :src="mediaUrl(model.mediaUrl)" alt="" loading="lazy" /><span v-if="model.id === baselineId" class="tm-check"><CheckOutlined /></span></span>
-            <strong>{{ model.name || '我的形象' }}</strong>
-          </a-button>
-        </div>
-        <a-empty v-else description="还没有已确认的形象">
-          <a-space direction="vertical" align="center">
-            <a-button type="primary" @click="router.push('/settings?section=personal')">去设置形象</a-button>
-            <a-button v-if="chooseEffect" type="link" :disabled="locked" @click="go('effect')">换个不需要人物的效果</a-button>
-          </a-space>
-        </a-empty>
-        <a-collapse ghost class="tm-more"><a-collapse-panel key="more" header="更多设置">
-          <a-form layout="vertical">
-            <a-form-item label="动作"><a-select v-model:value="poseValue" :disabled="locked" :options="poseOptions" /></a-form-item>
+          <template v-if="moreSummary" #extra><span class="tm-more-extra">{{ moreSummary }}</span></template>
+          <OotdMore v-if="outfitMode" :studio="studio" />
+          <a-form v-else layout="vertical">
             <a-form-item v-if="lightOptions.length > 1" label="光线"><a-segmented v-model:value="light" :disabled="locked" :options="lightOptions" /></a-form-item>
             <a-form-item label="补充说明"><a-textarea v-model:value="note" :disabled="locked" :maxlength="200" show-count :auto-size="{ minRows: 2, maxRows: 4 }" placeholder="例如：背景明亮一些" /></a-form-item>
           </a-form>
@@ -296,8 +325,9 @@ onUnmounted(() => wideQuery.removeEventListener('change', onWide))
       <div class="tm-bar-row">
         <a-button v-if="stepIndex > 0" size="large" :disabled="locked" @click="back">上一步</a-button>
         <a-button v-if="!isLast" type="primary" size="large" :disabled="!!block" @click="go(nextStep(steps, step))">下一步</a-button>
-        <a-button v-else-if="outfitMode" type="primary" size="large" :loading="studio.busy" :disabled="!!block || !!pending" @click="studio.prepare()">{{ imageActionLabel(billing.image) }}</a-button>
-        <a-button v-else type="primary" size="large" :loading="busy" :disabled="(!!block && !pending)" @click="generate">{{ pending ? '核对结果' : '生成 · 1 次' }}</a-button>
+        <!-- 禁用的按钮收不到点击：外面这层接住，滚到第一个要处理的地方。 -->
+        <span v-else-if="outfitMode" class="tm-go" @click="nudge"><a-button type="primary" size="large" :loading="studio.busy" :disabled="!!block || !!pending" @click="studio.prepare()">{{ imageActionLabel(billing.image) }}</a-button></span>
+        <span v-else class="tm-go" @click="!pending && nudge()"><a-button type="primary" size="large" :loading="busy" :disabled="(!!block && !pending)" @click="generate">{{ pending ? '核对结果' : '生成 · 1 次' }}</a-button></span>
       </div>
       <p v-if="isLast && outfitMode" class="tm-cost">每张用 1 次图像额度 · 约 30 秒，可以先离开</p>
       <p v-else-if="isLast" class="tm-cost">与上身图共用次数
@@ -312,7 +342,7 @@ onUnmounted(() => wideQuery.removeEventListener('change', onWide))
   <CreationGarmentPicker v-model:open="pickerOpen" :selected-ids="selected.map(g => g.id)" :max="maxGarments" :locked="locked" @toggle="toggle" />
   <a-drawer :open="sheet === 'person'" :placement="wide ? 'right' : 'bottom'" :width="440" height="auto" title="谁来穿" root-class-name="studio-sheet" @close="sheet = ''">
     <ModelPicker v-if="studio.baselines.length" v-model="baselineId" :models="studio.baselines" />
-    <div v-else class="tm-empty"><p>先上传一张全身照，生成你的形象，之后每次试穿都用它。</p><a-button type="primary" @click="router.push('/settings?section=personal')">设置我的形象</a-button></div>
+    <div v-else class="tm-empty"><p>先上传一张全身照，生成你的形象，之后每次试穿都用它。</p><a-button type="primary" @click="router.push('/settings?section=personal')">设置我的形象</a-button><a-button v-if="!outfitMode && chooseEffect" type="link" :disabled="locked" @click="sheet = ''; go('effect')">换个不需要人物的效果</a-button></div>
   </a-drawer>
   <a-drawer :open="sheet === 'pose'" :placement="wide ? 'right' : 'bottom'" :width="480" height="min(82dvh, 760px)" title="姿势" root-class-name="studio-sheet" @close="sheet = ''">
     <PosePicker v-model="pose" :catalog="studio.poseCatalog" @changed="studio.loadPoses()" />
@@ -375,13 +405,11 @@ onUnmounted(() => wideQuery.removeEventListener('change', onWide))
 .tm-tile-label b { overflow: hidden; font-size: 14px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .tm-tile-label em { font-style: normal; font-size: 13px; color: var(--accent-strong); }
 .tm-plus { display: grid; place-items: center; width: 28px; height: 28px; margin-bottom: 44px; border-radius: 50%; color: var(--muted); background: var(--surface-alt); font-size: 12px; }
-.tm-review { margin-top: 12px; }
-.tm-accessories { display: grid; gap: 8px; margin-top: 10px; }
-.tm-accessory { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; }
-.tm-accessory :deep(.ant-select) { min-width: 160px; }
 .tm-bar { position: sticky; bottom: calc(var(--dock-space) + 4px); z-index: 5; display: grid; gap: 6px; padding: 12px; border-radius: 18px; background: var(--glass); backdrop-filter: blur(18px) saturate(140%); -webkit-backdrop-filter: blur(18px) saturate(140%); box-shadow: 0 0 0 1px var(--line), 0 10px 30px -16px #00000040; }
 .tm-bar-row { display: flex; gap: 10px; }
 .tm-bar-row .ant-btn-primary { flex: 1; min-width: 0; }
+.tm-go { display: flex; flex: 1; min-width: 0; }
+.tm-go .ant-btn[disabled] { pointer-events: none; }
 .tm-bar .ant-btn-lg { height: 50px; font-size: 16px; }
 .tm-block { margin: 0; text-align: center; font-size: 13px; color: var(--muted-strong); }
 .tm-cost { margin: 0; text-align: center; font-size: 12px; color: var(--muted-strong); }
@@ -392,6 +420,7 @@ onUnmounted(() => wideQuery.removeEventListener('change', onWide))
   .tm-pair { max-width: 480px; margin: 0 auto; }
   .tm-bar { position: sticky; top: 24px; bottom: auto; padding: 18px; background: var(--surface); backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: 0 0 0 1px var(--line); }
   .tm-bar-row { flex-direction: column-reverse; }
+  .tm-go { flex: none; }
 }
 @media (prefers-reduced-motion: reduce) { .tm-tile-media { transition: none; } }
 </style>

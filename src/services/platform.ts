@@ -49,8 +49,22 @@ export async function platformRequest<T>(path: string, method = 'GET', body?: un
     throw new PlatformRequestError(timedOut ? '请求超时，请核对提交结果。' : sent ? '连接中断，尚无法确认提交结果。' : '暂时无法连接到服务，请检查连接后重试。', sent)
   } finally { clearTimeout(timer) }
 }
-export type Worn = { garmentId: string; revision: number; label: string; role: string; referenceAssetId: string; position: string }
-export type Review = { items: Worn[]; slots: { role: string; label: string; state: string; items: Worn[] }[]; blockers: { code: string; message: string; action: string }[]; warnings: { code: string; message: string }[]; fingerprint: string; ruleVersion: string }
+/** 穿上身规则 composition-v2（server 设计 2026-11-21 3.1）：layer、parts、asks、blockers[].fix 只在 v2 出现；开关关闭（v1）时 parts/asks 为空、fix/layer 为 null。 */
+export type Layer = 'INNER' | 'MAIN' | 'OUTER'
+export type Worn = { garmentId: string; revision: number; label: string; role: string; referenceAssetId: string; position: string; layer?: Layer | null }
+export type PartKey = 'FULL' | 'UPPER' | 'LOWER' | 'OUTER' | 'SHOES' | 'EXTRA'
+export type PartItem = { garmentId: string; label: string; layer: Layer; position: string | null; note: string | null }
+/** state：NONE 只用于鞋（不穿鞋）。 */
+export type Part = { part: PartKey; label: string; state: 'OK' | 'MISSING' | 'NONE'; items: PartItem[] }
+export type Ask = { code: 'CHOOSE_INNER' | 'CHOOSE_ONE' | 'CHOOSE_PART'; garmentIds: string[]; message: string }
+export type ReviewFix = 'ADD_TOP' | 'ADD_BOTTOM' | 'ADD_MAIN' | 'REPLACE'
+/** garmentId：与某件衣服有关的拦截（REPLACE、ROLE_CONFLICT、ACCESSORY_POSITION_CONFLICT、GARMENT_INACTIVE、REFERENCE_MISSING）才有。 */
+export type ReviewBlocker = { code: string; message: string; action: string; fix?: ReviewFix | null; garmentId?: string | null }
+export type Review = {
+  items: Worn[]; slots: { role: string; label: string; state: string; items: Worn[] }[]; blockers: ReviewBlocker[]; warnings: { code: string; message: string }[]
+  fingerprint: string; ruleVersion: string; outfitId?: string | null; revision?: number | null
+  parts?: Part[]; asks?: Ask[]
+}
 export type Profile = { revision: number; sex: string | null; heightCm: number | null; weightKg: number | null; bodyShape: string | null; measurements: Record<string, number>; preferences: Record<string, string>; defaultBaselineId: string | null }
 export type ProfileSnapshot = { sex: string; heightCm: number; weightKg: number; bodyShape: string; sources: Record<string, string>; profileRevision: number }
 export type Baseline = { id: string; revision: number; status: string; mediaUrl: string | null; sourcePhotoId: string | null; profile: ProfileSnapshot; createdAt: number; currentDefault: boolean; name: string | null }
