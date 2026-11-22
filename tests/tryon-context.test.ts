@@ -49,3 +49,26 @@ test('metadata never counts; a decoded hidden frame counts exactly once without 
 test('cancelling an old stream prevents delayed events counting for the next lease',()=>{
   const v=new Video();let calls=0;const stop=observeFirstFrame(v as unknown as HTMLVideoElement,()=>calls++);stop();v.readyState=2;v.videoWidth=640;v.videoHeight=960;v.dispatchEvent(new Event('loadeddata'));assert.equal(calls,0)
 })
+test('look coverages (server-only roles) have their own sentence, framing advice and guide parts', async () => {
+  const { partsFor, scopeOf } = await import('../src/tryon/guide.ts')
+  const { checkFrame } = await import('../src/tryon/pose/checks.ts')
+  const { lookRole, LOOK_ROLES } = await import('../src/tryon/context.ts')
+  assert.equal(tryOnPrompt([{wearingRole:'LOOK_FULL'}]).split('。')[0],'把视频中人物身上的衣服整体换成参考图中的整套搭配，上装、下装、鞋和配饰按参考图的位置穿戴')
+  assert.equal(tryOnPrompt([{wearingRole:'LOOK_UPPER'}]).split('。')[0],'把视频中人物上半身的衣服换成参考图中的整套上装，下半身保持原样')
+  assert.equal(tryOnPrompt([{wearingRole:'LOOK_LOWER'}]).split('。')[0],'把视频中人物腰部以下换成参考图中的下装和鞋，上半身保持原样')
+  for (const role of LOOK_ROLES) { const p=tryOnPrompt([{wearingRole:role}]);assert.ok([...p].length<=120,role);assert.doesNotMatch(p,/不能|不要|禁止|格/,role) }
+  assert.match(framingHint([{wearingRole:'LOOK_FULL'}]),/头到脚/)
+  assert.match(framingHint([{wearingRole:'LOOK_UPPER'}]),/肩膀到腰部/)
+  assert.match(framingHint([{wearingRole:'LOOK_LOWER'}]),/腰部、腿部和脚/)
+  assert.equal(scopeOf(partsFor(['LOOK_FULL'])),'full');assert.deepEqual(partsFor(['LOOK_FULL']),['head','shoulders','hips','knees','feet'])
+  assert.equal(scopeOf(partsFor(['LOOK_UPPER'])),'upper');assert.deepEqual(partsFor(['LOOK_UPPER']),['shoulders','hips'])
+  assert.deepEqual(partsFor(['LOOK_LOWER']),['hips','knees','feet'])
+  assert.equal(lookRole('FULL'),'LOOK_FULL');assert.equal(lookRole('UPPER'),'LOOK_UPPER');assert.equal(lookRole('LOWER'),'LOOK_LOWER');assert.equal(lookRole(undefined),'LOOK_FULL')
+  // 用户不能自己选这三个位置：不在可选列表里。
+  for (const role of LOOK_ROLES) assert.ok(!WEAR_OPTIONS.some(o=>o.value===role),role)
+  // 取景检查也认识：整套上装只要上半身，整套要看到膝盖和脚踝。
+  const upper = Array.from({length:33},(_,i)=>[0,11,12,23,24].includes(i)?{x:[0.5,0.4,0.6,0.44,0.56][[0,11,12,23,24].indexOf(i)],y:[0.15,0.3,0.3,0.6,0.6][[0,11,12,23,24].indexOf(i)],visibility:0.9}:{x:0.5,y:0.5,visibility:0.1})
+  assert.equal(checkFrame(upper,['LOOK_UPPER']).status,'ready')
+  assert.match(checkFrame(upper,['LOOK_FULL']).hint,/头到脚/)
+  assert.match(checkFrame(upper,['LOOK_LOWER']).hint,/腰部到脚踝/)
+})

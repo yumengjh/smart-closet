@@ -23,6 +23,8 @@ const ROLE_PARTS: Record<string, readonly Part[]> = {
   ONE_PIECE: ['shoulders', 'hips', 'knees'], OVERALL: ['shoulders', 'hips', 'knees'],
   SHOES: ['feet'], SOCKS: ['feet'],
   WRIST: ['hands'], FINGER: ['hands'], GLOVES: ['hands'], ARM: ['hands'], HANDHELD: ['hands'],
+  // 精选整套按覆盖范围取景：整套看全身，整套上装看上身，整套下装看腰到脚。
+  LOOK_FULL: ['head', 'shoulders', 'hips', 'knees', 'feet'], LOOK_UPPER: ['shoulders', 'hips'], LOOK_LOWER: ['hips', 'knees', 'feet'],
 }
 /** 认不出位置（其他配饰、未分类）按上半身处理，和 framingHint 的兜底一致。 */
 const FALLBACK: readonly Part[] = ['shoulders', 'hips']

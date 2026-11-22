@@ -25,7 +25,14 @@ const wears: Record<string, Wear> = {
   WRIST: { single: '给视频中人物的手腕戴上参考图中的手表或手链，衣服保持原样', slot: '手表或手链，戴在手腕上' },
   FINGER: { single: '给视频中人物的手指戴上参考图中的戒指，衣服保持原样', slot: '戒指，戴在手指上' },
   ARM: { single: '给视频中人物的手臂戴上参考图中的臂环或袖套，衣服保持原样', slot: '臂环或袖套，戴在手臂上' },
+  // 精选整套（server 设计 2026-11-22 3.4）：位置只由服务端按整套的覆盖范围给出，用户不能选，不进 WEAR_GROUPS。
+  LOOK_FULL: { single: '把视频中人物身上的衣服整体换成参考图中的整套搭配，上装、下装、鞋和配饰按参考图的位置穿戴', slot: '整套搭配，按参考图的位置穿戴' },
+  LOOK_UPPER: { single: '把视频中人物上半身的衣服换成参考图中的整套上装，下半身保持原样', slot: '整套上装，穿在上半身' },
+  LOOK_LOWER: { single: '把视频中人物腰部以下换成参考图中的下装和鞋，上半身保持原样', slot: '下装和鞋，穿在腰部以下' },
 }
+/** 精选整套的三种覆盖范围对应的位置值。 */
+export const LOOK_ROLES = ['LOOK_FULL', 'LOOK_UPPER', 'LOOK_LOWER'] as const
+export const lookRole = (coverage: string | null | undefined) => coverage === 'UPPER' ? 'LOOK_UPPER' : coverage === 'LOWER' ? 'LOOK_LOWER' : 'LOOK_FULL'
 const FALLBACK = '视频中人物衣服替换成参考图中衣服'
 type WearOption = { value: string; label: string }
 /** 用户可选的穿戴位置，按身体部位分组：固定列表，提示词只认这些值，不接受自由文字。 */
@@ -56,6 +63,9 @@ export function tryOnPrompt(items: readonly WearingItem[]) {
 export function framingHint(items: readonly WearingItem[]) {
   if (has(items, ['HANDHELD'])) return '试穿手持物时，请把手抬进画面，做出拿东西的手势。'
   if (has(items, ['WRIST', 'FINGER', 'GLOVES', 'ARM'])) return '试戴手表、戒指、手套或臂饰时，请把手和手臂抬到胸前，让它们清楚地进入画面。'
+  if (has(items, ['LOOK_FULL'])) return '试穿整套时，请后退两三步，让头到脚都进入画面。'
+  if (has(items, ['LOOK_LOWER'])) return '试穿整套下装时，请后退一些，让腰部、腿部和脚进入画面。'
+  if (has(items, ['LOOK_UPPER'])) return '试穿整套上装时，请让肩膀到腰部完整进入画面。'
   if (has(items, ['BOTTOM', 'ONE_PIECE', 'OVERALL', 'SHOES', 'SOCKS'])) return '试穿下装或连衣裙时，请后退一些，让腰部、腿部和衣物下摆进入画面。'
   if (has(items, ['EAR'])) return '试戴耳饰时，请把头发拨到耳后，让耳朵露出来。'
   if (has(items, ['GLASSES', 'HAT', 'HEADWEAR', 'NECK'])) return '试戴眼镜、帽子、头饰或项链时，请正对镜头，让头部和颈部清楚地进入画面。'
