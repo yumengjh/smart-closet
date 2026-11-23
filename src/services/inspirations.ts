@@ -15,7 +15,44 @@ export type Inspiration = {
   collectionIds: string[]
   createdAt: number
   updatedAt: number
+  /** I2 拆解（设计 4.4）。REJECTED 时看 rejectMessage；MINOR_LIKELY 时图片已删。 */
+  rejectReason?: string | null
+  rejectMessage?: string | null
+  analysis?: InspirationAnalysis | null
+  /** I3：由它存成的搭配。 */
+  outfitIds?: string[]
 }
+export type InspirationItem = {
+  index: number
+  role: string
+  category: string
+  primaryColor: string
+  secondaryColors: string[]
+  patterns: string[]
+  fit: string
+  length: string
+  wear: string
+  visibility: string
+  confidence: string
+  description: string
+  cropUrl: string | null
+}
+export type InspirationAnalysis = {
+  extractorVersion: string
+  seasons: string[]
+  occasions: string[]
+  looks: { id: string; label: string }[]
+  items: InspirationItem[]
+  tips: string[]
+  hasPose: boolean
+}
+export type MatchGrade = 'VERY_CLOSE' | 'CLOSE' | 'SAME_KIND'
+export type InspirationMatch = { garmentId: string; grade: MatchGrade; score: number; reasons: string[]; held?: boolean }
+export type InspirationMatches = {
+  items: { index: number; role: string; owned: InspirationMatch[]; wanted: InspirationMatch[] }[]
+  replica: { garmentIds: string[]; missing: { index: number; role: string; category: string; description: string }[]; missingMain: boolean }
+}
+export const MATCH_GRADE_LABEL: Record<MatchGrade, string> = { VERY_CLOSE: '很像', CLOSE: '接近', SAME_KIND: '同类' }
 export type InspirationPage = { items: Inspiration[]; nextCursor: string | null; total: number; max: number }
 export type CollectionKind = 'OUTFIT' | 'INSPIRATION'
 export type Collection = {
@@ -28,6 +65,8 @@ export type Collection = {
   createdAt: number
   updatedAt: number
 }
+/** 临时状态（设计 6.2），服务端已按到期折算：过期即 NONE。 */
+export type HoldStatus = 'NONE' | 'LAUNDRY' | 'REPAIR' | 'LENT' | 'STORED'
 export type GarmentMark = {
   garmentId: string
   tags: string[]
@@ -38,6 +77,9 @@ export type GarmentMark = {
   wearCount: number
   lastWornOn: string | null
   updatedAt: number | null
+  holdStatus: HoldStatus
+  holdUntil: string | null
+  holdActive: boolean
 }
 export type GarmentMarkWrite = Pick<GarmentMark, 'tags' | 'note' | 'purchasePriceMinor' | 'purchaseCurrency' | 'purchaseDate'>
 
@@ -47,8 +89,9 @@ import { normalizeTags } from '../domain/marks'
 const json = (body: unknown) => JSON.stringify(body)
 
 export const inspirationApi = {
-  list: (params: { collection?: string; q?: string; cursor?: string | null; limit?: number } = {}) => {
+  list: (params: { collection?: string; q?: string; look?: string; cursor?: string | null; limit?: number } = {}) => {
     const query = new URLSearchParams()
+    if (params.look) query.set('look', params.look)
     if (params.collection) query.set('collection', params.collection)
     if (params.q) query.set('q', params.q)
     if (params.cursor) query.set('cursor', params.cursor)
@@ -65,6 +108,10 @@ export const inspirationApi = {
   },
   updateNote: (id: string, note: string | null) => request<Inspiration>(`/api/inspirations/${encodeURIComponent(id)}`, { method: 'PATCH', body: json({ note }) }),
   remove: (id: string) => request<void>(`/api/inspirations/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  /** 拆解是异步的：202 后轮询 get，直到不再是 ANALYZING。同一个键重复提交只扣一次。 */
+  analyze: (id: string, key: string) => request<Inspiration>(`/api/inspirations/${encodeURIComponent(id)}/analyze`, { method: 'POST', headers: { 'Idempotency-Key': key } }),
+  matches: (id: string) => request<InspirationMatches>(`/api/inspirations/${encodeURIComponent(id)}/matches`),
+  poseCard: (id: string) => request<{ id: string; name: string; description: string }>(`/api/inspirations/${encodeURIComponent(id)}/pose-card`, { method: 'POST' }),
 }
 
 export const collectionApi = {
@@ -83,6 +130,7 @@ export const outfitMarkApi = {
 export const garmentMarkApi = {
   get: (id: string) => request<GarmentMark>(`/api/garments/${encodeURIComponent(id)}/mark`),
   save: (id: string, mark: GarmentMarkWrite) => request<GarmentMark>(`/api/garments/${encodeURIComponent(id)}/mark`, { method: 'PUT', body: json({ ...mark, tags: normalizeTags(mark.tags) }) }),
-  batch: (ids: string[]) => ids.length ? request<{ items: { garmentId: string; tags: string[] }[] }>(`/api/garments/marks?ids=${ids.slice(0, 200).map(encodeURIComponent).join(',')}`) : Promise.resolve({ items: [] }),
+  batch: (ids: string[]) => ids.length ? request<{ items: { garmentId: string; tags: string[]; holdStatus?: HoldStatus }[] }>(`/api/garments/marks?ids=${ids.slice(0, 200).map(encodeURIComponent).join(',')}`) : Promise.resolve({ items: [] }),
   tags: () => request<{ items: { name: string; count: number }[] }>('/api/garments/tags'),
+  setHold: (id: string, status: HoldStatus, until?: string | null) => request<GarmentMark>(`/api/garments/${encodeURIComponent(id)}/hold`, { method: 'PUT', body: json(until ? { status, until } : { status }) }),
 }

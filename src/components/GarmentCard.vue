@@ -8,6 +8,7 @@ import GarmentArt from './GarmentArt.vue'
 import { playSound } from '../services/sound'
 import { tryOnAccess } from '../tryon/access'
 import { wantedLabel } from '../wardrobe/wanted'
+import { holdLabel, holdOf } from '../wardrobe/holds'
 
 /** review (issue #88): why the category needs checking, shown as a small warning badge. */
 const props = defineProps<{ garment: Garment; pending?: boolean; trashed?: boolean; selectable?: boolean; selected?: boolean; review?: string }>()
@@ -39,6 +40,7 @@ function openGarment() { if (props.selectable) { emit('toggle'); return }
         <div class="card-title-row">
           <h3>{{ title }}</h3>
           <span class="card-badges">
+            <a-tag v-if="holdOf(garment.id)" class="card-hold" :bordered="false" :title="`${holdLabel(holdOf(garment.id))}：暂时不推荐，回来后自动恢复`">{{ holdLabel(holdOf(garment.id)) }}</a-tag>
             <a-tag v-if="garment.status === 'WANTED'" class="card-wanted" :title="`${wantedLabel}：还没买，不参与推荐与统计`">{{ wantedLabel }}</a-tag>
             <a-tag v-if="garment.sourceOrigin === 'PRESET'" class="card-preset" title="预设衣物的示意图，可在详情里换成自己的照片">预设</a-tag>
             <a-tooltip v-if="pending" :title="pendingLabel" :trigger="['hover', 'focus']">
@@ -74,6 +76,7 @@ function openGarment() { if (props.selectable) { emit('toggle'); return }
 .card-queue{position:absolute;right:8px;bottom:8px;z-index:1;margin:0;font-size:11px;line-height:18px;padding:0 6px;pointer-events:none}
 .garment-card.selected .card-image-wrap{box-shadow:0 0 0 2px var(--accent)}
 .card-wanted{margin:0;border:0;color:var(--accent-strong);background:var(--accent-soft);font-size:11px;line-height:18px;padding:0 6px}
+.card-hold{margin:0;border:0;color:var(--muted-strong);background:var(--surface-alt);font-size:11px;line-height:18px;padding:0 6px}
 .garment-card:has(.card-wanted) .card-image-wrap{outline:1.5px dashed var(--accent);outline-offset:-6px}
 .card-tryon{position:absolute;left:10px;bottom:10px;min-height:36px;background:var(--surface);color:var(--ink)}
 </style>

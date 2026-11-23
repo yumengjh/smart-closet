@@ -465,8 +465,9 @@ export const closetApi = {
     if (!found) throw new Error('找不到这套搭配。')
     return structuredClone(found)
   },
-  async saveOutfit(id: string | null, revision: number | null, name: string, scene: OutfitScene, recommendationLogId?: string | null): Promise<Outfit> {
-    const payload = { name, revision, scene: sceneWrite(normalizeScene(scene)), ...(recommendationLogId ? { recommendationLogId } : {}) }
+  /** inspirationId：从哪张穿搭收藏存成（设计 4.7），只在新建时传；不传时请求与以前相同。 */
+  async saveOutfit(id: string | null, revision: number | null, name: string, scene: OutfitScene, recommendationLogId?: string | null, inspirationId?: string | null): Promise<Outfit> {
+    const payload = { name, revision, scene: sceneWrite(normalizeScene(scene)), ...(recommendationLogId ? { recommendationLogId } : {}), ...(inspirationId && !id ? { inspirationId } : {}) }
     if (!usingMocks) return id
       ? request<Outfit>(`/api/outfits/${id}`, { method: 'PUT', body: JSON.stringify(payload) })
       : request<Outfit>('/api/outfits', { method: 'POST', body: JSON.stringify(payload) })

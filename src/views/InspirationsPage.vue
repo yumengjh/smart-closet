@@ -34,7 +34,7 @@ async function load(more = false) {
   const mine = ++latest
   if (more) loadingMore.value = true; else error.value = ''
   try {
-    const page = await inspirationApi.list({ q: q.value.trim() || undefined, cursor: more ? cursor.value : null })
+    const page = await inspirationApi.list({ q: q.value.trim() || undefined, look: look.value || undefined, cursor: more ? cursor.value : null })
     if (mine !== latest) return
     items.value = more ? [...items.value, ...page.items] : page.items
     total.value = page.total; max.value = page.max; cursor.value = page.nextCursor
@@ -43,10 +43,15 @@ async function load(more = false) {
 }
 async function loadCollections() { try { collections.value = (await collectionApi.list()).items } catch { /* 合集只是入口，加载失败不挡灵感列表 */ } }
 
+// 风格筛选：只从拆过的图里汇总出现过的风格词；没拆过的图不出现这一行。
+const look = ref('')
+const lookOptions = ref<{ id: string; label: string }[]>([])
+watch(items, list => { const seen = new Map(lookOptions.value.map(o => [o.id, o])); for (const item of list) for (const l of item.analysis?.looks || []) seen.set(l.id, l); lookOptions.value = [...seen.values()] })
+function chooseLook(id: string) { look.value = look.value === id ? '' : id; void load() }
 let searchTimer = 0
 watch(q, () => { window.clearTimeout(searchTimer); searchTimer = window.setTimeout(() => void load(), 300) })
 
-async function save(files: Blob[], source: 'picker' | 'paste' | 'drop') {
+async function save(files: Blob[], source: 'picker' | 'paste' | 'drop' | 'share') {
   const images = files.filter(file => file.type.startsWith('image/'))
   if (!images.length) { if (files.length) message.warning('只能存图片'); return }
   let saved = 0; let duplicates = 0; let first: Inspiration | null = null
@@ -61,7 +66,7 @@ async function save(files: Blob[], source: 'picker' | 'paste' | 'drop') {
   }
   if (saved) { playSound('success'); message.success(saved === 1 ? '存好了' : `存好了 ${saved} 张`) }
   if (duplicates) message.info(duplicates === 1 ? '这张已经存过了' : `${duplicates} 张已经存过了`)
-  if (adding.value) void router.replace({ query: {} })
+  if (adding.value || route.query.shared !== undefined) void router.replace({ query: {} })
   await load()
   // 一次只存一张时直接打开它，方便马上写备注、放进合集。
   if (images.length === 1 && first) void router.push(`/inspirations/${first.id}`)
@@ -84,7 +89,27 @@ function dropped(event: DragEvent) { dragging.value = false; const files = [...(
 const ratio = (item: Inspiration) => item.width && item.height ? `${item.width} / ${item.height}` : '3 / 4'
 const full = computed(() => total.value >= max.value)
 
-onMounted(() => { void load(); void loadCollections(); window.addEventListener('paste', pasted) })
+// 系统分享（安卓 share_target，见 public/sw.js）：service worker 把图片放进本机临时收件箱，这里上传后立刻清空。
+async function receiveShared() {
+  if (route.query.shared === undefined) return
+  if (route.query.shared === '0' || !('caches' in window)) { message.info('没有收到图片，可以在这里点“存穿搭图”选图'); void router.replace({ query: {} }); return }
+  try {
+    const inbox = await caches.open('yuda-share-v1')
+    const keys = await inbox.keys()
+    const files: File[] = []
+    for (const key of keys) {
+      const response = await inbox.match(key)
+      if (!response) continue
+      const blob = await response.blob()
+      files.push(new File([blob], decodeURIComponent(response.headers.get('x-name') || 'shared.png'), { type: blob.type || 'image/png' }))
+    }
+    for (const key of keys) await inbox.delete(key)
+    if (files.length) await save(files, 'share')
+    else void router.replace({ query: {} })
+  } catch { message.error('分享过来的图没有读到，可以在这里点“存穿搭图”选图'); void router.replace({ query: {} }) }
+}
+
+onMounted(() => { void load(); void loadCollections(); void receiveShared(); window.addEventListener('paste', pasted) })
 onUnmounted(() => { window.removeEventListener('paste', pasted); window.clearTimeout(searchTimer) })
 </script>
 
@@ -110,6 +135,9 @@ onUnmounted(() => { window.removeEventListener('paste', pasted); window.clearTim
       </RouterLink>
     </nav>
 
+    <div v-if="lookOptions.length > 1 || look" class="insp-looks" role="group" aria-label="按风格看">
+      <a-button v-for="option in lookOptions" :key="option.id" size="small" shape="round" :type="look === option.id ? 'primary' : 'default'" :aria-pressed="look === option.id" @click="chooseLook(option.id)">{{ option.label }}</a-button>
+    </div>
     <a-alert v-if="error" type="warning" :message="error" show-icon class="insp-alert"><template #action><a-button size="small" @click="load()">重试</a-button></template></a-alert>
     <a-alert v-if="full" type="info" :message="`最多存 ${max} 张，删掉一些再存`" show-icon class="insp-alert" />
     <a-skeleton v-if="!loaded" active :paragraph="{ rows: 6 }" />
@@ -144,6 +172,8 @@ onUnmounted(() => { window.removeEventListener('paste', pasted); window.clearTim
 .insp-collection b { overflow: hidden; font-size: 13px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .insp-collection small { color: var(--muted-subtle); font-size: 12px; }
 .insp-alert { margin-bottom: 12px; }
+.insp-looks { display: flex; gap: 6px; margin: 0 -16px 12px; padding: 0 16px; overflow-x: auto; scrollbar-width: none; }
+.insp-looks .ant-btn { flex: none; }
 .insp-grid { columns: 2; column-gap: 10px; }
 .insp-card { display: block; margin-bottom: 10px; overflow: hidden; break-inside: avoid; border-radius: 14px; background: var(--surface); box-shadow: 0 0 0 1px var(--line); color: var(--muted); text-decoration: none; }
 .insp-card:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }

@@ -2,7 +2,7 @@
 const SHELL = 'yuda-shell-v1'
 const ASSETS = 'yuda-assets-v1'
 const STATIC = 'yuda-static-v1'
-const KNOWN = [SHELL, ASSETS, STATIC]
+const KNOWN = [SHELL, ASSETS, STATIC, 'yuda-share-v1']
 const ASSET_LIMIT = 160
 // The pages show the 320 px copy; /yuda-logo.png (1 MB) is only the source of the PWA icons.
 const PRECACHE = ['/index.html', '/manifest.webmanifest', '/yuda-logo-320.png', '/icons/icon-192.png', '/icons/icon-512.png']
@@ -21,8 +21,27 @@ self.addEventListener('activate', (event) => {
   })())
 })
 
+// 系统分享到鱼搭（安卓已安装时，manifest share_target）：图片先放进本机的临时收件箱，跳到穿搭收藏页由页面上传，
+// 上传后页面立即清空收件箱。图片不经过这里发给任何服务。
+const SHARE_INBOX = 'yuda-share-v1'
+const SHARE_LIMIT = 9
+async function receiveShare(request) {
+  try {
+    const form = await request.formData()
+    const files = form.getAll('files').filter(file => file instanceof File && file.type.startsWith('image/')).slice(0, SHARE_LIMIT)
+    const inbox = await caches.open(SHARE_INBOX)
+    for (const key of await inbox.keys()) await inbox.delete(key)
+    let index = 0
+    for (const file of files) await inbox.put(`/share-inbox/${index++}`, new Response(file, { headers: { 'content-type': file.type, 'x-name': encodeURIComponent(file.name || 'shared.png') } }))
+    return Response.redirect(`/inspirations?shared=${files.length}`, 303)
+  } catch {
+    return Response.redirect('/inspirations?shared=0', 303)
+  }
+}
+
 self.addEventListener('fetch', (event) => {
   const { request } = event
+  if (request.method === 'POST' && new URL(request.url).pathname === '/inspirations/share') { event.respondWith(receiveShare(request)); return }
   if (request.method !== 'GET' || request.headers.has('range')) return
   const url = new URL(request.url)
   if (url.origin !== self.location.origin || BYPASS.some(prefix => url.pathname.startsWith(prefix))) return

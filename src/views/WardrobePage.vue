@@ -23,6 +23,7 @@ import { readView, saveView } from '../wardrobe/viewMemory'
 import pageLocale from 'ant-design-vue/es/vc-pagination/locale/zh_CN'
 import { PAGE_SIZES, pageAfterSizeChange, readPageSize, savePageSize } from '../wardrobe/pageSize'
 import { garmentMarkApi } from '../services/inspirations'
+import { loadHolds } from '../wardrobe/holds'
 import { listStatus, loadWantedLabel, readOwnership, saveOwnership, wantedLabel, type Ownership } from '../wardrobe/wanted'
 import { buildTags, combineQuery, imageModelNotice, removeWords, IMAGE_STYLE_LABELS, SEARCH_EXAMPLES, type SearchTag } from '../wardrobe/search'
 
@@ -234,6 +235,7 @@ async function load() {
     wantedTotal.value = ownership.value === 'WANTED' ? -1 : 0
     wantedCountKnown.value = ownership.value !== 'ALL' || searching.value
     searchResult.value = result.search; items.value = result.items; total.value = result.total
+    void loadHolds(result.items.filter(item => item.status === 'ACTIVE').map(item => item.id))
   } catch (cause) { if (mine === latestLoad) error.value = cause instanceof Error ? cause.message : '衣柜暂时无法加载。' }
   finally { if (mine === latestLoad && !unmounted) { loading.value = false; loadBackground(mine) } }
 }

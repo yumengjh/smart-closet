@@ -3,7 +3,8 @@ import { computed, ref, watch } from 'vue'
 import { App } from 'ant-design-vue'
 import { EditOutlined } from '@ant-design/icons-vue'
 import { dateLocale } from '../recommend/dateLocale'
-import { MAX_GARMENT_NOTE, MAX_TAGS, MAX_TAG_LENGTH, costPerWear, garmentMarkApi, minorToYuan, normalizeTags, yuanToMinor, type GarmentMark } from '../services/inspirations'
+import { MAX_GARMENT_NOTE, MAX_TAGS, MAX_TAG_LENGTH, costPerWear, garmentMarkApi, minorToYuan, normalizeTags, yuanToMinor, type GarmentMark, type HoldStatus } from '../services/inspirations'
+import { HOLD_OPTIONS, applyHold, holdLabel } from '../wardrobe/holds'
 import { track } from '../services/analytics'
 import { playSound } from '../services/sound'
 
@@ -62,6 +63,22 @@ const wornLine = computed(() => {
   if (!count) return props.wanted ? '' : '还没穿过'
   return `穿了 ${count} 次${mark.value?.lastWornOn ? ` · 最近 ${mark.value.lastWornOn.slice(5).replace('-', '月')}日` : ''}`
 })
+// 临时状态（设计 6.2）：点一下就生效，不进编辑态；再点同一个或“在衣柜”就取消。
+const holding = ref<HoldStatus | ''>('')
+const currentHold = computed<HoldStatus>(() => mark.value?.holdActive ? mark.value.holdStatus : 'NONE')
+async function setHold(status: HoldStatus, until?: string | null) {
+  if (!mark.value) return
+  const next = status === currentHold.value && until === undefined ? 'NONE' : status
+  holding.value = next
+  try {
+    mark.value = await applyHold(props.garmentId, next, until)
+    playSound(next === 'NONE' ? 'tick' : 'pop')
+    message.success(next === 'NONE' ? '回到衣柜了，推荐会用它' : `标成${holdLabel(next)}，这段时间不推荐它`)
+  } catch (cause) { message.error(cause instanceof Error ? cause.message : '没有标上，请重试。') }
+  finally { holding.value = '' }
+}
+const untilText = computed(() => mark.value?.holdActive && mark.value.holdUntil ? `${Number(mark.value.holdUntil.slice(5, 7))}月${Number(mark.value.holdUntil.slice(8, 10))}日回来` : '')
+function pastDate(day: { valueOf(): number }) { const today = new Date(); today.setHours(0, 0, 0, 0); return day.valueOf() < today.getTime() }
 const empty = computed(() => !!mark.value && !mark.value.tags.length && !mark.value.note && mark.value.purchasePriceMinor == null && !mark.value.purchaseDate)
 </script>
 
@@ -71,6 +88,16 @@ const empty = computed(() => !!mark.value && !mark.value.tags.length && !mark.va
     <a-alert v-if="error" type="warning" :message="error" show-icon><template #action><a-button size="small" @click="load">重试</a-button></template></a-alert>
     <a-skeleton v-else-if="!mark" active :title="false" :paragraph="{ rows: 2 }" />
     <template v-else-if="!editing">
+      <div v-if="!wanted && !disabled" class="gm-hold" role="radiogroup" aria-label="这件现在在哪">
+        <a-button size="small" :type="currentHold === 'NONE' ? 'primary' : 'default'" role="radio" :aria-checked="currentHold === 'NONE'" :loading="holding === 'NONE'" @click="currentHold !== 'NONE' && setHold('NONE')">在衣柜</a-button>
+        <a-tooltip v-for="option in HOLD_OPTIONS" :key="option.value" :title="option.hint">
+          <a-button size="small" :type="currentHold === option.value ? 'primary' : 'default'" role="radio" :aria-checked="currentHold === option.value" :loading="holding === option.value" @click="setHold(option.value)">{{ option.label }}</a-button>
+        </a-tooltip>
+      </div>
+      <p v-if="currentHold !== 'NONE'" class="gm-hold-line">
+        这段时间不推荐它<template v-if="untilText"> · {{ untilText }}</template>
+        <a-date-picker size="small" :value="mark.holdUntil" :locale="dateLocale" value-format="YYYY-MM-DD" :disabled-date="pastDate" :allow-clear="false" placeholder="哪天回来" aria-label="哪天回来" class="gm-hold-date" @change="(value: unknown) => typeof value === 'string' && setHold(currentHold, value)" />
+      </p>
       <p v-if="wornLine" class="gm-worn">{{ wornLine }}<template v-if="perWear"> · 每次约 {{ perWear }}</template></p>
       <div v-if="mark.tags.length" class="gm-tags"><a-tag v-for="tag in mark.tags" :key="tag" :bordered="false">{{ tag }}</a-tag></div>
       <p v-if="mark.note" class="gm-note">{{ mark.note }}</p>
@@ -103,6 +130,9 @@ const empty = computed(() => !!mark.value && !mark.value.tags.length && !mark.va
 .gm-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
 .gm-tags :deep(.ant-tag) { margin: 0; }
 .gm-form { display: grid; gap: 6px; }
+.gm-hold { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.gm-hold-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 0 0 8px; color: var(--muted); font-size: 13px; }
+.gm-hold-date { width: 132px; }
 .gm-form > label { margin-top: 4px; color: var(--muted); font-size: 13px; }
 .gm-price { width: 100%; }
 .gm-private { margin: 4px 0 0; color: var(--muted-subtle); font-size: 12px; }
