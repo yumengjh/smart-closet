@@ -1,7 +1,7 @@
 // 自动生成，勿手改：npm run sync:analytics（来源 smart-closet-server 的 analytics/events.json）。
-// version: 10
+// version: 11
 
-export const analyticsVersion = 10
+export const analyticsVersion = 11
 
 /** 事件名 → 属性。属性只能是枚举或布尔。 */
 export type AnalyticsEventProps = {
@@ -38,6 +38,7 @@ export type AnalyticsEventProps = {
   outfit_favorited: { on: boolean; from: "today" | "outfits" | "detail" }
   garment_marked: { field: "tags" | "note" | "purchase" }
   garment_hold_set: { status: "none" | "laundry" | "repair" | "lent" | "stored" }
+  feedback_submit: { category: "problem" | "idea" | "other"; withAccount: boolean }
   assistant_open: { entry: "dock" | "top" | "shortcut" }
   assistant_send: { image: boolean }
   assistant_layout: { mode: "bottom" | "overlay" | "dock" | "float" }
@@ -134,6 +135,10 @@ export const analyticsPages: readonly { readonly path: string; readonly name: st
   {
     "path": "/help",
     "name": "帮助"
+  },
+  {
+    "path": "/feedback",
+    "name": "意见反馈"
   },
   {
     "path": "/login",
@@ -602,6 +607,22 @@ export const analyticsEventSpecs: Readonly<Record<AnalyticsEventName, AnalyticsE
           "lent",
           "stored"
         ]
+      }
+    }
+  },
+  "feedback_submit": {
+    "phase": 2,
+    "billing": false,
+    "props": {
+      "category": {
+        "enum": [
+          "problem",
+          "idea",
+          "other"
+        ]
+      },
+      "withAccount": {
+        "type": "boolean"
       }
     }
   },

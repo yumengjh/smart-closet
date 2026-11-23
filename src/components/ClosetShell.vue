@@ -67,7 +67,7 @@ const tryonRoute = computed(() => route.path === '/try-on')
 // 页面内容不再让出左侧宽度；--sidebar-w 置 0 让沿用它的浮层（翻页条等）回到正中。
 const frameStyle = { '--sidebar-w': '0px' }
 // 注册后问询 /welcome 也是全屏页，但需要已登录（路由守卫负责）。
-const isLogin = computed(() => ['/login', '/register'].includes(route.path) || route.path === '/welcome' && closet.isSignedIn)
+const isLogin = computed(() => ['/login', '/register'].includes(route.path) || route.path === '/welcome' && closet.isSignedIn || route.path === '/feedback' && !closet.isSignedIn)
 const isOutfitEditor = computed(() => route.path.startsWith('/outfits/'))
 const tryonMediaQuery = window.matchMedia(CAMERA_LAYOUT_QUERY)
 const tryonNarrow = ref(tryonMediaQuery.matches)
