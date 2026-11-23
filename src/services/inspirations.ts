@@ -1,4 +1,5 @@
 import { request } from './api'
+import type { Pose } from './platform'
 
 /**
  * 穿搭灵感、合集、想穿与衣物标记（smart-closet-server docs/design/2026-11-23-穿搭灵感与个人沉淀：截图拆解、复刻与衣物标记设计.md，
@@ -36,6 +37,8 @@ export type InspirationItem = {
   confidence: string
   description: string
   cropUrl: string | null
+  /** [左, 上, 右, 下]，0–1；体验改版起返回，用来在截图上标出这一件。 */
+  box?: number[] | null
 }
 export type InspirationAnalysis = {
   extractorVersion: string
@@ -45,6 +48,8 @@ export type InspirationAnalysis = {
   items: InspirationItem[]
   tips: string[]
   hasPose: boolean
+  /** inspo-v2：姿势只有封闭取值和一句描述（朝向、重心、手脚、手持物）。 */
+  pose?: { stance: string; description: string }
 }
 export type MatchGrade = 'VERY_CLOSE' | 'CLOSE' | 'SAME_KIND'
 export type InspirationMatch = { garmentId: string; grade: MatchGrade; score: number; reasons: string[]; held?: boolean }
@@ -110,8 +115,10 @@ export const inspirationApi = {
   remove: (id: string) => request<void>(`/api/inspirations/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   /** 拆解是异步的：202 后轮询 get，直到不再是 ANALYZING。同一个键重复提交只扣一次。 */
   analyze: (id: string, key: string) => request<Inspiration>(`/api/inspirations/${encodeURIComponent(id)}/analyze`, { method: 'POST', headers: { 'Idempotency-Key': key } }),
+  /** 哪些入口要显示：复刻默认关闭（服务端 closet.inspiration.replica-enabled）。 */
+  capabilities: () => request<{ replica: boolean }>('/api/inspirations/capabilities'),
   matches: (id: string) => request<InspirationMatches>(`/api/inspirations/${encodeURIComponent(id)}/matches`),
-  poseCard: (id: string) => request<{ id: string; name: string; description: string }>(`/api/inspirations/${encodeURIComponent(id)}/pose-card`, { method: 'POST' }),
+  poseCard: (id: string) => request<Pose>(`/api/inspirations/${encodeURIComponent(id)}/pose-card`, { method: 'POST' }),
 }
 
 export const collectionApi = {

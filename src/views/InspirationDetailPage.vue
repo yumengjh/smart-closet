@@ -1,23 +1,31 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { App } from 'ant-design-vue'
-import { ArrowLeftOutlined, BulbOutlined, DeleteOutlined, FolderAddOutlined, MoreOutlined, UserOutlined } from '@ant-design/icons-vue'
+import { ArrowLeftOutlined, BulbOutlined, CheckOutlined, CloseOutlined, DeleteOutlined, EyeInvisibleOutlined, EyeOutlined, FolderAddOutlined, HeartOutlined, MoreOutlined, UserOutlined } from '@ant-design/icons-vue'
 import PageTitle from '../shell/PageTitle.vue'
 import CollectionPicker from '../components/collections/CollectionPicker.vue'
 import InspirationReplica from '../inspiration/InspirationReplica.vue'
-import { MAX_INSPIRATION_NOTE, collectionApi, inspirationApi, type Collection, type Inspiration } from '../services/inspirations'
+import PoseCard from '../ootd/PoseCard.vue'
+import { MAX_INSPIRATION_NOTE, collectionApi, inspirationApi, type Collection, type Inspiration, type InspirationItem } from '../services/inspirations'
+import type { Pose } from '../services/platform'
 import { mediaUrl } from '../services/urls'
 import { createUuid } from '../domain/id'
 import { ApiError } from '../domain/apiError'
 import { track } from '../services/analytics'
 import { playSound } from '../services/sound'
+import { useClosetStore } from '../stores/closet'
+import { FAMILY_SWATCH, familyFromName } from '../wardrobe/rack'
+import { wantedLabel } from '../wardrobe/wanted'
+import { CLOTHING_ROLES, STANCE_LABEL, badge, boxStyle, itemChips } from '../inspiration/labels'
+import { wantFromCrop } from '../inspiration/wantFromCrop'
 
 /**
- * 一张穿搭收藏（设计 4.4～4.9）：看图 →“看看怎么穿”（一次识图，异步，拒收不扣）→ 用自己的衣服复刻 → 存成搭配；
- * 也可以不拆解，直接把动作存成动作卡。原图只经本人鉴权地址读取；这里不提供下载、分享或“用这张生图”。
+ * 一张穿搭收藏（体验改版，2026-11-23）：截图上标出每一件，点标记或卡片互相高亮；下面按 衣服 / 配饰 / 姿势 / 怎么穿 分组。
+ * “看看怎么穿”一次识图（异步，拒收不扣）；每一件可“收进种草”（裁剪图走快速入柜，AI 整理成单品图）；
+ * 姿势“存成动作卡”后当场展开卡片。复刻效果不够好，服务端开关打开才显示。原图只经本人鉴权地址读取。
  */
-const route = useRoute(); const router = useRouter(); const { message, modal } = App.useApp()
+const route = useRoute(); const router = useRouter(); const { message, modal } = App.useApp(); const closet = useClosetStore()
 const id = computed(() => String(route.params.id || ''))
 const item = ref<Inspiration | null>(null)
 const error = ref('')
@@ -25,12 +33,22 @@ const note = ref('')
 const savingNote = ref(false)
 const picking = ref(false)
 const collections = ref<Collection[]>([])
+const replicaEnabled = ref(false)
+
+// ---- 轮询（先声明：load() 一开始就会 stopPolling） ----
+let timer = 0
+let polls = 0
+function stopPolling() { window.clearTimeout(timer); timer = 0; polls = 0 }
 
 async function load() {
-  error.value = ''; item.value = null; stopPolling()
+  error.value = ''; item.value = null; stopPolling(); active.value = null; savedPose.value = null
   try {
-    const [found, list] = await Promise.all([inspirationApi.get(id.value), collectionApi.list().catch(() => ({ items: [] as Collection[], max: 30 }))])
-    item.value = found; note.value = found.note || ''; collections.value = list.items
+    const [found, list, caps] = await Promise.all([
+      inspirationApi.get(id.value),
+      collectionApi.list().catch(() => ({ items: [] as Collection[], max: 30 })),
+      inspirationApi.capabilities().catch(() => ({ replica: false })),
+    ])
+    item.value = found; note.value = found.note || ''; collections.value = list.items; replicaEnabled.value = caps.replica
     if (found.status === 'ANALYZING') poll()
   } catch (cause) { error.value = cause instanceof Error ? cause.message : '这张图没有打开。' }
 }
@@ -46,7 +64,7 @@ async function saveNote() {
 const inCollections = computed(() => collections.value.filter(c => item.value?.collectionIds.includes(c.id)))
 function collectionsChanged(ids: string[]) { if (item.value) item.value = { ...item.value, collectionIds: ids }; void collectionApi.list().then(list => { collections.value = list.items }).catch(() => undefined) }
 
-// 看看怎么穿：同一次点击断网重试用同一个键，服务端只扣一次；结果出来后清掉。
+// ---- 看看怎么穿 ----
 let pendingKey = ''
 const starting = ref(false)
 const analyzing = computed(() => item.value?.status === 'ANALYZING')
@@ -61,9 +79,6 @@ async function analyze() {
     playSound('denied'); message.error(cause instanceof Error ? cause.message : '这次没看成，请重试。')
   } finally { starting.value = false }
 }
-let timer = 0
-let polls = 0
-function stopPolling() { window.clearTimeout(timer); timer = 0; polls = 0 }
 function poll() {
   window.clearTimeout(timer)
   timer = window.setTimeout(async () => {
@@ -76,7 +91,6 @@ function poll() {
       finished(next)
     } catch (cause) {
       stopPolling(); pendingKey = ''
-      // 疑似未成年：图片已删、行被隐藏，读不到了。
       if (cause instanceof ApiError && cause.status === 404) { message.warning('这张图不太适合，已经删掉了，换一张吧'); void router.replace('/inspirations') }
     }
   }, polls < 4 ? 1500 : 2500)
@@ -89,19 +103,57 @@ function finished(next: Inspiration) {
   } else if (next.status === 'FAILED') { track('inspiration_analyzed', { result: 'failed' }); playSound('error') }
 }
 onUnmounted(stopPolling)
-// 放在计时器声明之后：immediate 会在 setup 里立刻调用 load()，load() 先 stopPolling()（读 timer）。
-watch(id, () => { if (id.value) void load() }, { immediate: true })
 
-// 动作卡：不依赖拆解；只留文字和关节点，不引用这张图。
+// ---- 图上标记与分组 ----
+const showMarks = ref(true)
+const active = ref<number | null>(null)
+const items = computed(() => analysis.value?.items || [])
+const clothes = computed(() => items.value.filter(i => CLOTHING_ROLES.has(i.role)))
+const accessories = computed(() => items.value.filter(i => !CLOTHING_ROLES.has(i.role)))
+/** 编号按截图里从上到下的顺序，和图上的标记一致。 */
+const order = computed(() => new Map(items.value.map((i, n) => [i.index, n + 1])))
+const marks = computed(() => items.value.map(i => ({ item: i, style: boxStyle(i.box) })).filter(m => m.style))
+const cards = ref<HTMLElement | null>(null)
+function select(index: number, from: 'mark' | 'card') {
+  active.value = active.value === index ? null : index
+  playSound('tick')
+  if (from === 'mark' && active.value !== null) void nextTick(() => cards.value?.querySelector(`[data-index="${index}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' }))
+}
+const swatch = (name: string) => { const family = familyFromName(name); return family ? FAMILY_SWATCH[family] : 'var(--line)' }
+
+// ---- 收进种草：裁剪图走快速入柜，AI 整理成单品图 ----
+const wanting = ref<number | null>(null)
+const wanted = ref(new Set<number>())
+function want(target: InspirationItem) {
+  const owner = closet.user?.username
+  if (!owner || !target.cropUrl) return
+  modal.confirm({
+    title: `把这件${target.category || '衣服'}收进${wantedLabel.value}？`,
+    content: '只用这一件的小图，鱼搭会认出资料并在需要时用 AI 整理成干净的单品图，做好后出现在衣柜里。整张截图不会发出去。一般用 1～2 次。',
+    okText: `收进${wantedLabel.value}`, cancelText: '先不',
+    async onOk() {
+      wanting.value = target.index
+      try {
+        await wantFromCrop(owner, target.cropUrl!, target.category)
+        wanted.value = new Set([...wanted.value, target.index])
+        playSound('pop'); message.success('收到了，整理好会出现在衣柜里')
+      } catch (cause) { message.error(cause instanceof Error ? cause.message : '没有收进去，请重试。') }
+      finally { wanting.value = null }
+    },
+  })
+}
+
+// ---- 动作卡：不依赖拆解；存好后当场展开 ----
 const posing = ref(false)
+const savedPose = ref<Pose | null>(null)
 async function savePose() {
   if (!item.value) return
   posing.value = true
   try {
-    const card = await inspirationApi.poseCard(item.value.id)
+    savedPose.value = await inspirationApi.poseCard(item.value.id)
     track('inspiration_pose_saved', {})
     playSound('pop')
-    message.success(`动作“${card.name}”存好了，做上身图时可以选`)
+    void nextTick(() => document.querySelector('.ix-pose-result')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }))
   } catch (cause) { playSound('denied'); message.error(cause instanceof Error ? cause.message : '这次没认出动作，换一张试试。') }
   finally { posing.value = false }
 }
@@ -111,25 +163,26 @@ function remove() {
   if (!item.value) return
   const target = item.value
   modal.confirm({
-    title: '删除这张图？', content: '图片会彻底删除。用它存成的搭配和动作卡不受影响。', okText: '删除', cancelText: '保留', okButtonProps: { danger: true },
+    title: '删除这张图？', content: '图片会彻底删除。用它存成的搭配、动作卡和收进种草的衣服都不受影响。', okText: '删除', cancelText: '保留', okButtonProps: { danger: true },
     async onOk() {
       await inspirationApi.remove(target.id)
       track('inspiration_deleted', {})
-      playSound('drop')
-      message.success('删掉了')
+      playSound('drop'); message.success('删掉了')
       void router.replace('/inspirations')
     },
   })
 }
 function moreAction({ key }: { key: string | number }) { if (key === 'pose') void savePose(); else if (key === 'delete') remove(); else if (key === 'again') void analyze() }
+
+watch(id, () => { if (id.value) void load() }, { immediate: true })
 </script>
 
 <template>
   <PageTitle title="穿搭收藏" />
-  <div class="id">
-    <header class="id-head">
+  <div class="ix">
+    <header class="ix-head">
       <a-button type="text" shape="circle" aria-label="返回穿搭收藏" @click="router.push('/inspirations')"><ArrowLeftOutlined /></a-button>
-      <span class="id-spacer" />
+      <span class="ix-spacer" />
       <a-button type="text" shape="circle" aria-label="放进合集" :disabled="!item" @click="picking = true"><FolderAddOutlined /></a-button>
       <a-dropdown :trigger="['click']" placement="bottomRight" :disabled="!item">
         <a-button type="text" shape="circle" aria-label="更多"><MoreOutlined /></a-button>
@@ -141,42 +194,110 @@ function moreAction({ key }: { key: string | number }) { if (key === 'pose') voi
         </a-menu></template>
       </a-dropdown>
     </header>
+
     <a-alert v-if="error" type="warning" :message="error" show-icon><template #action><a-button size="small" @click="load">重试</a-button></template></a-alert>
     <a-skeleton v-else-if="!item" active :paragraph="{ rows: 8 }" />
-    <div v-else class="id-body">
-      <figure class="id-figure"><img :src="mediaUrl(item.imageUrl)" alt="穿搭截图" /></figure>
-      <section class="id-side">
-        <!-- 主操作：没拆过时“看看怎么穿”，一屏只有这一个黑按钮 -->
-        <div v-if="!analysis && !analyzing" class="id-cta">
-          <a-alert v-if="item.status === 'REJECTED' && item.rejectMessage" type="info" show-icon :message="item.rejectMessage" class="id-alert" />
-          <a-alert v-else-if="item.status === 'FAILED'" type="warning" show-icon message="这次没看成，没有扣次数，可以再试一次" class="id-alert" />
+    <div v-else class="ix-body">
+      <!-- 截图 + 标记 -->
+      <section class="ix-stage">
+        <figure class="ix-figure" :class="{ focusing: active !== null && showMarks }">
+          <div class="ix-frame">
+            <img :src="mediaUrl(item.imageUrl)" alt="穿搭截图" />
+            <template v-if="showMarks">
+              <button v-for="mark in marks" :key="mark.item.index" type="button" class="ix-mark" :class="{ on: active === mark.item.index }" :style="mark.style!" :aria-label="`${badge(order.get(mark.item.index) || 0)} ${mark.item.category}`" :aria-pressed="active === mark.item.index" @click="select(mark.item.index, 'mark')">
+                <em>{{ badge(order.get(mark.item.index) || 0) }}</em>
+              </button>
+            </template>
+          </div>
+          <a-button v-if="marks.length" class="ix-toggle" size="small" shape="round" :aria-pressed="showMarks" @click="showMarks = !showMarks; active = null"><EyeInvisibleOutlined v-if="showMarks" /><EyeOutlined v-else />{{ showMarks ? '隐藏标记' : '显示标记' }}</a-button>
+        </figure>
+      </section>
+
+      <section class="ix-side">
+        <!-- 还没看过：一屏只有这一个黑按钮 -->
+        <div v-if="!analysis && !analyzing" class="ix-cta">
+          <a-alert v-if="item.status === 'REJECTED' && item.rejectMessage" type="info" show-icon :message="item.rejectMessage" />
+          <a-alert v-else-if="item.status === 'FAILED'" type="warning" show-icon message="这次没看成，没有扣次数，可以再试一次" />
           <a-button type="primary" size="large" block :loading="starting" @click="analyze"><BulbOutlined /> 看看怎么穿 · 1 次</a-button>
-          <p class="id-hint">认出每一件和穿法，再从你的衣柜里找像的</p>
+          <p>认出每一件、配饰和姿势，告诉你怎么穿</p>
         </div>
-        <div v-else-if="analyzing" class="id-working" role="status" aria-live="polite"><b>正在看这套怎么穿…</b><small>一般十几秒，可以先离开，回来再看</small></div>
+        <div v-else-if="analyzing" class="ix-working" role="status" aria-live="polite"><b>正在看这套怎么穿…</b><small>一般十几秒，可以先离开，回来再看</small></div>
 
         <template v-if="analysis">
-          <div v-if="analysis.looks.length || analysis.seasons.length || analysis.occasions.length" class="id-looks">
-            <a-tag v-for="look in analysis.looks" :key="look.id" :bordered="false" class="id-look">{{ look.label }}</a-tag>
-            <small>{{ [...analysis.seasons, ...analysis.occasions].join(' · ') }}</small>
+          <div v-if="analysis.looks.length || analysis.seasons.length || analysis.occasions.length" class="ix-looks">
+            <span v-for="look in analysis.looks" :key="look.id" class="ix-look">{{ look.label }}</span>
+            <small v-if="analysis.seasons.length || analysis.occasions.length">{{ [...analysis.seasons, ...analysis.occasions].join(' · ') }}</small>
           </div>
-          <section v-if="analysis.tips.length" class="id-tips" aria-label="怎么穿">
-            <h3>怎么穿</h3>
-            <ul><li v-for="tip in analysis.tips" :key="tip">{{ tip }}</li></ul>
+
+          <section v-if="clothes.length" class="ix-sec" aria-label="衣服">
+            <h3>衣服 <small>{{ clothes.length }}</small></h3>
+            <div ref="cards" class="ix-cards">
+              <article v-for="piece in clothes" :key="piece.index" class="ix-card" :class="{ on: active === piece.index }" :data-index="piece.index" @click="select(piece.index, 'card')">
+                <div class="ix-card-img"><img v-if="piece.cropUrl" :src="mediaUrl(piece.cropUrl)" alt="" loading="lazy" /><em>{{ badge(order.get(piece.index) || 0) }}</em></div>
+                <div class="ix-card-body">
+                  <b>{{ piece.category || '一件衣服' }}</b>
+                  <span v-if="piece.primaryColor" class="ix-color"><i :style="{ background: swatch(piece.primaryColor) }"></i>{{ [piece.primaryColor, ...piece.secondaryColors].join('、') }}</span>
+                  <span v-if="itemChips(piece).length" class="ix-chips"><em v-for="chip in itemChips(piece)" :key="chip">{{ chip }}</em></span>
+                  <p v-if="piece.description">{{ piece.description }}</p>
+                  <a-button v-if="piece.cropUrl" size="small" class="ix-want" :type="wanted.has(piece.index) ? 'text' : 'default'" :disabled="wanted.has(piece.index)" :loading="wanting === piece.index" @click.stop="want(piece)">
+                    <template v-if="wanted.has(piece.index)"><CheckOutlined /> 已收进{{ wantedLabel }}</template>
+                    <template v-else><HeartOutlined /> 收进{{ wantedLabel }}</template>
+                  </a-button>
+                </div>
+              </article>
+            </div>
           </section>
-          <InspirationReplica :inspiration="item" @saved="outfitSaved" />
+
+          <section v-if="accessories.length" class="ix-sec" aria-label="配饰">
+            <h3>配饰 <small>{{ accessories.length }}</small></h3>
+            <div class="ix-accs">
+              <button v-for="piece in accessories" :key="piece.index" type="button" class="ix-acc" :class="{ on: active === piece.index }" :aria-pressed="active === piece.index" @click="select(piece.index, 'card')">
+                <img v-if="piece.cropUrl" :src="mediaUrl(piece.cropUrl)" alt="" loading="lazy" />
+                <span><b>{{ piece.category }}</b><small>{{ [piece.primaryColor, piece.description].filter(Boolean).join(' · ') }}</small></span>
+                <em>{{ badge(order.get(piece.index) || 0) }}</em>
+              </button>
+            </div>
+          </section>
+
+          <section class="ix-sec" aria-label="姿势">
+            <h3>姿势</h3>
+            <div class="ix-pose">
+              <p v-if="analysis.pose && analysis.pose.stance !== 'NONE'"><b>{{ STANCE_LABEL[analysis.pose.stance] || '动作' }}</b>{{ analysis.pose.description ? ` · ${analysis.pose.description}` : '' }}</p>
+              <p v-else class="ix-muted">{{ analysis.hasPose ? '看得出一个完整的动作' : '这张图的动作不太清楚，也可以试试' }}</p>
+              <a-button v-if="!savedPose" :loading="posing" @click="savePose"><UserOutlined /> 存成动作卡</a-button>
+            </div>
+          </section>
+
+          <section v-if="analysis.tips.length" class="ix-sec" aria-label="怎么穿">
+            <h3>怎么穿</h3>
+            <ul class="ix-tips"><li v-for="tip in analysis.tips" :key="tip">{{ tip }}</li></ul>
+          </section>
+
+          <InspirationReplica v-if="replicaEnabled" :inspiration="item" @saved="outfitSaved" />
         </template>
 
-        <div v-if="inCollections.length" class="id-tags">
-          <RouterLink v-for="c in inCollections" :key="c.id" :to="`/collections/${c.id}`"><a-tag :bordered="false">{{ c.name }}</a-tag></RouterLink>
+        <!-- 动作卡当场展开：没拆过也能存 -->
+        <section v-if="savedPose" class="ix-pose-result" aria-label="存好的动作卡">
+          <header><b>动作卡存好了</b><a-button type="text" size="small" shape="circle" aria-label="收起" @click="savedPose = null"><CloseOutlined /></a-button></header>
+          <div class="ix-pose-card"><PoseCard :pose="savedPose" show-description animate /></div>
+          <div class="ix-pose-actions">
+            <a-button type="primary" @click="router.push('/try')">用它做张图</a-button>
+          </div>
+          <small>做上身图时，在“姿势”里选“{{ savedPose.name }}”</small>
+        </section>
+
+        <div class="ix-meta">
+          <div v-if="inCollections.length" class="ix-tags">
+            <RouterLink v-for="c in inCollections" :key="c.id" :to="`/collections/${c.id}`"><a-tag :bordered="false">{{ c.name }}</a-tag></RouterLink>
+          </div>
+          <a-textarea v-model:value="note" :maxlength="MAX_INSPIRATION_NOTE" show-count :auto-size="{ minRows: 1, maxRows: 5 }" placeholder="记一句：在哪刷到的、想学哪里" aria-label="备注" @blur="saveNote" />
+          <a-button v-if="noteChanged" type="primary" size="small" :loading="savingNote" class="ix-save" @click="saveNote">保存备注</a-button>
+          <div class="ix-row">
+            <a-button @click="picking = true"><FolderAddOutlined /> 放进合集</a-button>
+            <a-button v-if="!analysis" :loading="posing" @click="savePose"><UserOutlined /> 存成动作卡</a-button>
+          </div>
+          <p class="ix-private">只有你自己看得到；整张截图不会拿去生图。</p>
         </div>
-        <a-textarea v-model:value="note" :maxlength="MAX_INSPIRATION_NOTE" show-count :auto-size="{ minRows: 2, maxRows: 6 }" placeholder="想记点什么？比如在哪刷到的、想学哪里" aria-label="备注" @blur="saveNote" />
-        <a-button v-if="noteChanged" type="primary" :loading="savingNote" class="id-save" @click="saveNote">保存备注</a-button>
-        <div class="id-row">
-          <a-button class="id-soft" @click="picking = true"><FolderAddOutlined /> 放进合集</a-button>
-          <a-button class="id-soft" :loading="posing" @click="savePose"><UserOutlined /> 存成动作卡</a-button>
-        </div>
-        <p class="id-private">只有你自己看得到，不会拿去生图。</p>
       </section>
     </div>
   </div>
@@ -184,34 +305,96 @@ function moreAction({ key }: { key: string | number }) { if (key === 'pose') voi
 </template>
 
 <style scoped>
-.id { max-width: 1080px; margin: 0 auto; }
-.id-head { display: flex; align-items: center; gap: 4px; margin-bottom: 12px; }
-.id-head > .ant-btn:first-child { margin-left: -8px; }
-.id-head > :last-child { margin-right: -8px; }
-.id-spacer { flex: 1; }
-.id-body { display: grid; gap: 16px; }
-.id-figure { margin: 0; overflow: hidden; border-radius: 16px; background: var(--surface-alt); }
-.id-figure img { display: block; width: 100%; max-height: 70vh; object-fit: contain; }
-.id-side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
-.id-cta { display: grid; gap: 8px; }
-.id-cta .ant-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
-.id-alert { margin: 0; }
-.id-hint { margin: 0; color: var(--muted); font-size: 12px; text-align: center; }
-.id-working { display: grid; gap: 4px; padding: 18px 16px; border-radius: 14px; text-align: center; color: var(--muted-strong); background: linear-gradient(110deg, var(--surface-alt) 30%, var(--surface) 50%, var(--surface-alt) 70%); background-size: 220% 100%; animation: id-shine 1.6s linear infinite; }
-.id-working b { font-size: 14px; font-weight: 600; }
-.id-working small { color: var(--muted); font-size: 12px; }
-@keyframes id-shine { to { background-position: -220% 0; } }
-.id-looks { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.id-look { margin: 0; color: var(--ink); background: var(--surface-alt); }
-.id-looks small { color: var(--muted); font-size: 12px; }
-.id-tips h3 { margin: 0 0 6px; font-size: 15px; font-weight: 600; color: var(--ink); }
-.id-tips ul { display: grid; gap: 4px; margin: 0; padding-left: 18px; color: var(--muted-strong); font-size: 14px; }
-.id-tags { display: flex; flex-wrap: wrap; gap: 6px; }
-.id-tags :deep(.ant-tag) { margin: 0; }
-.id-save { align-self: flex-end; }
-.id-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.id-soft { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
-.id-private { margin: 0; color: var(--muted-subtle); font-size: 12px; }
-@media (min-width: 900px) { .id-body { grid-template-columns: minmax(0, 1.3fr) minmax(320px, 1fr); align-items: start; } .id-figure { position: sticky; top: 16px; } }
-@media (prefers-reduced-motion: reduce) { .id-working { animation: none; } }
+.ix { max-width: 1080px; margin: 0 auto; }
+.ix-head { display: flex; align-items: center; gap: 4px; margin-bottom: 10px; }
+.ix-head > .ant-btn:first-child { margin-left: -8px; }
+.ix-head > :last-child { margin-right: -8px; }
+.ix-spacer { flex: 1; }
+.ix-body { display: grid; gap: 16px; }
+
+/* 截图与标记 */
+.ix-figure { position: relative; margin: 0; border-radius: 18px; overflow: hidden; background: var(--surface-alt); }
+.ix-frame { position: relative; width: fit-content; max-width: 100%; margin: 0 auto; }
+.ix-frame img { display: block; max-width: 100%; max-height: 72vh; object-fit: contain; }
+.ix-mark { position: absolute; padding: 0; border: 1.5px solid #ffffffcc; border-radius: 10px; background: transparent; box-shadow: 0 0 0 1px #00000033; cursor: pointer; transition: border-color .2s ease, background .2s ease, opacity .2s ease; }
+.ix-mark em { position: absolute; left: 4px; top: 4px; display: grid; place-items: center; min-width: 22px; height: 22px; padding: 0 4px; border-radius: 11px; background: #111111cc; color: #fff; font-size: 13px; font-style: normal; line-height: 1; }
+.ix-mark.on { border-color: #fff; background: #ffffff1f; box-shadow: 0 0 0 2px var(--ink), 0 0 0 9999px #00000059; z-index: 1; }
+.ix-figure.focusing .ix-mark:not(.on) { opacity: .35; }
+.ix-mark:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.ix-toggle.ant-btn { position: absolute; right: 10px; bottom: 10px; z-index: 2; display: inline-flex; align-items: center; gap: 4px; border: 0; background: var(--glass, #ffffffd9); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+
+.ix-side { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.ix-cta { display: grid; gap: 8px; }
+.ix-cta .ant-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.ix-cta p { margin: 0; color: var(--muted); font-size: 12px; text-align: center; }
+.ix-working { display: grid; gap: 4px; padding: 18px 16px; border-radius: 14px; text-align: center; color: var(--muted-strong); background: linear-gradient(110deg, var(--surface-alt) 30%, var(--surface) 50%, var(--surface-alt) 70%); background-size: 220% 100%; animation: ix-shine 1.6s linear infinite; }
+.ix-working b { font-size: 14px; font-weight: 600; }
+.ix-working small { color: var(--muted); font-size: 12px; }
+@keyframes ix-shine { to { background-position: -220% 0; } }
+
+.ix-looks { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.ix-look { padding: 2px 10px; border-radius: 999px; background: var(--surface-alt); color: var(--ink); font-size: 13px; }
+.ix-looks small { color: var(--muted); font-size: 12px; }
+
+.ix-sec h3 { display: flex; align-items: baseline; gap: 6px; margin: 0 0 10px; font-size: 15px; font-weight: 600; color: var(--ink); }
+.ix-sec h3 small { color: var(--muted-subtle); font-size: 12px; font-weight: 400; }
+
+/* 衣服：横滑卡片 */
+.ix-cards { display: flex; gap: 10px; margin: 0 -16px; padding: 2px 16px 6px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; }
+.ix-card { flex: 0 0 min(78%, 280px); display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 10px; padding: 10px; border-radius: 16px; background: var(--surface); box-shadow: 0 0 0 1px var(--line); scroll-snap-align: start; cursor: pointer; transition: box-shadow .2s ease; }
+.ix-card.on { box-shadow: 0 0 0 2px var(--ink); }
+.ix-card-img { position: relative; width: 84px; height: 112px; overflow: hidden; border-radius: 12px; background: var(--surface-alt); }
+.ix-card-img img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.ix-card-img em { position: absolute; left: 4px; top: 4px; display: grid; place-items: center; min-width: 20px; height: 20px; border-radius: 10px; background: #111111cc; color: #fff; font-size: 12px; font-style: normal; }
+.ix-card-body { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.ix-card-body b { font-size: 14px; font-weight: 600; color: var(--ink); }
+.ix-color { display: inline-flex; align-items: center; gap: 6px; color: var(--muted-strong); font-size: 12px; }
+.ix-color i { width: 10px; height: 10px; border-radius: 50%; box-shadow: 0 0 0 1px #0000001f; }
+.ix-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.ix-chips em { padding: 0 6px; border-radius: 6px; background: var(--surface-alt); color: var(--muted-strong); font-size: 11px; font-style: normal; line-height: 18px; }
+.ix-card-body p { display: -webkit-box; margin: 0; overflow: hidden; color: var(--muted); font-size: 12px; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.ix-want.ant-btn { align-self: flex-start; margin-top: auto; display: inline-flex; align-items: center; gap: 4px; padding-inline: 8px; }
+
+/* 配饰：一行一件 */
+.ix-accs { display: grid; gap: 8px; }
+.ix-acc { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 6px 10px 6px 6px; border: 0; border-radius: 12px; background: var(--surface); box-shadow: 0 0 0 1px var(--line); text-align: left; cursor: pointer; }
+.ix-acc.on { box-shadow: 0 0 0 2px var(--ink); }
+.ix-acc img { width: 44px; height: 44px; border-radius: 8px; object-fit: cover; background: var(--surface-alt); }
+.ix-acc span { display: grid; min-width: 0; }
+.ix-acc b { font-size: 13px; font-weight: 500; color: var(--ink); }
+.ix-acc small { overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.ix-acc em { color: var(--muted-subtle); font-style: normal; }
+
+/* 姿势 */
+.ix-pose { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; padding: 12px 14px; border-radius: 14px; background: var(--surface-alt); }
+.ix-pose p { flex: 1 1 200px; margin: 0; color: var(--muted-strong); font-size: 14px; }
+.ix-pose p b { color: var(--ink); font-weight: 600; }
+.ix-pose .ant-btn { display: inline-flex; align-items: center; gap: 6px; }
+.ix-muted { color: var(--muted) !important; }
+.ix-pose-result { display: grid; gap: 10px; padding: 14px; border-radius: 16px; background: var(--surface); box-shadow: 0 0 0 1px var(--line); animation: ix-rise .3s cubic-bezier(.2, .9, .2, 1); }
+.ix-pose-result header { display: flex; align-items: center; justify-content: space-between; }
+.ix-pose-result header b { font-size: 15px; color: var(--ink); }
+.ix-pose-card { max-width: 220px; }
+.ix-pose-actions .ant-btn { width: 100%; }
+.ix-pose-result small { color: var(--muted); font-size: 12px; }
+@keyframes ix-rise { from { opacity: 0; transform: translateY(8px); } }
+
+.ix-tips { display: grid; gap: 6px; margin: 0; padding-left: 18px; color: var(--muted-strong); font-size: 14px; }
+
+.ix-meta { display: grid; gap: 10px; padding-top: 4px; border-top: 1px solid var(--line); }
+.ix-tags { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 10px; }
+.ix-tags :deep(.ant-tag) { margin: 0; }
+.ix-meta > .ant-input-textarea, .ix-meta > textarea { margin-top: 10px; }
+.ix-save { justify-self: end; }
+.ix-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+.ix-row .ant-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.ix-private { margin: 0; color: var(--muted-subtle); font-size: 12px; }
+
+@media (min-width: 900px) {
+  .ix-body { grid-template-columns: minmax(0, 1.2fr) minmax(340px, 1fr); align-items: start; }
+  .ix-stage { position: sticky; top: 16px; }
+  .ix-cards { flex-direction: column; margin: 0; padding: 0; overflow: visible; }
+  .ix-card { flex: none; }
+}
+@media (prefers-reduced-motion: reduce) { .ix-working, .ix-pose-result { animation: none; } .ix-mark, .ix-card { transition: none; } }
 </style>
