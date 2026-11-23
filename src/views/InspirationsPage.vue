@@ -134,7 +134,6 @@ function pasted(event: ClipboardEvent) {
 }
 function dropped(event: DragEvent) { dragging.value = false; const files = [...(event.dataTransfer?.files || [])]; if (files.length) void save(files, 'drop') }
 
-const ratio = (item: Inspiration) => item.width && item.height ? `${item.width} / ${item.height}` : '3 / 4'
 const full = computed(() => total.value >= max.value)
 
 // 系统分享（安卓 share_target，见 public/sw.js）：service worker 把图片放进本机临时收件箱，这里上传后立刻清空。
@@ -215,10 +214,11 @@ onUnmounted(() => { window.removeEventListener('paste', pasted); window.clearTim
 
     <div v-else-if="shown.length" class="insp-grid">
       <RouterLink v-for="item in shown" :key="item.id" :to="`/inspirations/${item.id}`" class="insp-card" :class="{ chosen: chosen.has(item.id), working: item.status === 'ANALYZING' }" :aria-label="selecting ? `选择这张${chosen.has(item.id) ? '（已选）' : ''}` : (item.note || '打开这张')" @click="open(item, $event)">
-        <img :src="mediaUrl(item.thumbUrl)" :style="{ aspectRatio: ratio(item) }" alt="" loading="lazy" />
+        <img class="insp-card-backdrop" :src="mediaUrl(item.thumbUrl)" alt="" aria-hidden="true" loading="lazy" decoding="async" />
+        <img class="insp-card-image" :src="mediaUrl(item.thumbUrl)" alt="" loading="lazy" decoding="async" />
         <span class="insp-card-line" :class="{ seen: item.status === 'ANALYZED' }">{{ cardLine(item) }}</span>
         <i v-if="selecting" class="insp-check" aria-hidden="true"><CheckOutlined v-if="chosen.has(item.id)" /></i>
-        <small v-if="item.note">{{ item.note }}</small>
+        <small v-if="item.note" class="insp-card-note">{{ item.note }}</small>
       </RouterLink>
     </div>
     <div v-else-if="!error" class="insp-empty">
@@ -281,21 +281,24 @@ onUnmounted(() => { window.removeEventListener('paste', pasted); window.clearTim
 .insp-filters .ant-btn { flex: none; }
 .insp-alert { margin-bottom: 12px; }
 
-.insp-grid { columns: 2; column-gap: 10px; }
-.insp-card { position: relative; display: block; margin-bottom: 10px; overflow: hidden; break-inside: avoid; border-radius: 16px; background: var(--surface); box-shadow: 0 0 0 1px var(--line); color: var(--muted); text-decoration: none; transition: transform .2s ease, box-shadow .2s ease; }
+/* 统一 3:4 的网格（2026-11-23）：按时间从左到右读；整张图放进格子不裁，空出来的两边用同一张图的模糊放大铺底。 */
+.insp-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.insp-card { position: relative; display: block; aspect-ratio: 3 / 4; overflow: hidden; border-radius: 14px; background: var(--surface-alt); box-shadow: 0 0 0 1px var(--line); color: var(--muted); text-decoration: none; transition: transform .2s ease, box-shadow .2s ease; }
 .insp-card:active { transform: scale(.985); }
 .insp-card:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
-.insp-card img { display: block; width: 100%; height: auto; object-fit: cover; background: var(--surface-alt); }
+.insp-card img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+.insp-card-backdrop { object-fit: cover; filter: blur(18px) saturate(1.1); opacity: .55; transform: scale(1.15); }
+.insp-card-image { object-fit: contain; }
 .insp-card-line { position: absolute; left: 8px; top: 8px; padding: 2px 8px; border-radius: 999px; background: #ffffffd9; color: var(--muted-strong); font-size: 11px; line-height: 18px; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
 .insp-card-line.seen { background: #111111c7; color: #fff; }
 .insp-card.working .insp-card-line { animation: insp-pulse 1.4s ease-in-out infinite; }
 @keyframes insp-pulse { 50% { opacity: .55; } }
-.insp-card small { display: block; padding: 6px 10px 8px; overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.insp-card-note { position: absolute; inset: auto 0 0; padding: 28px 10px 8px; overflow: hidden; background: linear-gradient(#0000, #00000080); color: #fff; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; pointer-events: none; }
 .insp-check { position: absolute; right: 8px; top: 8px; display: grid; place-items: center; width: 24px; height: 24px; border: 2px solid #fff; border-radius: 50%; background: #00000033; color: #fff; font-size: 12px; font-style: normal; box-shadow: 0 1px 4px #0000004d; }
 .insp-card.chosen { box-shadow: 0 0 0 2px var(--ink); }
 .insp-card.chosen .insp-check { background: var(--ink); border-color: var(--ink); }
-.insp.selecting .insp-card img { transition: transform .2s ease; }
-.insp.selecting .insp-card.chosen img { transform: scale(.94); border-radius: 12px; }
+.insp.selecting .insp-card-image { transition: transform .2s ease; }
+.insp.selecting .insp-card.chosen .insp-card-image { transform: scale(.94); }
 
 .insp-empty { display: grid; justify-items: center; gap: 10px; padding: 36px 16px 40px; border-radius: 20px; background: var(--surface-alt); color: var(--muted); font-size: 14px; text-align: center; }
 .insp-empty p { margin: 0; color: var(--ink); font-size: 15px; }
@@ -306,7 +309,7 @@ onUnmounted(() => { window.removeEventListener('paste', pasted); window.clearTim
 .insp-empty-stack span:nth-child(3) { transform: rotate(10deg) translateX(18px); }
 .insp-more { margin-top: 16px; text-align: center; }
 .insp-drop { position: absolute; inset: 0; display: grid; place-items: center; border: 2px dashed var(--ink); border-radius: 16px; background: color-mix(in srgb, var(--surface) 82%, transparent); color: var(--ink); font-size: 16px; pointer-events: none; }
-@media (min-width: 768px) { .insp-grid { columns: 3; column-gap: 14px; } .insp-card { margin-bottom: 14px; } .insp-hero { grid-template-columns: minmax(0, 1fr) 200px; padding: 24px 28px; } .insp-hero-stack img { width: 110px; height: 150px; margin: -75px 0 0 -55px; } .insp-hero-stack { height: 180px; } }
-@media (min-width: 1024px) { .insp-grid { columns: 4; } }
+@media (min-width: 768px) { .insp-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; } .insp-card { border-radius: 16px; } .insp-hero { grid-template-columns: minmax(0, 1fr) 200px; padding: 24px 28px; } .insp-hero-stack img { width: 110px; height: 150px; margin: -75px 0 0 -55px; } .insp-hero-stack { height: 180px; } }
+@media (min-width: 1024px) { .insp-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 @media (prefers-reduced-motion: reduce) { .insp-hero-stack img, .insp-card, .insp-card img { transition: none; } .insp-card.working .insp-card-line { animation: none; } }
 </style>

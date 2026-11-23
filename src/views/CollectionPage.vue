@@ -158,9 +158,12 @@ watch(id, () => { if (id.value) void load() }, { immediate: true })
       <div v-if="shown.length" class="co-grid">
         <RouterLink v-for="entry in shown" :key="key(entry)" :to="entry.kind === 'OUTFIT' ? `/outfits/${entry.id}` : `/inspirations/${entry.id}`" class="co-card" :class="{ chosen: chosen.has(key(entry)), outfit: entry.kind === 'OUTFIT' }" @click="tapEntry(entry, $event)">
           <span v-if="entry.outfit" class="co-outfit"><OutfitThumbnail :scene="entry.outfit.scene" :title="entry.outfit.name" /></span>
-          <img v-else-if="entry.inspiration" :src="mediaUrl(entry.inspiration.thumbUrl)" :style="{ aspectRatio: entry.inspiration.width && entry.inspiration.height ? `${entry.inspiration.width} / ${entry.inspiration.height}` : '3 / 4' }" alt="" loading="lazy" />
+          <template v-else-if="entry.inspiration">
+            <img class="co-backdrop" :src="mediaUrl(entry.inspiration.thumbUrl)" alt="" aria-hidden="true" loading="lazy" decoding="async" />
+            <img class="co-image" :src="mediaUrl(entry.inspiration.thumbUrl)" alt="" loading="lazy" decoding="async" />
+          </template>
           <span class="co-kind">{{ entry.kind === 'OUTFIT' ? '搭配' : '图' }}</span>
-          <small v-if="entry.outfit">{{ entry.outfit.name }}</small>
+          <small v-if="entry.outfit" class="co-name">{{ entry.outfit.name }}</small>
           <i v-if="selecting" class="co-check" aria-hidden="true"><CheckOutlined v-if="chosen.has(key(entry))" /></i>
         </RouterLink>
       </div>
@@ -218,11 +221,16 @@ watch(id, () => { if (id.value) void load() }, { immediate: true })
 .co-hero p { margin: 4px 0 12px; color: var(--muted); font-size: 13px; }
 .co-hero .ant-btn { display: inline-flex; align-items: center; gap: 6px; }
 .co-tabs { margin-bottom: 14px; }
-.co-grid { columns: 2; column-gap: 10px; }
-.co-card { position: relative; display: block; margin-bottom: 10px; overflow: hidden; break-inside: avoid; border-radius: 16px; background: var(--surface); box-shadow: 0 0 0 1px var(--line); color: var(--ink); text-decoration: none; }
-.co-card img { display: block; width: 100%; height: auto; object-fit: cover; background: var(--surface-alt); }
-.co-outfit { display: block; background: var(--surface-alt); }
-.co-card small { display: block; padding: 6px 10px 8px; overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+/* 和穿搭收藏列表一样的 3:4 网格，图整张放下不裁；搭配缩略图（4:5）在格子里居中，名字压在底部。 */
+.co-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.co-card { position: relative; display: block; aspect-ratio: 3 / 4; overflow: hidden; border-radius: 14px; background: var(--surface-alt); box-shadow: 0 0 0 1px var(--line); color: var(--ink); text-decoration: none; }
+.co-card img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+.co-backdrop { object-fit: cover; filter: blur(18px) saturate(1.1); opacity: .55; transform: scale(1.15); }
+.co-image { object-fit: contain; }
+.co-outfit { position: absolute; inset: 0 0 30px; display: grid; place-items: center; background: var(--surface-alt); }
+.co-outfit :deep(.outfit-thumbnail) { width: 100%; height: 100%; }
+.co-outfit :deep(canvas) { display: block; width: 100%; height: 100%; object-fit: contain; }
+.co-name { position: absolute; inset: auto 0 0; padding: 6px 10px 8px; overflow: hidden; background: var(--surface); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
 .co-kind { position: absolute; left: 8px; top: 8px; padding: 0 8px; border-radius: 999px; background: #ffffffd9; color: var(--muted-strong); font-size: 11px; line-height: 20px; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
 .co-card.outfit .co-kind { background: #111111c7; color: #fff; }
 .co-check { position: absolute; right: 8px; top: 8px; display: grid; place-items: center; width: 24px; height: 24px; border: 2px solid #fff; border-radius: 50%; background: #00000033; color: #fff; font-size: 12px; font-style: normal; box-shadow: 0 1px 4px #0000004d; }
@@ -242,6 +250,6 @@ watch(id, () => { if (id.value) void load() }, { immediate: true })
 .ad-tile.on i { background: var(--ink); border-color: var(--ink); }
 .ad-none { grid-column: 1 / -1; margin: 20px 0; color: var(--muted); font-size: 13px; text-align: center; }
 .ad-foot { position: sticky; bottom: 0; margin-top: auto; padding-top: 8px; background: var(--surface); }
-@media (min-width: 768px) { .co-grid { columns: 3; column-gap: 14px; } .co-hero { grid-template-columns: 160px minmax(0, 1fr); } }
-@media (min-width: 1024px) { .co-grid { columns: 4; } }
+@media (min-width: 768px) { .co-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; } .co-card { border-radius: 16px; } .co-hero { grid-template-columns: 160px minmax(0, 1fr); } }
+@media (min-width: 1024px) { .co-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 </style>
