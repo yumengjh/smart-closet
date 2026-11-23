@@ -4,6 +4,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { App } from 'ant-design-vue'
 import { outfitMarkApi } from '../services/inspirations'
+import { ApiError } from '../domain/apiError'
 import { useRouter } from 'vue-router'
 import { AppstoreAddOutlined, CameraOutlined, CheckCircleFilled, CloseOutlined, RightOutlined, SkinOutlined, SwapOutlined, UndoOutlined, ReloadOutlined } from '@ant-design/icons-vue'
 import RecommendIntentBar from '../recommend/RecommendIntentBar.vue'
@@ -67,7 +68,10 @@ async function refill() {
   refilling.value = true
   const runId = view.value.runId
   try { const more = await recommendApi.more(runId, MORE_BATCH); if (view.value?.runId !== runId) return; view.value = { ...view.value, hasMore: more.hasMore }; queue.value = appendUnique(queue.value, seen, more.outfits) }
-  catch { /* 续卡失败不打断：用户划完会看到“再来一批”。 */ }
+  catch (cause) {
+    // 续卡失败不打断：用户划完会看到“再来一批”。衣柜变了（例如标了“在洗”）时旧批次不再续，划完重新推荐。
+    if (cause instanceof ApiError && cause.code === 'WARDROBE_CHANGED' && view.value?.runId === runId) view.value = { ...view.value, hasMore: false }
+  }
   finally { refilling.value = false }
 }
 watch(index, () => { void refill() })

@@ -1,7 +1,7 @@
 // 自动生成，勿手改：npm run sync:analytics（来源 smart-closet-server 的 analytics/events.json）。
-// version: 6
+// version: 7
 
-export const analyticsVersion = 6
+export const analyticsVersion = 7
 
 /** 事件名 → 属性。属性只能是枚举或布尔。 */
 export type AnalyticsEventProps = {
@@ -34,6 +34,7 @@ export type AnalyticsEventProps = {
   collection_item_added: { kind: "outfit" | "inspiration" }
   outfit_favorited: { on: boolean; from: "today" | "outfits" | "detail" }
   garment_marked: { field: "tags" | "note" | "purchase" }
+  garment_hold_set: { status: "none" | "laundry" | "repair" | "lent" | "stored" }
   assistant_open: { entry: "dock" | "top" | "shortcut" }
   assistant_send: { image: boolean }
   assistant_layout: { mode: "bottom" | "overlay" | "dock" | "float" }
@@ -550,6 +551,21 @@ export const analyticsEventSpecs: Readonly<Record<AnalyticsEventName, AnalyticsE
           "tags",
           "note",
           "purchase"
+        ]
+      }
+    }
+  },
+  "garment_hold_set": {
+    "phase": 2,
+    "billing": false,
+    "props": {
+      "status": {
+        "enum": [
+          "none",
+          "laundry",
+          "repair",
+          "lent",
+          "stored"
         ]
       }
     }
