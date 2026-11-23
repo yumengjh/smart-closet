@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { AppstoreAddOutlined, CameraOutlined, HeartOutlined, InboxOutlined, RightOutlined } from '@ant-design/icons-vue'
+import { AppstoreAddOutlined, CameraOutlined, HeartOutlined, InboxOutlined, PictureOutlined, RightOutlined } from '@ant-design/icons-vue'
 import { loadWantedLabel, wantedLabel } from '../wardrobe/wanted'
 import { useClosetStore } from '../stores/closet'
 import { playSound } from '../services/sound'
@@ -23,6 +23,8 @@ const ACTIONS = computed(() => [
   { key: 'garment', label: '拍一件', icon: CameraOutlined, to: '/add' },
   { key: 'preset', label: '常见单品', icon: AppstoreAddOutlined, to: '/wardrobe?presets=1' },
   { key: 'wanted', label: `存一件${wantedLabel.value}`, icon: HeartOutlined, to: '/add?wanted=1' },
+  // 穿搭灵感（server 设计 2026-11-23）：刷到喜欢的穿搭截图存进来，只给自己看。
+  { key: 'inspiration', label: '存穿搭图', icon: PictureOutlined, to: '/inspirations?add=1' },
 ])
 function toggle() { open.value = !open.value; playSound(open.value ? 'rise' : 'tick'); if (open.value) loadWantedLabel() }
 function close() { if (open.value) { open.value = false; playSound('tick') } }
@@ -99,7 +101,7 @@ html.add-menu-open .mobile-nav { z-index: 930; }
 .add-sheet-enter-active .add-sheet-row { transition: opacity .24s ease calc(60ms + var(--i) * 35ms), transform .32s cubic-bezier(.22, 1.3, .36, 1) calc(60ms + var(--i) * 35ms); }
 .add-sheet-enter-from .add-sheet-row { opacity: 0; transform: translateY(14px); }
 .add-sheet { position: fixed; inset: 0; z-index: 920; background: color-mix(in srgb, var(--paper) 70%, transparent); backdrop-filter: blur(14px) saturate(1.1); -webkit-backdrop-filter: blur(14px) saturate(1.1); }
-.add-sheet-card { position: absolute; left: 12px; right: 12px; bottom: calc(84px + env(safe-area-inset-bottom)); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; padding: 10px; border: 1px solid var(--line); border-radius: 22px; background: var(--surface); box-shadow: 0 18px 40px #0000002a, 0 2px 8px #00000012; transform-origin: 50% 100%; }
+.add-sheet-card { position: absolute; left: 12px; right: 12px; bottom: calc(84px + env(safe-area-inset-bottom)); display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; padding: 10px; border: 1px solid var(--line); border-radius: 22px; background: var(--surface); box-shadow: 0 18px 40px #0000002a, 0 2px 8px #00000012; transform-origin: 50% 100%; }
 html[data-nav-labels='text'] .add-sheet-card { bottom: calc(70px + env(safe-area-inset-bottom)); }
 .add-sheet-tile.ant-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; height: auto; min-height: 84px; padding: 12px 4px 10px; border: 0; border-radius: 16px; color: var(--ink); background: transparent; box-shadow: none; transition: background .15s ease, transform .15s ease; }
 .add-sheet-tile.ant-btn:hover, .add-sheet-tile.ant-btn:focus-visible { color: var(--ink); background: var(--surface-alt); }

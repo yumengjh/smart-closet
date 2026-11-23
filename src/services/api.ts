@@ -107,7 +107,8 @@ export const fieldLabels: Record<keyof Pick<Garment, 'category' | 'subtype' | 'p
 
 /** Server-side batch of re-recognitions (POST /api/garments/batch-recognize): the server submits the tasks itself. */
 export type BatchRecognize = { id: string; total: number; submitted: number; failed: number; completed: number; succeeded: number; finished: boolean; createdAtMs: number; failures: { garmentId: string; message: string }[]; jobIds: string[] }
-export type ListQuery = { status: ClosetListStatus; q: string; category: string; color: string; season: string; page: number; size: number; sort?: string }
+/** tag：衣物标签筛选（穿搭灵感设计 6.1），只作预过滤；不设时请求与以前完全相同。 */
+export type ListQuery = { status: ClosetListStatus; q: string; category: string; color: string; season: string; page: number; size: number; sort?: string; tag?: string }
 /** Hybrid wardrobe search result (server: GET /api/garments/search); reasons/parsed/hints are written by the server. */
 export type SearchResult = {
   items: Garment[]; reasons: Record<string, string[]>; total: number; page: number; hasMore: boolean; mode: string
@@ -407,24 +408,27 @@ export const closetApi = {
     const recognition = choices(recognizers).sort((a, b) => Number(JSON.parse(b.value).provider === recognizers.find((provider) => provider.preferred)?.id) - Number(JSON.parse(a.value).provider === recognizers.find((provider) => provider.preferred)?.id))
     return { generation, recognition }
   },
-  async search(q: string, page: number, imageStyle?: string, ownership: SearchOwnership = 'OWNED'): Promise<SearchResult> {
+  async search(q: string, page: number, imageStyle?: string, ownership: SearchOwnership = 'OWNED', tag?: string): Promise<SearchResult> {
     if (usingMocks) {
       const list = await closetApi.list({ status: ownership === 'ALL' ? 'ACTIVE,WANTED' : ownership === 'WANTED' ? 'WANTED' : 'ACTIVE', q, category: '', color: '', season: '', page, size: 20 })
       return { items: list.items, reasons: {}, total: list.total, page, hasMore: page * 20 < list.total, mode: 'KEYWORD', parsed: null, emptyHint: '', notice: '', imageStyle: null }
     }
-    const params = new URLSearchParams({ q, page: String(page), ownership }); if (imageStyle) params.set('imageStyle', imageStyle)
+    const params = new URLSearchParams({ q, page: String(page), ownership }); if (imageStyle) params.set('imageStyle', imageStyle); if (tag) params.set('tag', tag)
     return searchResult(await request<SearchResponse>(`/api/garments/search?${params}`))
   },
   /** 超级搜索: a picture (and optional words) against the closet; same result shape as {@link search}. */
-  async superSearch(image: File, q: string, page: number, ownership: SearchOwnership = 'OWNED'): Promise<SearchResult> {
+  async superSearch(image: File, q: string, page: number, ownership: SearchOwnership = 'OWNED', tag?: string): Promise<SearchResult> {
     if (usingMocks) return closetApi.search(q, page, undefined, ownership)
-    const form = new FormData(); form.append('image', image); form.append('q', q); form.append('page', String(page)); form.append('ownership', ownership)
+    const form = new FormData(); form.append('image', image); form.append('q', q); form.append('page', String(page)); form.append('ownership', ownership); if (tag) form.append('tag', tag)
     return searchResult(await request<SearchResponse>('/api/garments/search', { method: 'POST', body: form }))
   },
   async list(query: ListQuery): Promise<GarmentPage> {
     if (!usingMocks) {
       // view=card: attributes without status and evidence, which fromView drops anyway (smart-closet-server#198).
-      const page = await request<{ items: GarmentView[]; total: number; page: number; size: number }>(`/api/closet/garments?${new URLSearchParams({ ...query, q: query.q || '', category: query.category || '', color: query.color || '', season: query.season || '', size: String(query.size), page: String(query.page), sort: query.sort || 'updated', view: 'card' })}`)
+      const { tag, ...rest } = query
+      const params = new URLSearchParams({ ...rest, q: query.q || '', category: query.category || '', color: query.color || '', season: query.season || '', size: String(query.size), page: String(query.page), sort: query.sort || 'updated', view: 'card' })
+      if (tag) params.set('tag', tag)
+      const page = await request<{ items: GarmentView[]; total: number; page: number; size: number }>(`/api/closet/garments?${params}`)
       return { ...page, items: page.items.map(fromView) }
     }
     await delay()

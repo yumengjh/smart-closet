@@ -8,6 +8,7 @@ import { quickApi } from '../services/quickIntake'
 import { mediaUrl, thumbUrl } from '../services/urls'
 import { computed, onMounted, onUnmounted, reactive, ref, toRaw, watch } from 'vue'
 import GarmentRecommendPanel from '../recommend/GarmentRecommendPanel.vue'
+import GarmentMarkBlock from '../components/GarmentMarkBlock.vue'
 import SimilarGarmentsPanel from '../similar/SimilarGarmentsPanel.vue'
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import { ArrowLeftOutlined, CheckOutlined, DeleteOutlined, ReloadOutlined, RollbackOutlined, PictureOutlined, StopOutlined, EyeOutlined, InfoCircleOutlined, EditOutlined, SettingOutlined, HistoryOutlined, SkinOutlined, ScanOutlined, ThunderboltOutlined, ScissorOutlined, MoreOutlined } from '@ant-design/icons-vue'
@@ -469,6 +470,7 @@ async function replacePresetPhoto(file: File) {
                 <dl class="detail-fields"><div v-for="key in layeringFields" :key="key"><dt>{{ key === 'fit' ? '版型' : key === 'thickness' ? '厚薄' : '用途' }}</dt><dd :class="{ unknown: !(values[key] || []).length }">{{ fieldValue(key) }}</dd></div></dl>
                 <a-button v-if="!layeringVerified && garment.status !== 'TRASHED'" type="link" size="small" class="info-link" @click="openPanel('metadata')">按实物核对，推荐会更准</a-button>
               </div>
+              <GarmentMarkBlock v-if="garment.status === 'ACTIVE' || garment.status === 'WANTED'" :garment-id="garment.id" :wanted="garment.status === 'WANTED'" />
               <div class="info-block">
                 <h2>智能工具</h2>
                 <div class="tool-grid">

@@ -14,7 +14,7 @@ import {
   ArrowLeftOutlined, CheckOutlined, ControlOutlined, CopyOutlined, DeleteOutlined, DownloadOutlined,
   ArrowDownOutlined, ArrowUpOutlined, ExpandOutlined, InfoCircleOutlined, MenuOutlined, MinusOutlined, MoreOutlined, PictureOutlined, PlusOutlined,
   CameraOutlined, QuestionCircleOutlined, RedoOutlined, ReloadOutlined, SaveOutlined, SearchOutlined, SwapOutlined, UndoOutlined,
-  VerticalAlignBottomOutlined, VerticalAlignTopOutlined, DragOutlined, FullscreenOutlined,
+  VerticalAlignBottomOutlined, VerticalAlignTopOutlined, DragOutlined, FullscreenOutlined, HeartFilled, HeartOutlined,
 } from '@ant-design/icons-vue'
 import { useClosetStore } from '../stores/closet'
 import WorkspaceMenu from '../outfit/WorkspaceMenu.vue'
@@ -27,6 +27,8 @@ import { dropOutfitLayer, elementKey, normalizeScene, stickerLimit, copySticker,
 import { artworkForGarment, createOutfitElement, downloadOutfitPng, loadOutfitImage } from '../domain/outfit-images'
 import OutfitReview from '../components/OutfitReview.vue'
 import OutfitThumbnail from '../components/OutfitThumbnail.vue'
+import CollectionPicker from '../components/collections/CollectionPicker.vue'
+import { outfitMarkApi } from '../services/inspirations'
 import OutfitGarmentPicker from '../components/OutfitGarmentPicker.vue'
 import OutfitMultiInspector from '../components/OutfitMultiInspector.vue'
 import OutfitInspector from '../components/OutfitInspector.vue'
@@ -79,7 +81,23 @@ const exporting = ref(false)
 const error = ref('')
 const saved = ref<Outfit[]>([])
 const librarySearch = ref('')
-const displayedOutfits = computed(() => saved.value.filter(item => item.name.toLocaleLowerCase().includes(librarySearch.value.trim().toLocaleLowerCase())))
+const favoriteOnly = ref(false)
+const displayedOutfits = computed(() => saved.value.filter(item => (!favoriteOnly.value || item.favorite) && item.name.toLocaleLowerCase().includes(librarySearch.value.trim().toLocaleLowerCase())))
+// 想穿（穿搭灵感设计 5.1）：与“今天穿了”分开；不升 revision，不发推荐反馈或弱信号。
+const favoriting = ref('')
+async function toggleFavorite(outfit: Outfit) {
+  const next = !outfit.favorite
+  favoriting.value = outfit.id
+  try {
+    await outfitMarkApi.setFavorite(outfit.id, next)
+    saved.value = saved.value.map(item => item.id === outfit.id ? { ...item, favorite: next } : item)
+    track('outfit_favorited', { on: next, from: 'outfits' })
+    playSound(next ? 'pop' : 'tick')
+  } catch (cause) { message.error(cause instanceof Error ? cause.message : '没有标上，请重试。') }
+  finally { favoriting.value = '' }
+}
+const collectingOutfit = ref<Outfit | null>(null)
+function outfitCollectionsChanged(ids: string[]) { const target = collectingOutfit.value; if (target) saved.value = saved.value.map(item => item.id === target.id ? { ...item, collectionIds: ids } : item) }
 const inspectorTab = ref('properties')
 const garments = ref<Garment[]>([])
 const materialTab = ref('garments')
@@ -1030,6 +1048,7 @@ defineExpose({ flush: persistDraft, exportPng })
     <div class="outfit-library-bar">
       <a-segmented v-model:value="libraryTab" class="outfit-library-tabs" aria-label="搭配视图" :options="[{ value: 'mix', label: '快速搭' }, { value: 'mine', label: saved.length ? `我的搭配 · ${saved.length}` : '我的搭配' }, { value: 'today', label: '今天穿什么' }]" />
       <a-input v-if="saved.length" v-show="libraryTab === 'mine'" v-model:value="librarySearch" class="outfit-library-search" allow-clear placeholder="搜索搭配名称" aria-label="搜索搭配"><template #prefix><SearchOutlined /></template></a-input>
+      <a-button v-if="saved.some(item => item.favorite) || favoriteOnly" v-show="libraryTab === 'mine'" :type="favoriteOnly ? 'primary' : 'default'" class="outfit-favorite-filter" :aria-pressed="favoriteOnly" @click="favoriteOnly = !favoriteOnly"><HeartFilled v-if="favoriteOnly" /><HeartOutlined v-else /><span>想穿</span></a-button>
       <span class="outfit-library-gap"></span>
       <div class="outfit-library-actions"><WorkspaceMenu /><a-button @click="router.push('/try')"><CameraOutlined /><span>上身效果图</span></a-button><a-button type="primary" class="outfit-library-new" @click="router.push('/outfits/new')"><PlusOutlined /><span>新建搭配</span></a-button></div>
     </div>
@@ -1044,10 +1063,11 @@ defineExpose({ flush: persistDraft, exportPng })
       <section v-if="displayedOutfits.length" class="outfit-library-grid" aria-label="已保存的穿搭">
         <article v-for="outfit in displayedOutfits" :key="outfit.id" class="outfit-card">
           <RouterLink :to="`/outfits/${outfit.id}`" class="outfit-card-preview" @click="playSound('tap')"><OutfitThumbnail :scene="outfit.scene" :title="outfit.name" /><a-tag class="outfit-card-count">{{ outfit.scene.elements.length }} 件单品</a-tag></RouterLink>
-          <div class="outfit-card-details"><div><RouterLink :to="`/outfits/${outfit.id}`" class="outfit-card-name">{{ outfit.name }}</RouterLink><span>{{ new Date(outfit.updatedAtMs).toLocaleDateString() }} 更新<template v-if="wornLabel(outfit.id)"> · {{ wornLabel(outfit.id) }}</template></span><span v-if="outfit.scene.elements.some(item => item.garmentChanged || item.garmentStatus === 'TRASHED')" class="outfit-card-status" title="衣柜里的衣物改过或移入回收站，打开搭配可替换">衣物有更新</span></div><a-dropdown :trigger="['click']"><a-button type="text" aria-label="搭配更多操作"><MoreOutlined /></a-button><template #overlay><a-menu><a-menu-item @click="router.push(`/outfits/${outfit.id}`)">编辑搭配</a-menu-item><a-menu-item v-if="tryOnAccess?.enabled" @click="router.push({ path: '/try-on', query: { outfit: outfit.id } })">实时试穿</a-menu-item><a-menu-item @click="startCopy(outfit)"><CopyOutlined /> 复制搭配</a-menu-item><a-menu-item :disabled="wearing" @click="wearOutfit(outfit.id)"><CheckOutlined /> 今天穿了这套</a-menu-item><a-menu-divider /><a-menu-item danger @click="confirmDelete(outfit)"><DeleteOutlined /> 删除搭配</a-menu-item></a-menu></template></a-dropdown></div>
+          <div class="outfit-card-details"><div><RouterLink :to="`/outfits/${outfit.id}`" class="outfit-card-name">{{ outfit.name }}</RouterLink><span>{{ new Date(outfit.updatedAtMs).toLocaleDateString() }} 更新<template v-if="wornLabel(outfit.id)"> · {{ wornLabel(outfit.id) }}</template></span><span v-if="outfit.scene.elements.some(item => item.garmentChanged || item.garmentStatus === 'TRASHED')" class="outfit-card-status" title="衣柜里的衣物改过或移入回收站，打开搭配可替换">衣物有更新</span></div><a-button type="text" class="outfit-card-favorite" :class="{ on: outfit.favorite }" :loading="favoriting === outfit.id" :aria-pressed="!!outfit.favorite" :aria-label="outfit.favorite ? '取消想穿' : '想穿'" @click="toggleFavorite(outfit)"><template v-if="favoriting !== outfit.id"><HeartFilled v-if="outfit.favorite" /><HeartOutlined v-else /></template></a-button><a-dropdown :trigger="['click']"><a-button type="text" aria-label="搭配更多操作"><MoreOutlined /></a-button><template #overlay><a-menu><a-menu-item @click="router.push(`/outfits/${outfit.id}`)">编辑搭配</a-menu-item><a-menu-item @click="collectingOutfit = outfit">放进合集</a-menu-item><a-menu-item v-if="tryOnAccess?.enabled" @click="router.push({ path: '/try-on', query: { outfit: outfit.id } })">实时试穿</a-menu-item><a-menu-item @click="startCopy(outfit)"><CopyOutlined /> 复制搭配</a-menu-item><a-menu-item :disabled="wearing" @click="wearOutfit(outfit.id)"><CheckOutlined /> 今天穿了这套</a-menu-item><a-menu-divider /><a-menu-item danger @click="confirmDelete(outfit)"><DeleteOutlined /> 删除搭配</a-menu-item></a-menu></template></a-dropdown></div>
         </article>
       </section>
-      <a-empty v-else :image="Empty.PRESENTED_IMAGE_SIMPLE" description="没有找到这套搭配"><a-button @click="librarySearch = ''">清除搜索</a-button></a-empty>
+      <a-empty v-else :image="Empty.PRESENTED_IMAGE_SIMPLE" :description="favoriteOnly && !librarySearch.trim() ? '还没有标想穿的搭配' : '没有找到这套搭配'"><a-button @click="librarySearch = ''; favoriteOnly = false">{{ favoriteOnly ? '看全部' : '清除搜索' }}</a-button></a-empty>
+      <CollectionPicker v-if="collectingOutfit" :open="!!collectingOutfit" kind="OUTFIT" :ref-id="collectingOutfit.id" :selected="collectingOutfit.collectionIds || []" @close="collectingOutfit = null" @changed="outfitCollectionsChanged" />
     </template>
     <section v-else-if="!error" class="outfit-empty"><a-empty description="把第一套穿搭放上画板"><template #image><PictureOutlined /></template><p>选一件上衣、一条裤子，再加上喜欢的配饰。</p><a-button type="primary" @click="router.push('/outfits/new')"><PlusOutlined /> 开始搭配</a-button></a-empty></section>
     </div>

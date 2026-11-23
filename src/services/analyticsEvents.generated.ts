@@ -1,7 +1,7 @@
 // 自动生成，勿手改：npm run sync:analytics（来源 smart-closet-server 的 analytics/events.json）。
-// version: 2
+// version: 3
 
-export const analyticsVersion = 2
+export const analyticsVersion = 3
 
 /** 事件名 → 属性。属性只能是枚举或布尔。 */
 export type AnalyticsEventProps = {
@@ -28,6 +28,12 @@ export type AnalyticsEventProps = {
   try_live_follow: { result: "matched" }
   try_live_result: { result: "ready" | "fail"; stage: "none" | "camera" | "network" | "pose" | "quota" }
   album_share: { kind: "download" | "share" }
+  inspiration_saved: { source: "picker" | "paste" | "drop"; duplicate: boolean }
+  inspiration_deleted: Record<string, never>
+  collection_created: Record<string, never>
+  collection_item_added: { kind: "outfit" | "inspiration" }
+  outfit_favorited: { on: boolean; from: "today" | "outfits" | "detail" }
+  garment_marked: { field: "tags" | "note" | "purchase" }
   assistant_open: { entry: "dock" | "top" | "shortcut" }
   assistant_send: { image: boolean }
   assistant_layout: { mode: "bottom" | "overlay" | "dock" | "float" }
@@ -465,6 +471,73 @@ export const analyticsEventSpecs: Readonly<Record<AnalyticsEventName, AnalyticsE
         "enum": [
           "download",
           "share"
+        ]
+      }
+    }
+  },
+  "inspiration_saved": {
+    "phase": 2,
+    "billing": false,
+    "props": {
+      "source": {
+        "enum": [
+          "picker",
+          "paste",
+          "drop"
+        ]
+      },
+      "duplicate": {
+        "type": "boolean"
+      }
+    }
+  },
+  "inspiration_deleted": {
+    "phase": 2,
+    "billing": false,
+    "props": {}
+  },
+  "collection_created": {
+    "phase": 2,
+    "billing": false,
+    "props": {}
+  },
+  "collection_item_added": {
+    "phase": 2,
+    "billing": false,
+    "props": {
+      "kind": {
+        "enum": [
+          "outfit",
+          "inspiration"
+        ]
+      }
+    }
+  },
+  "outfit_favorited": {
+    "phase": 2,
+    "billing": false,
+    "props": {
+      "on": {
+        "type": "boolean"
+      },
+      "from": {
+        "enum": [
+          "today",
+          "outfits",
+          "detail"
+        ]
+      }
+    }
+  },
+  "garment_marked": {
+    "phase": 2,
+    "billing": false,
+    "props": {
+      "field": {
+        "enum": [
+          "tags",
+          "note",
+          "purchase"
         ]
       }
     }

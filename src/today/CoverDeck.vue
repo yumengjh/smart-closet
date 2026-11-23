@@ -112,7 +112,7 @@ onUnmounted(() => window.removeEventListener('blur', cancel))
         </div>
         <footer class="cover-copy">
           <div><h3>{{ card.outfit.name }}</h3><p>{{ card.outfit.highlights[0] || card.outfit.garments.map(g => g.name).join(' · ') }}</p><p v-if="displayOuter(card.outfit)">外套建议 · {{ displayOuter(card.outfit)?.name }}</p></div>
-          <a-tooltip v-if="card.depth === 0" title="收进我的搭配"><a-button shape="circle" class="cover-save" aria-label="收进我的搭配" :disabled="busy" @click.stop="emit('save', card.outfit)"><StarOutlined /></a-button></a-tooltip>
+          <a-tooltip v-if="card.depth === 0" title="收进想穿"><a-button shape="circle" class="cover-save" aria-label="收进想穿" :disabled="busy" @click.stop="emit('save', card.outfit)"><StarOutlined /></a-button></a-tooltip>
         </footer>
       </article>
     </div>
