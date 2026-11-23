@@ -28,7 +28,7 @@ async function load() {
   try {
     const [found, list] = await Promise.all([inspirationApi.get(id.value), collectionApi.list().catch(() => ({ items: [] as Collection[], max: 30 }))])
     item.value = found; note.value = found.note || ''; collections.value = list.items
-  } catch (cause) { error.value = cause instanceof Error ? cause.message : '这张灵感没有打开。' }
+  } catch (cause) { error.value = cause instanceof Error ? cause.message : '这张图没有打开。' }
 }
 watch(id, () => { if (id.value) void load() }, { immediate: true })
 
@@ -47,7 +47,7 @@ function remove() {
   if (!item.value) return
   const target = item.value
   modal.confirm({
-    title: '删除这张灵感？', content: '图片会彻底删除。用它存成的搭配不受影响。', okText: '删除', cancelText: '保留', okButtonProps: { danger: true },
+    title: '删除这张图？', content: '图片会彻底删除。用它存成的搭配不受影响。', okText: '删除', cancelText: '保留', okButtonProps: { danger: true },
     async onOk() {
       await inspirationApi.remove(target.id)
       track('inspiration_deleted', {})
@@ -60,10 +60,10 @@ function remove() {
 </script>
 
 <template>
-  <PageTitle title="灵感" />
+  <PageTitle title="穿搭收藏" />
   <div class="id">
     <header class="id-head">
-      <a-button type="text" shape="circle" aria-label="返回灵感" @click="router.push('/inspirations')"><ArrowLeftOutlined /></a-button>
+      <a-button type="text" shape="circle" aria-label="返回穿搭收藏" @click="router.push('/inspirations')"><ArrowLeftOutlined /></a-button>
       <span class="id-spacer" />
       <a-button type="text" shape="circle" aria-label="放进合集" :disabled="!item" @click="picking = true"><FolderAddOutlined /></a-button>
       <a-button type="text" shape="circle" danger aria-label="删除" :disabled="!item" @click="remove"><DeleteOutlined /></a-button>

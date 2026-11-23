@@ -52,7 +52,7 @@ function remove() {
   const target = collection.value
   if (!target) return
   modal.confirm({
-    title: `删除“${target.name}”？`, content: '只删合集，里面的搭配和灵感都还在。', okText: '删除', cancelText: '保留', okButtonProps: { danger: true },
+    title: `删除“${target.name}”？`, content: '只删合集，里面的搭配和收藏的图都还在。', okText: '删除', cancelText: '保留', okButtonProps: { danger: true },
     async onOk() { await collectionApi.remove(target.id); message.success('删掉了'); void router.replace('/inspirations') },
   })
 }
@@ -75,7 +75,7 @@ const empty = computed(() => loaded.value && !outfits.value.length && !inspirati
         <template #overlay><a-menu><a-menu-item @click="startRename"><EditOutlined /> 改名</a-menu-item><a-menu-divider /><a-menu-item danger @click="remove">删除合集</a-menu-item></a-menu></template>
       </a-dropdown>
     </header>
-    <a-alert v-if="error" type="warning" :message="error" show-icon><template #action><a-button size="small" @click="router.replace('/inspirations')">去灵感</a-button></template></a-alert>
+    <a-alert v-if="error" type="warning" :message="error" show-icon><template #action><a-button size="small" @click="router.replace('/inspirations')">去穿搭收藏</a-button></template></a-alert>
     <a-skeleton v-else-if="!loaded" active :paragraph="{ rows: 6 }" />
     <template v-else>
       <section v-if="outfits.length" class="co-section" aria-label="搭配">
@@ -87,8 +87,8 @@ const empty = computed(() => loaded.value && !outfits.value.length && !inspirati
           </article>
         </div>
       </section>
-      <section v-if="inspirations.length" class="co-section" aria-label="灵感">
-        <h3>灵感 <small>{{ inspirations.length }}</small></h3>
+      <section v-if="inspirations.length" class="co-section" aria-label="穿搭收藏">
+        <h3>收藏的图 <small>{{ inspirations.length }}</small></h3>
         <div class="co-grid">
           <article v-for="item in inspirations" :key="item.id" class="co-card">
             <RouterLink :to="`/inspirations/${item.id}`"><img :src="mediaUrl(item.thumbUrl)" :style="{ aspectRatio: item.width && item.height ? `${item.width} / ${item.height}` : '3 / 4' }" alt="" loading="lazy" /></RouterLink>
@@ -96,7 +96,7 @@ const empty = computed(() => loaded.value && !outfits.value.length && !inspirati
           </article>
         </div>
       </section>
-      <div v-if="empty" class="co-empty"><p>还是空的。在搭配或灵感里点“放进合集”就能放进来。</p></div>
+      <div v-if="empty" class="co-empty"><p>还是空的。在搭配或穿搭收藏里点“放进合集”就能放进来。</p></div>
     </template>
   </div>
 </template>

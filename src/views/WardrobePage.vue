@@ -391,7 +391,7 @@ watch(() => route.query.presets, value => { if (value !== '1') return; presetsOp
       <a-slider class="closet-spread-slider" :value="spread" :min="0" :max="100" :step="1" :tooltip-open="false" aria-label="衣架松紧：左边叠放，右边散开" @change="chooseSpread" />
       <svg class="closet-spread-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="1.5" y="6" width="6" height="12" rx="1.5" /><rect x="9" y="6" width="6" height="12" rx="1.5" /><rect x="16.5" y="6" width="6" height="12" rx="1.5" /></svg>
     </div>
-    <a-tooltip title="刷到喜欢的穿搭，截图存进来"><a-button class="closet-soft" @click="router.push('/inspirations')"><PictureOutlined /><em>灵感</em></a-button></a-tooltip>
+    <a-tooltip title="刷到喜欢的穿搭，截图存进来"><a-button class="closet-soft" @click="router.push('/inspirations')"><PictureOutlined /><em>穿搭收藏</em></a-button></a-tooltip>
     <a-tooltip title="从常见单品添加：有类似的点一下，直接放进衣柜"><a-button class="closet-soft" @click="presetsOpen = true"><AppstoreAddOutlined /><em>常见单品</em></a-button></a-tooltip>
     <a-dropdown :trigger="['click']" placement="bottomRight">
       <a-button class="closet-round" type="text" aria-label="更多衣柜操作"><MoreOutlined /><i v-if="reviewCount" class="closet-round-dot" aria-hidden="true"></i></a-button>
@@ -399,7 +399,7 @@ watch(() => route.query.presets, value => { if (value !== '1') return; presetsOp
         <a-menu-item @click="picker?.click()"><CameraOutlined /> 用图片搜</a-menu-item>
         <a-menu-item :disabled="!items.length" @click="selecting = true; batchResult = null"><CheckSquareOutlined /> 批量处理</a-menu-item>
         <a-menu-item @click="presetsOpen = true"><AppstoreAddOutlined /> 从常见单品添加</a-menu-item>
-        <a-menu-item @click="router.push('/inspirations')"><PictureOutlined /> 灵感</a-menu-item>
+        <a-menu-item @click="router.push('/inspirations')"><PictureOutlined /> 穿搭收藏</a-menu-item>
         <a-menu-item v-if="reviewCount" @click="router.push('/review')"><ExclamationCircleOutlined /> 等你确认 {{ reviewCount }} 件</a-menu-item>
       </a-menu></template>
     </a-dropdown>

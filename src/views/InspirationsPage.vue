@@ -38,7 +38,7 @@ async function load(more = false) {
     if (mine !== latest) return
     items.value = more ? [...items.value, ...page.items] : page.items
     total.value = page.total; max.value = page.max; cursor.value = page.nextCursor
-  } catch (cause) { if (mine === latest) error.value = cause instanceof Error ? cause.message : '灵感没有加载出来。' }
+  } catch (cause) { if (mine === latest) error.value = cause instanceof Error ? cause.message : '穿搭收藏没有加载出来。' }
   finally { if (mine === latest) { loaded.value = true; loadingMore.value = false } }
 }
 async function loadCollections() { try { collections.value = (await collectionApi.list()).items } catch { /* 合集只是入口，加载失败不挡灵感列表 */ } }
@@ -89,11 +89,11 @@ onUnmounted(() => { window.removeEventListener('paste', pasted); window.clearTim
 </script>
 
 <template>
-  <PageTitle title="灵感" :count="total || null" unit="张" hint="刷到喜欢的穿搭，截图存进来。只有你自己看得到，不会拿去生图。" />
+  <PageTitle title="穿搭收藏" :count="total || null" unit="张" hint="刷到喜欢的穿搭，截图存进来。只有你自己看得到，不会拿去生图。" />
   <div class="insp" :class="{ dragging }" @dragover.prevent="dragging = true" @dragleave.self="dragging = false" @drop.prevent="dropped">
     <header class="insp-head">
       <a-button type="text" shape="circle" aria-label="返回衣柜" @click="router.push('/wardrobe')"><ArrowLeftOutlined /></a-button>
-      <a-input v-model:value="q" allow-clear class="insp-search" placeholder="搜备注" aria-label="按备注搜灵感"><template #prefix><SearchOutlined /></template></a-input>
+      <a-input v-model:value="q" allow-clear class="insp-search" placeholder="搜备注" aria-label="按备注搜穿搭收藏"><template #prefix><SearchOutlined /></template></a-input>
       <a-button type="primary" :loading="uploading > 0" :disabled="full" @click="pick"><PictureOutlined /> 存穿搭图</a-button>
       <input ref="fileInput" type="file" accept="image/*" multiple hidden @change="picked" />
     </header>
@@ -115,7 +115,7 @@ onUnmounted(() => { window.removeEventListener('paste', pasted); window.clearTim
     <a-skeleton v-if="!loaded" active :paragraph="{ rows: 6 }" />
 
     <div v-else-if="items.length" class="insp-grid">
-      <RouterLink v-for="item in items" :key="item.id" :to="`/inspirations/${item.id}`" class="insp-card" :aria-label="item.note || '打开这张灵感'">
+      <RouterLink v-for="item in items" :key="item.id" :to="`/inspirations/${item.id}`" class="insp-card" :aria-label="item.note || '打开这张图'">
         <img :src="mediaUrl(item.thumbUrl)" :style="{ aspectRatio: ratio(item) }" alt="" loading="lazy" />
         <small v-if="item.note">{{ item.note }}</small>
       </RouterLink>
