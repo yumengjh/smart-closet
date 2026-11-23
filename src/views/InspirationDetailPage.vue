@@ -34,7 +34,6 @@ async function load() {
     if (found.status === 'ANALYZING') poll()
   } catch (cause) { error.value = cause instanceof Error ? cause.message : '这张图没有打开。' }
 }
-watch(id, () => { if (id.value) void load() }, { immediate: true })
 
 const noteChanged = computed(() => !!item.value && note.value.trim() !== (item.value.note || ''))
 async function saveNote() {
@@ -90,6 +89,8 @@ function finished(next: Inspiration) {
   } else if (next.status === 'FAILED') { track('inspiration_analyzed', { result: 'failed' }); playSound('error') }
 }
 onUnmounted(stopPolling)
+// 放在计时器声明之后：immediate 会在 setup 里立刻调用 load()，load() 先 stopPolling()（读 timer）。
+watch(id, () => { if (id.value) void load() }, { immediate: true })
 
 // 动作卡：不依赖拆解；只留文字和关节点，不引用这张图。
 const posing = ref(false)
