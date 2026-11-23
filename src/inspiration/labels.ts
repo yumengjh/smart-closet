@@ -31,3 +31,21 @@ export function boxStyle(box: number[] | null | undefined): Record<string, strin
 export function badge(position: number): string {
   return position >= 1 && position <= 20 ? String.fromCodePoint(0x2460 + position - 1) : String(position)
 }
+
+/** 部位（与服务端 OutfitRules.Role 一致），改标记时用来选“这是什么部位”。 */
+export const ROLE_OPTIONS: { value: string; label: string }[] = [
+  { value: 'TOP', label: '上衣' }, { value: 'INNER', label: '内搭' }, { value: 'OUTER', label: '外套' },
+  { value: 'BOTTOM', label: '下装' }, { value: 'ONE_PIECE', label: '连衣裙 / 连体' }, { value: 'OVERALL', label: '背带' },
+  { value: 'SHOES', label: '鞋' }, { value: 'BAG', label: '包' }, { value: 'HAT', label: '帽子' }, { value: 'HEADWEAR', label: '头饰' },
+  { value: 'GLASSES', label: '眼镜' }, { value: 'SCARF', label: '围巾' }, { value: 'BELT', label: '腰带' }, { value: 'SOCKS', label: '袜子' },
+  { value: 'GLOVES', label: '手套' }, { value: 'HANDHELD', label: '手里拿的' }, { value: 'ACCESSORY', label: '首饰 / 其他配饰' }, { value: 'OTHER', label: '其他' },
+]
+
+/** 拖动、缩放后的框：夹在 0–1 内、保持最小 4% 的边长，保留四位小数（与服务端一致）。 */
+export function clampBox(left: number, top: number, right: number, bottom: number, min = 0.04): [number, number, number, number] {
+  const round = (value: number) => Math.round(value * 10000) / 10000
+  let l = Math.min(left, right), r = Math.max(left, right), t = Math.min(top, bottom), b = Math.max(top, bottom)
+  l = Math.max(0, Math.min(1 - min, l)); t = Math.max(0, Math.min(1 - min, t))
+  r = Math.min(1, Math.max(l + min, r)); b = Math.min(1, Math.max(t + min, b))
+  return [round(l), round(t), round(r), round(b)]
+}

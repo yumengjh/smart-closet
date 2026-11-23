@@ -22,6 +22,7 @@ import { refreshWorks, watchWorks, workJobs, worksError, worksLoaded, workTotal 
 import type { CreationJob } from '../creation/types'
 import { albumTiles, mergeWorks, workBucket, type AlbumFilter } from '../try/album'
 import { TRY_PATH } from '../try/routes'
+import { goBack } from '../shell/goBack'
 import { mediaUrl } from '../services/urls'
 
 const route = useRoute(), router = useRouter(), { message, modal } = App.useApp()
@@ -92,7 +93,7 @@ onUnmounted(() => stop?.())
   <PageTitle title="我的图" :count="done.length || null" unit="张" />
   <div class="al">
     <header class="al-head">
-      <a-button type="text" shape="circle" aria-label="返回试穿" @click="router.push(TRY_PATH)"><ArrowLeftOutlined /></a-button>
+      <a-button type="text" shape="circle" aria-label="返回" @click="goBack(router, TRY_PATH)"><ArrowLeftOutlined /></a-button>
       <a-segmented v-if="showFilter" v-model:value="filter" class="al-filter" :options="[{ value: 'all', label: '全部' }, { value: 'ootd', label: '上身图' }, { value: 'work', label: '作品' }]" aria-label="按来源筛选" />
       <span v-else class="al-filter" />
       <a-button type="text" shape="circle" aria-label="刷新" @click="refreshAll"><ReloadOutlined /></a-button>

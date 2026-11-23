@@ -2,10 +2,12 @@
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { App } from 'ant-design-vue'
-import { ArrowLeftOutlined, BulbOutlined, CheckOutlined, CloseOutlined, DeleteOutlined, EyeInvisibleOutlined, EyeOutlined, FolderAddOutlined, HeartOutlined, MoreOutlined, UserOutlined } from '@ant-design/icons-vue'
+import { ArrowLeftOutlined, BulbOutlined, CheckOutlined, CloseOutlined, DeleteOutlined, EditOutlined, EyeInvisibleOutlined, EyeOutlined, FolderAddOutlined, HeartOutlined, MoreOutlined, PlusOutlined, UserOutlined } from '@ant-design/icons-vue'
 import PageTitle from '../shell/PageTitle.vue'
+import { goBack } from '../shell/goBack'
 import CollectionPicker from '../components/collections/CollectionPicker.vue'
 import InspirationReplica from '../inspiration/InspirationReplica.vue'
+import InspirationFigure from '../inspiration/InspirationFigure.vue'
 import PoseCard from '../ootd/PoseCard.vue'
 import { MAX_INSPIRATION_NOTE, collectionApi, inspirationApi, type Collection, type Inspiration, type InspirationItem } from '../services/inspirations'
 import type { Pose } from '../services/platform'
@@ -17,7 +19,7 @@ import { playSound } from '../services/sound'
 import { useClosetStore } from '../stores/closet'
 import { FAMILY_SWATCH, familyFromName } from '../wardrobe/rack'
 import { wantedLabel } from '../wardrobe/wanted'
-import { CLOTHING_ROLES, STANCE_LABEL, badge, boxStyle, itemChips } from '../inspiration/labels'
+import { CLOTHING_ROLES, ROLE_OPTIONS, STANCE_LABEL, badge, boxStyle, itemChips } from '../inspiration/labels'
 import { wantFromCrop } from '../inspiration/wantFromCrop'
 
 /**
@@ -119,6 +121,42 @@ function select(index: number, from: 'mark' | 'card') {
   playSound('tick')
   if (from === 'mark' && active.value !== null) void nextTick(() => cards.value?.querySelector(`[data-index="${index}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' }))
 }
+// ---- 自己管理标记（体验改版）：挪框、调大小、补一件、改部位/品类/颜色、删掉；零模型调用，松手即存 ----
+const editing = ref(false)
+const editSaving = ref(false)
+const form = ref({ role: 'OTHER', category: '', primaryColor: '' })
+const activeItem = computed(() => items.value.find(i => i.index === active.value) || null)
+watch(activeItem, current => { form.value = { role: current?.role || 'OTHER', category: current?.category || '', primaryColor: current?.primaryColor || '' } }, { immediate: true })
+function toggleEditing() { editing.value = !editing.value; showMarks.value = true; if (!editing.value) active.value = null; playSound('tick') }
+async function applyEdit(task: () => Promise<Inspiration>, done?: string) {
+  editSaving.value = true
+  try { item.value = await task(); if (done) message.success(done) }
+  catch (cause) { playSound('denied'); message.error(cause instanceof Error ? cause.message : '没有改好，请重试。') }
+  finally { editSaving.value = false }
+}
+function changeBox(index: number, box: number[]) { if (item.value) void applyEdit(() => inspirationApi.updateItem(item.value!.id, index, { box })) }
+async function drawBox(box: number[]) {
+  if (!item.value) return
+  const before = new Set(items.value.map(i => i.index))
+  await applyEdit(() => inspirationApi.addItem(item.value!.id, { box, role: 'OTHER', category: '' }))
+  const added = items.value.find(i => !before.has(i.index))
+  if (added) { active.value = added.index; message.info('框好了，在下面写一下这是什么') }
+}
+const formChanged = computed(() => !!activeItem.value && (form.value.role !== activeItem.value.role || form.value.category.trim() !== activeItem.value.category || form.value.primaryColor.trim() !== activeItem.value.primaryColor))
+function saveForm() {
+  const target = activeItem.value
+  if (!item.value || !target || !formChanged.value) return
+  void applyEdit(() => inspirationApi.updateItem(item.value!.id, target.index, { role: form.value.role, category: form.value.category.trim(), primaryColor: form.value.primaryColor.trim() }), '改好了')
+}
+function removeActive() {
+  const target = activeItem.value
+  if (!item.value || !target) return
+  modal.confirm({
+    title: `删掉 ${badge(order.value.get(target.index) || 0)}${target.category ? ` ${target.category}` : ''}？`, content: '只删这个标记和它的小图，截图不受影响。', okText: '删掉', cancelText: '保留', okButtonProps: { danger: true },
+    async onOk() { active.value = null; await applyEdit(() => inspirationApi.removeItem(item.value!.id, target.index), '删掉了') },
+  })
+}
+
 const swatch = (name: string) => { const family = familyFromName(name); return family ? FAMILY_SWATCH[family] : 'var(--line)' }
 
 // ---- 收进种草：裁剪图走快速入柜，AI 整理成单品图 ----
@@ -181,7 +219,7 @@ watch(id, () => { if (id.value) void load() }, { immediate: true })
   <PageTitle title="穿搭收藏" />
   <div class="ix">
     <header class="ix-head">
-      <a-button type="text" shape="circle" aria-label="返回穿搭收藏" @click="router.push('/inspirations')"><ArrowLeftOutlined /></a-button>
+      <a-button type="text" shape="circle" aria-label="返回" @click="goBack(router, '/inspirations')"><ArrowLeftOutlined /></a-button>
       <span class="ix-spacer" />
       <a-button type="text" shape="circle" aria-label="放进合集" :disabled="!item" @click="picking = true"><FolderAddOutlined /></a-button>
       <a-dropdown :trigger="['click']" placement="bottomRight" :disabled="!item">
@@ -198,19 +236,32 @@ watch(id, () => { if (id.value) void load() }, { immediate: true })
     <a-alert v-if="error" type="warning" :message="error" show-icon><template #action><a-button size="small" @click="load">重试</a-button></template></a-alert>
     <a-skeleton v-else-if="!item" active :paragraph="{ rows: 8 }" />
     <div v-else class="ix-body">
-      <!-- 截图 + 标记 -->
+      <!-- 截图 + 标记：可以自己改 -->
       <section class="ix-stage">
-        <figure class="ix-figure" :class="{ focusing: active !== null && showMarks }">
-          <div class="ix-frame">
-            <img :src="mediaUrl(item.imageUrl)" alt="穿搭截图" />
-            <template v-if="showMarks">
-              <button v-for="mark in marks" :key="mark.item.index" type="button" class="ix-mark" :class="{ on: active === mark.item.index }" :style="mark.style!" :aria-label="`${badge(order.get(mark.item.index) || 0)} ${mark.item.category}`" :aria-pressed="active === mark.item.index" @click="select(mark.item.index, 'mark')">
-                <em>{{ badge(order.get(mark.item.index) || 0) }}</em>
-              </button>
-            </template>
+        <InspirationFigure :image-url="item.imageUrl" :items="items" :order="order" :active="active" :editing="editing" :show="showMarks" @select="index => select(index, 'mark')" @change="changeBox" @draw="drawBox">
+          <div v-if="marks.length || analysis" class="ix-tools">
+            <a-button v-if="!editing && marks.length" size="small" shape="round" :aria-pressed="showMarks" @click="showMarks = !showMarks; active = null"><EyeInvisibleOutlined v-if="showMarks" /><EyeOutlined v-else />{{ showMarks ? '隐藏标记' : '显示标记' }}</a-button>
+            <a-button v-if="analysis" size="small" shape="round" :type="editing ? 'primary' : 'default'" :loading="editSaving" @click="toggleEditing"><CheckOutlined v-if="editing" /><EditOutlined v-else />{{ editing ? '改好了' : '改标记' }}</a-button>
           </div>
-          <a-button v-if="marks.length" class="ix-toggle" size="small" shape="round" :aria-pressed="showMarks" @click="showMarks = !showMarks; active = null"><EyeInvisibleOutlined v-if="showMarks" /><EyeOutlined v-else />{{ showMarks ? '隐藏标记' : '显示标记' }}</a-button>
-        </figure>
+        </InspirationFigure>
+        <div v-if="editing" class="ix-edit">
+          <p v-if="!activeItem" class="ix-edit-hint"><PlusOutlined /> 点一个框来改；在空白处拖出一个框，补上漏掉的一件</p>
+          <template v-else>
+            <div class="ix-edit-head"><b>{{ badge(order.get(activeItem.index) || 0) }} {{ activeItem.category || '这一件' }}</b><small>拖框挪位置，拖圆点调大小</small></div>
+            <div class="ix-edit-grid">
+              <label>部位</label>
+              <a-select v-model:value="form.role" :options="ROLE_OPTIONS" aria-label="部位" />
+              <label>是什么</label>
+              <a-input v-model:value="form.category" :maxlength="30" placeholder="比如 针织开衫" aria-label="是什么" @press-enter="saveForm" />
+              <label>颜色</label>
+              <a-input v-model:value="form.primaryColor" :maxlength="12" placeholder="比如 米白" aria-label="颜色" @press-enter="saveForm" />
+            </div>
+            <div class="ix-edit-actions">
+              <a-button danger @click="removeActive"><DeleteOutlined /> 删掉这一件</a-button>
+              <a-button type="primary" :disabled="!formChanged" :loading="editSaving" @click="saveForm">保存</a-button>
+            </div>
+          </template>
+        </div>
       </section>
 
       <section class="ix-side">
@@ -312,17 +363,19 @@ watch(id, () => { if (id.value) void load() }, { immediate: true })
 .ix-spacer { flex: 1; }
 .ix-body { display: grid; gap: 16px; }
 
-/* 截图与标记 */
-.ix-figure { position: relative; margin: 0; border-radius: 18px; overflow: hidden; background: var(--surface-alt); }
-.ix-frame { position: relative; width: fit-content; max-width: 100%; margin: 0 auto; }
-.ix-frame img { display: block; max-width: 100%; max-height: 72vh; object-fit: contain; }
-.ix-mark { position: absolute; padding: 0; border: 1.5px solid #ffffffcc; border-radius: 10px; background: transparent; box-shadow: 0 0 0 1px #00000033; cursor: pointer; transition: border-color .2s ease, background .2s ease, opacity .2s ease; }
-.ix-mark em { position: absolute; left: 4px; top: 4px; display: grid; place-items: center; min-width: 22px; height: 22px; padding: 0 4px; border-radius: 11px; background: #111111cc; color: #fff; font-size: 13px; font-style: normal; line-height: 1; }
-.ix-mark.on { border-color: #fff; background: #ffffff1f; box-shadow: 0 0 0 2px var(--ink), 0 0 0 9999px #00000059; z-index: 1; }
-.ix-figure.focusing .ix-mark:not(.on) { opacity: .35; }
-.ix-mark:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
-.ix-toggle.ant-btn { position: absolute; right: 10px; bottom: 10px; z-index: 2; display: inline-flex; align-items: center; gap: 4px; border: 0; background: var(--glass, #ffffffd9); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
 
+.ix-tools { position: absolute; right: 10px; bottom: 10px; z-index: 2; display: flex; gap: 6px; }
+.ix-tools .ant-btn { display: inline-flex; align-items: center; gap: 4px; border: 0; background: var(--glass, #ffffffd9); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+.ix-tools .ant-btn-primary { color: var(--action-fg, #fff); background: var(--action-bg, var(--ink)); }
+.ix-edit { display: grid; gap: 10px; margin-top: 10px; padding: 12px 14px; border-radius: 16px; background: var(--surface); box-shadow: 0 0 0 1px var(--line); }
+.ix-edit-hint { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--muted); font-size: 13px; }
+.ix-edit-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 8px; }
+.ix-edit-head b { color: var(--ink); font-size: 14px; }
+.ix-edit-head small { color: var(--muted); font-size: 12px; }
+.ix-edit-grid { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 8px 10px; }
+.ix-edit-grid label { color: var(--muted); font-size: 13px; }
+.ix-edit-actions { display: flex; justify-content: space-between; gap: 8px; }
+.ix-edit-actions .ant-btn { display: inline-flex; align-items: center; gap: 4px; }
 .ix-side { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
 .ix-cta { display: grid; gap: 8px; }
 .ix-cta .ant-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
@@ -396,5 +449,5 @@ watch(id, () => { if (id.value) void load() }, { immediate: true })
   .ix-cards { flex-direction: column; margin: 0; padding: 0; overflow: visible; }
   .ix-card { flex: none; }
 }
-@media (prefers-reduced-motion: reduce) { .ix-working, .ix-pose-result { animation: none; } .ix-mark, .ix-card { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .ix-working, .ix-pose-result { animation: none; } .ix-card { transition: none; } }
 </style>

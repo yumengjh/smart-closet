@@ -51,6 +51,7 @@ export type InspirationAnalysis = {
   /** inspo-v2：姿势只有封闭取值和一句描述（朝向、重心、手脚、手持物）。 */
   pose?: { stance: string; description: string }
 }
+export type ItemEdit = { role?: string; category?: string; primaryColor?: string; box?: number[] }
 export type MatchGrade = 'VERY_CLOSE' | 'CLOSE' | 'SAME_KIND'
 export type InspirationMatch = { garmentId: string; grade: MatchGrade; score: number; reasons: string[]; held?: boolean }
 export type InspirationMatches = {
@@ -69,6 +70,9 @@ export type Collection = {
   coverThumbUrl: string | null
   createdAt: number
   updatedAt: number
+  /** 最近放入的至多 3 张图，合集卡片叠成一摞；coverOutfitId：只有搭配时画搭配缩略图。 */
+  coverThumbUrls?: string[]
+  coverOutfitId?: string | null
 }
 /** 临时状态（设计 6.2），服务端已按到期折算：过期即 NONE。 */
 export type HoldStatus = 'NONE' | 'LAUNDRY' | 'REPAIR' | 'LENT' | 'STORED'
@@ -115,6 +119,10 @@ export const inspirationApi = {
   remove: (id: string) => request<void>(`/api/inspirations/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   /** 拆解是异步的：202 后轮询 get，直到不再是 ANALYZING。同一个键重复提交只扣一次。 */
   analyze: (id: string, key: string) => request<Inspiration>(`/api/inspirations/${encodeURIComponent(id)}/analyze`, { method: 'POST', headers: { 'Idempotency-Key': key } }),
+  /** 用户自己管理标记（体验改版）：补一件、改一件（部位、品类、颜色、框）、删一件；零模型调用，框变了服务端重裁小图。 */
+  addItem: (id: string, edit: ItemEdit) => request<Inspiration>(`/api/inspirations/${encodeURIComponent(id)}/items`, { method: 'POST', body: json(edit) }),
+  updateItem: (id: string, index: number, edit: ItemEdit) => request<Inspiration>(`/api/inspirations/${encodeURIComponent(id)}/items/${index}`, { method: 'PATCH', body: json(edit) }),
+  removeItem: (id: string, index: number) => request<Inspiration>(`/api/inspirations/${encodeURIComponent(id)}/items/${index}`, { method: 'DELETE' }),
   /** 哪些入口要显示：复刻默认关闭（服务端 closet.inspiration.replica-enabled）。 */
   capabilities: () => request<{ replica: boolean }>('/api/inspirations/capabilities'),
   matches: (id: string) => request<InspirationMatches>(`/api/inspirations/${encodeURIComponent(id)}/matches`),
@@ -127,6 +135,9 @@ export const collectionApi = {
   update: (id: string, patch: { name?: string; sortOrder?: number }) => request<Collection>(`/api/collections/${encodeURIComponent(id)}`, { method: 'PATCH', body: json(patch) }),
   remove: (id: string) => request<void>(`/api/collections/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   add: (id: string, kind: CollectionKind, refId: string) => request<void>(`/api/collections/${encodeURIComponent(id)}/items`, { method: 'PUT', body: json({ kind, refId }) }),
+  /** 一次放入、移出多项，整批生效（合集页“添加”、多选移出、列表页多选放进合集）。 */
+  addMany: (id: string, items: { kind: CollectionKind; refId: string }[]) => request<void>(`/api/collections/${encodeURIComponent(id)}/items/batch`, { method: 'POST', body: json({ items }) }),
+  removeMany: (id: string, items: { kind: CollectionKind; refId: string }[]) => request<void>(`/api/collections/${encodeURIComponent(id)}/items/remove`, { method: 'POST', body: json({ items }) }),
   removeItem: (id: string, kind: CollectionKind, refId: string) => request<void>(`/api/collections/${encodeURIComponent(id)}/items/${kind}/${encodeURIComponent(refId)}`, { method: 'DELETE' }),
 }
 

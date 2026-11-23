@@ -9,6 +9,7 @@ import { mediaUrl, thumbUrl } from '../services/urls'
 import { computed, onMounted, onUnmounted, reactive, ref, toRaw, watch } from 'vue'
 import GarmentRecommendPanel from '../recommend/GarmentRecommendPanel.vue'
 import GarmentMarkBlock from '../components/GarmentMarkBlock.vue'
+import { goBack } from '../shell/goBack'
 import SimilarGarmentsPanel from '../similar/SimilarGarmentsPanel.vue'
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import { ArrowLeftOutlined, CheckOutlined, DeleteOutlined, ReloadOutlined, RollbackOutlined, PictureOutlined, StopOutlined, EyeOutlined, InfoCircleOutlined, EditOutlined, SettingOutlined, HistoryOutlined, SkinOutlined, ScanOutlined, ThunderboltOutlined, ScissorOutlined, MoreOutlined } from '@ant-design/icons-vue'
@@ -190,7 +191,8 @@ async function saveAndReturn() {
   if (!error.value) returnResult()
 }
 function leaveWorkspace() {
-  const leave = () => router.push(fromReview.value ? '/review' : source.value.batchId ? `/batches/${source.value.batchId}` : garment.value?.status === 'ACTIVE' ? '/wardrobe' : '/pending')
+  // 从核对列表或批次进来时回到那里；否则从哪来回哪去（例如从通知点进来，回到原页面），没有来路才去衣柜或整理中。
+  const leave = () => fromReview.value ? router.push('/review') : source.value.batchId ? router.push(`/batches/${source.value.batchId}`) : goBack(router, garment.value?.status === 'ACTIVE' ? '/wardrobe' : '/pending')
   if (dirty.value) modal.confirm({ title: '离开前保存修改？', content: '当前资料或展示图还有未保存的修改。', okText: '保存并离开', cancelText: '继续编辑', onOk: async () => { await save(false); if (!error.value) await leave() } })
   else void leave()
 }

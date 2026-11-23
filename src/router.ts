@@ -43,6 +43,7 @@ export const router = createRouter({
     { path: '/trash', component: () => import('./views/TrashPage.vue') },
     { path: '/inspirations', component: () => import('./views/InspirationsPage.vue') },
     { path: '/inspirations/:id', component: () => import('./views/InspirationDetailPage.vue') },
+    { path: '/collections', component: () => import('./views/CollectionsPage.vue') },
     { path: '/collections/:id', component: () => import('./views/CollectionPage.vue') },
     { path: '/review', component: () => import('./views/ReviewPage.vue') },
     { path: '/:pathMatch(.*)*', redirect: '/today' },

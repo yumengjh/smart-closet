@@ -20,3 +20,10 @@ test('鞋算衣服，包和腰带算配饰；编号徽章', () => {
   assert.equal(badge(1), '①')
   assert.equal(badge(21), '21')
 })
+
+test('拖动缩放后的框夹在图内、保持最小边长、可反向拖', async () => {
+  const { clampBox } = await import('../src/inspiration/labels.ts')
+  assert.deepEqual(clampBox(-0.2, 0.1, 0.5, 1.3), [0, 0.1, 0.5, 1])
+  assert.deepEqual(clampBox(0.6, 0.6, 0.2, 0.2), [0.2, 0.2, 0.6, 0.6])
+  assert.deepEqual(clampBox(0.5, 0.5, 0.51, 0.505), [0.5, 0.5, 0.54, 0.54])
+})

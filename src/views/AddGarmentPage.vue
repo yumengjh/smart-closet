@@ -5,6 +5,7 @@ import { ArrowLeftOutlined, PictureOutlined, CameraOutlined, RotateRightOutlined
 import CameraCapture from '../components/CameraCapture.vue'
 import QuickIntake from '../components/QuickIntake.vue'
 import PageTitle from '../shell/PageTitle.vue'
+import { goBack } from '../shell/goBack'
 import BatchIntake from '../components/BatchIntake.vue'
 import GarmentEdgeHelp from '../components/GarmentEdgeHelp.vue'
 import { useProcessingStore } from '../stores/processing'
@@ -114,7 +115,7 @@ async function submit() {
     <CameraCapture v-if="cameraOpen" @close="cameraOpen = false" @capture="setFile" />
     <!-- 清新改版 §4.3：标题进顶栏，说明收进“？”；录入方式用胶囊分段，和快速入柜面板同宽。 -->
     <PageTitle title="添加衣物" :hint="quick ? '一张照片一件衣物，拍完就能继续下一件；网上看中、还没买的衣服可以切到“种草”。' : intake ? '多张单件照、多件同框或自拍，分开整理后逐件核对。' : '一件衣物，用单件工具更直接；多件照片，再选择批量整理。'" />
-    <div class="entry-bar"><a-button type="text" class="back-link" aria-label="返回衣柜" @click="router.push('/wardrobe')"><ArrowLeftOutlined /></a-button><a-segmented v-model:value="entryMode" :options="entryOptions" :disabled="busy" class="entry-switch" aria-label="录入方式" /></div>
+    <div class="entry-bar"><a-button type="text" class="back-link" aria-label="返回" @click="goBack(router, '/wardrobe')"><ArrowLeftOutlined /></a-button><a-segmented v-model:value="entryMode" :options="entryOptions" :disabled="busy" class="entry-switch" aria-label="录入方式" /></div>
     <QuickIntake v-if="quick" />
     <KeepAlive><BatchIntake v-if="!quick && intake" embedded /></KeepAlive>
     <template v-if="!quick && !intake">
