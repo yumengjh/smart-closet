@@ -10,6 +10,7 @@ import { playSound } from '../services/sound'
 import { colorFamilies, garmentFamily, pileTilt, rackBays, type Bay, type ColorFamily } from './rack'
 import GarmentQuickCard from './GarmentQuickCard.vue'
 import { wantedLabel } from './wanted'
+import { holdLabel, holdOf } from './holds'
 
 /** spread: 0 = 叠放 … 1 = 散开（工具条滑块）。 */
 const props = defineProps<{ items: Garment[]; reviews?: Record<string, { message?: string } | undefined>; spread: number }>()
@@ -98,6 +99,7 @@ onUnmounted(() => observer?.disconnect())
               </div>
             </div>
             <span v-if="reviews?.[item.id]?.message" class="rack-flag" :title="`需核对：${reviews[item.id]!.message}`">需核对</span>
+            <span v-if="holdOf(item.id)" class="rack-flag hold" :title="`${holdLabel(holdOf(item.id))}：暂时不推荐，回来后自动恢复`">{{ holdLabel(holdOf(item.id)) }}</span>
             <span v-if="item.status === 'WANTED'" class="rack-flag wanted" :title="`${wantedLabel}：还没买，不参与推荐与统计`">{{ wantedLabel }}</span>
             <span v-if="item.sourceOrigin === 'PRESET'" class="rack-flag preset" title="预设衣物的示意图，可在详情里换成自己的照片">预设</span>
             <div class="rack-foot"></div>
@@ -174,6 +176,7 @@ onUnmounted(() => observer?.disconnect())
 .rack-flag { position: absolute; top: 40px; left: 18px; z-index: 6; padding: 1px 7px; border-radius: 999px; font-size: 11px; color: var(--warning); background: var(--warning-bg); }
 .rack-flag.preset { color: var(--muted-strong); background: var(--surface-alt); }
 .rack-flag.wanted { color: var(--accent-strong); background: var(--accent-soft); }
+.rack-flag.hold { color: var(--muted-strong); background: var(--surface-alt); }
 /* 种草：衣物半透明、虚线轮廓，一眼看出“还没买” */
 .rack-hang.wanted .rack-fig img { opacity: .72; }
 .rack-hang.wanted .rack-fig { outline: 1.5px dashed var(--accent); outline-offset: 2px; border-radius: 10px; }

@@ -1,7 +1,7 @@
 // 自动生成，勿手改：npm run sync:analytics（来源 smart-closet-server 的 analytics/events.json）。
-// version: 2
+// version: 10
 
-export const analyticsVersion = 2
+export const analyticsVersion = 10
 
 /** 事件名 → 属性。属性只能是枚举或布尔。 */
 export type AnalyticsEventProps = {
@@ -28,6 +28,16 @@ export type AnalyticsEventProps = {
   try_live_follow: { result: "matched" }
   try_live_result: { result: "ready" | "fail"; stage: "none" | "camera" | "network" | "pose" | "quota" }
   album_share: { kind: "download" | "share" }
+  inspiration_saved: { source: "picker" | "paste" | "drop" | "share"; duplicate: boolean }
+  inspiration_deleted: Record<string, never>
+  inspiration_analyzed: { result: "ok" | "rejected" | "failed" }
+  inspiration_outfit_saved: { missing: boolean }
+  inspiration_pose_saved: Record<string, never>
+  collection_created: Record<string, never>
+  collection_item_added: { kind: "outfit" | "inspiration" }
+  outfit_favorited: { on: boolean; from: "today" | "outfits" | "detail" }
+  garment_marked: { field: "tags" | "note" | "purchase" }
+  garment_hold_set: { status: "none" | "laundry" | "repair" | "lent" | "stored" }
   assistant_open: { entry: "dock" | "top" | "shortcut" }
   assistant_send: { image: boolean }
   assistant_layout: { mode: "bottom" | "overlay" | "dock" | "float" }
@@ -88,6 +98,22 @@ export const analyticsPages: readonly { readonly path: string; readonly name: st
   {
     "path": "/outfits/:id",
     "name": "搭配编辑"
+  },
+  {
+    "path": "/inspirations",
+    "name": "穿搭收藏"
+  },
+  {
+    "path": "/inspirations/:id",
+    "name": "穿搭收藏详情"
+  },
+  {
+    "path": "/collections",
+    "name": "全部合集"
+  },
+  {
+    "path": "/collections/:id",
+    "name": "合集"
   },
   {
     "path": "/try",
@@ -465,6 +491,116 @@ export const analyticsEventSpecs: Readonly<Record<AnalyticsEventName, AnalyticsE
         "enum": [
           "download",
           "share"
+        ]
+      }
+    }
+  },
+  "inspiration_saved": {
+    "phase": 2,
+    "billing": false,
+    "props": {
+      "source": {
+        "enum": [
+          "picker",
+          "paste",
+          "drop",
+          "share"
+        ]
+      },
+      "duplicate": {
+        "type": "boolean"
+      }
+    }
+  },
+  "inspiration_deleted": {
+    "phase": 2,
+    "billing": false,
+    "props": {}
+  },
+  "inspiration_analyzed": {
+    "phase": 2,
+    "billing": false,
+    "props": {
+      "result": {
+        "enum": [
+          "ok",
+          "rejected",
+          "failed"
+        ]
+      }
+    }
+  },
+  "inspiration_outfit_saved": {
+    "phase": 2,
+    "billing": false,
+    "props": {
+      "missing": {
+        "type": "boolean"
+      }
+    }
+  },
+  "inspiration_pose_saved": {
+    "phase": 2,
+    "billing": false,
+    "props": {}
+  },
+  "collection_created": {
+    "phase": 2,
+    "billing": false,
+    "props": {}
+  },
+  "collection_item_added": {
+    "phase": 2,
+    "billing": false,
+    "props": {
+      "kind": {
+        "enum": [
+          "outfit",
+          "inspiration"
+        ]
+      }
+    }
+  },
+  "outfit_favorited": {
+    "phase": 2,
+    "billing": false,
+    "props": {
+      "on": {
+        "type": "boolean"
+      },
+      "from": {
+        "enum": [
+          "today",
+          "outfits",
+          "detail"
+        ]
+      }
+    }
+  },
+  "garment_marked": {
+    "phase": 2,
+    "billing": false,
+    "props": {
+      "field": {
+        "enum": [
+          "tags",
+          "note",
+          "purchase"
+        ]
+      }
+    }
+  },
+  "garment_hold_set": {
+    "phase": 2,
+    "billing": false,
+    "props": {
+      "status": {
+        "enum": [
+          "none",
+          "laundry",
+          "repair",
+          "lent",
+          "stored"
         ]
       }
     }

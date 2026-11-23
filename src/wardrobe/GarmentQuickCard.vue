@@ -10,13 +10,17 @@ import { recommendApi } from '../recommend/api'
 import type { WearSummary } from '../recommend/types'
 import { tryOnAccess } from '../tryon/access'
 import { playSound } from '../services/sound'
+import { App } from 'ant-design-vue'
 import { FAMILY_SWATCH, familyFromName, garmentFamily } from './rack'
 import { roleFromGarment } from '../domain/outfit'
 import { wantedLabel } from './wanted'
+import { HOLD_OPTIONS, applyHold, holdLabel, holdOf } from './holds'
+import type { HoldStatus } from '../services/inspirations'
 
 const props = defineProps<{ items: Garment[]; index: number; origin: HTMLElement | null; bay: string }>()
 const emit = defineEmits<{ close: []; move: [index: number] }>()
 const router = useRouter()
+const { message } = App.useApp()
 const garment = computed(() => props.items[props.index])
 const title = computed(() => {
   const item = garment.value
@@ -48,6 +52,16 @@ watch(() => garment.value.id, id => {
 }, { immediate: true })
 const lastWorn = computed(() => !wear.value?.count ? '还没穿过' : wear.value.daysSince === 0 ? '今天' : wear.value.daysSince === 1 ? '昨天' : `${wear.value.daysSince} 天前`)
 
+// 衣架上点开一件就能标“在洗”等（设计 6.2）：再点一次取消。手机上最顺手的入口。
+const holdBusy = ref('')
+async function quickHold(status: Exclude<HoldStatus, 'NONE'>) {
+  const id = garment.value.id
+  const next: HoldStatus = holdOf(id) === status ? 'NONE' : status
+  holdBusy.value = status
+  try { await applyHold(id, next); playSound(next === 'NONE' ? 'tick' : 'pop'); message.success(next === 'NONE' ? '回到衣柜了' : `标成${holdLabel(next)}，这段时间不推荐它`) }
+  catch (cause) { message.error(cause instanceof Error ? cause.message : '没有标上，请重试。') }
+  finally { holdBusy.value = '' }
+}
 function go(path: string | { path: string; query: Record<string, string> }) { playSound('tap'); emit('close'); void router.push(path) }
 function step(delta: number) {
   const next = props.index + delta
@@ -129,6 +143,7 @@ onUnmounted(() => window.removeEventListener('keydown', keys))
         <header>
           <small>{{ kind }}</small>
           <h2>{{ title }}<HeartFilled v-if="garment.favorite" class="garment-quick-fav" aria-label="已收藏" /></h2>
+          <span v-if="holdOf(garment.id)" class="garment-quick-badge">{{ holdLabel(holdOf(garment.id)) }} · 暂时不推荐</span>
           <span v-if="garment.status === 'WANTED'" class="garment-quick-badge">{{ wantedLabel }} · 还没买</span>
           <span v-if="garment.sourceOrigin === 'PRESET'" class="garment-quick-badge">预设示意图</span>
         </header>
@@ -144,6 +159,12 @@ onUnmounted(() => window.removeEventListener('keydown', keys))
         <div v-for="row in facts" :key="row.label" class="garment-quick-row">
           <span class="garment-quick-label">{{ row.label }}</span>
           <span class="garment-quick-tags"><em v-for="value in row.values" :key="value">{{ value }}</em></span>
+        </div>
+        <div v-if="garment.status === 'ACTIVE'" class="garment-quick-row">
+          <span class="garment-quick-label">现在</span>
+          <span class="garment-quick-hold" role="radiogroup" aria-label="这件现在在哪">
+            <a-button v-for="option in HOLD_OPTIONS" :key="option.value" size="small" shape="round" :type="holdOf(garment.id) === option.value ? 'primary' : 'default'" role="radio" :aria-checked="holdOf(garment.id) === option.value" :loading="holdBusy === option.value" @click="quickHold(option.value)">{{ option.label }}</a-button>
+          </span>
         </div>
         <footer class="garment-quick-actions">
           <a-button type="primary" shape="round" size="large" class="garment-quick-main" @click="go({ path: '/outfits', query: mixable ? { mix: garment.id } : { with: garment.id } })"><SkinOutlined /> 用它搭一套</a-button>
@@ -167,6 +188,7 @@ onUnmounted(() => window.removeEventListener('keydown', keys))
 .garment-quick-pager { position: absolute; left: 50%; bottom: 16px; z-index: 2; display: flex; align-items: center; gap: 4px; padding: 3px; border-radius: 999px; transform: translateX(-50%); background: var(--glass); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 0 0 1px var(--line); }
 .garment-quick-pager small { min-width: 44px; font-size: 12px; text-align: center; color: var(--muted); font-variant-numeric: tabular-nums; }
 .garment-quick-pager .ant-btn { width: 32px; min-width: 32px; height: 32px; color: var(--muted-strong); }
+.garment-quick-hold { display: flex; flex-wrap: wrap; gap: 6px; }
 .garment-quick-ghost { position: fixed; z-index: 945; margin: 0; object-fit: contain; transform-origin: 0 0; pointer-events: none; filter: drop-shadow(0 18px 20px #00000026); }
 .garment-quick-swap-enter-active, .garment-quick-swap-leave-active { transition: opacity .2s ease, transform .3s cubic-bezier(.2,.9,.15,1); }
 .garment-quick-swap-enter-from { opacity: 0; transform: translateX(16px) scale(.97); }

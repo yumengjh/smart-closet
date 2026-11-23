@@ -1,0 +1,6 @@
+/* 选择模式的底栏（穿搭收藏列表与合集页共用；挂在 body 上，不能 scoped）。 */
+.insp-bar { position: fixed; left: 50%; bottom: calc(88px + env(safe-area-inset-bottom)); z-index: 960; display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 16px; border-radius: 999px; background: var(--surface); box-shadow: 0 12px 30px -10px #00000059, 0 0 0 1px var(--line); transform: translateX(-50%); white-space: nowrap; }
+.insp-bar b { margin-right: 4px; color: var(--ink); font-size: 14px; font-weight: 600; }
+.insp-bar .ant-btn { display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; }
+.insp-bar-enter-active, .insp-bar-leave-active { transition: opacity .2s ease, transform .25s cubic-bezier(.2, .9, .2, 1); }
+.insp-bar-enter-from, .insp-bar-leave-to { opacity: 0; transform: translate(-50%, 16px); }

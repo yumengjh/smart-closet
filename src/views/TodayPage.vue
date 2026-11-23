@@ -3,6 +3,8 @@
 // 左滑换一套：不发任何推荐反馈（T2）。右滑就穿它：等同“今天穿了这套”，写穿着记录（T3）。全程零模型调用（T4）。
 import { computed, onMounted, ref, watch } from 'vue'
 import { App } from 'ant-design-vue'
+import { outfitMarkApi } from '../services/inspirations'
+import { ApiError } from '../domain/apiError'
 import { useRouter } from 'vue-router'
 import { AppstoreAddOutlined, CameraOutlined, CheckCircleFilled, CloseOutlined, RightOutlined, SkinOutlined, SwapOutlined, UndoOutlined, ReloadOutlined } from '@ant-design/icons-vue'
 import RecommendIntentBar from '../recommend/RecommendIntentBar.vue'
@@ -66,7 +68,10 @@ async function refill() {
   refilling.value = true
   const runId = view.value.runId
   try { const more = await recommendApi.more(runId, MORE_BATCH); if (view.value?.runId !== runId) return; view.value = { ...view.value, hasMore: more.hasMore }; queue.value = appendUnique(queue.value, seen, more.outfits) }
-  catch { /* 续卡失败不打断：用户划完会看到“再来一批”。 */ }
+  catch (cause) {
+    // 续卡失败不打断：用户划完会看到“再来一批”。衣柜变了（例如标了“在洗”）时旧批次不再续，划完重新推荐。
+    if (cause instanceof ApiError && cause.code === 'WARDROBE_CHANGED' && view.value?.runId === runId) view.value = { ...view.value, hasMore: false }
+  }
   finally { refilling.value = false }
 }
 watch(index, () => { void refill() })
@@ -115,6 +120,17 @@ async function save(outfit: Savable, quiet = false): Promise<string | null> {
     if (!quiet) { playSound('pop'); message.success('已收进我的搭配') }
     return created.id
   } catch (cause) { message.error(cause instanceof Error ? cause.message : '没能保存这套搭配。'); return null }
+}
+/** 卡片上的 ☆：收进我的搭配并标“想穿”（穿搭灵感设计 5.1）。不发推荐反馈或弱信号，左右滑的约定不变。 */
+async function like(outfit: Savable) {
+  const id = await save(outfit, true)
+  if (!id) return
+  try {
+    await outfitMarkApi.setFavorite(id, true)
+    saved.value = saved.value.map(item => item.id === id ? { ...item, favorite: true } : item)
+    track('outfit_favorited', { on: true, from: 'today' })
+    playSound('pop'); message.success('收进想穿了')
+  } catch { playSound('pop'); message.success('已收进我的搭配') }
 }
 async function tryOn(outfit: Savable) {
   const id = await save(outfit, true)
@@ -169,7 +185,7 @@ onMounted(() => {
         </div>
         <template v-else>
           <div v-if="hintOpen" class="today-hint" role="note"><SwapOutlined /><b class="today-hint-text">左滑换一套，右滑就穿它</b><a-button type="text" size="small" aria-label="知道了" @click="dismissHint"><CloseOutlined /></a-button></div>
-          <CoverDeck ref="deck" :outfits="queue" :index="index" :busy="busy" @skip="skip" @wear="wear" @save="o => save(o)" @open="open" />
+          <CoverDeck ref="deck" :outfits="queue" :index="index" :busy="busy" @skip="skip" @wear="wear" @save="o => like(o)" @open="open" />
         </template>
       </template>
       <Transition name="today-undo"><a-button v-if="undo" shape="round" class="today-undo" @click="takeBack"><UndoOutlined /> 撤回</a-button></Transition>
@@ -183,7 +199,7 @@ onMounted(() => {
       <div v-if="saved.length" class="today-saved">
         <RouterLink v-for="o in saved" :key="o.id" :to="`/outfits/${o.id}`" class="today-saved-item"><span class="today-saved-media"><PieceCards :pieces="scenePieces(o.scene)" :title="o.name" :size="320" compact /></span><b>{{ o.name }}</b></RouterLink>
       </div>
-      <p v-else class="today-quiet">遇到喜欢的，点 ☆ 收进来。</p>
+      <p v-else class="today-quiet">遇到喜欢的，点 ☆ 收进想穿。</p>
       <template v-if="closet.pendingCount">
         <div class="today-sec"><h2>衣柜动态</h2></div>
         <RouterLink to="/pending" class="today-strip"><span class="today-strip-icon mint">{{ closet.pendingCount > 99 ? '99+' : closet.pendingCount }}</span><span><b>{{ closet.pendingCount }} 件新衣服在整理</b><small>做好会自动收进衣柜，个别需要你确认一下</small></span><RightOutlined /></RouterLink>

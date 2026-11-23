@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { goBack } from '../shell/goBack'
 import { App } from 'ant-design-vue'
 import { CameraOutlined, SwapOutlined, LeftOutlined, PictureOutlined, DownloadOutlined, DeleteOutlined, PlusOutlined, ExpandOutlined, CompressOutlined, InfoCircleOutlined, LoadingOutlined, BorderOutlined, ColumnWidthOutlined, EyeOutlined, EyeInvisibleOutlined, RightOutlined, PoweroffOutlined, CheckCircleFilled, ExclamationCircleFilled, BulbOutlined, SoundOutlined, SoundFilled, WifiOutlined, CloseOutlined, EllipsisOutlined, ClearOutlined, LayoutOutlined, UserOutlined } from '@ant-design/icons-vue'
 import { tryOnApi, emergencyStop, duration, finished, mediaUrl, type Candidate, type Capabilities, type Look, type LookCategory, type Media, type Prepared, type Selection, type Session } from '../tryon/api'
@@ -832,7 +833,7 @@ onBeforeUnmount(() => { disposed = true; action++; stopPose(); if (importPreview
           </Transition>
 
           <header ref="topbar" class="tryon-topbar">
-            <a-button type="text" class="camera-tool" aria-label="返回衣柜" @click="router.push('/wardrobe')"><LeftOutlined /></a-button>
+            <a-button type="text" class="camera-tool" aria-label="返回" @click="goBack(router, '/wardrobe')"><LeftOutlined /></a-button>
             <div v-if="!narrow" class="tryon-status" :class="{ live: showsResult, waiting: phase === 'connecting' || phase === 'queued' || phase === 'offered' || phase === 'stopping' }"><i></i><span>{{ status }}</span></div>
             <template v-else>
               <a-tooltip :title="status" trigger="click" placement="bottomLeft" :get-popup-container="popupHost"><a-button type="text" class="camera-tool tryon-light" :class="`is-${light}`" :aria-label="`当前状态：${status}`"><i aria-hidden="true"></i></a-button></a-tooltip>

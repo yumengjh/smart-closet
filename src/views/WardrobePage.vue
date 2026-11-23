@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { App as AntApp } from 'ant-design-vue'
-import { ExclamationCircleOutlined, SearchOutlined, SlidersOutlined, PlusOutlined, QuestionCircleOutlined, CheckSquareOutlined, CameraOutlined, CloseOutlined, AppstoreAddOutlined, MoreOutlined, SwapOutlined } from '@ant-design/icons-vue'
+import { ExclamationCircleOutlined, SearchOutlined, SlidersOutlined, PlusOutlined, QuestionCircleOutlined, CheckSquareOutlined, CameraOutlined, CloseOutlined, AppstoreAddOutlined, MoreOutlined, SwapOutlined, PictureOutlined } from '@ant-design/icons-vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { closetApi, type Garment, type ListQuery, type SearchResult } from '../services/api'
 import { quickApi } from '../services/quickIntake'
@@ -22,6 +22,8 @@ import { DEFAULT_SORT, SORT_OPTIONS, readSort, saveSort, sortLabel } from '../wa
 import { readView, saveView } from '../wardrobe/viewMemory'
 import pageLocale from 'ant-design-vue/es/vc-pagination/locale/zh_CN'
 import { PAGE_SIZES, pageAfterSizeChange, readPageSize, savePageSize } from '../wardrobe/pageSize'
+import { garmentMarkApi } from '../services/inspirations'
+import { loadHolds } from '../wardrobe/holds'
 import { listStatus, loadWantedLabel, readOwnership, saveOwnership, wantedLabel, type Ownership } from '../wardrobe/wanted'
 import { buildTags, combineQuery, imageModelNotice, removeWords, IMAGE_STYLE_LABELS, SEARCH_EXAMPLES, type SearchTag } from '../wardrobe/search'
 
@@ -74,18 +76,24 @@ const pageSize = computed(() => searching.value ? 20 : query.size)
 const showFloat = computed(() => !selecting.value && total.value > pageSize.value && items.value.length > 0)
 const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
 const tags = computed(() => searching.value && searchResult.value ? buildTags(searchResult.value.parsed, searchResult.value.imageStyle) : [])
-const hasFilters = computed(() => Boolean(query.q || chosen().length || imageStyle.value || queryImage.value))
+// 衣物标签（穿搭灵感设计 6.1）：单选，只作预过滤，和其他筛选同时生效。
+const tagFilter = ref('')
+const tagOptions = ref<{ value: string; label: string }[]>([])
+function loadTagOptions() { void garmentMarkApi.tags().then(page => { tagOptions.value = page.items.map(item => ({ value: item.name, label: `${item.name} · ${item.count}` })) }).catch(() => { /* 没有标签时筛选里不显示这一项 */ }) }
+const hasFilters = computed(() => Boolean(query.q || chosen().length || imageStyle.value || queryImage.value || tagFilter.value))
 // Chosen filters shown as soft tags under the toolbar; the 筛选 chip counts them.
-type ChosenTag = { key: string; label: string; kind: 'category' | 'color' | 'season' | 'style'; value: string }
+type ChosenTag = { key: string; label: string; kind: 'category' | 'color' | 'season' | 'style' | 'tag'; value: string }
 const chosenTags = computed<ChosenTag[]>(() => [
   ...sel.category.map(value => ({ key: `c:${value}`, label: value, kind: 'category' as const, value })),
   ...sel.color.map(value => ({ key: `o:${value}`, label: value, kind: 'color' as const, value })),
   ...sel.season.map(value => ({ key: `s:${value}`, label: value, kind: 'season' as const, value })),
+  ...(tagFilter.value ? [{ key: 'tag', label: `#${tagFilter.value}`, kind: 'tag' as const, value: tagFilter.value }] : []),
   ...(imageStyle.value ? [{ key: 'style', label: imageStyleOptions.find(option => option.value === imageStyle.value)?.label || imageStyle.value, kind: 'style' as const, value: imageStyle.value }] : []),
 ])
 const filterCount = computed(() => chosenTags.value.length)
 function removeChosen(tag: ChosenTag) {
   if (tag.kind === 'style') imageStyle.value = ''
+  else if (tag.kind === 'tag') tagFilter.value = ''
   else sel[tag.kind] = sel[tag.kind].filter(value => value !== tag.value)
 }
 const imageStyleOptions = [{ value: '', label: '图片风格：默认' }, ...Object.entries(IMAGE_STYLE_LABELS).filter(([k]) => k !== 'OTHER').map(([value, label]) => ({ value, label }))]
@@ -188,9 +196,10 @@ let latestLoad = 0
 /** One page of the current view (browse, words/filters, or picture search) without touching the screen state. */
 async function fetchPage(page: number): Promise<{ items: Garment[]; total: number; search: SearchResult | null }> {
   const words = combineQuery(query.q, ...chosen())
-  if (queryImage.value) { const result = await closetApi.superSearch(queryImage.value, words, page, ownership.value); return { items: result.items, total: result.total, search: result } }
-  if (searching.value) { const result = await closetApi.search(words, page, imageStyle.value || undefined, ownership.value); return { items: result.items, total: result.total, search: result } }
-  const result = await closetApi.list({ ...query, page })
+  const tag = tagFilter.value || undefined
+  if (queryImage.value) { const result = await closetApi.superSearch(queryImage.value, words, page, ownership.value, tag); return { items: result.items, total: result.total, search: result } }
+  if (searching.value) { const result = await closetApi.search(words, page, imageStyle.value || undefined, ownership.value, tag); return { items: result.items, total: result.total, search: result } }
+  const result = await closetApi.list({ ...query, page, ...(tag ? { tag } : {}) })
   return { items: result.items, total: result.total, search: null }
 }
 let backgroundFrame = 0, backgroundTimer = 0, backgroundStarted = false, unmounted = false
@@ -226,6 +235,7 @@ async function load() {
     wantedTotal.value = ownership.value === 'WANTED' ? -1 : 0
     wantedCountKnown.value = ownership.value !== 'ALL' || searching.value
     searchResult.value = result.search; items.value = result.items; total.value = result.total
+    void loadHolds(result.items.filter(item => item.status === 'ACTIVE').map(item => item.id))
   } catch (cause) { if (mine === latestLoad) error.value = cause instanceof Error ? cause.message : '衣柜暂时无法加载。' }
   finally { if (mine === latestLoad && !unmounted) { loading.value = false; loadBackground(mine) } }
 }
@@ -278,7 +288,7 @@ function pasted(event: ClipboardEvent) { const file = [...(event.clipboardData?.
 function dropped(event: DragEvent) { const file = [...(event.dataTransfer?.files || [])].find(f => f.type.startsWith('image/')); if (file) attach(file) }
 const helpOpen = ref(false)
 function tryExample(example: string) { query.q = example; helpOpen.value = false; debounceLoad() }
-function clearFilters() { query.q = ''; sel.category = []; sel.color = []; sel.season = []; syncSingle(); imageStyle.value = ''; if (queryImage.value) detach(); else debounceLoad() }
+function clearFilters() { query.q = ''; sel.category = []; sel.color = []; sel.season = []; syncSingle(); imageStyle.value = ''; tagFilter.value = ''; if (queryImage.value) detach(); else debounceLoad() }
 function closeTag(tag: SearchTag) {
   // A style typed in the box ("卡通的") is removed from the text; the closet default is turned off by choosing "全部风格".
   if (tag.imageStyle) { if (tag.words.some(w => query.q.includes(w))) query.q = removeWords(query.q, tag.words); else imageStyle.value = 'ALL' }
@@ -294,6 +304,7 @@ function closeTag(tag: SearchTag) {
 onMounted(async () => {
   window.scrollTo({ top: 0, behavior: 'instant' })
   window.addEventListener('pagehide', rememberView); window.addEventListener('keydown', pageKeys)
+  loadTagOptions()
   narrowQuery = window.matchMedia('(max-width: 767px)'); onNarrow(); narrowQuery.addEventListener('change', onNarrow)
   await load()
   if (unmounted) return
@@ -306,7 +317,7 @@ onUnmounted(() => { unmounted = true; latestLoad++; cancelBackground(); window.r
 // Choosing an order is remembered on this browser; searching ranks by relevance, so the order only applies when browsing.
 function pickSort(info: { key: string | number }) { chooseSort(String(info.key)) }
 function chooseSort(value: string) { query.sort = value; saveSort(value); query.page = 1; void load() }
-watch(() => [sel.category.join('|'), sel.color.join('|'), sel.season.join('|'), imageStyle.value], () => { syncSingle(); debounceLoad() })
+watch(() => [sel.category.join('|'), sel.color.join('|'), sel.season.join('|'), imageStyle.value, tagFilter.value], () => { syncSingle(); debounceLoad() })
 // 从常见单品添加（预设衣物库设计 6.1）：勾选后复制进衣柜并标“预设”。
 const presetsOpen = ref(false)
 watch(presetsOpen, open => { if (open) track('add_source', { source: 'preset' }) })
@@ -360,6 +371,7 @@ watch(() => route.query.presets, value => { if (value !== '1') return; presetsOp
             <label>品类</label><a-select v-model:value="sel.category" mode="multiple" :max-tag-count="2" allow-clear placeholder="全部品类" :options="categories.map(value => ({ value, label: value }))" aria-label="品类，可多选" />
             <label>颜色</label><a-select v-model:value="sel.color" mode="multiple" :max-tag-count="2" allow-clear placeholder="全部颜色" :options="colors.map(value => ({ value, label: value }))" aria-label="颜色，可多选" />
             <label>季节</label><a-select v-model:value="sel.season" mode="multiple" :max-tag-count="2" allow-clear placeholder="全部季节" :options="seasons.map(value => ({ value, label: value }))" aria-label="季节，可多选" />
+            <template v-if="tagOptions.length || tagFilter"><label>标签</label><a-select v-model:value="tagFilter" allow-clear show-search placeholder="全部标签" :options="tagOptions" aria-label="衣物标签" @focus="loadTagOptions" /></template>
             <label>图片风格</label><a-select v-model:value="imageStyle" :options="imageStyleOptions" aria-label="图片风格" />
             <footer><a-button type="text" :disabled="!hasFilters" @click="clearFilters">全部清除</a-button><a-button type="primary" @click="filtersOpen = false">好了</a-button></footer>
           </div>
@@ -381,6 +393,7 @@ watch(() => route.query.presets, value => { if (value !== '1') return; presetsOp
       <a-slider class="closet-spread-slider" :value="spread" :min="0" :max="100" :step="1" :tooltip-open="false" aria-label="衣架松紧：左边叠放，右边散开" @change="chooseSpread" />
       <svg class="closet-spread-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="1.5" y="6" width="6" height="12" rx="1.5" /><rect x="9" y="6" width="6" height="12" rx="1.5" /><rect x="16.5" y="6" width="6" height="12" rx="1.5" /></svg>
     </div>
+    <a-tooltip title="刷到喜欢的穿搭，截图存进来"><a-button class="closet-soft" @click="router.push('/inspirations')"><PictureOutlined /><em>穿搭收藏</em></a-button></a-tooltip>
     <a-tooltip title="从常见单品添加：有类似的点一下，直接放进衣柜"><a-button class="closet-soft" @click="presetsOpen = true"><AppstoreAddOutlined /><em>常见单品</em></a-button></a-tooltip>
     <a-dropdown :trigger="['click']" placement="bottomRight">
       <a-button class="closet-round" type="text" aria-label="更多衣柜操作"><MoreOutlined /><i v-if="reviewCount" class="closet-round-dot" aria-hidden="true"></i></a-button>
@@ -388,6 +401,7 @@ watch(() => route.query.presets, value => { if (value !== '1') return; presetsOp
         <a-menu-item @click="picker?.click()"><CameraOutlined /> 用图片搜</a-menu-item>
         <a-menu-item :disabled="!items.length" @click="selecting = true; batchResult = null"><CheckSquareOutlined /> 批量处理</a-menu-item>
         <a-menu-item @click="presetsOpen = true"><AppstoreAddOutlined /> 从常见单品添加</a-menu-item>
+        <a-menu-item @click="router.push('/inspirations')"><PictureOutlined /> 穿搭收藏</a-menu-item>
         <a-menu-item v-if="reviewCount" @click="router.push('/review')"><ExclamationCircleOutlined /> 等你确认 {{ reviewCount }} 件</a-menu-item>
       </a-menu></template>
     </a-dropdown>

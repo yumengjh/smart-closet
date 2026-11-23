@@ -8,6 +8,8 @@ import { quickApi } from '../services/quickIntake'
 import { mediaUrl, thumbUrl } from '../services/urls'
 import { computed, onMounted, onUnmounted, reactive, ref, toRaw, watch } from 'vue'
 import GarmentRecommendPanel from '../recommend/GarmentRecommendPanel.vue'
+import GarmentMarkBlock from '../components/GarmentMarkBlock.vue'
+import { goBack } from '../shell/goBack'
 import SimilarGarmentsPanel from '../similar/SimilarGarmentsPanel.vue'
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import { ArrowLeftOutlined, CheckOutlined, DeleteOutlined, ReloadOutlined, RollbackOutlined, PictureOutlined, StopOutlined, EyeOutlined, InfoCircleOutlined, EditOutlined, SettingOutlined, HistoryOutlined, SkinOutlined, ScanOutlined, ThunderboltOutlined, ScissorOutlined, MoreOutlined } from '@ant-design/icons-vue'
@@ -189,7 +191,8 @@ async function saveAndReturn() {
   if (!error.value) returnResult()
 }
 function leaveWorkspace() {
-  const leave = () => router.push(fromReview.value ? '/review' : source.value.batchId ? `/batches/${source.value.batchId}` : garment.value?.status === 'ACTIVE' ? '/wardrobe' : '/pending')
+  // 从核对列表或批次进来时回到那里；否则从哪来回哪去（例如从通知点进来，回到原页面），没有来路才去衣柜或整理中。
+  const leave = () => fromReview.value ? router.push('/review') : source.value.batchId ? router.push(`/batches/${source.value.batchId}`) : goBack(router, garment.value?.status === 'ACTIVE' ? '/wardrobe' : '/pending')
   if (dirty.value) modal.confirm({ title: '离开前保存修改？', content: '当前资料或展示图还有未保存的修改。', okText: '保存并离开', cancelText: '继续编辑', onOk: async () => { await save(false); if (!error.value) await leave() } })
   else void leave()
 }
@@ -469,6 +472,7 @@ async function replacePresetPhoto(file: File) {
                 <dl class="detail-fields"><div v-for="key in layeringFields" :key="key"><dt>{{ key === 'fit' ? '版型' : key === 'thickness' ? '厚薄' : '用途' }}</dt><dd :class="{ unknown: !(values[key] || []).length }">{{ fieldValue(key) }}</dd></div></dl>
                 <a-button v-if="!layeringVerified && garment.status !== 'TRASHED'" type="link" size="small" class="info-link" @click="openPanel('metadata')">按实物核对，推荐会更准</a-button>
               </div>
+              <GarmentMarkBlock v-if="garment.status === 'ACTIVE' || garment.status === 'WANTED'" :garment-id="garment.id" :wanted="garment.status === 'WANTED'" />
               <div class="info-block">
                 <h2>智能工具</h2>
                 <div class="tool-grid">

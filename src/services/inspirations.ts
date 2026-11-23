@@ -1,0 +1,154 @@
+import { request } from './api'
+import type { Pose } from './platform'
+
+/**
+ * 穿搭灵感、合集、想穿与衣物标记（smart-closet-server docs/design/2026-11-23-穿搭灵感与个人沉淀：截图拆解、复刻与衣物标记设计.md，
+ * 第一期 I1 + M1）。灵感原图只给本人看，不进分享、创作参考与生图；衣物标记不进模型。
+ */
+export type Inspiration = {
+  id: string
+  status: 'SAVED' | 'ANALYZING' | 'ANALYZED' | 'REJECTED' | 'FAILED'
+  note: string | null
+  width: number | null
+  height: number | null
+  imageUrl: string
+  thumbUrl: string
+  collectionIds: string[]
+  createdAt: number
+  updatedAt: number
+  /** I2 拆解（设计 4.4）。REJECTED 时看 rejectMessage；MINOR_LIKELY 时图片已删。 */
+  rejectReason?: string | null
+  rejectMessage?: string | null
+  analysis?: InspirationAnalysis | null
+  /** I3：由它存成的搭配。 */
+  outfitIds?: string[]
+}
+export type InspirationItem = {
+  index: number
+  role: string
+  category: string
+  primaryColor: string
+  secondaryColors: string[]
+  patterns: string[]
+  fit: string
+  length: string
+  wear: string
+  visibility: string
+  confidence: string
+  description: string
+  cropUrl: string | null
+  /** [左, 上, 右, 下]，0–1；体验改版起返回，用来在截图上标出这一件。 */
+  box?: number[] | null
+}
+export type InspirationAnalysis = {
+  extractorVersion: string
+  seasons: string[]
+  occasions: string[]
+  looks: { id: string; label: string }[]
+  items: InspirationItem[]
+  tips: string[]
+  hasPose: boolean
+  /** inspo-v2：姿势只有封闭取值和一句描述（朝向、重心、手脚、手持物）。 */
+  pose?: { stance: string; description: string }
+}
+export type ItemEdit = { role?: string; category?: string; primaryColor?: string; box?: number[] }
+export type MatchGrade = 'VERY_CLOSE' | 'CLOSE' | 'SAME_KIND'
+export type InspirationMatch = { garmentId: string; grade: MatchGrade; score: number; reasons: string[]; held?: boolean }
+export type InspirationMatches = {
+  items: { index: number; role: string; owned: InspirationMatch[]; wanted: InspirationMatch[] }[]
+  replica: { garmentIds: string[]; missing: { index: number; role: string; category: string; description: string }[]; missingMain: boolean }
+}
+export const MATCH_GRADE_LABEL: Record<MatchGrade, string> = { VERY_CLOSE: '很像', CLOSE: '接近', SAME_KIND: '同类' }
+export type InspirationPage = { items: Inspiration[]; nextCursor: string | null; total: number; max: number }
+export type CollectionKind = 'OUTFIT' | 'INSPIRATION'
+export type Collection = {
+  id: string
+  name: string
+  sortOrder: number
+  outfitCount: number
+  inspirationCount: number
+  coverThumbUrl: string | null
+  createdAt: number
+  updatedAt: number
+  /** 最近放入的至多 3 张图，合集卡片叠成一摞；coverOutfitId：只有搭配时画搭配缩略图。 */
+  coverThumbUrls?: string[]
+  coverOutfitId?: string | null
+}
+/** 临时状态（设计 6.2），服务端已按到期折算：过期即 NONE。 */
+export type HoldStatus = 'NONE' | 'LAUNDRY' | 'REPAIR' | 'LENT' | 'STORED'
+export type GarmentMark = {
+  garmentId: string
+  tags: string[]
+  note: string | null
+  purchasePriceMinor: number | null
+  purchaseCurrency: string | null
+  purchaseDate: string | null
+  wearCount: number
+  lastWornOn: string | null
+  updatedAt: number | null
+  holdStatus: HoldStatus
+  holdUntil: string | null
+  holdActive: boolean
+}
+export type GarmentMarkWrite = Pick<GarmentMark, 'tags' | 'note' | 'purchasePriceMinor' | 'purchaseCurrency' | 'purchaseDate'>
+
+export { COLLECTION_SUGGESTIONS, MAX_COLLECTION_NAME, MAX_GARMENT_NOTE, MAX_INSPIRATION_NOTE, MAX_TAG_LENGTH, MAX_TAGS, costPerWear, minorToYuan, normalizeTags, yuanToMinor } from '../domain/marks'
+import { normalizeTags } from '../domain/marks'
+
+const json = (body: unknown) => JSON.stringify(body)
+
+export const inspirationApi = {
+  list: (params: { collection?: string; q?: string; look?: string; cursor?: string | null; limit?: number } = {}) => {
+    const query = new URLSearchParams()
+    if (params.look) query.set('look', params.look)
+    if (params.collection) query.set('collection', params.collection)
+    if (params.q) query.set('q', params.q)
+    if (params.cursor) query.set('cursor', params.cursor)
+    if (params.limit) query.set('limit', String(params.limit))
+    const text = query.toString()
+    return request<InspirationPage>(`/api/inspirations${text ? `?${text}` : ''}`)
+  },
+  get: (id: string) => request<Inspiration>(`/api/inspirations/${encodeURIComponent(id)}`),
+  upload: (file: Blob, note?: string) => {
+    const form = new FormData()
+    form.append('file', file, file instanceof File ? file.name : 'inspiration.png')
+    if (note) form.append('note', note)
+    return request<{ inspiration: Inspiration; duplicate: boolean }>('/api/inspirations', { method: 'POST', body: form })
+  },
+  updateNote: (id: string, note: string | null) => request<Inspiration>(`/api/inspirations/${encodeURIComponent(id)}`, { method: 'PATCH', body: json({ note }) }),
+  remove: (id: string) => request<void>(`/api/inspirations/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  /** 拆解是异步的：202 后轮询 get，直到不再是 ANALYZING。同一个键重复提交只扣一次。 */
+  analyze: (id: string, key: string) => request<Inspiration>(`/api/inspirations/${encodeURIComponent(id)}/analyze`, { method: 'POST', headers: { 'Idempotency-Key': key } }),
+  /** 用户自己管理标记（体验改版）：补一件、改一件（部位、品类、颜色、框）、删一件；零模型调用，框变了服务端重裁小图。 */
+  addItem: (id: string, edit: ItemEdit) => request<Inspiration>(`/api/inspirations/${encodeURIComponent(id)}/items`, { method: 'POST', body: json(edit) }),
+  updateItem: (id: string, index: number, edit: ItemEdit) => request<Inspiration>(`/api/inspirations/${encodeURIComponent(id)}/items/${index}`, { method: 'PATCH', body: json(edit) }),
+  removeItem: (id: string, index: number) => request<Inspiration>(`/api/inspirations/${encodeURIComponent(id)}/items/${index}`, { method: 'DELETE' }),
+  /** 哪些入口要显示：复刻默认关闭（服务端 closet.inspiration.replica-enabled）。 */
+  capabilities: () => request<{ replica: boolean }>('/api/inspirations/capabilities'),
+  matches: (id: string) => request<InspirationMatches>(`/api/inspirations/${encodeURIComponent(id)}/matches`),
+  poseCard: (id: string) => request<Pose>(`/api/inspirations/${encodeURIComponent(id)}/pose-card`, { method: 'POST' }),
+}
+
+export const collectionApi = {
+  list: () => request<{ items: Collection[]; max: number }>('/api/collections'),
+  create: (name: string) => request<Collection>('/api/collections', { method: 'POST', body: json({ name }) }),
+  update: (id: string, patch: { name?: string; sortOrder?: number }) => request<Collection>(`/api/collections/${encodeURIComponent(id)}`, { method: 'PATCH', body: json(patch) }),
+  remove: (id: string) => request<void>(`/api/collections/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  add: (id: string, kind: CollectionKind, refId: string) => request<void>(`/api/collections/${encodeURIComponent(id)}/items`, { method: 'PUT', body: json({ kind, refId }) }),
+  /** 一次放入、移出多项，整批生效（合集页“添加”、多选移出、列表页多选放进合集）。 */
+  addMany: (id: string, items: { kind: CollectionKind; refId: string }[]) => request<void>(`/api/collections/${encodeURIComponent(id)}/items/batch`, { method: 'POST', body: json({ items }) }),
+  removeMany: (id: string, items: { kind: CollectionKind; refId: string }[]) => request<void>(`/api/collections/${encodeURIComponent(id)}/items/remove`, { method: 'POST', body: json({ items }) }),
+  removeItem: (id: string, kind: CollectionKind, refId: string) => request<void>(`/api/collections/${encodeURIComponent(id)}/items/${kind}/${encodeURIComponent(refId)}`, { method: 'DELETE' }),
+}
+
+export const outfitMarkApi = {
+  setFavorite: (id: string, favorite: boolean) => request<{ id: string; favorite: boolean }>(`/api/outfits/${encodeURIComponent(id)}/favorite`, { method: 'PATCH', body: json({ favorite }) }),
+}
+
+export const garmentMarkApi = {
+  get: (id: string) => request<GarmentMark>(`/api/garments/${encodeURIComponent(id)}/mark`),
+  save: (id: string, mark: GarmentMarkWrite) => request<GarmentMark>(`/api/garments/${encodeURIComponent(id)}/mark`, { method: 'PUT', body: json({ ...mark, tags: normalizeTags(mark.tags) }) }),
+  batch: (ids: string[]) => ids.length ? request<{ items: { garmentId: string; tags: string[]; holdStatus?: HoldStatus }[] }>(`/api/garments/marks?ids=${ids.slice(0, 200).map(encodeURIComponent).join(',')}`) : Promise.resolve({ items: [] }),
+  tags: () => request<{ items: { name: string; count: number }[] }>('/api/garments/tags'),
+  setHold: (id: string, status: HoldStatus, until?: string | null) => request<GarmentMark>(`/api/garments/${encodeURIComponent(id)}/hold`, { method: 'PUT', body: json(until ? { status, until } : { status }) }),
+}

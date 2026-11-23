@@ -38,7 +38,8 @@ export type OutfitElement = {
   imageChanged?: boolean
 }
 export type OutfitScene = { version: number; elements: OutfitElement[] }
-export type Outfit = { id: string; name: string; revision: number; createdAtMs: number; updatedAtMs: number; scene: OutfitScene }
+/** favorite = 想穿；collectionIds = 所在合集；inspirationId = 从哪张灵感存成（穿搭灵感设计 5.1、4.7）。改这三项不升 revision。 */
+export type Outfit = { id: string; name: string; revision: number; createdAtMs: number; updatedAtMs: number; scene: OutfitScene; favorite?: boolean; collectionIds?: string[]; inspirationId?: string | null }
 export type OutfitDraft = { recommendationLogId?: string | null; accessoryStates?: Record<string, boolean>; name: string; revision: number | null; scene: OutfitScene; savedAt?: number }
 export type OutfitWriteElement = Omit<OutfitElement, 'assetUrl' | 'imageWidth' | 'imageHeight' | 'assetKind' | 'garmentRevision' | 'garmentStatus' | 'garmentChanged' | 'imageChanged'>
 export type OutfitRoleOption = { value: OutfitRole; label: string }

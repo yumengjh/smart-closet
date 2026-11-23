@@ -298,3 +298,8 @@
   .outfit-library-bar .outfit-library-actions > .ant-btn { width: 100%; min-width: 0; padding-inline: 8px; }
 }
 @media (prefers-reduced-motion: reduce) { .outfit-card-preview { transition: none; } }
+/* 想穿（穿搭灵感设计 5.1）：心形在“更多”左边，名称区占满剩余宽度。 */
+.outfit-card-details > div:first-child { flex: 1; min-width: 0; }
+.outfit-card-favorite.ant-btn { flex: none; color: var(--muted-subtle); }
+.outfit-card-favorite.ant-btn.on { color: var(--ink); }
+.outfit-favorite-filter.ant-btn { display: inline-flex; align-items: center; gap: 6px; }
