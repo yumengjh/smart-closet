@@ -135,12 +135,20 @@ async function applyEdit(task: () => Promise<Inspiration>, done?: string) {
   finally { editSaving.value = false }
 }
 function changeBox(index: number, box: number[]) { if (item.value) void applyEdit(() => inspirationApi.updateItem(item.value!.id, index, { box })) }
+/** “＋ 加一件”：在截图中间放一个框并选中，用户再拖到位、调大小、写是什么（手机上比在空白处拖框好找）。 */
+function addCentered() {
+  if (editSaving.value) return
+  // 已有框正好在中间时往右下错开一点，免得新框完全叠在上面看不出来。
+  const taken = items.value.some(i => i.box && Math.abs(i.box[0] - 0.32) < 0.03 && Math.abs(i.box[1] - 0.32) < 0.03)
+  const offset = taken ? 0.06 : 0
+  void drawBox([0.32 + offset, 0.32 + offset, 0.68 + offset, 0.62 + offset])
+}
 async function drawBox(box: number[]) {
   if (!item.value) return
   const before = new Set(items.value.map(i => i.index))
   await applyEdit(() => inspirationApi.addItem(item.value!.id, { box, role: 'OTHER', category: '' }))
   const added = items.value.find(i => !before.has(i.index))
-  if (added) { active.value = added.index; message.info('框好了，在下面写一下这是什么') }
+  if (added) { active.value = added.index; message.info('把框拖到那一件上，再写一下是什么'); void nextTick(() => (document.querySelector('.ix-edit-grid input[aria-label="是什么"]') as HTMLInputElement | null)?.focus({ preventScroll: true })) }
 }
 const formChanged = computed(() => !!activeItem.value && (form.value.role !== activeItem.value.role || form.value.category.trim() !== activeItem.value.category || form.value.primaryColor.trim() !== activeItem.value.primaryColor))
 function saveForm() {
@@ -245,9 +253,12 @@ watch(id, () => { if (id.value) void load() }, { immediate: true })
           </div>
         </InspirationFigure>
         <div v-if="editing" class="ix-edit">
-          <p v-if="!activeItem" class="ix-edit-hint"><PlusOutlined /> 点一个框来改；在空白处拖出一个框，补上漏掉的一件</p>
-          <template v-else>
-            <div class="ix-edit-head"><b>{{ badge(order.get(activeItem.index) || 0) }} {{ activeItem.category || '这一件' }}</b><small>拖框挪位置，拖圆点调大小</small></div>
+          <div class="ix-edit-bar">
+            <p class="ix-edit-hint">{{ activeItem ? '拖框挪位置，拖圆点调大小' : '点一个框来改，或者加上漏掉的一件' }}</p>
+            <a-button size="small" :loading="editSaving" @click="addCentered"><PlusOutlined /> 加一件</a-button>
+          </div>
+          <template v-if="activeItem">
+            <div class="ix-edit-head"><b>{{ badge(order.get(activeItem.index) || 0) }} {{ activeItem.category || '新的一件' }}</b><a-button type="link" size="small" @click="active = null">换一个</a-button></div>
             <div class="ix-edit-grid">
               <label>部位</label>
               <a-select v-model:value="form.role" :options="ROLE_OPTIONS" aria-label="部位" />
@@ -368,7 +379,9 @@ watch(id, () => { if (id.value) void load() }, { immediate: true })
 .ix-tools .ant-btn { display: inline-flex; align-items: center; gap: 4px; border: 0; background: var(--glass, #ffffffd9); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
 .ix-tools .ant-btn-primary { color: var(--action-fg, #fff); background: var(--action-bg, var(--ink)); }
 .ix-edit { display: grid; gap: 10px; margin-top: 10px; padding: 12px 14px; border-radius: 16px; background: var(--surface); box-shadow: 0 0 0 1px var(--line); }
-.ix-edit-hint { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--muted); font-size: 13px; }
+.ix-edit-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ix-edit-bar .ant-btn { flex: none; display: inline-flex; align-items: center; gap: 4px; }
+.ix-edit-hint { margin: 0; color: var(--muted); font-size: 13px; }
 .ix-edit-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 8px; }
 .ix-edit-head b { color: var(--ink); font-size: 14px; }
 .ix-edit-head small { color: var(--muted); font-size: 12px; }
