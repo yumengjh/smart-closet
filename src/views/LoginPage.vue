@@ -48,6 +48,6 @@ async function submit() {
       <a-button v-if="registrationOpen" size="large" block @click="router.push('/register')">还没有账号？注册</a-button>
       <p v-if="usingMocks" class="auth-hint">界面演示：示例内容并非 AI 结果，不能提交真实任务。</p>
     </form>
-    <template v-if="!registrationOpen" #footer><span>账号由管理员创建，忘记密码请联系管理员。</span></template>
+    <template #footer><span v-if="!registrationOpen">账号由管理员创建，忘记密码请联系管理员。</span><RouterLink to="/feedback?from=/login">登录遇到问题？反馈给我们</RouterLink></template>
   </AuthShell>
 </template>

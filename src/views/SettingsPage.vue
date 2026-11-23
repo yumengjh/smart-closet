@@ -8,7 +8,7 @@ import { computed, defineAsyncComponent, onMounted, onUnmounted, ref } from 'vue
 import { useRoute, useRouter } from 'vue-router'
 import {
   LockOutlined, ThunderboltOutlined, LinkOutlined, RobotOutlined, UserOutlined, DashboardOutlined, RightOutlined,
-  DeleteOutlined, CompassOutlined, BgColorsOutlined, ArrowLeftOutlined, DownloadOutlined, SkinOutlined, AuditOutlined, CameraOutlined, CopyOutlined, AppstoreAddOutlined, SafetyCertificateOutlined, QuestionCircleOutlined, LogoutOutlined,
+  DeleteOutlined, CompassOutlined, BgColorsOutlined, ArrowLeftOutlined, DownloadOutlined, SkinOutlined, AuditOutlined, CameraOutlined, CopyOutlined, AppstoreAddOutlined, SafetyCertificateOutlined, QuestionCircleOutlined, LogoutOutlined, MessageOutlined,
 } from '@ant-design/icons-vue'
 import { useClosetStore } from '../stores/closet'
 import { useThemeStore } from '../stores/theme'
@@ -56,6 +56,7 @@ const links: LinkRow[] = [
   { key: 'trash', group: 'closet', label: '回收站', icon: DeleteOutlined, to: '/trash' },
   { key: 'guide', group: 'more', label: '新手指引', icon: CompassOutlined, action: replayGuide },
   { key: 'help', group: 'more', label: '帮助', icon: QuestionCircleOutlined, to: '/help' },
+  { key: 'feedback', group: 'more', label: '意见反馈', icon: MessageOutlined, to: '/feedback?from=/settings' },
   { key: 'admin', group: 'more', label: '管理后台', icon: DashboardOutlined, to: '/admin' },
 ]
 const GROUPS: { key: Group; label: string }[] = [{ key: 'style', label: '穿搭' }, { key: 'closet', label: '衣柜' }, { key: 'account', label: '账号' }, { key: 'more', label: '更多' }, { key: 'admin', label: '管理功能' }]

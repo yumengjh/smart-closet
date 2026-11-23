@@ -12,11 +12,13 @@ test('authenticated users can use business pages after a successful password cha
   assert.equal(sessionRedirect('/wardrobe', ready), undefined)
   assert.equal(sessionRedirect('/login', ready), '/today')
   assert.equal(sessionRedirect('/register', ready), '/today')
+  assert.equal(sessionRedirect('/feedback', ready), undefined)
   assert.equal(canUseCloset(ready), true)
 })
 test('an expired or missing session goes to login and never loads business counts', () => {
   assert.equal(sessionRedirect('/tasks', null), '/login')
   assert.equal(sessionRedirect('/login', null), undefined)
   assert.equal(sessionRedirect('/register', null), undefined)
+  assert.equal(sessionRedirect('/feedback', null), undefined, '没登录也能打开意见反馈')
   assert.equal(canUseCloset(null), false)
 })

@@ -32,6 +32,7 @@ export const router = createRouter({
     { path: '/outfits/:id', component: () => import('./views/OutfitWorkspacePage.vue') },
     { path: '/try-on', component: () => import('./views/TryOnPage.vue') },
     { path: '/help', component: () => import('./views/HelpPage.vue') },
+    { path: '/feedback', component: () => import('./views/FeedbackPage.vue') },
     { path: '/settings', component: () => import('./views/SettingsPage.vue') },
     { path: '/batches/:id', component: () => import('./views/BatchPage.vue') },
     { path: '/quick-add', redirect: '/add' },
