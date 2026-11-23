@@ -69,6 +69,12 @@ export default defineConfig(({ mode }) => {
           })
         },
       },
+      // 系统分享兜底（穿搭收藏 share_target）：service worker 没接管时，POST 交给服务端 303 跳回 /inspirations；
+      // GET 仍由 vite 返回页面。
+      '/inspirations/share': {
+        target: proxyTarget, changeOrigin: true,
+        bypass(request) { return request.method === 'POST' ? undefined : request.url },
+      },
     },
   },
   }

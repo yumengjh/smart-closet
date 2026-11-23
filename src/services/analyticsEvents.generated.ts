@@ -1,7 +1,7 @@
 // 自动生成，勿手改：npm run sync:analytics（来源 smart-closet-server 的 analytics/events.json）。
-// version: 7
+// version: 8
 
-export const analyticsVersion = 7
+export const analyticsVersion = 8
 
 /** 事件名 → 属性。属性只能是枚举或布尔。 */
 export type AnalyticsEventProps = {
@@ -28,8 +28,9 @@ export type AnalyticsEventProps = {
   try_live_follow: { result: "matched" }
   try_live_result: { result: "ready" | "fail"; stage: "none" | "camera" | "network" | "pose" | "quota" }
   album_share: { kind: "download" | "share" }
-  inspiration_saved: { source: "picker" | "paste" | "drop"; duplicate: boolean }
+  inspiration_saved: { source: "picker" | "paste" | "drop" | "share"; duplicate: boolean }
   inspiration_deleted: Record<string, never>
+  inspiration_analyzed: { result: "ok" | "rejected" | "failed" }
   collection_created: Record<string, never>
   collection_item_added: { kind: "outfit" | "inspiration" }
   outfit_favorited: { on: boolean; from: "today" | "outfits" | "detail" }
@@ -496,7 +497,8 @@ export const analyticsEventSpecs: Readonly<Record<AnalyticsEventName, AnalyticsE
         "enum": [
           "picker",
           "paste",
-          "drop"
+          "drop",
+          "share"
         ]
       },
       "duplicate": {
@@ -508,6 +510,19 @@ export const analyticsEventSpecs: Readonly<Record<AnalyticsEventName, AnalyticsE
     "phase": 2,
     "billing": false,
     "props": {}
+  },
+  "inspiration_analyzed": {
+    "phase": 2,
+    "billing": false,
+    "props": {
+      "result": {
+        "enum": [
+          "ok",
+          "rejected",
+          "failed"
+        ]
+      }
+    }
   },
   "collection_created": {
     "phase": 2,
