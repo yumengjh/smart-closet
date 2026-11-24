@@ -135,7 +135,7 @@ const columns = [
   <header v-if="!embedded" class="page-heading"><div><h1>整套穿搭样本</h1><p>上传整套穿搭照片，模型提取物品、姿势与场景，审核后用于统计和生成搭配模板。原图审核完成即删除。</p></div></header>
   <div class="settings-section-content ootd-samples">
     <a-alert type="info" show-icon message="收图前请看采集规范：一张图一个人一整套、日常可穿、不收未成年人；每张图调用一次识图模型。">
-      <template #description>规范见文档 docs/OOTD_SAMPLE_COLLECTION.md。许可“未知”的样本只参与统计，不能生成模板。</template>
+      <template #description>规范见文档 docs/guides/ootd-sample-collection.md。许可“未知”的样本只参与统计，不能生成模板。</template>
     </a-alert>
     <section class="ootd-upload" aria-label="上传样本">
       <a-upload :before-upload="pick" :show-upload-list="false" accept="image/jpeg,image/png"><a-button>{{ file ? file.name : '选择照片' }}</a-button></a-upload>
