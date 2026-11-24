@@ -132,8 +132,9 @@ export type ProcessingChoice = { value: string; label: string }
 export type UserRole = 'ADMIN' | 'USER'
 export type RegistrationMode = 'CLOSED' | 'INVITE' | 'OPEN'
 export type RegisteredVia = 'ADMIN' | 'INVITE' | 'OPEN'
-export type Registration = { mode: RegistrationMode }
-export type RegisterRequest = { username: string; password: string; displayName?: string; inviteCode?: string }
+/** emailRequired 只在邮件开启时出现（server#296）。 */
+export type Registration = { mode: RegistrationMode; emailRequired?: boolean }
+export type RegisterRequest = { username: string; password: string; displayName?: string; inviteCode?: string; email?: string; emailCode?: string }
 export type AccountProfile = { username: string; displayName: string | null; role: UserRole; createdAtMs: number; lastLoginAtMs: number | null; registeredVia: RegisteredVia }
 export type ProfileUpdate = { displayName: string | null }
 export type PasswordChange = { currentPassword: string; newPassword: string; signOutOthers?: boolean }
