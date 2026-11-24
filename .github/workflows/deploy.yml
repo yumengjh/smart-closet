@@ -59,7 +59,8 @@ jobs:
     needs: check-config
     if: inputs.validate_only != true
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Build ~5 min plus at most three 5-minute upload attempts.
+    timeout-minutes: 30
     env:
       SSH_HOST: ${{ secrets.DEPLOY_SSH_HOST }}
       SSH_PORT: ${{ secrets.DEPLOY_SSH_PORT }}
@@ -121,7 +122,10 @@ jobs:
           port=${SSH_PORT:-22}
           if [ -n "$KNOWN_HOSTS" ]; then printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
           else ssh-keyscan -p "$port" -T 15 "$SSH_HOST" > ~/.ssh/known_hosts 2>/dev/null; echo "::warning::未设置 DEPLOY_SSH_KNOWN_HOSTS，本次信任扫描到的主机指纹"; fi
-          opts=(-p "$port" -o ServerAliveInterval=30 -o ConnectTimeout=20 -o StrictHostKeyChecking=yes)
+          # IPQoS=none: on 2026-11-24 two uploads from GitHub's runners connected fine and then never moved a byte, while
+          # the same scp from Semaphore to the same host finished in seconds; DSCP-marked bulk packets dropped on the route
+          # is the usual cause of that pattern. Keep-alives end a dead connection instead of waiting for the job timeout.
+          opts=(-p "$port" -o ServerAliveInterval=15 -o ServerAliveCountMax=4 -o ConnectTimeout=20 -o IPQoS=none -o StrictHostKeyChecking=yes)
           if [ -n "$SSH_KEY" ]; then
             printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
             opts+=(-i ~/.ssh/deploy_key -o IdentitiesOnly=yes); pre=""
@@ -133,11 +137,38 @@ jobs:
           printf '#!/usr/bin/env bash\nexec %s scp %s "$@"\n' "$pre" "${opts[*]/-p/-P}" > ~/upload && chmod +x ~/upload
           ~/remote 'echo "已连接 $(hostname)"'
 
-      - name: Upload and replace site files
+      # Each attempt is limited to 5 minutes and checked by size and SHA-256 on the host; the second attempt streams over
+      # plain ssh instead of scp (SFTP), in case only one of them stalls on the route. The site is untouched until then.
+      - name: Upload site package
+        run: |
+          # Actions runs steps with bash -e; the retry loop handles failures itself.
+          set +e -uo pipefail
+          tmp="/tmp/yuda-frontend-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.tar.gz"
+          echo "DEPLOY_ARCHIVE=$tmp" >> "$GITHUB_ENV"
+          qtmp=$(printf %q "$tmp")
+          size=$(stat -c %s site.tar.gz); want=$(sha256sum site.tar.gz | awk '{print $1}')
+          echo "上传 site.tar.gz：$((size / 1024)) KiB，sha256 ${want:0:12}"
+          for attempt in 1 2 3; do
+            start=$SECONDS
+            if [ "$attempt" = 2 ]; then
+              how="ssh 流式"; timeout 300 ~/remote "cat > $qtmp" < site.tar.gz
+            else
+              how="scp"; timeout 300 ~/upload site.tar.gz "$SSH_USER@$SSH_HOST:$tmp"
+            fi
+            code=$?
+            read -r got_size got_sum < <(timeout 30 ~/remote "printf '%s %s\n' \"\$(stat -c %s $qtmp 2>/dev/null || echo 0)\" \"\$(sha256sum $qtmp 2>/dev/null | cut -d' ' -f1)\"" || echo "? ?")
+            if [ "$got_sum" = "$want" ]; then echo "第 $attempt 次上传成功（$how，$((SECONDS - start)) 秒）"; exit 0; fi
+            echo "::warning::第 $attempt 次上传失败（$how，退出码 $code，用时 $((SECONDS - start)) 秒，主机收到 ${got_size:-?} / $size 字节）"
+            sleep 10
+          done
+          timeout 30 ~/remote "rm -f $qtmp" || true
+          echo "::error::三次上传都没有完成，站点没有改动。主机收到的字节数见上面的提醒，可据此判断是线路慢还是完全不通。"
+          exit 1
+
+      - name: Replace site files
         run: |
           set -euo pipefail
-          tmp="/tmp/yuda-frontend-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.tar.gz"
-          ~/upload site.tar.gz "$SSH_USER@$SSH_HOST:$tmp"
+          tmp="$DEPLOY_ARCHIVE"
           ~/remote "bash -s -- $(printf %q "$DEPLOY_PATH") $(printf %q "$tmp")" <<'REMOTE'
           set -euo pipefail
           target=$1; archive=$2

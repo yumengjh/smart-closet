@@ -71,7 +71,7 @@ if [ -n "${DEPLOY_SSH_KNOWN_HOSTS:-}" ]; then
   fi
   ssh-keygen -F "$name" -f ~/.ssh/known_hosts >/dev/null || { echo "DEPLOY_SSH_KNOWN_HOSTS 里没有与 DEPLOY_SSH_HOST（端口 $port）对应的记录：请用 ssh-keyscan -p $port <与 DEPLOY_SSH_HOST 完全相同的地址> 重新生成"; exit 1; }
 else ssh-keyscan -p "$port" -T 15 "$DEPLOY_SSH_HOST" > ~/.ssh/known_hosts 2>/dev/null; echo "警告：未设置 DEPLOY_SSH_KNOWN_HOSTS，本次信任扫描到的主机指纹"; fi
-opts=(-p "$port" -o ServerAliveInterval=30 -o ConnectTimeout=20 -o StrictHostKeyChecking=yes)
+opts=(-p "$port" -o ServerAliveInterval=15 -o ServerAliveCountMax=4 -o ConnectTimeout=20 -o IPQoS=none -o StrictHostKeyChecking=yes)
 if [ -n "${DEPLOY_SSH_KEY:-}" ]; then
   pem "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
   ssh-keygen -y -f ~/.ssh/deploy_key >/dev/null || { echo "DEPLOY_SSH_KEY 无法读取（格式不对或带了密码）"; exit 1; }
