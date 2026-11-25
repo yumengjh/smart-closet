@@ -31,7 +31,7 @@ const modeDescriptions = {
   OPEN: '任何人都可以注册；填写邀请码时会核销名额并记录来源。',
 }
 const columns = [
-  { title: '用户', key: 'user', width: 160 }, { title: '角色', key: 'role', width: 100 }, { title: '状态', key: 'status', width: 100 },
+  { title: '用户', key: 'user', width: 190 }, { title: '角色', key: 'role', width: 100 }, { title: '状态', key: 'status', width: 100 },
   { title: '注册来源', key: 'registeredVia', width: 110 }, { title: '注册时间', key: 'createdAtMs', width: 170 }, { title: '最近登录', key: 'lastLoginAtMs', width: 170 },
   { title: '衣物数', dataIndex: 'garmentCount', width: 80 }, { title: '操作', key: 'actions', width: 320 },
 ]
@@ -178,9 +178,9 @@ function revokeInvite(invite: RegistrationInvite) {
               <a-select v-model:value="query.role" :options="roleOptions" allow-clear placeholder="全部角色" aria-label="用户角色" @change="filterUsers" />
               <a-button html-type="submit" :loading="usersBusy">搜索</a-button><a-button :disabled="usersBusy" @click="loadUsers">刷新</a-button>
             </form>
-            <div class="users-table"><a-table :columns="columns" :data-source="users.items" row-key="username" :loading="usersBusy" :pagination="pagination" :scroll="{ x: 1310 }" size="small" @change="changePage">
+            <div class="users-table"><a-table :columns="columns" :data-source="users.items" row-key="username" :loading="usersBusy" :pagination="pagination" :scroll="{ x: 1340 }" size="small" @change="changePage">
               <template #bodyCell="{ column, record }">
-                <template v-if="column.key === 'user'"><strong>{{ record.username }}</strong><p class="muted">{{ record.displayName || '未设置昵称' }}</p></template>
+                <template v-if="column.key === 'user'"><strong>{{ record.username }}</strong><p class="muted">{{ record.displayName || '未设置昵称' }}</p><p v-if="record.emailMasked" class="muted">{{ record.emailMasked }}</p></template>
                 <a-tag v-else-if="column.key === 'role'" :color="record.role === 'ADMIN' ? 'blue' : undefined">{{ record.role === 'ADMIN' ? '管理员' : '普通用户' }}</a-tag>
                 <a-tag v-else-if="column.key === 'status'" :color="record.enabled ? 'green' : 'default'">{{ record.enabled ? '已启用' : record.deactivatedAtMs ? '已注销' : '已停用' }}</a-tag>
                 <template v-else-if="column.key === 'registeredVia'">{{ registeredViaLabels[record.registeredVia] || record.registeredVia }}</template>
