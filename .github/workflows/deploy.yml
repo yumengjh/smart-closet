@@ -59,8 +59,8 @@ jobs:
     needs: check-config
     if: inputs.validate_only != true
     runs-on: ubuntu-latest
-    # Build ~5 min plus at most three 5-minute upload attempts.
-    timeout-minutes: 30
+    # Build ~2 min plus a 25-minute upload budget.
+    timeout-minutes: 35
     env:
       SSH_HOST: ${{ secrets.DEPLOY_SSH_HOST }}
       SSH_PORT: ${{ secrets.DEPLOY_SSH_PORT }}
@@ -135,17 +135,42 @@ jobs:
           fi
           printf '#!/usr/bin/env bash\nexec %s ssh %s "%s@%s" "$@"\n' "$pre" "${opts[*]}" "$SSH_USER" "$SSH_HOST" > ~/remote && chmod +x ~/remote
           printf '#!/usr/bin/env bash\nexec %s scp %s "$@"\n' "$pre" "${opts[*]/-p/-P}" > ~/upload && chmod +x ~/upload
+          printf '#!/usr/bin/env bash\nexec %s ssh %s "$@"\n' "$pre" "${opts[*]}" > ~/rsh && chmod +x ~/rsh
           ~/remote 'echo "已连接 $(hostname)"'
 
-      # Each attempt is limited to 5 minutes and checked by size and SHA-256 on the host; the second attempt streams over
-      # plain ssh instead of scp (SFTP), in case only one of them stalls on the route. The site is untouched until then.
-      - name: Upload site package
+      # The route from GitHub's runners to the host is slow (2026-11-24: about 14 KB/s, 4 MB of a 15.6 MB package per
+      # 5 minutes), so only what changed crosses it: the host copies the live site into a staging directory, then rsync
+      # compares contents (-c) and sends the changed files, resuming after a dropped connection (--partial) until a
+      # 25-minute budget runs out. Hashed bundles and the pose model rarely change. Hosts without rsync get the whole
+      # package in up to three 5-minute attempts. The live site is untouched until "Replace site files".
+      - name: Upload site files
         run: |
-          # Actions runs steps with bash -e; the retry loop handles failures itself.
+          # Actions runs steps with bash -e; the retry loops handle failures themselves.
           set +e -uo pipefail
-          tmp="/tmp/yuda-frontend-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.tar.gz"
-          echo "DEPLOY_ARCHIVE=$tmp" >> "$GITHUB_ENV"
-          qtmp=$(printf %q "$tmp")
+          stage="/tmp/yuda-frontend-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          qstage=$(printf %q "$stage"); qtarget=$(printf %q "$DEPLOY_PATH")
+          echo "DEPLOY_STAGE=$stage" >> "$GITHUB_ENV"
+          echo "本次构建：$(find dist -type f | wc -l) 个文件，$(du -sk dist | cut -f1) KiB"
+          if timeout 30 ~/remote 'command -v rsync' >/dev/null; then
+            echo "DEPLOY_MODE=dir" >> "$GITHUB_ENV"
+            timeout 120 ~/remote "rm -rf $qstage && mkdir -p $qstage && { cp -R $qtarget/. $qstage/ 2>/dev/null; rm -f $qstage/.user.ini; true; }"
+            deadline=$((SECONDS + 1500)); attempt=0
+            while [ $SECONDS -lt $deadline ]; do
+              attempt=$((attempt + 1)); start=$SECONDS
+              timeout $((deadline - SECONDS)) rsync -rlcz --partial --delete --timeout=60 --stats -e ~/rsh dist/ "$SSH_USER@$SSH_HOST:$stage/" > rsync.log 2>&1
+              code=$?
+              grep -E "Number of regular files transferred|Total transferred file size|Total bytes sent" rsync.log
+              if [ "$code" = 0 ]; then echo "第 $attempt 次同步完成（$((SECONDS - start)) 秒）"; exit 0; fi
+              echo "::warning::第 $attempt 次同步中断（退出码 $code，用时 $((SECONDS - start)) 秒），接着断点续传"
+              tail -n 3 rsync.log; sleep 5
+            done
+            timeout 30 ~/remote "rm -rf $qstage" || true
+            echo "::error::25 分钟内没有同步完，站点没有改动。上面的统计是每次已传的字节数。"
+            exit 1
+          fi
+          echo "::warning::主机没有 rsync，改为整包上传"
+          echo "DEPLOY_MODE=archive" >> "$GITHUB_ENV"
+          tmp="$stage.tar.gz"; qtmp=$(printf %q "$tmp")
           size=$(stat -c %s site.tar.gz); want=$(sha256sum site.tar.gz | awk '{print $1}')
           echo "上传 site.tar.gz：$((size / 1024)) KiB，sha256 ${want:0:12}"
           for attempt in 1 2 3; do
@@ -168,28 +193,32 @@ jobs:
       - name: Replace site files
         run: |
           set -euo pipefail
-          tmp="$DEPLOY_ARCHIVE"
-          ~/remote "bash -s -- $(printf %q "$DEPLOY_PATH") $(printf %q "$tmp")" <<'REMOTE'
+          ~/remote "bash -s -- $(printf %q "$DEPLOY_PATH") $(printf %q "$DEPLOY_STAGE") $(printf %q "$DEPLOY_MODE")" <<'REMOTE'
           set -euo pipefail
-          target=$1; archive=$2
-          trap 'rm -f "$archive"' EXIT
+          target=$1; upload=$2; mode=$3
+          trap 'rm -rf "$upload" "$upload.tar.gz"' EXIT
           [ -d "$target" ] || { echo "站点目录不存在：$target"; exit 1; }
           SUDO=(); [ -w "$target" ] || SUDO=(sudo -n)
           owner=$(stat -c '%u:%g' "$target")
-          # Unpack next to the site (same file system), keep the previous version for a manual rollback.
-          stage=$("${SUDO[@]}" mktemp -d "$(dirname "$target")/.deploy-XXXXXX")
-          "${SUDO[@]}" tar -xzf "$archive" -C "$stage"
-          [ -s "$stage/index.html" ] || { "${SUDO[@]}" rm -rf "$stage"; echo "上传的包里没有 index.html"; exit 1; }
+          if [ "$mode" = archive ]; then
+            # Unpack next to the site (same file system).
+            stage=$("${SUDO[@]}" mktemp -d "$(dirname "$target")/.deploy-XXXXXX")
+            "${SUDO[@]}" tar -xzf "$upload.tar.gz" -C "$stage"
+          else
+            stage=$upload
+          fi
+          [ -s "$stage/index.html" ] || { [ "$mode" = archive ] && "${SUDO[@]}" rm -rf "$stage"; echo "上传的内容里没有 index.html"; exit 1; }
+          # Keep the previous version for a manual rollback.
           "${SUDO[@]}" tar -czf "$(dirname "$target")/.index-previous.tar.gz" -C "$target" . 2>/dev/null || true
           # Full overwrite: every old file goes, except 1Panel's protected .user.ini (chattr +i on PHP sites).
           if command -v rsync >/dev/null; then
-            "${SUDO[@]}" rsync -a --delete --exclude .user.ini "$stage/" "$target/"
+            "${SUDO[@]}" rsync -rlc --delete --exclude .user.ini "$stage/" "$target/"
           else
             "${SUDO[@]}" find "$target" -mindepth 1 -maxdepth 1 ! -name .user.ini -exec rm -rf {} +
-            "${SUDO[@]}" cp -a "$stage/." "$target/"
+            "${SUDO[@]}" cp -R "$stage/." "$target/"
           fi
           "${SUDO[@]}" chown -R "$owner" "$target"
-          "${SUDO[@]}" rm -rf "$stage"
+          [ "$mode" = archive ] && "${SUDO[@]}" rm -rf "$stage"
           echo "已覆盖 $target：$(find "$target" -type f | wc -l) 个文件；上一版备份在 $(dirname "$target")/.index-previous.tar.gz"
           REMOTE
 
