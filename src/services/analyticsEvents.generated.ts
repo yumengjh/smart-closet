@@ -1,7 +1,7 @@
 // 自动生成，勿手改：npm run sync:analytics（来源 smart-closet-server 的 analytics/events.json）。
-// version: 11
+// version: 12
 
-export const analyticsVersion = 11
+export const analyticsVersion = 12
 
 /** 事件名 → 属性。属性只能是枚举或布尔。 */
 export type AnalyticsEventProps = {
@@ -147,6 +147,10 @@ export const analyticsPages: readonly { readonly path: string; readonly name: st
   {
     "path": "/register",
     "name": "注册"
+  },
+  {
+    "path": "/forgot",
+    "name": "找回密码"
   },
   {
     "path": "/welcome",
