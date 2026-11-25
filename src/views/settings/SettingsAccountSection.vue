@@ -7,6 +7,7 @@ import { analyticsAvailable, analyticsOptOut, setOptOut } from '../../services/a
 import { closetApi, type AccountProfile, type AccountSession } from '../../services/api'
 import { accountTime, passwordProblem, registeredViaLabels } from '../../domain/account'
 import { useClosetStore } from '../../stores/closet'
+import EmailBindingRow from '../../components/account/EmailBindingRow.vue'
 
 const closet = useClosetStore(); const router = useRouter(); const { modal, message } = App.useApp()
 const currentPassword = ref(''); const newPassword = ref(''); const repeatPassword = ref(''); const signOutOthers = ref(true)
@@ -96,6 +97,7 @@ function openDeactivation() { deactivatePassword.value = ''; deactivateError.val
         </a-descriptions>
       </template>
     </section>
+    <EmailBindingRow v-if="!firstLogin" />
     <section class="settings-group">
       <header class="settings-group-head"><h3>{{ firstLogin ? '设置新密码' : '修改密码' }}</h3><p>密码至少 12 个字符、不超过 72 字节（汉字约 3 字节），修改后立即生效。</p></header>
       <form class="password-form" @submit.prevent="changePassword">

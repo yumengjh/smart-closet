@@ -1,16 +1,20 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { CheckCircleFilled, MinusCircleOutlined } from '@ant-design/icons-vue'
 import { useClosetStore } from '../stores/closet'
 import AuthShell from '../components/AuthShell.vue'
+import PasswordChecks from '../components/account/PasswordChecks.vue'
+import EmailCodeInput from '../components/account/EmailCodeInput.vue'
 import { closetApi, usingMocks, type RegistrationMode } from '../services/api'
 import { track } from '../services/analytics'
-import { PASSWORD_MAX_BYTES, PASSWORD_MIN_CHARS, passwordBytes, passwordProblem, usernameProblem } from '../domain/account'
+import { passwordProblem, usernameProblem } from '../domain/account'
+import { codeProblem, createEmailProofOfWork, emailApi, emailProblem, emailRequired, registerErrorStep, sendWithProof, type PowProof } from '../services/emailAccount'
+import { useEmailCode } from '../composables/useEmailCode'
 
 /**
  * 注册分三步 (issue #82)：账号 → 密码 → 称呼。每步只校验本步，最后一步才提交；服务端拒绝时跳回出错的那一步。
  * 规则与服务端一致（用户名 2–80 位、密码至少 12 位），注册成功后进入问询页 /welcome。
+ * 邮件开启且要求邮箱时（server#296），第一步再填邮箱和 6 位验证码；取码前的安全校验在后台静默完成，按钮只显示“发送中”。
  */
 const route = useRoute(); const router = useRouter(); const closet = useClosetStore()
 const mode = ref<RegistrationMode>(); const modeLoading = ref(false); const busy = ref(false); const error = ref('')
@@ -18,23 +22,37 @@ const username = ref(''); const displayName = ref(''); const password = ref('');
 const inviteCode = ref(typeof route.query.invite === 'string' ? route.query.invite : '')
 const step = ref(0)
 const STEPS = ['账号', '密码', '称呼']
+const needsEmail = ref(false); const email = ref(''); const emailCode = ref('')
+let proof: ReturnType<typeof createEmailProofOfWork> | null = null
+const codeSender = useEmailCode(() => sendWithProof((p: PowProof) => emailApi.requestCode('REGISTER', email.value, p), proof ??= createEmailProofOfWork()))
+let sentEmail = ''
+async function sendCode() {
+  const problem = emailProblem(email.value)
+  if (problem) { error.value = problem; return }
+  error.value = ''
+  if (await codeSender.request()) sentEmail = email.value.trim().toLowerCase()
+}
+// 改了邮箱就要新的验证码，不用等上一个的倒计时（服务端仍按自己的限额来）。
+watch(email, value => { if (codeSender.sent.value && value.trim().toLowerCase() !== sentEmail) codeSender.reset() })
+onBeforeUnmount(() => proof?.cancel())
 async function loadMode() {
   modeLoading.value = true; error.value = ''
-  try { mode.value = (await closetApi.registration()).mode }
+  try {
+    const registration = await closetApi.registration()
+    mode.value = registration.mode; needsEmail.value = emailRequired(registration) && registration.mode !== 'CLOSED'
+    // 打开就开始算安全校验，点“获取验证码”时通常已经算完。
+    if (needsEmail.value) { proof ??= createEmailProofOfWork(); void proof.prepare().catch(() => { /* 点发送时再算 */ }) }
+  }
   catch (cause) { error.value = cause instanceof Error ? cause.message : '注册信息暂时无法加载。' }
   finally { modeLoading.value = false }
 }
 onMounted(loadMode)
-const checks = computed(() => [
-  { ok: [...password.value].length >= PASSWORD_MIN_CHARS, text: '至少 12 个字符' },
-  { ok: passwordBytes(password.value) <= PASSWORD_MAX_BYTES, text: `不超过 72 字节（已用 ${passwordBytes(password.value)}，汉字约 3 字节）` },
-  { ok: password.value.length > 0 && password.value === repeat.value, text: '两次输入一致' },
-])
 function validate(at: number) {
   if (at === 0) {
     const nameProblem = usernameProblem(username.value)
     if (nameProblem) return nameProblem
     if (mode.value === 'INVITE' && !inviteCode.value.trim()) return '请输入邀请码。'
+    if (needsEmail.value) return emailProblem(email.value) || codeProblem(emailCode.value)
   }
   if (at === 1) {
     const problem = passwordProblem(password.value)
@@ -52,7 +70,8 @@ async function submit() {
   for (const at of [0, 1, 2]) { const problem = validate(at); if (problem) { error.value = problem; step.value = at; return } }
   busy.value = true; error.value = ''
   try {
-    closet.user = await closetApi.register({ username: username.value, password: password.value, displayName: displayName.value.trim() || undefined, inviteCode: inviteCode.value.trim() || undefined })
+    closet.user = await closetApi.register({ username: username.value, password: password.value, displayName: displayName.value.trim() || undefined, inviteCode: inviteCode.value.trim() || undefined,
+      ...(needsEmail.value ? { email: email.value.trim(), emailCode: emailCode.value } : {}) })
     password.value = ''; repeat.value = ''
     track('auth_register_success', { mode: mode.value === 'OPEN' ? 'open' : 'invite' })
     // The new-user tour waits for this account (issue #87); GuideTour marks it done when shown.
@@ -61,12 +80,12 @@ async function submit() {
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : '注册未能完成，请稍后重试。'
     // Send the user back to the field the server objected to.
-    if (/用户名|账号|邀请/.test(error.value)) step.value = 0
-    else if (/密码/.test(error.value)) step.value = 1
+    const at = registerErrorStep(cause)
+    if (at >= 0) step.value = at
   } finally { busy.value = false }
 }
 const titles = ['创建你的账号', '设置一个密码', '我们怎么称呼你？']
-const intros = ['用户名用来登录，注册后不能修改。', '只有你自己知道，之后可以在“我的”里修改。', '昵称会显示在衣柜里，可以先不填。']
+const intros = computed(() => [needsEmail.value ? '用户名注册后不能修改，邮箱用来找回密码。' : '用户名用来登录，注册后不能修改。', '只有你自己知道，之后可以在“我的”里修改。', '昵称会显示在衣柜里，可以先不填。'])
 </script>
 
 <template>
@@ -78,11 +97,18 @@ const intros = ['用户名用来登录，注册后不能修改。', '只有你�
         <template v-if="mode !== 'OPEN' || inviteCode">
           <label for="register-invite">邀请码{{ mode === 'OPEN' ? '（可选）' : '' }}</label><a-input id="register-invite" v-model:value="inviteCode" size="large" autocomplete="off" placeholder="输入管理员提供的邀请码" />
         </template>
+        <template v-if="needsEmail">
+          <label for="register-email">邮箱</label><a-input id="register-email" v-model:value="email" size="large" type="email" inputmode="email" :maxlength="254" autocomplete="email" placeholder="用来找回密码" />
+          <label for="register-code">验证码</label>
+          <EmailCodeInput id="register-code" v-model:value="emailCode" :button-label="codeSender.label.value" :sending="codeSender.sending.value" :disabled="codeSender.disabled.value" @send="sendCode" />
+          <p v-if="codeSender.sent.value && !codeSender.error.value" class="register-sent">已发送，去邮箱看看，10 分钟内有效。</p>
+          <a-alert v-if="codeSender.error.value" type="error" :message="codeSender.error.value" show-icon />
+        </template>
       </template>
       <template v-else-if="step === 1">
         <label for="register-password">密码</label><a-input-password id="register-password" v-model:value="password" size="large" autocomplete="new-password" placeholder="至少 12 个字符" autofocus />
         <label for="register-repeat">确认密码</label><a-input-password id="register-repeat" v-model:value="repeat" size="large" autocomplete="new-password" placeholder="再输一次密码" />
-        <ul class="register-checks"><li v-for="c in checks" :key="c.text" :class="{ ok: c.ok }"><CheckCircleFilled v-if="c.ok" /><MinusCircleOutlined v-else />{{ c.text }}</li></ul>
+        <PasswordChecks :password="password" :repeat="repeat" />
       </template>
       <template v-else>
         <label for="register-name">昵称（可选）</label><a-input id="register-name" v-model:value="displayName" size="large" :maxlength="40" autocomplete="nickname" placeholder="希望我们如何称呼你" autofocus />
@@ -104,8 +130,6 @@ const intros = ['用户名用来登录，注册后不能修改。', '只有你�
 .register-progress { display: flex; gap: 6px; margin-bottom: 20px; }
 .register-progress span { flex: 1; height: 4px; border-radius: 4px; background: var(--line); transition: background .3s; }
 .register-progress span.done, .register-progress span.current { background: var(--accent); }
-.register-checks { display: grid; gap: 4px; margin: 4px 0 0; padding: 0; list-style: none; color: var(--muted-subtle); font-size: 13px; }
-.register-checks li { display: flex; align-items: center; gap: 6px; }
-.register-checks li.ok { color: var(--accent); }
+.register-sent { margin: 0; color: var(--muted-subtle); font-size: 13px; }
 @media (prefers-reduced-motion: reduce) { .register-progress span { transition: none; } }
 </style>

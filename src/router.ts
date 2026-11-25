@@ -20,6 +20,7 @@ export const router = createRouter({
     { path: '/ootd', redirect: to => legacyOotd(to.query) },
     { path: '/login', component: () => import('./views/LoginPage.vue') },
     { path: '/register', component: () => import('./views/RegisterPage.vue') },
+    { path: '/forgot', component: () => import('./views/ForgotPasswordPage.vue') },
     { path: '/welcome', component: () => import('./views/WelcomePage.vue') },
     { path: '/admin', component: () => import('./views/SettingsPage.vue') },
     { path: '/admin/users', component: () => import('./views/AdminUsersPage.vue') },
