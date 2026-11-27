@@ -10,7 +10,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { App } from 'ant-design-vue'
 import { BulbOutlined, CameraOutlined, HistoryOutlined, LockOutlined, PictureOutlined, PlusOutlined, SoundOutlined, VideoCameraOutlined } from '@ant-design/icons-vue'
 import { useBillingStore } from '../billing/store'
-import { realtimePrice } from '../billing/model'
+import { useRealtimeOffer } from '../tryon/realtimeOffer'
 import TryMaker from '../components/try/TryMaker.vue'
 import PageTitle from '../shell/PageTitle.vue'
 import OutfitCollage from '../today/OutfitCollage.vue'
@@ -42,7 +42,7 @@ const mode = computed<'image' | 'live'>({
   get: () => liveAvailable.value && route.query.mode === 'live' ? 'live' : 'image',
   set: value => { void router.replace({ query: { ...route.query, mode: value === 'live' ? 'live' : undefined } }) },
 })
-const cap = computed(() => tryOnAccess.value)
+const cap = computed(() => mode.value === 'live' ? tryOnAccess.value : null)
 const garments = ref<Candidate[]>([]); const outfits = ref<Outfit[]>([]); const loaded = ref(false)
 const looks = ref<Look[]>([]); const lookCategories = ref<LookCategory[]>([]); const lookCategory = ref(''); const looksLoading = ref(false)
 type PickKind = 'garment' | 'outfit' | 'look' | 'temporary'
@@ -94,10 +94,15 @@ async function uploadOne(file: File) {
 function beforeUpload(file: File) { void uploadOne(file); return false }
 // 试穿页用服务端的图片地址，本地预览离开就可以释放。
 onBeforeUnmount(() => { if (uploadPreview.value) URL.revokeObjectURL(uploadPreview.value); if (uploaded.value) URL.revokeObjectURL(uploaded.value.preview) })
-const needsPoints = computed(() => billing.realtime?.enabled && cap.value?.enabled && cap.value.quota.remaining <= 0 && (cap.value.points?.milliPointsPerSecond || 0) > 0 && (cap.value.points?.paidSeconds || 0) <= 0)
+const entryTier = computed(() => {
+  const tiers = cap.value?.tiers || [], selected = tiers.find(item => item.tier === cap.value?.selectedTier)
+  return (selected?.available ? selected : tiers.find(item => item.available) ?? selected)?.tier ?? 'STANDARD'
+})
+const { ready, remaining, points, price, notice, needsPoints } = useRealtimeOffer(cap, entryTier)
+const previewOnly = computed(() => !ready.value && cap.value?.tiers?.length === 1)
 /** 从按钮圆形展开进试穿页，并带上 open=1：试穿页直接打开本地预览（免费、不计时）。 */
 function start(event: MouseEvent) {
-  if (needsPoints.value) { billing.purchase = 'tryon'; return }
+  if (needsPoints.value && !previewOnly.value) { billing.purchase = 'tryon'; return }
   if (pick.value?.kind === 'temporary' && uploaded.value) handOffTemporary({ id: uploaded.value.id, imageUrl: uploaded.value.imageUrl, expiresAtMs: uploaded.value.expiresAtMs })
   const query = new URLSearchParams({ open: '1', ...(pick.value ? { [pick.value.kind]: pick.value.id } : {}) })
   const box = (event.currentTarget as HTMLElement | null)?.getBoundingClientRect()
@@ -150,8 +155,8 @@ const tips = computed(() => [
         </div>
         <div class="try-live-copy">
           <h2>{{ pickedGarment ? `对着镜头，换上${pickedGarment.name}` : pickedOutfit ? `对着镜头，换上「${pickedOutfit.name}」` : pickedLook ? `对着镜头，换上「${pickedLook.name}」` : uploading ? '正在传这张图…' : stageUpload ? '对着镜头，换上这件' : '对着镜头，直接换上' }}</h2>
-          <p v-if="cap?.ready || needsPoints"><TryOnQuota :remaining="cap?.quota.remaining || 0" :points="cap?.points" /></p>
-          <p v-else-if="cap" class="try-live-warn">{{ cap.reason || '实时试穿暂时不可用' }}</p>
+          <p v-if="ready || needsPoints"><template v-if="cap?.tiers && cap.tiers.length > 1">{{ entryTier === 'PREMIUM' ? '高质量' : '标准' }} · </template><TryOnQuota :remaining="remaining" :points="points" :tier-price="price" :needs-points="needsPoints" /></p>
+          <p v-else-if="cap" class="try-live-warn">{{ notice }}</p>
         </div>
       </section>
 
@@ -207,7 +212,7 @@ const tips = computed(() => [
       </ul>
 
       <div class="try-live-cta">
-        <a-button type="primary" size="large" block :disabled="!cap?.ready && !needsPoints" @click="start"><VideoCameraOutlined /> {{ needsPoints ? '充值点数' : `打开镜头${realtimePrice(billing.realtime) ? ` · ${realtimePrice(billing.realtime)}` : ''}` }}</a-button>
+        <a-button type="primary" size="large" block :disabled="!ready && !needsPoints && !previewOnly" @click="start"><VideoCameraOutlined /> {{ previewOnly ? '打开本地预览' : needsPoints ? '充值点数' : `打开镜头${price ? ` · ${price}` : ''}` }}</a-button>
         <a-button v-if="cap?.hasHistory" type="text" @click="router.push('/try-on?history=1')"><HistoryOutlined /> 拍摄记录</a-button>
       </div>
     </div>

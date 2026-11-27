@@ -4,10 +4,11 @@ import { useRoute, useRouter } from 'vue-router'
 import { goBack } from '../shell/goBack'
 import { App } from 'ant-design-vue'
 import { CameraOutlined, SwapOutlined, LeftOutlined, PictureOutlined, DownloadOutlined, DeleteOutlined, PlusOutlined, ExpandOutlined, CompressOutlined, InfoCircleOutlined, LoadingOutlined, BorderOutlined, ColumnWidthOutlined, EyeOutlined, EyeInvisibleOutlined, RightOutlined, PoweroffOutlined, CheckCircleFilled, ExclamationCircleFilled, BulbOutlined, SoundOutlined, SoundFilled, WifiOutlined, CloseOutlined, EllipsisOutlined, ClearOutlined, LayoutOutlined, UserOutlined } from '@ant-design/icons-vue'
-import { tryOnApi, emergencyStop, duration, finished, mediaUrl, realtimeTierNotice, type Candidate, type Capabilities, type Look, type LookCategory, type Media, type Prepared, type Selection, type Session } from '../tryon/api'
+import { tryOnApi, emergencyStop, duration, finished, mediaUrl, type Candidate, type Capabilities, type Look, type LookCategory, type Media, type Prepared, type Selection, type Session } from '../tryon/api'
+import { useRealtimeOffer } from '../tryon/realtimeOffer'
 import { TryOnCamera } from '../tryon/camera'
 import { frameCanvas, photo, startRecording, type Recorder } from '../tryon/recording'
-import { setTryOnAccess } from '../tryon/access'
+import { setTryOnAccess, tryOnAccess } from '../tryon/access'
 import { onAccountChange, accountIsStale } from '../domain/accountSession'
 import MediaPreview from '../tryon/MediaPreview.vue'
 import TryOnPicker from '../tryon/TryOnPicker.vue'
@@ -43,8 +44,8 @@ const host = ref<HTMLElement>(), stage = ref<HTMLElement>(), stageArea = ref<HTM
 const loading = ref(true), cameraReady = ref(false), busy = ref(false), error = ref(''), frameReady = ref(false)
 const selectedTier = ref<Tier>('STANDARD'), savingTier = ref(false)
 const tierChoices = computed(() => cap.value?.tiers && cap.value.tiers.length > 1 ? cap.value.tiers : [])
-const selectedTierInfo = computed(() => cap.value?.tiers?.find(item => item.tier === selectedTier.value))
-const tierNotice = computed(() => realtimeTierNotice(cap.value?.tiers || [], selectedTier.value))
+const { ready: tierReady, remaining: dailyRemaining, notice: tierNotice, price: tierPrice, points: tierPoints, paid: tierPaid, needsPoints } = useRealtimeOffer(cap, selectedTier)
+const timingNotice = computed(() => selectedTier.value === 'PREMIUM' ? '高质量试穿从第一帧试穿画面开始计时。' : '标准试穿连接后计时，没有生成试穿画面不扣时长。')
 function confirmPremium(): Promise<boolean> {
   if (premiumConsent()) return Promise.resolve(true)
   return new Promise<boolean>(resolve => {
@@ -64,7 +65,12 @@ async function chooseTier(tier: Tier) {
     if (tier === 'PREMIUM' && !await confirmPremium()) return
     if (disposed || attempt !== action || busy.value || live.value) return
     const result = await putModelTiers({ realtime: tier })
-    if (!disposed && attempt === action) selectedTier.value = result.realtime.selected
+    const saved = result.realtime.selected
+    if (!disposed && attempt === action && cap.value?.tiers?.some(item => item.tier === saved)) {
+      selectedTier.value = saved
+      cap.value = { ...cap.value, selectedTier: saved }
+      setTryOnAccess(cap.value)
+    }
   } catch { message.error('保存选择失败，请重试。') }
   finally { savingTier.value = false }
 }
@@ -87,7 +93,7 @@ const reclaiming = computed(() => ['STOPPING', 'UNKNOWN'].includes(lease.value?.
 const visibleMedia = computed(() => media.value.filter(m => historyFilter.value === '全部' || m.type === (historyFilter.value === '照片' ? 'PHOTO' : 'VIDEO')))
 const remaining = computed(() => {
   const s = lease.value
-  if (!s || finished(s)) return selectedTierInfo.value?.quota.remaining ?? cap.value?.quota.remaining ?? 0
+  if (!s || finished(s)) return dailyRemaining.value
   if (s.connectedAtMs) return Math.max(0, s.reservedPoints - Math.floor((now.value - s.connectedAtMs) / 1000))
   return s.reservedPoints
 })
@@ -281,7 +287,6 @@ const qualityRows = computed(() => {
   const preview = describeStream(camera.previewStats)
   return preview ? [{ label: '本地预览', text: preview }] : []
 })
-const quotaText = computed(() => cap.value?.enabled ? `今日剩余 ${duration(cap.value.quota.remaining || 0)}` : '')
 const liveLevel = computed(() => {
   void now.value
   const d = live.value && camera ? camera.diagnostic : undefined
@@ -317,13 +322,14 @@ const startHint = computed(() => {
   if (generating.value) return '正在消耗试穿额度。选衣期间也会计时，可随时停止。'
   if (queued.value) return '排队不计费，轮到你时需要再次点击开始。'
   if (offered.value) return '名额已保留，点击开始后连接实时服务。'
-  if (live.value) return '连接成功后开始计时，首帧仍在生成，请保持人在画面中。'
+  if (live.value) return `正在等待试穿画面，请保持人在画面中。${timingNotice.value}`
+  if (tierNotice.value) return tierNotice.value
   if (!selected.value.length) return '先选一套搭配或几件衣物，再打开相机。'
   if (!cameraReady.value) return '衣物已选好。打开相机先看本地预览，不消耗额度。'
-  return showGuide.value ? '本地预览不计时，点开始后才连接计时。' : `${framingHint(selectedRoles.value)} 点击开始后连接计时。`
+  return `${showGuide.value ? '本地预览不计时。' : framingHint(selectedRoles.value)}${timingNotice.value}`
 })
-const intent = computed(() => shutterIntent(phase.value, captureMode.value, selected.value.length > 0, Boolean(cap.value?.ready) && !preparing.value))
-const shutterLabel = computed(() => ({ disabled: cap.value?.reason || '暂不可开始', open: '打开相机预览', pick: '选择试穿衣物', start: '开始试穿', accept: `开始试穿，还剩 ${waitSeconds.value} 秒`, cancel: queued.value ? '取消排队' : '取消连接', wait: '正在结束', photo: '拍下试穿效果', record: '开始录像', 'stop-record': '结束录像' }[intent.value]))
+const intent = computed(() => shutterIntent(phase.value, captureMode.value, selected.value.length > 0, tierReady.value && !preparing.value))
+const shutterLabel = computed(() => ({ disabled: tierNotice.value || '暂不可开始', open: '打开相机预览', pick: '选择试穿衣物', start: '开始试穿', accept: `开始试穿，还剩 ${waitSeconds.value} 秒`, cancel: queued.value ? '取消排队' : '取消连接', wait: '正在结束', photo: '拍下试穿效果', record: '开始录像', 'stop-record': '结束录像' }[intent.value]))
 const shutterText = computed(() => intent.value === 'start' ? '开始' : intent.value === 'accept' ? String(waitSeconds.value) : undefined)
 const shutterProgress = computed(() => {
   if (intent.value === 'stop-record') return recordingSeconds.value / (cap.value?.limits.recordingSeconds || 60)
@@ -494,14 +500,28 @@ const billing = useBillingStore()
 function fail(cause: unknown) {
   if (disposed) return
   error.value = cause instanceof Error ? cause.message : '操作暂时未完成，请稍后再试。'
-  if ((cause as { code?: string })?.code === 'TRYON_QUOTA_EXCEEDED') {
-    void billing.refresh().then(() => { if (!disposed && billing.realtime?.enabled && (cap.value?.points?.milliPointsPerSecond || 0) > 0) billing.purchase = 'tryon' })
+  if ((cause as { code?: string })?.code === 'TRYON_QUOTA_EXCEEDED' && tierPaid.value) {
+    const tier = selectedTier.value
+    void billing.refresh().then(() => { if (!disposed && selectedTier.value === tier && billing.realtime?.enabled) billing.purchase = 'tryon' })
   }
 }
+function applyCapabilities(result: Capabilities) {
+  const tiers = result.tiers || []
+  if (!live.value && (!cap.value || !tiers.some(item => item.tier === selectedTier.value))) {
+    const next = tiers.find(item => item.tier === result.selectedTier)?.tier ?? tiers[0]?.tier ?? 'STANDARD'
+    if (cap.value && next !== selectedTier.value) message.info(`原先选择的试穿画质已下线，下次将使用${next === 'PREMIUM' ? '高质量' : '标准'}。`)
+    selectedTier.value = next
+  }
+  cap.value = result
+}
+// 充值到账及外壳定时刷新时，同步正在预览的镜头页。
+watch(tryOnAccess, result => { if (cap.value && result && result !== cap.value) applyCapabilities(result) })
 // 同一时刻的几次刷新（结束试穿与心跳同时发现会话结束）合并成一个请求。
 let refreshing: Promise<void> | undefined
 function refresh() {
-  refreshing ??= tryOnApi.capabilities().then(result => { if (!cap.value && result.selectedTier) selectedTier.value = result.selectedTier; cap.value = result; setTryOnAccess(result) }).finally(() => { refreshing = undefined })
+  refreshing ??= tryOnApi.capabilities().then(result => {
+    applyCapabilities(result); setTryOnAccess(result)
+  }).finally(() => { refreshing = undefined })
   return refreshing
 }
 let stripDone = false, stripBusy = false
@@ -523,7 +543,7 @@ async function loadLooks() {
 }
 async function openCamera() {
   if (!cap.value?.enabled || !host.value || busy.value || stopping) return
-  if (savingTier.value || tierNotice.value) return
+  if (savingTier.value) return
   const attempt = action
   busy.value = true; busyPhase.value = '正在打开摄像头，请在浏览器提示中允许访问。'; error.value = ''
   void checkNetwork()
@@ -549,6 +569,7 @@ async function uploaded(id: string, p: Prepared): Promise<Prepared> {
   if (lease.value?.vendor === 'DECART') return { ...p, referenceBlob: await platformRequest<Blob>(`/api/tryon/preparations/${encodeURIComponent(p.id)}/image`, 'GET', undefined, undefined, { responseType: 'blob' }) }
   return { ...p, referencePath: (await tryOnApi.upstreamReference(id, p)).referencePath }
 }
+let queuedSession: Session | undefined
 async function connect(s: Session, p: Prepared, attempt: number) {
   if (!camera) throw new Error('请先打开摄像头。')
   const active = () => attempt === action && !disposed && lease.value?.id === s.id && !document.hidden
@@ -560,15 +581,18 @@ async function connect(s: Session, p: Prepared, attempt: number) {
     if (!premiumConsent()) throw new Error('请先同意高质量试穿的数据处理说明。')
     const credential = await tryOnApi.decartToken(s.id)
     if (!active()) return
-    if (s.deadlineAtMs <= Date.now()) throw new Error('试穿授权已过期，请重新开始。')
-    await camera.start(s.id, s.environment, ready, { vendor: 'DECART', credential, renewCredential: () => tryOnApi.decartToken(s.id), capacityRetryBudgetMs: Math.max(0, Math.min((cap.value?.limits.queueSeconds ?? 60) * 1000, s.deadlineAtMs - Date.now())) })
+    const now = Date.now()
+    if (s.deadlineAtMs <= now) throw new Error('试穿授权已过期，请重新开始。')
+    const queueDeadline = queuedSession?.id === s.id ? queuedSession.deadlineAtMs : now + (cap.value?.limits.queueSeconds ?? 60) * 1000
+    const capacityRetryBudgetMs = Math.max(0, Math.min(queueDeadline, s.deadlineAtMs) - now)
+    await camera.start(s.id, s.environment, ready, { vendor: 'DECART', credential, renewCredential: () => tryOnApi.decartToken(s.id), capacityRetryBudgetMs })
   } else {
     await camera.start(s.id, s.environment, ready)
   }
 }
 async function begin() {
   if (busy.value || stopping || preparing.value || live.value && !offered.value || savingTier.value) return
-  if (tierNotice.value) { error.value = tierNotice.value; return }
+  if (!offered.value && !tierReady.value) { error.value = tierNotice.value || '暂不可开始'; return }
   const attempt = ++action; busy.value = true; busyPhase.value = '正在准备所选衣物…'; error.value = ''; startupStage.value = undefined
   try {
     if (!cameraReady.value) throw new Error('请先打开摄像头。')
@@ -586,27 +610,36 @@ async function begin() {
       track('try_live_start', { source: liveSource(selected.value, Boolean(selectedOutfit.value)) })
     }
     if (attempt !== action || disposed || document.hidden) { emergencyStop(s.id); return }
+    if (s.state === 'QUEUED') queuedSession = s
     lease.value = s
     if (s.vendor === 'DECART' && !premiumConsent()) throw new Error('请先同意高质量试穿的数据处理说明。')
     if (s.state === 'RESERVED') await connect(s, p, attempt)
   } catch (e) { if (attempt === action && !disposed) { fail(e); if (lease.value && !finished(lease.value) && !queued.value && !offered.value) await stop(true) } }
   finally { if (attempt === action) { busy.value = false; if (!live.value) busyPhase.value = '' } }
 }
+let endingPremiumId: string | undefined
 async function pulse() {
   const current = lease.value, attempt = action
   if (!current || finished(current) || document.hidden || disposed || stopping) return
   if (pulseRunning) { pulseAgain = true; return }
+  const active = () => !disposed && attempt === action && current.id === lease.value?.id
   pulseRunning = true
   try {
-    const state = reclaiming.value ? await tryOnApi.session(current.id) : await tryOnApi.pulse(current.id, frameReady.value, camera?.diagnostic)
-    if (lease.value?.id !== state.id || disposed || attempt !== action) return
+    const state = reclaiming.value || current.id === endingPremiumId ? await tryOnApi.session(current.id) : await tryOnApi.pulse(current.id, frameReady.value, camera?.diagnostic)
+    if (!active() || state.id !== current.id) return
     lease.value = state
+    if (state.vendor === 'DECART' && state.state === 'GENERATING') camera?.setDeadline(state.id, state.deadlineAtMs)
     if (finished(state) || ['STOPPING', 'UNKNOWN'].includes(state.state)) {
       const ended = endedMessage(state)
       if (ended) error.value = ended
       frameReady.value = false; void finishRecording(true); await camera?.stop(); await refresh()
     }
-  } catch (e) { fail(e); if (live.value && !reclaiming.value) void stop(true) }
+  } catch (e) {
+    if (active()) {
+      fail(e)
+      if (live.value && !reclaiming.value && current.id !== endingPremiumId) void stop(true)
+    }
+  }
   finally { pulseRunning = false; if (pulseAgain) { pulseAgain = false; void pulse() } }
 }
 /** 服务端结束原因各说各的：时长用完不是连接故障，不能让人去排查网络。 */
@@ -631,6 +664,7 @@ async function stopNow(interrupted: boolean) {
   const current = lease.value
   const recordingWork = finishRecording(interrupted)
   if (current?.vendor === 'DECART' && !finished(current)) {
+    endingPremiumId = current.id
     try { await camera?.stop(); const s = await tryOnApi.stop(current.id); if (!disposed && lease.value?.id === s.id) lease.value = s }
     catch (e) { emergencyStop(current.id); fail(e) }
     await recordingWork
@@ -908,7 +942,7 @@ onBeforeUnmount(() => { disposed = true; action++; stopPose(); if (importPreview
                   <p v-if="tierNotice" role="status">{{ tierNotice }}</p>
                 </div>
                 <div class="tryon-cover-actions">
-                  <a-button v-if="cap?.enabled" type="primary" size="large" :loading="busy" :disabled="savingTier || !!tierNotice" @click="openCamera"><template #icon><CameraOutlined /></template>{{ busy ? '正在打开相机' : '打开相机' }}</a-button>
+                  <a-button v-if="cap?.enabled" type="primary" size="large" :loading="busy" :disabled="savingTier" @click="openCamera"><template #icon><CameraOutlined /></template>{{ busy ? '正在打开相机' : '打开相机' }}</a-button>
                   <a-button size="large" @click="openHistory"><template #icon><PictureOutlined /></template>拍摄历史</a-button>
                 </div>
               </div>
@@ -930,16 +964,16 @@ onBeforeUnmount(() => { disposed = true; action++; stopPose(); if (importPreview
               <a-tooltip v-if="cameraReady && !narrow && !clean" :title="fit === 'cover' ? '完整显示画面' : '铺满取景框'" placement="bottom" :get-popup-container="popupHost"><a-button type="text" class="camera-tool" :aria-label="fit === 'cover' ? '完整显示画面' : '铺满取景框'" @click="toggleFit"><BorderOutlined v-if="fit === 'cover'" /><ColumnWidthOutlined v-else /></a-button></a-tooltip>
               <a-button v-if="!narrow && cameraReady && !clean" type="text" class="camera-tool" :aria-label="fullscreen ? '退出全屏' : '全屏试穿'" @click="toggleFullscreen"><CompressOutlined v-if="fullscreen" /><ExpandOutlined v-else /></a-button>
               <a-tooltip v-if="voiceSupported && !narrow && cameraReady" :title="voiceChosen ? '关闭语音提示' : '打开语音提示：站远了也能听到取景提示'" placement="bottom" :get-popup-container="popupHost"><a-button type="text" class="camera-tool" :aria-pressed="voiceChosen" :aria-label="voiceChosen ? '关闭语音提示' : '打开语音提示'" @click="toggleVoice"><SoundFilled v-if="voiceChosen" /><SoundOutlined v-else /></a-button></a-tooltip>
-              <a-popover title="连接状态" trigger="click" placement="bottomRight" :get-popup-container="popupHost"><template #content><div class="tryon-health"><p><strong>网络</strong><span>{{ networkText }}</span></p><p v-if="liveNetworkText"><strong>试穿中</strong><span>{{ liveNetworkText }}</span></p><p v-for="q in qualityRows" :key="q.label"><strong>{{ q.label }}</strong><span>{{ q.text }}</span></p><p v-if="quotaText"><strong>额度</strong><TryOnQuota :remaining="cap?.quota.remaining || 0" :points="cap?.points" /></p><p><strong>姿态检查</strong><span>{{ poseText }}</span></p><p class="tryon-info-copy">只在本机检测，结果不上传；姿态检查只是取景提示，没加载好也能正常试穿。</p><a-button size="small" :loading="probing" @click="checkNetwork(true)">重新检测网络</a-button></div></template><a-button type="text" class="camera-tool tryon-health-tool" :class="`is-${healthLevel}`" :aria-label="`连接状态：${networkText}`"><WifiOutlined /><i v-if="poseStatus?.state === 'loading'" class="tryon-health-dot" aria-hidden="true"></i></a-button></a-popover>
+              <a-popover title="连接状态" trigger="click" placement="bottomRight" :get-popup-container="popupHost"><template #content><div class="tryon-health"><p><strong>网络</strong><span>{{ networkText }}</span></p><p v-if="liveNetworkText"><strong>试穿中</strong><span>{{ liveNetworkText }}</span></p><p v-for="q in qualityRows" :key="q.label"><strong>{{ q.label }}</strong><span>{{ q.text }}</span></p><p v-if="cap?.enabled"><strong>额度</strong><TryOnQuota :remaining="dailyRemaining" :points="tierPoints" :tier-price="tierPrice" :needs-points="needsPoints" /></p><p><strong>姿态检查</strong><span>{{ poseText }}</span></p><p class="tryon-info-copy">只在本机检测，结果不上传；姿态检查只是取景提示，没加载好也能正常试穿。</p><a-button size="small" :loading="probing" @click="checkNetwork(true)">重新检测网络</a-button></div></template><a-button type="text" class="camera-tool tryon-health-tool" :class="`is-${healthLevel}`" :aria-label="`连接状态：${networkText}`"><WifiOutlined /><i v-if="poseStatus?.state === 'loading'" class="tryon-health-dot" aria-hidden="true"></i></a-button></a-popover>
               <a-tooltip :title="clean ? '显示全部界面' : '隐藏多余界面'" placement="bottom" :get-popup-container="popupHost"><a-button type="text" class="camera-tool" :aria-pressed="clean" :aria-label="clean ? '显示全部界面' : '隐藏多余界面'" @click="toggleClean"><LayoutOutlined v-if="clean" /><ClearOutlined v-else /></a-button></a-tooltip>
               <a-popover v-if="narrow && !clean" v-model:open="moreOpen" trigger="click" placement="bottomRight" title="更多" :get-popup-container="popupHost"><template #content><div class="tryon-more">
                 <div v-if="phase === 'preview' || phase === 'cover'" class="tryon-more-aspect"><span>画面比例</span><a-segmented :value="aspect" :options="aspectOptions" @change="changeAspect" /></div>
                 <a-button v-if="voiceSupported" block :aria-pressed="voiceChosen" @click="fromMore(toggleVoice)"><SoundFilled v-if="voiceChosen" /><SoundOutlined v-else />{{ voiceChosen ? '关闭语音提示' : '打开语音提示' }}</a-button>
                 <a-button v-if="cameraReady" block @click="fromMore(toggleFit)"><BorderOutlined v-if="fit === 'cover'" /><ColumnWidthOutlined v-else />{{ fit === 'cover' ? '完整显示画面' : '铺满取景框' }}</a-button>
                 <a-button v-if="cameraReady" block :disabled="busy || recordingBusy" @click="fromMore(closeCamera)"><PoweroffOutlined />{{ live ? '结束试穿并关闭相机' : '关闭相机' }}</a-button>
-                <p class="tryon-info-copy">打开相机只做本地预览。点击开始后，视频与服装参考图会发送至 XMax，连接后按时长消耗额度。切后台会结束试穿。点小窗互换主画面，拖动可换位置；左右滑动切换拍照和录像（试精选时换一套），双击切换铺满。</p>
+                <p class="tryon-info-copy">打开相机只做本地预览。点击开始后，画面和参考图会发送给试穿服务。{{ timingNotice }}切后台会结束试穿。点小窗互换主画面，拖动可换位置；左右滑动切换拍照和录像（试精选时换一套），双击切换铺满。</p>
               </div></template><a-button type="text" class="camera-tool" aria-label="更多设置与说明"><EllipsisOutlined /></a-button></a-popover>
-              <a-popover v-if="!narrow && !clean" title="试穿与拍摄说明" placement="bottomRight" :get-popup-container="popupHost"><template #content><p class="tryon-info-copy">打开相机只做本地预览。点击开始后，视频与服装参考图会发送至 XMax，连接后按时长消耗额度。录像声音仅用于本地混录。切后台会结束试穿，未上传的最后片段可能丢失。</p><p class="tryon-info-copy">点小窗互换主画面，拖动可换位置；左右滑动切换拍照和录像（试精选时换一套），手机上双击切换铺满。无论看哪个画面，保存的都是试穿效果。</p></template><a-button type="text" class="camera-tool" aria-label="查看试穿说明"><InfoCircleOutlined /></a-button></a-popover>
+              <a-popover v-if="!narrow && !clean" title="试穿与拍摄说明" placement="bottomRight" :get-popup-container="popupHost"><template #content><p class="tryon-info-copy">打开相机只做本地预览。点击开始后，画面和参考图会发送给试穿服务。{{ timingNotice }}录像声音仅用于本地混录。切后台会结束试穿，未上传的最后片段可能丢失。</p><p class="tryon-info-copy">点小窗互换主画面，拖动可换位置；左右滑动切换拍照和录像（试精选时换一套），手机上双击切换铺满。无论看哪个画面，保存的都是试穿效果。</p></template><a-button type="text" class="camera-tool" aria-label="查看试穿说明"><InfoCircleOutlined /></a-button></a-popover>
             </div>
           </header>
 
@@ -963,7 +997,7 @@ onBeforeUnmount(() => { disposed = true; action++; stopPose(); if (importPreview
                 <div v-else-if="notice === 'queued'" key="queued" class="tryon-notice" role="status"><strong>正在排队</strong><small>排队不计费，轮到你时需要再点一次开始。</small></div>
                 <div v-else-if="notice === 'offered'" key="offered" class="tryon-notice is-offer" role="status"><strong>轮到你了</strong><small>名额保留 {{ waitSeconds }} 秒，点快门连接实时服务。</small></div>
                 <div v-else-if="notice === 'stopping'" key="stopping" class="tryon-notice" role="status"><strong><LoadingOutlined spin /> 正在结束并核对消耗</strong><small>核对完成后会释放未使用的预留额度。</small></div>
-                <p v-else :key="`hint-${swapped}`" class="tryon-start-hint" :class="{ active: showsResult }" role="status">{{ swapped ? '正在看原画，拍摄仍保存试穿效果。' : !cap?.ready && !live && cap?.enabled ? cap.reason : startHint }}</p>
+                <p v-else :key="`hint-${swapped}`" class="tryon-start-hint" :class="{ active: showsResult }" role="status">{{ swapped ? '正在看原画，拍摄仍保存试穿效果。' : startHint }}</p>
               </Transition>
               <a-alert v-if="recordingError" class="tryon-recording-error" type="warning" show-icon :message="recordingError" closable @close="recordingError=''" />
             </div>

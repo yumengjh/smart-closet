@@ -18,7 +18,10 @@ export function realtimeTierNotice(tiers: RealtimeTier[], selected: Tier): strin
     if (item.reason === 'DISABLED') return '高质量暂未开放，可以换成标准。'
     return '高质量暂时不可用，可以换成标准。'
   }
-  if (!item.available) return item.reason === 'QUOTA' ? '今天这个档位的时长已用完，请选择其他档位。' : item.reason === 'DISABLED' ? '这个档位暂未开放，请选择其他档位。' : '这个档位暂时不可用，请选择其他档位。'
+  if (!item.available) {
+    const reason = item.reason === 'QUOTA' ? '今天这个档位的时长已用完' : item.reason === 'DISABLED' ? '这个档位暂未开放' : '这个档位暂时不可用'
+    return reason + (tiers.some(entry => entry.available) ? '，可以选择其他档位。' : '。')
+  }
   return ''
 }
 export function sessionStartBody(p: Prepared, tier?: Tier) { return { preparationId: p.id, revision: p.revision, ...(tier ? { tier } : {}) } }

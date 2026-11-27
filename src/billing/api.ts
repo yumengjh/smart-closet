@@ -3,7 +3,7 @@ import type { Batch, CodeView, CreatedOrder, NewBatch, OrderView, Product, Quote
 const root = '/api/admin/billing'
 const post = (body?: unknown, key?: string): RequestInit => ({ method: 'POST', ...(body === undefined ? {} : { body: JSON.stringify(body) }), ...(key ? { headers: { 'Idempotency-Key': key } } : {}) })
 export const billingApi = {
-  quote: (tier: 'image.standard' | 'tryon.realtime') => request<Quote>(`/api/billing/quote?tier=${tier}`, { cache: 'no-store' }),
+  quote: (tier: 'image.standard' | 'tryon.realtime' | 'tryon.realtime.premium') => request<Quote>(`/api/billing/quote?tier=${tier}`, { cache: 'no-store' }),
   wallet: () => request<Wallet>('/api/billing/wallet', { cache: 'no-store' }),
   redeem: (code: string, key: string) => request<Redeemed>('/api/billing/redeem', post({ code }, key)),
   products: () => request<Product[]>('/api/billing/products', { cache: 'no-store' }),
