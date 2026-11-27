@@ -1,9 +1,11 @@
 import type { Prepared } from './api'
 import type { DecartCredential } from './decart'
 
+export type TryOnStartOptions = { vendor: 'XMAX' | 'DECART'; credential?: DecartCredential; capacityRetryBudgetMs?: number; renewCredential?: () => Promise<DecartCredential> }
+
 /** Both real-time providers share the same camera/session lifecycle and page callbacks. */
 export interface TryOnVendor {
-  start(lease: string, environment: 'china' | 'global', prepared: Prepared, options?: { vendor: 'XMAX' | 'DECART'; credential?: DecartCredential; capacityRetryBudgetMs?: number }): Promise<void>
+  start(lease: string, environment: 'china' | 'global', prepared: Prepared, options?: TryOnStartOptions): Promise<void>
   change(prepared: Prepared): Promise<void>
   stop(): Promise<void>
 }

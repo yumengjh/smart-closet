@@ -1,6 +1,6 @@
 import type { RealtimeMediaStream, XmaxRealtimeManaging, XmaxRealtimeVideoView } from '@xmaxai/web-sdk'
-import { bindControlPlane, tolerateSenderRace, type TryOnVendor } from './sdkBridge'
-import { DecartSession, type DecartCredential } from './decart'
+import { bindControlPlane, tolerateSenderRace, type TryOnStartOptions, type TryOnVendor } from './sdkBridge'
+import { DecartSession } from './decart'
 import { request } from '../services/api'
 import type { Prepared } from './api'
 import { tryOnPrompt } from './context'
@@ -35,7 +35,7 @@ export class TryOnCamera implements TryOnVendor {
   private readonly trace = new StartupDiagnostic(stage => this.onProgress(stage))
   get diagnostic() { return this.trace.snapshot() }
   private reportFrame() { if (!this.lease || this.reportedLease === this.lease) return; this.reportedLease = this.lease; this.host.classList.add('has-result'); this.trace.frame(); this.onFrame() }
-  constructor(private host: HTMLElement, private onFrame: () => void, private onFailure: (error: Error) => void, private onProgress: (stage: StartupStage) => void = () => {}, private createPremium: () => DecartSession = () => new DecartSession()) {}
+  constructor(private host: HTMLElement, private onFrame: () => void, private onFailure: (error: Error) => void, private onProgress: (stage: StartupStage) => void = () => {}) {}
   get video() { return this.remoteView?.videoElement }
   /** 摄像头原画（未经生成），只给本地姿态检查读帧。 */
   get localVideo() { return this.localView?.videoElement }
@@ -63,8 +63,12 @@ export class TryOnCamera implements TryOnVendor {
     catch (cause) { this.preset = before; throw cause }
   }
   async open(environment: 'china' | 'global' = 'china') {
+    this.sessionVersion++
+    await this.openPreview(environment)
+  }
+  private async openPreview(environment: 'china' | 'global') {
     const revision = ++this.revision
-    await this.release()
+    await this.closePreview()
     const sdk = await import('@xmaxai/web-sdk')
     if (this.disposed || revision !== this.revision) return
     this.environment = environment
@@ -101,18 +105,22 @@ export class TryOnCamera implements TryOnVendor {
     if (this.disposed || revision !== this.revision) { await manager.close(); return }
     this.local = local; this.localView.track = local.videoTrack
   }
-  async start(lease: string, environment: 'china' | 'global', prepared: Prepared, options?: { vendor: 'XMAX' | 'DECART'; credential?: DecartCredential; capacityRetryBudgetMs?: number; renewCredential?: () => Promise<DecartCredential> }) {
-    if (!this.manager || this.environment !== environment) await this.open(environment)
+  async start(lease: string, environment: 'china' | 'global', prepared: Prepared, options?: TryOnStartOptions) {
+    const version = ++this.sessionVersion
+    // Premium only needs the preview track. The region selects the standard SDK's control plane.
+    if (!this.manager || !this.local || (options?.vendor !== 'DECART' && this.environment !== environment)) await this.openPreview(environment)
+    if (version !== this.sessionVersion || this.disposed) throw new Error('试穿已停止。')
     if (!this.manager || !this.local) throw new Error('摄像头尚未就绪。')
     this.lease = lease; this.trace.start()
     if (options?.vendor !== 'DECART') { await this.change(prepared); return }
     if (!options.credential || !prepared.referenceBlob) throw new Error('高质量试穿启动失败，请稍后再试。')
     const track = this.local.videoTrack?.mediaStreamTrack
     if (!track || track.readyState !== 'live') throw new Error('摄像头尚未就绪。')
-    const version = ++this.sessionVersion, premium = this.createPremium()
+    const premium = new DecartSession()
     this.premium = premium
     const current = () => this.premium === premium && this.lease === lease && this.sessionVersion === version && !this.disposed
     await premium.start(new MediaStream([track]), options.credential, tryOnPrompt(prepared.items), prepared.referenceBlob, {
+      hasFrame: () => current() && this.reportedLease === lease,
       onRemote: stream => {
         if (!current() || !this.remoteView) return
         const video = this.remoteView.videoElement
@@ -125,6 +133,9 @@ export class TryOnCamera implements TryOnVendor {
       onCapacityWait: () => {},
       onLimit: () => { if (current()) this.onFailure(new Error('本次试穿时间已到，连接已结束。')) },
     }, options.capacityRetryBudgetMs ?? 60_000, options.renewCredential)
+  }
+  setDeadline(lease: string, deadlineAtMs: number) {
+    if (this.lease === lease) this.premium?.setDeadline(deadlineAtMs)
   }
   async change(prepared: Prepared) {
     if (!this.manager || !this.local || !this.lease) throw new Error('请先开始试穿。')
@@ -139,8 +150,43 @@ export class TryOnCamera implements TryOnVendor {
       this.cancelFrameObservation = observeFirstFrame(view.videoElement, () => { if (this.lease === lease && view.track === track) this.reportFrame() })
     }
   }
-  async switchCamera() { if (!this.manager) return; await this.manager.switchCamera(); this.front = !this.front; if (this.localView) this.localView.isMirrored = this.front; if (this.premium) { const track = this.local?.videoTrack?.mediaStreamTrack; if (!track || track.readyState !== 'live') throw new Error('摄像头尚未就绪。'); await this.premium.replaceVideoTrack(track) } }
-  async stop() { this.uplinkStats = {}; this.downlinkStats = {}; this.trace.end(); this.lease = ''; this.cancelFrameObservation?.(); this.cancelFrameObservation = undefined; this.reportedLease = ''; this.host.classList.remove('has-result'); this.sessionVersion++; const premium = this.premium; this.premium = undefined; if (premium) { premium.stop(); if (this.remoteView) this.remoteView.videoElement.srcObject = null } else await this.manager?.disconnect(); if (this.remoteView) this.remoteView.track = undefined; this.lease = '' }
-  async release() { this.sessionVersion++; this.premium?.stop(); this.premium = undefined; this.trace.end(); this.lease = ''; this.cancelFrameObservation?.(); this.cancelFrameObservation = undefined; this.reportedLease = ''; this.host.classList.remove('has-result'); await this.manager?.close(); this.localView?.detach(); this.remoteView?.detach(); this.manager = undefined; this.local = undefined; this.localView = undefined; this.remoteView = undefined; this.lease = '' }
-  async dispose() { this.disposed = true; this.revision++; await this.release() }
+  async switchCamera() {
+    const manager = this.manager, premium = this.premium
+    if (!manager) return
+    await manager.switchCamera()
+    if (this.manager !== manager) return
+    this.front = !this.front
+    if (this.localView) this.localView.isMirrored = this.front
+    if (premium && this.premium === premium) {
+      const track = this.local?.videoTrack?.mediaStreamTrack
+      if (!track || track.readyState !== 'live') throw new Error('摄像头尚未就绪。')
+      await premium.replaceVideoTrack(track)
+    }
+  }
+  private endSession() {
+    this.trace.end(); this.lease = ''; this.reportedLease = ''; this.host.classList.remove('has-result')
+    this.cancelFrameObservation?.(); this.cancelFrameObservation = undefined
+    const premium = this.premium
+    this.premium = undefined
+    premium?.stop()
+    if (this.remoteView) {
+      if (premium) this.remoteView.videoElement.srcObject = null
+      this.remoteView.track = undefined
+    }
+    return premium
+  }
+  async stop() {
+    this.sessionVersion++
+    this.uplinkStats = {}; this.downlinkStats = {}
+    if (!this.endSession()) await this.manager?.disconnect()
+  }
+  private async closePreview() {
+    this.endSession()
+    const manager = this.manager
+    this.localView?.detach(); this.remoteView?.detach()
+    this.manager = undefined; this.local = undefined; this.localView = undefined; this.remoteView = undefined
+    await manager?.close()
+  }
+  async release() { this.sessionVersion++; this.revision++; await this.closePreview() }
+  async dispose() { this.disposed = true; await this.release() }
 }

@@ -7,7 +7,8 @@ import { DecartSession } from '../src/tryon/decart.ts'
 const secret = 'private-token-value'
 const credential = { vendor: 'DECART' as const, token: secret, model: 'lucy-vton-3.6', maxSessionSeconds: 60, expiresAtMs: Date.now() + 60_000, tokenTtlSeconds: 60 }
 const busy = '高质量现在有点忙，稍后再试或换成标准'
-const unavailable = '高质量试穿启动失败，本次未计时，可以稍后重试或换成标准。'
+const unavailable = '高质量试穿启动失败，可以稍后重试或换成标准。'
+const interrupted = '高质量试穿已中断，请重新开始。'
 
 class FakeStream {
   tracks: MediaStreamTrack[]
@@ -17,7 +18,13 @@ class FakeStream {
   getAudioTracks() { return this.tracks.filter(track => track.kind === 'audio') }
 }
 Object.defineProperty(globalThis, 'MediaStream', { value: FakeStream, configurable: true })
-const video = { kind: 'video' } as MediaStreamTrack
+class VideoTrack {
+  kind = 'video'
+  readyState = 'live'
+  clone() { return new VideoTrack() }
+  stop() { this.readyState = 'ended' }
+}
+const video = new VideoTrack() as unknown as MediaStreamTrack
 const audio = { kind: 'audio' } as MediaStreamTrack
 const source = new FakeStream([video, audio]) as unknown as MediaStream
 
@@ -50,6 +57,7 @@ function fixture() {
     },
   } as unknown as typeof DecartSdk
   const callbacks = {
+    hasFrame: () => false,
     onRemote: () => { calls.remote++ },
     onConnected: () => { calls.connected++ },
     onCapacityWait: () => { calls.waiting++ },
@@ -64,7 +72,7 @@ test('connect sends video only and complete initial state, then changes without 
   const firstImage = new Blob(['first'], { type: 'image/png' }), secondImage = new Blob(['second'], { type: 'image/jpeg' })
   const start = f.session.start(source, credential, 'first', firstImage, f.callbacks, 12_000)
   const { stream, options } = f.payload()
-  assert.deepEqual(stream.getTracks(), [video])
+  assert.equal(stream.getTracks().length, 1); assert.notEqual(stream.getVideoTracks()[0], video)
   assert.deepEqual(options.model, { name: credential.model })
   assert.deepEqual(options.initialState, { prompt: { text: 'first', enhance: false }, image: firstImage })
   assert.equal(options.capacityRetryBudgetMs, 12_000)
@@ -76,14 +84,14 @@ test('connect sends video only and complete initial state, then changes without 
   options.onConnectionChange?.('generating')
   options.onRemoteStream(stream)
   options.onCapacityWait?.({ retryAfterMs: 1000, attempt: 1 })
-  assert.deepEqual([f.calls.connected, f.calls.remote, f.calls.waiting], [2, 1, 1])
+  assert.deepEqual([f.calls.connected, f.calls.remote, f.calls.waiting], [1, 1, 1])
   const changing = f.session.change('second', secondImage)
   f.dial.resolve(f.connected)
   await start
   await changing
   assert.deepEqual(f.calls.sets, [{ prompt: 'second', image: secondImage, enhance: false }])
   await f.session.replaceVideoTrack(video)
-  assert.deepEqual(f.calls.tracks, [video])
+  assert.equal(f.calls.tracks.length, 1); assert.notEqual(f.calls.tracks[0], video)
   f.session.stop()
   assert.equal(f.calls.disconnect, 1)
 })
@@ -155,15 +163,32 @@ test('1013 session limit and exhausted capacity both use the busy message', asyn
   assert.equal(f.calls.disconnect, 1)
 })
 
-test('SDK failures are sanitized for connect, events and set', async () => {
-  const f = fixture()
+test('a replayed capacity refusal after a successful redial leaves the session running', async t => {
+  const f = fixture(); t.after(() => f.session.stop())
+  const start = f.session.start(source, credential, 'first', 'image', f.callbacks, 60_000)
+  f.payload().options.onCapacityWait?.({ retryAfterMs: 500, attempt: 1 })
+  f.payload().options.onConnectionChange?.('connected'); f.dial.resolve(f.connected); await start
+  // The SDK buffers pre-connect events in delivery order and strips errorType from WEBRTC_SERVER_ERROR.
+  const refusal = { code: 'WEBRTC_SERVER_ERROR', message: 'All slots occupied' }
+  f.listeners.error(refusal)
+  assert.deepEqual(f.calls.errors, [], 'the recovered dial was reported as a current failure')
+  f.listeners.connectionChange('connected')
+  await f.session.change('second', 'next-image'); assert.equal(f.calls.sets.length, 1)
+  f.listeners.error({ code: 'WEBRTC_SERVER_ERROR', message: 'Current connection failed' }); assert.equal(f.calls.errors.length, 1)
+  f.listeners.sessionEnded({ reason: 'session_limit' }); assert.equal(f.calls.disconnect, 1)
+  assert.equal(f.calls.errors.at(-1)?.message, busy)
+})
+
+test('SDK failures are sanitized for connect, events and set', async t => {
+  const f = fixture(); t.after(() => f.session.stop())
   const start = f.session.start(source, credential, 'first', 'image', f.callbacks, 60_000)
   f.dial.resolve(f.connected)
   await start
+  f.callbacks.hasFrame = () => true
   f.listeners.error({ message: `failed with ${secret}` })
-  assert.equal(f.calls.errors[0].message, unavailable)
+  assert.equal(f.calls.errors[0].message, interrupted)
   f.connected.set = async () => { throw new Error(`failed with ${secret}`) }
-  await assert.rejects(f.session.change('second', 'image'), { message: unavailable })
+  await assert.rejects(f.session.change('second', 'image'), { message: interrupted })
   f.session.stop()
   const failed = fixture()
   const failedStart = failed.session.start(source, credential, 'first', 'image', failed.callbacks, 60_000)
@@ -192,6 +217,23 @@ test('reuses valid token and renews at most once after expiry', async t => {
   assert.equal(calls, 1)
   assert.equal(f.calls.disconnect, 1)
   assert.match(f.calls.errors[0].message, /连接失败次数太多/)
+})
+
+test('renewal refreshes the local cap until the server reports its generation deadline', async t => {
+  const now = 100_000
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now })
+  const f = fixture(); t.after(() => f.session.stop())
+  const first = { ...credential, maxSessionSeconds: 30, expiresAtMs: now + 15_000 }
+  const start = f.session.start(source, first, 'first', 'image', f.callbacks, 60_000,
+    async () => ({ ...first, token: 'renewed', expiresAtMs: Date.now() + 15_000 }))
+  t.mock.timers.tick(16_000); assert.equal(await f.clientOptions().apiKeyProvider!(), 'renewed')
+  f.dial.resolve(f.connected); await start
+  t.mock.timers.tick(14_001); assert.equal(f.calls.limit, 0, 'first token still controlled the local deadline')
+  // The server stamped issuance earlier than the browser received the renewed token.
+  const serverDeadline = now + 45_600
+  f.session.setDeadline(serverDeadline)
+  t.mock.timers.tick(serverDeadline - Date.now() - 1); assert.equal(f.calls.limit, 0)
+  t.mock.timers.tick(1); assert.equal(f.calls.limit, 1); assert.equal(f.calls.disconnect, 1)
 })
 
 test('token rejection ends the connection and preserves the server-specific message', async t => {
