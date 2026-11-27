@@ -1375,6 +1375,21 @@ html .tryon-import-card.ant-btn:not(:disabled):hover, .tryon-import-card.ant-btn
   .tryon-current.ant-btn { height: 46px; }
   .tryon-current-image, .tryon-current-placeholder { width: 36px; height: 36px; }
 }
+/* 封面按实际高度排列顶栏、档位和选衣区；开镜后的控件仍浮在画面上。 */
+@media (max-width: 767px), (max-height: 500px) and (pointer: coarse) {
+  .tryon-stage.is-cover { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
+  .is-cover .tryon-topbar { position: relative; grid-row: 1; padding: calc(env(safe-area-inset-top) + 4px) 6px 4px; }
+  .is-cover .tryon-stage-cover { position: relative; grid-row: 2; min-height: 0; overflow-y: auto; align-items: safe center; padding: 8px 16px; }
+  .is-cover .tryon-cover-frame { inset: 4px 12px; }
+  .is-cover .tryon-dock { position: static; grid-row: 3; width: auto; padding: 4px 16px calc(env(safe-area-inset-bottom) + 12px); }
+  .is-cover .tryon-notice-area { position: static; width: auto; align-items: center; }
+  .is-cover .tryon-controls { grid-template: 'sel' auto / minmax(0, 1fr); }
+  .is-cover :is(.tryon-mode, .tryon-slot-history, .tryon-slot-shutter, .tryon-slot-flip) { display: none; }
+}
+@media (max-height: 500px) {
+  .is-cover .tryon-camera-symbol { display: none; }
+  .is-cover .tryon-cover-body { gap: 6px; }
+}
 /* 手机横屏：控件立到右侧，和系统相机一致。 */
 @media (max-height: 500px) and (pointer: coarse) {
   .tryon-dock { left: auto; top: 0; width: 210px; padding: calc(env(safe-area-inset-top) + 8px) calc(env(safe-area-inset-right) + 10px) 8px 28px; justify-content: center; background: linear-gradient(270deg, #000a, #0000); }
