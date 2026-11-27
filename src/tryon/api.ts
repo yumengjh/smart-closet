@@ -13,6 +13,11 @@ export function realtimeTierNotice(tiers: RealtimeTier[], selected: Tier): strin
   if (!tiers.length) return ''
   const item = tiers.find(entry => entry.tier === selected)
   if (!item) return '当前档位暂不可用，请选择其他档位。'
+  if (selected === 'PREMIUM' && !item.available && tiers.some(entry => entry.tier === 'STANDARD' && entry.available)) {
+    if (item.reason === 'QUOTA') return '今天的高质量时长已用完，可以换成标准继续。'
+    if (item.reason === 'DISABLED') return '高质量暂未开放，可以换成标准。'
+    return '高质量暂时不可用，可以换成标准。'
+  }
   if (!item.available) return item.reason === 'QUOTA' ? '今天这个档位的时长已用完，请选择其他档位。' : item.reason === 'DISABLED' ? '这个档位暂未开放，请选择其他档位。' : '这个档位暂时不可用，请选择其他档位。'
   return ''
 }

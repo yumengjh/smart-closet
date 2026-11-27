@@ -59,9 +59,9 @@ function dropWork(id: string) { older.value = older.value.filter(job => job.id !
 // 查看器删除作品时先关闭再通知变化，所以另记一下打开的是哪一条，好从“更早的作品”里去掉。
 let openedId = ''
 function openWork(job: CreationJob) { if (job.status === 'SUCCEEDED' && job.mediaUrl) { opened.value = job; openedId = job.id } }
-// 再试一次沿用现有语义：带 parentJobId 回到“做张图”，衣服取草稿里当前的，会用 1 次。
-function again(job: CreationJob) { message.info('再试一次会用 1 次'); void router.push({ path: TRY_PATH, query: { again: job.id, template: job.templateId } }) }
-function cancelWork(job: CreationJob) { modal.confirm({ title: '取消这次创作？', content: '已发送给图片服务的尝试仍会用掉 1 次。', okText: '取消创作', cancelText: '继续等待', async onOk() { try { await creationApi.cancel(job.id); await refreshWorks(1) } catch (cause) { message.error(describe(cause)) } } }) }
+// 回到做张图继续选档，次数以这次准备后的确认框为准。
+function again(job: CreationJob) { void router.push({ path: TRY_PATH, query: { again: job.id, template: job.templateId } }) }
+function cancelWork(job: CreationJob) { modal.confirm({ title: '取消这次创作？', content: '已发送给图片服务的尝试仍可能消耗次数。', okText: '取消创作', cancelText: '继续等待', async onOk() { try { await creationApi.cancel(job.id); await refreshWorks(1) } catch (cause) { message.error(describe(cause)) } } }) }
 function removeWork(job: CreationJob) { modal.confirm({ title: '删除这条作品？', content: '正在创作的会先取消，删除后无法再查看。', okText: '删除', okType: 'danger', cancelText: '保留', async onOk() { try { await creationApi.remove(job.id); dropWork(job.id); await refreshWorks(1) } catch (cause) { message.error(describe(cause)) } } }) }
 function workChanged() { if (!opened.value && openedId) dropWork(openedId); void refreshWorks(1) }
 
