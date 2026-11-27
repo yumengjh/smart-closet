@@ -45,7 +45,8 @@ import PosePicker from '../../ootd/PosePicker.vue'
 import OotdMore from '../../ootd/OotdMore.vue'
 import OotdConfirmModal from '../../ootd/OotdConfirmModal.vue'
 import RenderTierPicker from './RenderTierPicker.vue'
-import { legacyRenderUnits, withRenderTier } from '../../services/modelTiers'
+import { withRenderTier } from '../../services/modelTiers'
+import { imageErrorMessage, offerImagePurchase } from '../../billing/imageQuota'
 import { modelLabel } from '../../ootd/labels'
 
 const route = useRoute(), router = useRouter(), { message } = App.useApp(), billing = useBillingStore(), closet = useClosetStore(), processing = useProcessingStore()
@@ -83,7 +84,9 @@ const state = computed(() => outfitMode.value
 const block = computed(() => {
   if (!isLast.value) return stepBlock(step.value, state.value)
   // 不能生成时只写一句：最先是检查的拦截，其次“有 N 件要你选”，再其次页面自己的原因（如先设置谁来穿）。
-  return barReason(fitReview.value, generateBlock(state.value) || (studio.renderTiers?.enabled && studio.tierBlocked ? '当前档位暂时不可用，请换一个' : outfitMode.value && !studio.renderTiers?.enabled && !studio.capability ? '暂时没有可用的生成服务' : ''))
+  if (studio.tierError) return '暂时无法读取图片质量'
+  if (studio.tierLoading) return '正在读取图片质量'
+  return barReason(fitReview.value, generateBlock(state.value) || (studio.tierBlocked ? '当前档位暂时不可用' : outfitMode.value && !studio.renderTiers?.enabled && !studio.capability ? '暂时没有可用的生成服务' : ''))
 })
 const personStep = computed(() => step.value === 'person' && Boolean(template.value?.personRequired))
 const wornIds = computed(() => selected.value.map(item => item.id).filter(id => !skipped.value.includes(id)))
@@ -183,6 +186,10 @@ async function saveAsOutfit() {
   } catch { message.error('暂时没能带到搭配，请稍后再试。') }
 }
 
+async function creationError(cause: unknown) {
+  if (cause instanceof PlatformRequestError && cause.code === 'MODEL_POOL_EXHAUSTED') await studio.loadTiers()
+  if (!await offerImagePurchase(billing, cause)) error.value = imageErrorMessage(cause)
+}
 /** 提交（或核对）已有的待确认记录；不确定的结果保留 pending，原键重试。 */
 async function settle() {
   if (!pending.value) return
@@ -196,7 +203,7 @@ async function settle() {
     await router.push(ALBUM_PATH)
   } catch (cause) {
     if (cause instanceof PlatformRequestError && !cause.uncertain) pending.value = null
-    error.value = studio.renderTiers?.enabled && studio.tier === 'PREMIUM' && cause instanceof PlatformRequestError && cause.code === 'IMAGE_QUOTA_EXCEEDED' ? '今天剩余次数不够高质量，可以换成标准' : describe(cause)
+    await creationError(cause)
   } finally { busy.value = false }
 }
 async function generate() {
@@ -212,12 +219,10 @@ async function generate() {
     const garments = personal ? selected.value.filter(item => wornIds.value.includes(item.id)) : selected.value
     const source = personal && skipped.value.length ? undefined : sourceOutfit.value || undefined
     const input = creationInput(template.value, garments, person.value, light.value, pose.value, note.value, source, parentJobId.value, personal ? creationRoles.value : {})
-    const preparation = await creationApi.prepare(withRenderTier(input, !!studio.renderTiers?.enabled, studio.tier))
-    if (studio.renderTiers?.enabled) { creationPreparation.value = preparation; creationConfirmOpen.value = true; return }
-    pending.value = { key: createUuid(), preparationId: preparation.preparationId }
-  } catch (cause) { error.value = studio.renderTiers?.enabled && studio.tier === 'PREMIUM' && cause instanceof PlatformRequestError && cause.code === 'IMAGE_QUOTA_EXCEEDED' ? '今天剩余次数不够高质量，可以换成标准' : describe(cause); return }
+    creationPreparation.value = await creationApi.prepare(withRenderTier(input, !!studio.renderTiers?.enabled, studio.tier))
+    creationConfirmOpen.value = true
+  } catch (cause) { await creationError(cause) }
   finally { busy.value = false }
-  await settle()
 }
 async function confirmCreation() {
   if (!creationPreparation.value || busy.value) return
@@ -334,18 +339,19 @@ onUnmounted(() => wideQuery.removeEventListener('change', onWide))
 
     <aside class="tm-bar">
       <RenderTierPicker v-if="isLast && studio.renderTiers?.enabled" :config="studio.renderTiers" :model-value="studio.tier" :multiplier="outfitMode ? 1 : template?.baseQuotaUnits ?? null" :disabled="locked" @update:model-value="studio.selectTier" />
+      <a-button v-if="isLast && studio.tierError" :loading="studio.tierLoading" @click="studio.loadTiers">重试读取图片质量</a-button>
       <p v-if="block" class="tm-block" role="status">{{ block }}</p>
       <div class="tm-bar-row">
         <a-button v-if="stepIndex > 0" size="large" :disabled="locked" @click="back">上一步</a-button>
         <a-button v-if="!isLast" type="primary" size="large" :disabled="!!block" @click="go(nextStep(steps, step))">下一步</a-button>
         <!-- 禁用的按钮收不到点击：外面这层接住，滚到第一个要处理的地方。 -->
         <span v-else-if="outfitMode" class="tm-go" @click="nudge"><a-button type="primary" size="large" :loading="studio.busy" :disabled="!!block || !!pending || studio.tierSaving" @click="studio.prepare()">{{ imageActionLabel(billing.image) }}</a-button></span>
-        <span v-else class="tm-go" @click="!pending && nudge()"><a-button type="primary" size="large" :loading="busy" :disabled="(!!block && !pending) || studio.tierSaving" @click="generate">{{ pending ? '核对结果' : studio.renderTiers?.enabled ? '生成' : `生成 · ${legacyRenderUnits(studio.renderTiers, template?.baseQuotaUnits)} 次` }}</a-button></span>
+        <span v-else class="tm-go" @click="!pending && nudge()"><a-button type="primary" size="large" :loading="busy" :disabled="(!!block && !pending) || studio.tierSaving" @click="generate">{{ pending ? '核对结果' : '生成' }}</a-button></span>
       </div>
-      <p v-if="isLast && outfitMode && !studio.renderTiers?.enabled" class="tm-cost">每张用 {{ legacyRenderUnits(studio.renderTiers) }} 次 · 约 30 秒，可以先离开</p>
-      <p v-else-if="isLast && !outfitMode && !studio.renderTiers?.enabled" class="tm-cost">与上身图共用次数
+      <p v-if="isLast && outfitMode && studio.renderTiers?.enabled === false" class="tm-cost">约 30 秒，可以先离开</p>
+      <p v-else-if="isLast && !outfitMode && studio.renderTiers?.enabled === false" class="tm-cost">与上身图共用次数
         <a-popover placement="top" trigger="click">
-          <template #content><div class="tm-rules">生成一次用 {{ legacyRenderUnits(studio.renderTiers, template?.baseQuotaUnits) }} 次，与上身图共用。<br />已发送的生成失败、取消或结果待确认时，仍可能消耗次数。<br />图片可能与实物有差异，完成后请核对衣服细节。<br /><a @click="router.push('/help?article=08-creation')">了解更多</a></div></template>
+          <template #content><div class="tm-rules">已发送的生成失败、取消或结果待确认时，仍可能消耗次数。<br />图片可能与实物有差异，完成后请核对衣服细节。<br /><a @click="router.push('/help?article=08-creation')">了解更多</a></div></template>
           <a-button type="text" size="small" shape="circle" aria-label="次数规则"><QuestionCircleOutlined /></a-button>
         </a-popover>
       </p>
@@ -363,7 +369,7 @@ onUnmounted(() => wideQuery.removeEventListener('change', onWide))
   </a-drawer>
   <OotdConfirmModal :studio="studio" />
   <a-modal v-model:open="creationConfirmOpen" title="生成这张图？" ok-text="生成" cancel-text="再想想" :confirm-loading="busy" @ok="confirmCreation">
-    <p v-if="creationPreparation">消耗 {{ creationPreparation.quotaUnits }} 次</p>
+    <p v-if="creationPreparation?.quotaUnits != null">消耗 {{ creationPreparation.quotaUnits }} 次</p>
   </a-modal>
 </template>
 

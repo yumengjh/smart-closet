@@ -8,7 +8,7 @@ const job = (over: Partial<RenderJob>): RenderJob => ({ id: 'j1', purpose: 'OOTD
 test('an unknown result explains itself and offers a manual retry, never an automatic one', () => {
   const advice = adviceFor(job({ status: 'UNKNOWN', error: '服务重启打断了这次请求' }))
   assert.equal(advice.canRetry, true); assert.equal(advice.canCancel, false); assert.equal(advice.tone, 'warning')
-  assert.match(advice.body, /服务重启打断了这次请求/); assert.match(advice.body, /不会自动重发/); assert.match(advice.body, /1 个图像额度/)
+  assert.match(advice.body, /服务重启打断了这次请求/); assert.match(advice.body, /不会自动重发/); assert.doesNotMatch(advice.body, /[0-9]+ (?:个图像额度|次)/)
 })
 
 test('running jobs can be cancelled but not retried; failed and cancelled can be retried', () => {

@@ -38,7 +38,8 @@ export async function platformRequest<T>(path: string, method = 'GET', body?: un
       const error = await response.json().catch(() => ({}))
       if (!anonymous && response.status === 401) signalSessionExpired(error.code)
       if (!anonymous && response.status === 409 && error.code === 'ACCOUNT_MISMATCH') window.dispatchEvent(new Event('closet-account-mismatch'))
-      throw new PlatformRequestError(error.message || error.detail || `请求未完成 (${response.status})`, write && (response.status >= 500 || response.status === 408), response.status, error.code)
+      const poolRefused = response.status === 503 && error.code === 'MODEL_POOL_EXHAUSTED'
+      throw new PlatformRequestError(error.message || error.detail || `请求未完成 (${response.status})`, write && !poolRefused && (response.status >= 500 || response.status === 408), response.status, error.code)
     }
     stillSameAccount()
     if (response.status === 204) return undefined as T

@@ -8,7 +8,7 @@ import { createUuid } from '../domain/id'
 import { BODY_DIMENSIONS, describeAdjustments } from './body-adjust'
 import AiBadge from '../components/AiBadge.vue'
 import RenderSource from './RenderSource.vue'
-import { tierFallbackMessage } from '../services/modelTiers'
+import { getRenderTiers, renderUnits, tierFallbackMessage } from '../services/modelTiers'
 
 const props = withDefaults(defineProps<{ job: RenderJob | null; canAdjust: boolean; thumbs?: Map<string, string> }>(), { thumbs: () => new Map() })
 const emit = defineEmits<{ close: []; changed: []; submitted: [RenderJob]; remove: [RenderJob] }>()
@@ -18,6 +18,18 @@ const busy = ref(false); const key = ref(createUuid()); const notice = ref('')
 const feedbackOpen = ref(false); const feedback = ref('')
 const touched = computed(() => Object.values(values.value).some(v => v !== 0))
 const summary = computed(() => describeAdjustments(values.value))
+const adjustmentUnits = ref<number>()
+async function openAdjustments() {
+  const job = props.job
+  if (!job || busy.value) return
+  busy.value = true
+  try {
+    const config = await getRenderTiers()
+    if (props.job?.id !== job.id) return
+    adjustmentUnits.value = renderUnits(config, job.tierRequested); adjusting.value = true
+  } catch { message.error('暂时无法读取图片质量，请重试。') }
+  finally { busy.value = false }
+}
 watch(() => props.job?.id, () => { adjusting.value = false; reset(); notice.value = '' })
 function reset() { values.value = { build: 0, shoulders: 0, waist: 0, hips: 0, legs: 0 }; key.value = createUuid() }
 function marks(less: string, more: string) { return { '-2': less, 0: '不变', 2: more } }
@@ -64,7 +76,7 @@ async function saveFeedback() {
 
         <template v-if="!adjusting">
           <div class="viewer-actions">
-            <a-button v-if="canAdjust" type="primary" block @click="adjusting = true"><ColumnWidthOutlined /> 调节身材</a-button>
+            <a-button v-if="canAdjust" type="primary" block :loading="busy" @click="openAdjustments"><ColumnWidthOutlined /> 调节身材</a-button>
             <a-button v-if="job.mediaUrl" block :href="mediaUrl(job.mediaUrl) + '?download=1'" :download="`ootd-${job.id.slice(0, 8)}.png`"><DownloadOutlined /> 保存图片</a-button>
             <div class="viewer-row">
               <a-button block @click="openFeedback"><MessageOutlined /> 反馈</a-button>
@@ -82,7 +94,7 @@ async function saveFeedback() {
           </div>
           <p class="viewer-note">{{ touched ? summary : '拖动滑块选择要调整的部位' }}</p>
           <a-alert v-if="notice" type="warning" :message="notice" show-icon />
-          <p class="viewer-cost">生成一张新图，用 1 个图像额度；原图保留。</p>
+          <p class="viewer-cost">生成一张新图<template v-if="adjustmentUnits != null">，用 {{ adjustmentUnits }} 次</template>。原图保留。</p>
           <div class="viewer-row">
             <a-button block :disabled="busy" @click="adjusting = false; reset()">取消</a-button>
             <a-button block type="primary" :disabled="!touched" :loading="busy" @click="submit">生成</a-button>

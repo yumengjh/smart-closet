@@ -1,20 +1,12 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createServer } from 'vite'
-import { parse, compileScript } from '@vue/compiler-sfc'
-import { readFileSync } from 'node:fs'
+import { server } from './render-flow-harness.ts'
 import { createSSRApp, defineComponent, h } from 'vue'
 import { renderToString } from '@vue/server-renderer'
 
 test('档位选择按服务端单位和降级开关展示', async () => {
-  const virtualId = '/src/components/try/tier-picker-test.ts'
-  const server = await createServer({ configFile: false, optimizeDeps: { noDiscovery: true, include: [] }, plugins: [{
-    name: 'tier-picker-test',
-    resolveId(id) { if (id === virtualId) return id },
-    load(id) { if (id === virtualId) return compileScript(parse(readFileSync('src/components/try/RenderTierPicker.vue', 'utf8')).descriptor, { id: 'tier-picker-test', inlineTemplate: true }).content },
-  }], server: { middlewareMode: true, hmr: false }, appType: 'custom' })
   try {
-    const { default: Picker } = await server.ssrLoadModule(virtualId)
+    const { default: Picker } = await server.ssrLoadModule('/src/components/try/RenderTierPicker.vue')
     const Stub = defineComponent({ inheritAttrs: false, setup(_, { attrs, slots }) { return () => h('div', attrs, slots.default?.()) } })
     const render = async (enabled: boolean, degradeEnabled: boolean, multiplier: number | null = 1) => {
       const app = createSSRApp(Picker, { config: { enabled, selected: 'PREMIUM', degradeEnabled, tiers: [{ tier: 'STANDARD', units: 2, available: true }, { tier: 'PREMIUM', units: 5, available: false }] }, modelValue: 'PREMIUM', multiplier })

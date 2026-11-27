@@ -18,7 +18,7 @@ defineProps<{ studio: OotdStudio }>()
       </template>
       <a-textarea v-model:value="studio.wearNote" :maxlength="200" show-count :auto-size="{ minRows: 1, maxRows: 3 }" placeholder="补充说明，例如：衬衫领口解开一颗扣子" aria-label="穿法补充说明" />
     </template>
-    <template v-if="!studio.renderTiers?.enabled && studio.available.length > 1"><p class="ootd-more-label">生成模型</p><a-select v-model:value="studio.model" class="ootd-more-full" aria-label="生成模型" :options="studio.available.map(c => ({ value: c.provider + ':' + c.model, label: c.model }))" /></template>
+    <template v-if="studio.renderTiers?.enabled === false && studio.available.length > 1"><p class="ootd-more-label">生成模型</p><a-select v-model:value="studio.model" class="ootd-more-full" aria-label="生成模型" :options="studio.available.map(c => ({ value: c.provider + ':' + c.model, label: c.model }))" /></template>
     <div class="ootd-more-actions">
       <a-button size="small" @click="studio.moreAction('rehearse')">模拟一次（不用次数）</a-button>
       <a-button size="small" type="text" @click="studio.moreAction('manage')">管理我的形象</a-button>

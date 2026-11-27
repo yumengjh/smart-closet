@@ -19,7 +19,7 @@ defineProps<{ studio: OotdStudio }>()
           <dt>姿势</dt><dd>{{ studio.preparation.pose?.name || '自动' }}</dd>
           <dt>衣物</dt><dd>{{ studio.preparation.review.items.map(i => i.label).join('、') }}</dd>
           <template v-if="studio.wearSummary"><dt>穿法</dt><dd>{{ studio.wearSummary }}</dd></template>
-          <dt>消耗</dt><dd>{{ studio.preparation.quotaUnits }} {{ studio.renderTiers?.enabled ? '次' : '次图像额度' }}</dd>
+          <template v-if="studio.preparation.quotaUnits != null"><dt>消耗</dt><dd>{{ studio.preparation.quotaUnits }} 次</dd></template>
         </dl>
       </div>
       <a-alert v-for="issue in studio.preparation.review.warnings" :key="issue.code" type="warning" :message="issue.message" style="margin-top:8px" />

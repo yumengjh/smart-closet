@@ -9,7 +9,8 @@ import type { Outfit } from '../domain/outfit'
 import { createUuid } from '../domain/id'
 import { describeAdjustments } from './body-adjust'
 import { adviceFor, groupRecords } from './jobStatus'
-import { offerImagePurchase } from './useOotdStudio'
+import { imageErrorMessage, offerImagePurchase } from '../billing/imageQuota'
+import { getRenderTiers, renderUnits } from '../services/modelTiers'
 import { useProcessingStore } from '../stores/processing'
 import { useSendOffStore } from '../stores/sendOff'
 
@@ -51,16 +52,22 @@ export function useOotdRecords() {
     jobs.value = [created, ...jobs.value.filter(j => j.id !== created.id)]
     await Promise.all([refresh(), billing.refresh()])
   }
-  function retry(job: RenderJob) {
+  async function retry(job: RenderJob) {
+    if (retrying.value === job.id) return
     if (groups.value.retryState.get(job.id) !== 'open') { message.info(groups.value.retryState.get(job.id) === 'retrying' ? '这条已经在重新生成，请稍等。' : '这条已经重新生成成功了。'); return }
+    retrying.value = job.id
+    let units: number | undefined
+    try { units = renderUnits(await getRenderTiers(), job.tierRequested) }
+    catch { message.error('暂时无法读取图片质量，请重试。'); return }
+    finally { retrying.value = '' }
     modal.confirm({
-      title: '重新生成这张图？', okText: '重新生成（1 个额度）', cancelText: '先不了',
-      content: job.status === 'UNKNOWN' ? '上一次请求可能已经在服务商那边出图并扣了额度，重新生成会再用 1 个图像额度。' : '会按原来的搭配、形象和姿势再生成一张，再用 1 个图像额度。',
+      title: '重新生成这张图？', okText: units == null ? '重新生成' : `重新生成（${units} 次）`, cancelText: '先不了',
+      content: job.status === 'UNKNOWN' ? '上次生成结果未确认，可能已消耗次数。重新生成会再次使用次数。' : '会按原来的搭配、形象和姿势再生成一张。',
       async onOk() {
         // One key per job until it is accepted, so a double click or a retried request never submits twice.
         const retryKey = retryKeys.get(job.id) || createUuid(); retryKeys.set(job.id, retryKey); retrying.value = job.id
         try { const created = await platformRequest<RenderJob>(`/api/ootd/jobs/${job.id}/retry`, 'POST', {}, retryKey); retryKeys.delete(job.id); statusId.value = ''; await accepted(created, job) }
-        catch (e) { if (!await offerImagePurchase(billing, e)) { message.error(e instanceof Error ? e.message : String(e)); throw e } }
+        catch (e) { if (!await offerImagePurchase(billing, e)) { message.error(imageErrorMessage(e)); throw e } }
         finally { retrying.value = '' }
       },
     })
