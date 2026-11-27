@@ -1,3 +1,12 @@
+import type { Prepared } from './api'
+import type { DecartCredential } from './decart'
+
+/** Both real-time providers share the same camera/session lifecycle and page callbacks. */
+export interface TryOnVendor {
+  start(lease: string, environment: 'china' | 'global', prepared: Prepared, options?: { vendor: 'XMAX' | 'DECART'; credential?: DecartCredential; capacityRetryBudgetMs?: number }): Promise<void>
+  change(prepared: Prepared): Promise<void>
+  stop(): Promise<void>
+}
 
 /**
  * Audited private seam in exactly @xmaxai/web-sdk 1.1.1. The SDK exposes neither dependency injection nor a custom

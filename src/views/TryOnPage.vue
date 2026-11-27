@@ -36,19 +36,36 @@ import { platformRequest, type Pose, type PoseCatalog } from '../services/platfo
 import { track } from '../services/analytics'
 import type { Outfit } from '../domain/outfit'
 import { putModelTiers, type Tier } from '../services/modelTiers'
+import { premiumConsent, savePremiumConsent, premiumNetworkNoticeNeeded, savePremiumNetworkNotice } from '../tryon/consent'
 
 const route = useRoute(), router = useRouter(), { message, modal } = App.useApp()
 const host = ref<HTMLElement>(), stage = ref<HTMLElement>(), stageArea = ref<HTMLElement>(), body = ref<HTMLElement>(), topbar = ref<HTMLElement>(), dock = ref<HTMLElement>(), historySlot = ref<HTMLElement>(), freezeCanvas = ref<HTMLCanvasElement>(), cap = ref<Capabilities | null>(null)
 const loading = ref(true), cameraReady = ref(false), busy = ref(false), error = ref(''), frameReady = ref(false)
 const selectedTier = ref<Tier>('STANDARD'), savingTier = ref(false)
 const tierChoices = computed(() => cap.value?.tiers && cap.value.tiers.length > 1 ? cap.value.tiers : [])
-const selectedTierInfo = computed(() => tierChoices.value.find(item => item.tier === selectedTier.value))
-const tierNotice = computed(() => realtimeTierNotice(tierChoices.value, selectedTier.value))
+const selectedTierInfo = computed(() => cap.value?.tiers?.find(item => item.tier === selectedTier.value))
+const tierNotice = computed(() => realtimeTierNotice(cap.value?.tiers || [], selectedTier.value))
+function confirmPremium(): Promise<boolean> {
+  if (premiumConsent()) return Promise.resolve(true)
+  return new Promise<boolean>(resolve => {
+    modal.confirm({ title: '使用高质量试穿', content: '高质量试穿由另一家服务商处理。该服务商的条款允许其保存并使用试穿画面来改进服务，我们正在争取更严格的约定。', okText: '同意并继续', cancelText: '取消', onOk: () => { resolve(true) }, onCancel: () => { resolve(false) } })
+  }).then(accepted => {
+    if (!accepted || disposed) return false
+    if (savePremiumConsent()) return true
+    message.error('无法在本机保存同意，请检查浏览器存储设置后重试。')
+    return false
+  })
+}
 async function chooseTier(tier: Tier) {
-  if (savingTier.value || tier === selectedTier.value) return
+  if (savingTier.value || busy.value || live.value || tier === selectedTier.value) return
+  const attempt = action
   savingTier.value = true
-  try { const result = await putModelTiers({ realtime: tier }); selectedTier.value = result.realtime.selected }
-  catch { message.error('保存选择失败，请重试。') }
+  try {
+    if (tier === 'PREMIUM' && !await confirmPremium()) return
+    if (disposed || attempt !== action || busy.value || live.value) return
+    const result = await putModelTiers({ realtime: tier })
+    if (!disposed && attempt === action) selectedTier.value = result.realtime.selected
+  } catch { message.error('保存选择失败，请重试。') }
   finally { savingTier.value = false }
 }
 const garments = ref<Candidate[]>([]), outfits = ref<Outfit[]>([]), selected = ref<Selection[]>([])
@@ -505,15 +522,21 @@ async function loadLooks() {
   catch { looks.value = []; lookCategories.value = [] }
 }
 async function openCamera() {
-  if (!cap.value?.enabled || !host.value || busy.value) return
+  if (!cap.value?.enabled || !host.value || busy.value || stopping) return
   if (savingTier.value || tierNotice.value) return
+  const attempt = action
   busy.value = true; busyPhase.value = '正在打开摄像头，请在浏览器提示中允许访问。'; error.value = ''
   void checkNetwork()
   try {
+    if (selectedTier.value === 'PREMIUM' && !await confirmPremium()) return
+    if (attempt !== action || disposed || document.hidden || !host.value) return
     camera ??= new TryOnCamera(host.value, () => { if (!finished(lease.value)) { frameReady.value = true; busyPhase.value = ''; void pulse() } }, cause => { fail(cause); if (live.value) void stop(true) }, stage => { startupStage.value = stage; if (live.value) { busyPhase.value = stageLabel[stage]; void pulse() } })
     camera.onSize = (source, width, height) => { sizes.value = { ...sizes.value, [source]: width / height } }
     await camera.setAspect(presetOf(aspect.value))
-    await camera.open(); cameraReady.value = camera.ready
+    if (attempt !== action || disposed || document.hidden) return
+    await camera.open()
+    if (attempt !== action || disposed || document.hidden) { await camera.release(); return }
+    cameraReady.value = camera.ready
     if (cameraReady.value) schedulePose()
   } catch (e) { fail(e) } finally { busy.value = false; busyPhase.value = '' }
 }
@@ -521,41 +544,62 @@ async function build(allowLatest = false) {
   if (!selected.value.length) throw new Error('请先选择至少一件成品衣物或临时衣物。')
   return tryOnApi.prepare(selected.value, undefined, allowLatest)
 }
-/** 上传发生在用户点击开始之后：选衣阶段图片不离开本站。 */
-async function uploaded(id: string, p: Prepared): Promise<Prepared> { return { ...p, referencePath: (await tryOnApi.upstreamReference(id, p)).referencePath } }
-async function connect(s: Session, p: Prepared) {
-  if (s.vendor === 'DECART' || s.tier === 'PREMIUM') throw new Error('高质量镜头试穿暂未开放，请选择标准后开始试穿。')
+/** 高质量直接读取本站的准备图，避免跨域资源读取失败；标准档沿用原有参考地址。 */
+async function uploaded(id: string, p: Prepared): Promise<Prepared> {
+  if (lease.value?.vendor === 'DECART') return { ...p, referenceBlob: await platformRequest<Blob>(`/api/tryon/preparations/${encodeURIComponent(p.id)}/image`, 'GET', undefined, undefined, { responseType: 'blob' }) }
+  return { ...p, referencePath: (await tryOnApi.upstreamReference(id, p)).referencePath }
+}
+async function connect(s: Session, p: Prepared, attempt: number) {
   if (!camera) throw new Error('请先打开摄像头。')
+  const active = () => attempt === action && !disposed && lease.value?.id === s.id && !document.hidden
   busyPhase.value = '正在上传衣服参考图…'
   const ready = await uploaded(s.id, p)
+  if (!active()) return
   applyPrepared(ready); busyPhase.value = '正在连接实时服务…'
-  await camera.start(s.id, s.environment, ready)
+  if (s.vendor === 'DECART') {
+    if (!premiumConsent()) throw new Error('请先同意高质量试穿的数据处理说明。')
+    const credential = await tryOnApi.decartToken(s.id)
+    if (!active()) return
+    if (s.deadlineAtMs <= Date.now()) throw new Error('试穿授权已过期，请重新开始。')
+    await camera.start(s.id, s.environment, ready, { vendor: 'DECART', credential, capacityRetryBudgetMs: Math.max(0, Math.min((cap.value?.limits.queueSeconds ?? 60) * 1000, s.deadlineAtMs - Date.now())) })
+  } else {
+    await camera.start(s.id, s.environment, ready)
+  }
 }
 async function begin() {
-  if (busy.value || preparing.value || live.value && !offered.value) return
-  if (savingTier.value) return
+  if (busy.value || stopping || preparing.value || live.value && !offered.value || savingTier.value) return
   if (tierNotice.value) { error.value = tierNotice.value; return }
-  if (!tierChoices.value.length && cap.value?.selectedTier === 'PREMIUM') { error.value = '高质量镜头试穿暂未开放，请稍后再试。'; return }
   const attempt = ++action; busy.value = true; busyPhase.value = '正在准备所选衣物…'; error.value = ''; startupStage.value = undefined
   try {
     if (!cameraReady.value) throw new Error('请先打开摄像头。')
+    if (selectedTier.value === 'PREMIUM') {
+      if (!await confirmPremium() || attempt !== action || disposed || document.hidden) return
+      if (premiumNetworkNoticeNeeded()) { message.info('高质量需要较好的网络，建议用 Wi-Fi'); savePremiumNetworkNotice() }
+    }
     let p: Prepared, s: Session
     if (offered.value && lease.value && prepared.value) { p = prepared.value; s = await tryOnApi.accept(lease.value.id) }
-    else { p = await build(); applyPrepared(p); busyPhase.value = '正在申请试穿名额…'; s = await tryOnApi.start(p, crypto.randomUUID(), tierChoices.value.length ? selectedTier.value : undefined); track('try_live_start', { source: liveSource(selected.value, Boolean(selectedOutfit.value)) }) }
-    if (attempt !== action || disposed) { emergencyStop(s.id); return }
+    else {
+      p = await build()
+      if (attempt !== action || disposed || document.hidden) return
+      applyPrepared(p); busyPhase.value = '正在申请试穿名额…'
+      s = await tryOnApi.start(p, crypto.randomUUID(), tierChoices.value.length ? selectedTier.value : undefined)
+      track('try_live_start', { source: liveSource(selected.value, Boolean(selectedOutfit.value)) })
+    }
+    if (attempt !== action || disposed || document.hidden) { emergencyStop(s.id); return }
     lease.value = s
-    if (s.state === 'RESERVED') await connect(s, p)
-  } catch (e) { fail(e); if (lease.value && !finished(lease.value) && !queued.value && !offered.value) await stop(true) }
+    if (s.vendor === 'DECART' && !premiumConsent()) throw new Error('请先同意高质量试穿的数据处理说明。')
+    if (s.state === 'RESERVED') await connect(s, p, attempt)
+  } catch (e) { if (attempt === action && !disposed) { fail(e); if (lease.value && !finished(lease.value) && !queued.value && !offered.value) await stop(true) } }
   finally { if (attempt === action) { busy.value = false; if (!live.value) busyPhase.value = '' } }
 }
 async function pulse() {
-  const current = lease.value
-  if (!current || finished(current) || document.hidden || disposed) return
+  const current = lease.value, attempt = action
+  if (!current || finished(current) || document.hidden || disposed || stopping) return
   if (pulseRunning) { pulseAgain = true; return }
   pulseRunning = true
   try {
     const state = reclaiming.value ? await tryOnApi.session(current.id) : await tryOnApi.pulse(current.id, frameReady.value, camera?.diagnostic)
-    if (lease.value?.id !== state.id || disposed) return
+    if (lease.value?.id !== state.id || disposed || attempt !== action) return
     lease.value = state
     if (finished(state) || ['STOPPING', 'UNKNOWN'].includes(state.state)) {
       const ended = endedMessage(state)
@@ -575,13 +619,27 @@ function endedMessage(state: Session) {
     default: return ''
   }
 }
-async function stop(interrupted = false) {
+let stopping: Promise<void> | undefined
+function stop(interrupted = false): Promise<void> {
+  if (stopping) return stopping
+  const work = stopNow(interrupted)
+  stopping = work.finally(() => { stopping = undefined })
+  return stopping
+}
+async function stopNow(interrupted: boolean) {
   action++; busy.value = false; busyPhase.value = ''; frameReady.value = false; startupStage.value = undefined
   const current = lease.value
-  if (current && !finished(current)) emergencyStop(current.id)
-  const work = [finishRecording(interrupted), camera?.stop()]
-  if (current && !finished(current)) work.push(tryOnApi.stop(current.id).then(s => { if (!disposed && lease.value?.id === s.id) lease.value = s }).catch(fail))
-  await Promise.allSettled(work)
+  const recordingWork = finishRecording(interrupted)
+  if (current?.vendor === 'DECART' && !finished(current)) {
+    try { await camera?.stop(); const s = await tryOnApi.stop(current.id); if (!disposed && lease.value?.id === s.id) lease.value = s }
+    catch (e) { emergencyStop(current.id); fail(e) }
+    await recordingWork
+  } else {
+    if (current && !finished(current)) emergencyStop(current.id)
+    const work = [recordingWork, camera?.stop()]
+    if (current && !finished(current)) work.push(tryOnApi.stop(current.id).then(s => { if (!disposed && lease.value?.id === s.id) lease.value = s }).catch(fail))
+    await Promise.allSettled(work)
+  }
   if (!disposed) { try { await refresh() } catch (e) { fail(e) } }
 }
 function background(event?: Event) {
@@ -594,9 +652,9 @@ async function rebuild(allowLatest = false) {
   const before = prepared.value, id = lease.value.id
   try {
     const p = await uploaded(id, await build(allowLatest))
-    await camera.change(p)
-    try { await tryOnApi.reference(id, p); applyPrepared(p) }
-    catch (e) { if (before) await camera.change(before); throw e }
+    if (lease.value?.id !== id || !generating.value) return
+    if (lease.value.vendor === 'DECART') { await tryOnApi.reference(id, p); if (lease.value?.id === id && generating.value) { try { await camera.change(p) } catch (e) { await stop(true); throw e } applyPrepared(p) } }
+    else { await camera.change(p); try { await tryOnApi.reference(id, p); applyPrepared(p) } catch (e) { if (before) await camera.change(before); throw e } }
   } catch (e) { fail(e) }
 }
 /** 精选与其他选择互斥：换下了什么就轻提示一句。 */
@@ -642,9 +700,11 @@ async function selectOutfit(id: string, allowLatest = false) {
     let p = await tryOnApi.prepare([], id, allowLatest)
     if (disposed) return
     if (generating.value && camera && lease.value) {
-      p = await uploaded(lease.value.id, p)
-      await camera.change(p)
-      try { await tryOnApi.reference(lease.value.id, p) } catch (e) { if (before) await camera.change(before); throw e }
+      const current = lease.value
+      p = await uploaded(current.id, p)
+      if (lease.value?.id !== current.id || !generating.value) return
+      if (current.vendor === 'DECART') { await tryOnApi.reference(current.id, p); if (lease.value?.id !== current.id || !generating.value) return; try { await camera.change(p) } catch (e) { await stop(true); throw e } }
+      else { await camera.change(p); try { await tryOnApi.reference(current.id, p) } catch (e) { if (before) await camera.change(before); throw e } }
     }
     const hadLook = hasLook(selected.value)
     applyPrepared(p); selectedOutfit.value = id; pendingOutfit.value = null

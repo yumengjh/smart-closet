@@ -1,5 +1,6 @@
 import type { RealtimeMediaStream, XmaxRealtimeManaging, XmaxRealtimeVideoView } from '@xmaxai/web-sdk'
-import { bindControlPlane, tolerateSenderRace } from './sdkBridge'
+import { bindControlPlane, tolerateSenderRace, type TryOnVendor } from './sdkBridge'
+import { DecartSession, type DecartCredential } from './decart'
 import { request } from '../services/api'
 import type { Prepared } from './api'
 import { tryOnPrompt } from './context'
@@ -11,7 +12,7 @@ import { CAMERA_LAYOUT_QUERY, defaultAspect, presetOf, type CameraPresetKey } fr
 export type StreamStats = { width?: number; height?: number; fps?: number; kbps?: number; loss?: number; delayMs?: number }
 const finite = (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : undefined
 
-export class TryOnCamera {
+export class TryOnCamera implements TryOnVendor {
   /** 试穿中 SDK 回报的上行（摄像头 → 云端）与下行（试穿画面 → 本机）统计。 */
   uplinkStats: StreamStats = {}
   downlinkStats: StreamStats = {}
@@ -26,13 +27,15 @@ export class TryOnCamera {
   private revision = 0
   private reportedLease = ''
   private cancelFrameObservation?: () => void
+  private premium?: DecartSession
+  private sessionVersion = 0
   private preset: CameraPresetKey = presetOf(defaultAspect(window.matchMedia(CAMERA_LAYOUT_QUERY).matches))
   /** 真实画面尺寸；舞台、小窗都以它为准，不假定摄像头遵守预设。 */
   onSize?: (source: 'local' | 'remote', width: number, height: number) => void
   private readonly trace = new StartupDiagnostic(stage => this.onProgress(stage))
   get diagnostic() { return this.trace.snapshot() }
   private reportFrame() { if (!this.lease || this.reportedLease === this.lease) return; this.reportedLease = this.lease; this.host.classList.add('has-result'); this.trace.frame(); this.onFrame() }
-  constructor(private host: HTMLElement, private onFrame: () => void, private onFailure: (error: Error) => void, private onProgress: (stage: StartupStage) => void = () => {}) {}
+  constructor(private host: HTMLElement, private onFrame: () => void, private onFailure: (error: Error) => void, private onProgress: (stage: StartupStage) => void = () => {}, private createPremium: () => DecartSession = () => new DecartSession()) {}
   get video() { return this.remoteView?.videoElement }
   /** 摄像头原画（未经生成），只给本地姿态检查读帧。 */
   get localVideo() { return this.localView?.videoElement }
@@ -98,14 +101,34 @@ export class TryOnCamera {
     if (this.disposed || revision !== this.revision) { await manager.close(); return }
     this.local = local; this.localView.track = local.videoTrack
   }
-  async start(lease: string, environment: 'china' | 'global', prepared: Prepared) {
+  async start(lease: string, environment: 'china' | 'global', prepared: Prepared, options?: { vendor: 'XMAX' | 'DECART'; credential?: DecartCredential; capacityRetryBudgetMs?: number }) {
     if (!this.manager || this.environment !== environment) await this.open(environment)
     if (!this.manager || !this.local) throw new Error('摄像头尚未就绪。')
     this.lease = lease; this.trace.start()
-    await this.change(prepared)
+    if (options?.vendor !== 'DECART') { await this.change(prepared); return }
+    if (!options.credential || !prepared.referenceBlob) throw new Error('高质量试穿启动失败，请稍后再试。')
+    const track = this.local.videoTrack?.mediaStreamTrack
+    if (!track || track.readyState !== 'live') throw new Error('摄像头尚未就绪。')
+    const version = ++this.sessionVersion, premium = this.createPremium()
+    this.premium = premium
+    const current = () => this.premium === premium && this.lease === lease && this.sessionVersion === version && !this.disposed
+    await premium.start(new MediaStream([track]), options.credential, tryOnPrompt(prepared.items), prepared.referenceBlob, {
+      onRemote: stream => {
+        if (!current() || !this.remoteView) return
+        const video = this.remoteView.videoElement
+        this.cancelFrameObservation?.()
+        video.srcObject = stream; video.muted = true; void video.play().catch(() => {})
+        this.cancelFrameObservation = observeFirstFrame(video, () => { if (current() && video.srcObject === stream) this.reportFrame() })
+      },
+      onConnected: () => { if (current()) this.trace.connected() },
+      onError: error => { if (current()) this.onFailure(error) },
+      onCapacityWait: () => {},
+      onLimit: () => { if (current()) this.onFailure(new Error('本次试穿时间已到，连接已结束。')) },
+    }, options.capacityRetryBudgetMs ?? 60_000)
   }
   async change(prepared: Prepared) {
     if (!this.manager || !this.local || !this.lease) throw new Error('请先开始试穿。')
+    if (this.premium) { if (!prepared.referenceBlob) throw new Error('衣服参考图尚未就绪。'); await this.premium.change(tryOnPrompt(prepared.items), prepared.referenceBlob); return }
     if (!prepared.referencePath) throw new Error('衣服参考图尚未就绪。')
     const sdk = await import('@xmaxai/web-sdk')
     const remote = await this.manager.startGeneration({ localStream: this.local, context: new sdk.RealtimeContext({ prompt: tryOnPrompt(prepared.items), referencePath: prepared.referencePath }), faceRestoration: true })
@@ -116,8 +139,8 @@ export class TryOnCamera {
       this.cancelFrameObservation = observeFirstFrame(view.videoElement, () => { if (this.lease === lease && view.track === track) this.reportFrame() })
     }
   }
-  async switchCamera() { if (!this.manager) return; await this.manager.switchCamera(); this.front = !this.front; if (this.localView) this.localView.isMirrored = this.front }
-  async stop() { this.uplinkStats = {}; this.downlinkStats = {}; this.trace.end(); this.lease = ''; this.cancelFrameObservation?.(); this.cancelFrameObservation = undefined; this.reportedLease = ''; this.host.classList.remove('has-result'); await this.manager?.disconnect(); if (this.remoteView) this.remoteView.track = undefined; this.lease = '' }
-  async release() { this.trace.end(); this.lease = ''; this.cancelFrameObservation?.(); this.cancelFrameObservation = undefined; this.reportedLease = ''; this.host.classList.remove('has-result'); await this.manager?.close(); this.localView?.detach(); this.remoteView?.detach(); this.manager = undefined; this.local = undefined; this.localView = undefined; this.remoteView = undefined; this.lease = '' }
+  async switchCamera() { if (!this.manager) return; await this.manager.switchCamera(); this.front = !this.front; if (this.localView) this.localView.isMirrored = this.front; if (this.premium) { const track = this.local?.videoTrack?.mediaStreamTrack; if (!track || track.readyState !== 'live') throw new Error('摄像头尚未就绪。'); await this.premium.replaceVideoTrack(track) } }
+  async stop() { this.uplinkStats = {}; this.downlinkStats = {}; this.trace.end(); this.lease = ''; this.cancelFrameObservation?.(); this.cancelFrameObservation = undefined; this.reportedLease = ''; this.host.classList.remove('has-result'); this.sessionVersion++; const premium = this.premium; this.premium = undefined; if (premium) { premium.stop(); if (this.remoteView) this.remoteView.videoElement.srcObject = null } else await this.manager?.disconnect(); if (this.remoteView) this.remoteView.track = undefined; this.lease = '' }
+  async release() { this.sessionVersion++; this.premium?.stop(); this.premium = undefined; this.trace.end(); this.lease = ''; this.cancelFrameObservation?.(); this.cancelFrameObservation = undefined; this.reportedLease = ''; this.host.classList.remove('has-result'); await this.manager?.close(); this.localView?.detach(); this.remoteView?.detach(); this.manager = undefined; this.local = undefined; this.localView = undefined; this.remoteView = undefined; this.lease = '' }
   async dispose() { this.disposed = true; this.revision++; await this.release() }
 }
