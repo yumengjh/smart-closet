@@ -26,7 +26,7 @@
     "@ant-design/icons-vue": "^7.0.1",
     "@foleyjs/core": "^2.9.0",
     "@mediapipe/tasks-vision": "1.1.0",
-    "@xmaxai/web-sdk": "1.1.1",
+    "@xmaxai/web-sdk": "1.1.5",
     "ant-design-vue": "^4.2.6",
     "canvas-confetti": "^1.9.3",
     "konva": "^10.7.0",
