@@ -26,6 +26,11 @@ export function withRenderTier<T extends object>(input: T, enabled: boolean, tie
   return enabled ? { ...input, tier } : input
 }
 
+/** 未传 tier 的请求按高质量单位计。档位接口上线前，每张是 1 次。 */
+export function legacyRenderUnits(config: RenderTiers | null, baseUnits = 1): number {
+  return baseUnits * (config?.tiers.find(item => item.tier === 'PREMIUM')?.units ?? 1)
+}
+
 export function tierFallbackMessage(job: { tierRequested?: Tier | null; tierUsed?: Tier | null; quotaUnits?: number | null }): string {
   if (job.tierRequested !== 'PREMIUM' || job.tierUsed !== 'STANDARD') return ''
   return `高质量暂时不可用，这张用标准完成${job.quotaUnits == null ? '' : `，只用了 ${job.quotaUnits} 次`}`

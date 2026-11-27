@@ -45,7 +45,7 @@ import PosePicker from '../../ootd/PosePicker.vue'
 import OotdMore from '../../ootd/OotdMore.vue'
 import OotdConfirmModal from '../../ootd/OotdConfirmModal.vue'
 import RenderTierPicker from './RenderTierPicker.vue'
-import { withRenderTier } from '../../services/modelTiers'
+import { legacyRenderUnits, withRenderTier } from '../../services/modelTiers'
 import { modelLabel } from '../../ootd/labels'
 
 const route = useRoute(), router = useRouter(), { message } = App.useApp(), billing = useBillingStore(), closet = useClosetStore(), processing = useProcessingStore()
@@ -340,12 +340,12 @@ onUnmounted(() => wideQuery.removeEventListener('change', onWide))
         <a-button v-if="!isLast" type="primary" size="large" :disabled="!!block" @click="go(nextStep(steps, step))">下一步</a-button>
         <!-- 禁用的按钮收不到点击：外面这层接住，滚到第一个要处理的地方。 -->
         <span v-else-if="outfitMode" class="tm-go" @click="nudge"><a-button type="primary" size="large" :loading="studio.busy" :disabled="!!block || !!pending || studio.tierSaving" @click="studio.prepare()">{{ imageActionLabel(billing.image) }}</a-button></span>
-        <span v-else class="tm-go" @click="!pending && nudge()"><a-button type="primary" size="large" :loading="busy" :disabled="(!!block && !pending) || studio.tierSaving" @click="generate">{{ pending ? '核对结果' : studio.renderTiers?.enabled ? '生成' : '生成 · 1 次' }}</a-button></span>
+        <span v-else class="tm-go" @click="!pending && nudge()"><a-button type="primary" size="large" :loading="busy" :disabled="(!!block && !pending) || studio.tierSaving" @click="generate">{{ pending ? '核对结果' : studio.renderTiers?.enabled ? '生成' : `生成 · ${legacyRenderUnits(studio.renderTiers, template?.baseQuotaUnits)} 次` }}</a-button></span>
       </div>
-      <p v-if="isLast && outfitMode && !studio.renderTiers?.enabled" class="tm-cost">每张用 1 次图像额度 · 约 30 秒，可以先离开</p>
+      <p v-if="isLast && outfitMode && !studio.renderTiers?.enabled" class="tm-cost">每张用 {{ legacyRenderUnits(studio.renderTiers) }} 次 · 约 30 秒，可以先离开</p>
       <p v-else-if="isLast && !outfitMode && !studio.renderTiers?.enabled" class="tm-cost">与上身图共用次数
         <a-popover placement="top" trigger="click">
-          <template #content><div class="tm-rules">生成一次用 1 次，与上身图共用。<br />发出后失败、取消或结果待确认，也会用掉 1 次，不自动返还。<br />图片可能与实物有差异，完成后请核对衣服细节。<br /><a @click="router.push('/help?article=08-creation')">了解更多</a></div></template>
+          <template #content><div class="tm-rules">生成一次用 {{ legacyRenderUnits(studio.renderTiers, template?.baseQuotaUnits) }} 次，与上身图共用。<br />已发送的生成失败、取消或结果待确认时，仍可能消耗次数。<br />图片可能与实物有差异，完成后请核对衣服细节。<br /><a @click="router.push('/help?article=08-creation')">了解更多</a></div></template>
           <a-button type="text" size="small" shape="circle" aria-label="次数规则"><QuestionCircleOutlined /></a-button>
         </a-popover>
       </p>

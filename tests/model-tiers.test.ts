@@ -4,7 +4,7 @@ import { build } from 'esbuild'
 
 const bundle = await build({ entryPoints: ['src/services/modelTiers.ts'], bundle: true, format: 'esm', platform: 'node', write: false, define: { 'import.meta.env.VITE_USE_MOCKS': '"false"', 'import.meta.env.VITE_API_BASE_URL': '""' } })
 // The data URL is produced by the runtime bundle with test-specific Vite environment values.
-const { getModelTiers, putModelTiers, renderChoice, withRenderTier, tierFallbackMessage } = await import('data:text/javascript;base64,' + Buffer.from(bundle.outputFiles[0].text).toString('base64'))
+const { getModelTiers, putModelTiers, renderChoice, withRenderTier, legacyRenderUnits, tierFallbackMessage } = await import('data:text/javascript;base64,' + Buffer.from(bundle.outputFiles[0].text).toString('base64'))
 const config = { render: { enabled: true, selected: 'PREMIUM', degradeEnabled: true, tiers: [] }, realtime: { enabled: true, selected: 'STANDARD', tiers: [] } }
 
 test('档位偏好使用账号接口并只提交变更字段', async t => {
@@ -30,6 +30,14 @@ test('上身图和形象请求按开关选择档位或原服务信息，创作�
   const input = { templateId: 'effect', garments: [] }
   assert.equal(withRenderTier(input, false, 'PREMIUM'), input)
   assert.deepEqual(withRenderTier(input, true, 'PREMIUM'), { ...input, tier: 'PREMIUM' })
+})
+
+test('档位关闭时按服务端高质量单位显示旧请求的次数', () => {
+  const singleTier = { ...config.render, enabled: false, selected: 'STANDARD', tiers: [{ tier: 'STANDARD', units: 1 }, { tier: 'PREMIUM', units: 3 }] }
+  assert.equal(legacyRenderUnits(singleTier), 3)
+  assert.equal(legacyRenderUnits(singleTier, 2), 6)
+  assert.equal(legacyRenderUnits({ ...singleTier, tiers: [{ tier: 'PREMIUM', units: 0 }] }), 0)
+  assert.equal(legacyRenderUnits(null), 1)
 })
 
 test('降级结果使用实际次数，不猜测缺失值', () => {
