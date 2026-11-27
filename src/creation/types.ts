@@ -6,6 +6,7 @@ export type CreationTemplate = {
   id: string; version: number; name: string; description: string; previewUrl: string | null
   personRequired: boolean; options: { light?: Light[] }; maxGarments: number
   available: boolean; unavailableReason: string | null
+  baseQuotaUnits?: number
 }
 export type CreationCatalog = { enabled: boolean; templates: CreationTemplate[] }
 export type CreationInput = {

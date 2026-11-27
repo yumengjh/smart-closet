@@ -333,7 +333,7 @@ onUnmounted(() => wideQuery.removeEventListener('change', onWide))
     </main>
 
     <aside class="tm-bar">
-      <RenderTierPicker v-if="isLast && studio.renderTiers?.enabled" :config="studio.renderTiers" :model-value="studio.tier" :multiplier="outfitMode ? 1 : null" :disabled="locked" @update:model-value="studio.selectTier" />
+      <RenderTierPicker v-if="isLast && studio.renderTiers?.enabled" :config="studio.renderTiers" :model-value="studio.tier" :multiplier="outfitMode ? 1 : template?.baseQuotaUnits ?? null" :disabled="locked" @update:model-value="studio.selectTier" />
       <p v-if="block" class="tm-block" role="status">{{ block }}</p>
       <div class="tm-bar-row">
         <a-button v-if="stepIndex > 0" size="large" :disabled="locked" @click="back">上一步</a-button>
