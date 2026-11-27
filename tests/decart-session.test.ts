@@ -71,7 +71,7 @@ test('connect sends video only and complete initial state, then changes without 
   assert.equal(options.speed, undefined)
   assert.equal(f.clientOptions().apiKey, undefined)
   assert.equal(f.clientOptions().telemetry, false)
-  assert.equal(f.clientOptions().apiKeyProvider!(), secret)
+  assert.equal(await f.clientOptions().apiKeyProvider!(), secret)
   options.onConnectionChange?.('connected')
   options.onConnectionChange?.('generating')
   options.onRemoteStream(stream)
@@ -95,7 +95,7 @@ test('stop cancels pending operations and disconnects a late connection without 
   f.session.stop()
   await assert.rejects(start, /试穿已停止/)
   await assert.rejects(changing, /试穿已停止/)
-  assert.throws(() => f.clientOptions().apiKeyProvider!(), { message: unavailable })
+  await assert.rejects(Promise.resolve(f.clientOptions().apiKeyProvider!()), /试穿已停止/)
   f.payload().options.onRemoteStream(source)
   f.payload().options.onConnectionChange?.('connected')
   f.payload().options.onCapacityWait?.({ retryAfterMs: 1000, attempt: 1 })
@@ -117,12 +117,12 @@ test('session limit timer stops even when connect is pending', async t => {
   assert.equal(f.calls.disconnect, 1)
 })
 
-test('expired credentials cannot be used for a later dial', async () => {
+test('expired credentials without renewal stop the pending connection', async () => {
   const f = fixture()
   const start = f.session.start(source, { ...credential, expiresAtMs: Date.now() - 1 }, 'first', 'image', f.callbacks, 60_000)
-  assert.throws(() => f.clientOptions().apiKeyProvider!(), { message: unavailable })
-  f.session.stop()
-  await assert.rejects(start, /试穿已停止/)
+  const stopped = assert.rejects(start, /连接失败次数太多/)
+  await assert.rejects(Promise.resolve(f.clientOptions().apiKeyProvider!()), /连接失败次数太多/)
+  await stopped
   f.dial.reject(new Error('cancelled'))
 })
 
@@ -169,4 +169,57 @@ test('SDK failures are sanitized for connect, events and set', async () => {
   const failedStart = failed.session.start(source, credential, 'first', 'image', failed.callbacks, 60_000)
   failed.dial.reject(new Error(`failed with ${secret}`))
   await assert.rejects(failedStart, { message: unavailable })
+})
+
+test('reuses valid token and renews at most once after expiry', async t => {
+  let now = Date.now(), calls = 0
+  t.mock.method(Date, 'now', () => now)
+  const f = fixture(), renewal = deferred<typeof credential>()
+  const start = f.session.start(source, { ...credential, expiresAtMs: now + 15_000 }, 'first', 'image', f.callbacks, 60_000, () => { calls++; return renewal.promise })
+  f.dial.resolve(f.connected)
+  await start
+  const provider = f.clientOptions().apiKeyProvider!
+  assert.equal(await provider(), secret)
+  assert.equal(await provider(), secret)
+  assert.equal(calls, 0)
+  now += 15_001
+  const first = provider(), second = provider()
+  assert.equal(calls, 1)
+  renewal.resolve({ ...credential, token: 'renewed', expiresAtMs: now + 15_000 })
+  assert.deepEqual(await Promise.all([first, second]), ['renewed', 'renewed'])
+  now += 15_001
+  await assert.rejects(Promise.resolve(provider()), /连接失败次数太多/)
+  assert.equal(calls, 1)
+  assert.equal(f.calls.disconnect, 1)
+  assert.match(f.calls.errors[0].message, /连接失败次数太多/)
+})
+
+test('token rejection ends the connection and preserves the server-specific message', async t => {
+  let now = Date.now()
+  t.mock.method(Date, 'now', () => now)
+  for (const [code, text] of [['TRYON_TOKEN_ACTIVE', '连接还在建立中，请稍等几秒再试。'], ['TRYON_RETRY_LIMIT', '这次高质量试穿连接失败次数太多，请结束后重新开始。']]) {
+    const f = fixture()
+    let requests = 0
+    const start = f.session.start(source, { ...credential, expiresAtMs: now + 15_000 }, 'first', 'image', f.callbacks, 60_000, async () => { requests++; throw { code, message: secret } })
+    f.dial.resolve(f.connected)
+    await start
+    now += 15_001
+    await assert.rejects(Promise.resolve(f.clientOptions().apiKeyProvider!()), { message: text })
+    await assert.rejects(Promise.resolve(f.clientOptions().apiKeyProvider!()), /试穿已停止/)
+    assert.equal(requests, 1)
+    assert.equal(f.calls.disconnect, 1)
+    assert.equal(f.calls.errors[0].message, text)
+  }
+})
+
+test('a renewal that resolves after stopping never releases a token', async () => {
+  const f = fixture(), renewal = deferred<typeof credential>()
+  const start = f.session.start(source, { ...credential, expiresAtMs: Date.now() - 1 }, 'first', 'image', f.callbacks, 60_000, () => renewal.promise)
+  const dial = Promise.resolve(f.clientOptions().apiKeyProvider!())
+  const stopped = assert.rejects(start, /试穿已停止/)
+  f.session.stop()
+  renewal.resolve({ ...credential, token: 'late-token', expiresAtMs: Date.now() + 15_000 })
+  await assert.rejects(dial)
+  await stopped
+  f.dial.resolve(f.connected)
 })

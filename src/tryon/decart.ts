@@ -14,8 +14,16 @@ type Sdk = typeof DecartSdk
 const unavailable = '高质量试穿启动失败，本次未计时，可以稍后重试或换成标准。'
 const busy = '高质量现在有点忙，稍后再试或换成标准'
 const cancelled = '试穿已停止。'
+const tokenActive = '连接还在建立中，请稍等几秒再试。'
+const retryLimit = '这次高质量试穿连接失败次数太多，请结束后重新开始。'
+class CredentialError extends Error {}
 
 function safeError(cause: unknown): Error {
+  if (cause instanceof CredentialError) return cause
+  if (cause && typeof cause === 'object' && 'code' in cause) {
+    if (cause.code === 'TRYON_TOKEN_ACTIVE') return new CredentialError(tokenActive)
+    if (cause.code === 'TRYON_RETRY_LIMIT') return new CredentialError(retryLimit)
+  }
   const value = cause as { message?: unknown; reason?: unknown; errorType?: unknown } | null
   const message = typeof value?.message === 'string' ? value.message.toLowerCase() : ''
   const reason = typeof value?.reason === 'string' ? value.reason.toLowerCase() : ''
@@ -27,7 +35,7 @@ function safeError(cause: unknown): Error {
 export class DecartSession {
   private client: RealTimeClient | null = null
   private pending: Promise<RealTimeClient> | null = null
-  private cancel: (() => void) | null = null
+  private cancel: ((error?: Error) => void) | null = null
   private timer: number | undefined
   private generation = 0
 
@@ -35,12 +43,12 @@ export class DecartSession {
 
   constructor(injectedSdk?: Sdk) { this.injectedSdk = injectedSdk }
 
-  async start(stream: MediaStream, credential: DecartCredential, prompt: string, image: string | Blob, callbacks: DecartCallbacks, capacityRetryBudgetMs: number): Promise<void> {
+  async start(stream: MediaStream, credential: DecartCredential, prompt: string, image: string | Blob, callbacks: DecartCallbacks, capacityRetryBudgetMs: number, renew?: () => Promise<DecartCredential>): Promise<void> {
     this.stop()
     const generation = this.generation
     const active = () => this.generation === generation
-    let cancel!: () => void
-    const cancellation = new Promise<never>((_, reject) => { cancel = () => reject(new Error(cancelled)) })
+    let cancel!: (error?: Error) => void
+    const cancellation = new Promise<never>((_, reject) => { cancel = error => reject(error ?? new Error(cancelled)) })
     this.cancel = cancel
     this.timer = setTimeout(() => {
       if (!active()) return
@@ -53,10 +61,34 @@ export class DecartSession {
       const sdk = this.injectedSdk ?? await import('@decartai/sdk')
       if (!active()) throw new Error(cancelled)
       if (!sdk.isRealtimeModel(credential.model)) throw new Error(unavailable)
+      let current = credential, renewed = false
+      let renewal: Promise<DecartCredential> | undefined
       const client = sdk.createDecartClient({
-        apiKeyProvider: () => {
-          if (!active() || Date.now() >= credential.expiresAtMs) throw new Error(unavailable)
-          return credential.token
+        apiKeyProvider: async () => {
+          if (!active()) throw new Error(cancelled)
+          if (Date.now() < current.expiresAtMs) return current.token
+          try {
+            if (!renewal) {
+              if (renewed || !renew) throw new CredentialError(retryLimit)
+              renewed = true
+              renewal = renew()
+            }
+            const next = await renewal
+            renewal = undefined
+            if (!active()) throw new Error(cancelled)
+            if (next.model !== credential.model || Date.now() >= next.expiresAtMs) throw new Error(unavailable)
+            current = next
+            return current.token
+          } catch (cause) {
+            const error = safeError(cause)
+            if (active()) {
+              const connected = this.client !== null
+              this.cancel?.(error)
+              this.stop()
+              if (connected) callbacks.onError(error)
+            }
+            throw error
+          }
         },
         logger: sdk.noopLogger,
         telemetry: false,

@@ -101,7 +101,7 @@ export class TryOnCamera implements TryOnVendor {
     if (this.disposed || revision !== this.revision) { await manager.close(); return }
     this.local = local; this.localView.track = local.videoTrack
   }
-  async start(lease: string, environment: 'china' | 'global', prepared: Prepared, options?: { vendor: 'XMAX' | 'DECART'; credential?: DecartCredential; capacityRetryBudgetMs?: number }) {
+  async start(lease: string, environment: 'china' | 'global', prepared: Prepared, options?: { vendor: 'XMAX' | 'DECART'; credential?: DecartCredential; capacityRetryBudgetMs?: number; renewCredential?: () => Promise<DecartCredential> }) {
     if (!this.manager || this.environment !== environment) await this.open(environment)
     if (!this.manager || !this.local) throw new Error('摄像头尚未就绪。')
     this.lease = lease; this.trace.start()
@@ -124,7 +124,7 @@ export class TryOnCamera implements TryOnVendor {
       onError: error => { if (current()) this.onFailure(error) },
       onCapacityWait: () => {},
       onLimit: () => { if (current()) this.onFailure(new Error('本次试穿时间已到，连接已结束。')) },
-    }, options.capacityRetryBudgetMs ?? 60_000)
+    }, options.capacityRetryBudgetMs ?? 60_000, options.renewCredential)
   }
   async change(prepared: Prepared) {
     if (!this.manager || !this.local || !this.lease) throw new Error('请先开始试穿。')

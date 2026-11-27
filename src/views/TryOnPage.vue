@@ -561,7 +561,7 @@ async function connect(s: Session, p: Prepared, attempt: number) {
     const credential = await tryOnApi.decartToken(s.id)
     if (!active()) return
     if (s.deadlineAtMs <= Date.now()) throw new Error('试穿授权已过期，请重新开始。')
-    await camera.start(s.id, s.environment, ready, { vendor: 'DECART', credential, capacityRetryBudgetMs: Math.max(0, Math.min((cap.value?.limits.queueSeconds ?? 60) * 1000, s.deadlineAtMs - Date.now())) })
+    await camera.start(s.id, s.environment, ready, { vendor: 'DECART', credential, renewCredential: () => tryOnApi.decartToken(s.id), capacityRetryBudgetMs: Math.max(0, Math.min((cap.value?.limits.queueSeconds ?? 60) * 1000, s.deadlineAtMs - Date.now())) })
   } else {
     await camera.start(s.id, s.environment, ready)
   }
