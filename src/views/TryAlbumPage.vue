@@ -24,6 +24,7 @@ import { albumTiles, mergeWorks, workBucket, type AlbumFilter } from '../try/alb
 import { TRY_PATH } from '../try/routes'
 import { goBack } from '../shell/goBack'
 import { mediaUrl } from '../services/urls'
+import { tierFallbackMessage } from '../services/modelTiers'
 
 const route = useRoute(), router = useRouter(), { message, modal } = App.useApp()
 const records = useOotdRecords()
@@ -58,9 +59,9 @@ function dropWork(id: string) { older.value = older.value.filter(job => job.id !
 // 查看器删除作品时先关闭再通知变化，所以另记一下打开的是哪一条，好从“更早的作品”里去掉。
 let openedId = ''
 function openWork(job: CreationJob) { if (job.status === 'SUCCEEDED' && job.mediaUrl) { opened.value = job; openedId = job.id } }
-// 再试一次沿用现有语义：带 parentJobId 回到“做张图”，衣服取草稿里当前的，会用 1 次。
-function again(job: CreationJob) { message.info('再试一次会用 1 次'); void router.push({ path: TRY_PATH, query: { again: job.id, template: job.templateId } }) }
-function cancelWork(job: CreationJob) { modal.confirm({ title: '取消这次创作？', content: '已发送给图片服务的尝试仍会用掉 1 次。', okText: '取消创作', cancelText: '继续等待', async onOk() { try { await creationApi.cancel(job.id); await refreshWorks(1) } catch (cause) { message.error(describe(cause)) } } }) }
+// 回到做张图继续选档，次数以这次准备后的确认框为准。
+function again(job: CreationJob) { void router.push({ path: TRY_PATH, query: { again: job.id, template: job.templateId } }) }
+function cancelWork(job: CreationJob) { modal.confirm({ title: '取消这次创作？', content: '已发送给图片服务的尝试仍可能消耗次数。', okText: '取消创作', cancelText: '继续等待', async onOk() { try { await creationApi.cancel(job.id); await refreshWorks(1) } catch (cause) { message.error(describe(cause)) } } }) }
 function removeWork(job: CreationJob) { modal.confirm({ title: '删除这条作品？', content: '正在创作的会先取消，删除后无法再查看。', okText: '删除', okType: 'danger', cancelText: '保留', async onOk() { try { await creationApi.remove(job.id); dropWork(job.id); await refreshWorks(1) } catch (cause) { message.error(describe(cause)) } } }) }
 function workChanged() { if (!opened.value && openedId) dropWork(openedId); void refreshWorks(1) }
 
@@ -153,6 +154,7 @@ onUnmounted(() => stop?.())
           <div class="al-body">
             <p class="al-title" :title="recordTitle(tile.job)">{{ recordTitle(tile.job) }}</p>
             <p class="al-line">上身图 · {{ recordLine(tile.job) }}</p>
+            <p v-if="tierFallbackMessage(tile.job, true)" class="al-fallback">{{ tierFallbackMessage(tile.job, true) }}</p>
             <a-popover trigger="click" placement="top" title="生成时用的资料" :overlay-style="{ maxWidth: '320px' }">
               <template #content><RenderSource :job="tile.job" :thumbs="records.thumbs" /></template>
               <a-button type="link" size="small" class="al-link">用了什么</a-button>
@@ -164,7 +166,7 @@ onUnmounted(() => stop?.())
             <img :src="mediaUrl(tile.job.mediaUrl!)" :alt="`${tile.job.templateName}（AI 生成）`" loading="lazy" /><AiBadge />
           </button>
           <div class="al-body al-body-row">
-            <div><p class="al-title">{{ tile.job.templateName }}</p><p class="al-line">作品 · {{ when(tile.job.createdAtMs) }}</p></div>
+            <div><p class="al-title">{{ tile.job.templateName }}</p><p class="al-line">作品 · {{ when(tile.job.createdAtMs) }}</p><p v-if="tierFallbackMessage(tile.job, true)" class="al-fallback">{{ tierFallbackMessage(tile.job, true) }}</p></div>
             <a-dropdown :trigger="['click']" placement="bottomRight"><a-button type="text" size="small" shape="circle" aria-label="更多"><EllipsisOutlined /></a-button>
               <template #overlay><a-menu :items="[{ key: 'again', label: '再试一次' }, { key: 'delete', label: '删除', danger: true }]" @click="({ key }: { key: string | number }) => key === 'again' ? again(tile.job) : removeWork(tile.job)" /></template>
             </a-dropdown>
@@ -232,6 +234,7 @@ onUnmounted(() => stop?.())
 .al-body-row > div { min-width: 0; }
 .al-title { margin: 0; overflow: hidden; font-size: 13px; font-weight: 500; color: var(--ink); text-overflow: ellipsis; white-space: nowrap; }
 .al-line { margin: 0; overflow: hidden; font-size: 12px; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }
+.al-fallback { margin: 0; color: var(--muted-strong); font-size: 12px; overflow-wrap: anywhere; }
 .al-link { align-self: flex-start; height: auto; padding: 0; font-size: 12px; }
 .al-empty { display: grid; justify-items: center; gap: 12px; padding: 40px 16px; border-radius: 16px; background: var(--surface-alt); color: var(--muted); font-size: 14px; text-align: center; }
 .al-empty p { margin: 0; }

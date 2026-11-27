@@ -23,7 +23,7 @@ export class StartupDiagnostic {
   constructor(onStage: (stage: StartupStage) => void = () => {}) { this.onStage = onStage }
   start() { this.active = true; this.rtc = false; this.latestTiming = {}; this.value = {stage:'CREATING_SESSION',timings:{},video:{}}; this.onStage(this.value.stage) }
   end() { this.active = false }
-  private stage(next: StartupStage) { if (this.value.stage !== next) { this.value.stage = next; this.onStage(next) } }
+  private stage(next: StartupStage) { if (this.value.stage !== next && this.value.stage !== 'GENERATING') { this.value.stage = next; this.onStage(next) } }
   created(milliseconds: number) { if (!this.active) return; this.value.timings = pick({sessionMs:milliseconds},timingKeys,3_600_000); this.stage('JOINING_RTC') }
   timing(input: object) {
     if (!this.active) return

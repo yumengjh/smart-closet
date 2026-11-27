@@ -7,6 +7,7 @@ import { creationApi } from '../../creation/api'
 import type { CreationJob } from '../../creation/types'
 import { mediaUrl } from '../../services/urls'
 import AiBadge from '../AiBadge.vue'
+import { tierFallbackMessage } from '../../services/modelTiers'
 
 const props = defineProps<{ job: CreationJob | null }>()
 const emit = defineEmits<{ close: []; changed: [] }>()
@@ -72,6 +73,7 @@ function onMenu({ key }: { key: string }) { if (key === 'feedback') reasonOpen.v
         <a-spin v-if="busy" class="viewer-spin" />
       </div>
       <a-alert v-if="error" type="error" :message="error" show-icon class="viewer-gap"><template #action><a-button size="small" @click="generate">重试</a-button></template></a-alert>
+      <a-alert v-if="tierFallbackMessage(job)" type="info" :message="tierFallbackMessage(job)" show-icon class="viewer-gap" />
       <div class="viewer-actions">
         <a-button type="primary" size="large" :disabled="!url" @click="save"><DownloadOutlined /> 保存图片</a-button>
         <a-button size="large" :disabled="!url" @click="share"><ShareAltOutlined /> 分享</a-button>

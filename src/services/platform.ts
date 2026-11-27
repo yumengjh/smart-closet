@@ -1,6 +1,7 @@
 import { apiUrl } from './urls'
 import { usingMocks } from './api'
 import { AccountSwitchedError, accountHeaders, captureAccount } from '../domain/accountSession'
+import type { Tier } from './modelTiers'
 import { signalSessionExpired } from '../domain/sessionNotice'
 export class PlatformRequestError extends Error {
   readonly uncertain: boolean
@@ -37,7 +38,8 @@ export async function platformRequest<T>(path: string, method = 'GET', body?: un
       const error = await response.json().catch(() => ({}))
       if (!anonymous && response.status === 401) signalSessionExpired(error.code)
       if (!anonymous && response.status === 409 && error.code === 'ACCOUNT_MISMATCH') window.dispatchEvent(new Event('closet-account-mismatch'))
-      throw new PlatformRequestError(error.message || error.detail || `请求未完成 (${response.status})`, write && (response.status >= 500 || response.status === 408), response.status, error.code)
+      const poolRefused = response.status === 503 && error.code === 'MODEL_POOL_EXHAUSTED'
+      throw new PlatformRequestError(error.message || error.detail || `请求未完成 (${response.status})`, write && !poolRefused && (response.status >= 500 || response.status === 408), response.status, error.code)
     }
     stillSameAccount()
     if (response.status === 204) return undefined as T
@@ -68,7 +70,7 @@ export type Review = {
 export type Profile = { revision: number; sex: string | null; heightCm: number | null; weightKg: number | null; bodyShape: string | null; measurements: Record<string, number>; preferences: Record<string, string>; defaultBaselineId: string | null }
 export type ProfileSnapshot = { sex: string; heightCm: number; weightKg: number; bodyShape: string; sources: Record<string, string>; profileRevision: number }
 export type Baseline = { id: string; revision: number; status: string; mediaUrl: string | null; sourcePhotoId: string | null; profile: ProfileSnapshot; createdAt: number; currentDefault: boolean; name: string | null }
-export type RenderJob = { id: string; purpose: string; status: string; mediaUrl: string | null; baselineId: string | null; planId: string | null; error: string | null; feedback: string | null; createdAt: number; parentJobId: string | null; summary: RenderSummary | null }
+export type RenderJob = { id: string; purpose: string; status: string; mediaUrl: string | null; baselineId: string | null; planId: string | null; error: string | null; feedback: string | null; createdAt: number; parentJobId: string | null; summary: RenderSummary | null; tierRequested?: Tier | null; tierUsed?: Tier | null; quotaUnits?: number | null }
 export type BodyAdjustments = Partial<Record<'build' | 'shoulders' | 'waist' | 'hips' | 'legs', number>>
 /** outfitId / outfit / items / poseText (issue #106): what the picture was made from, for the record list only. */
 export type RenderSourceItem = { garmentId: string; role: string; label: string }

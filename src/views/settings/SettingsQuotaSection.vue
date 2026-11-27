@@ -30,13 +30,12 @@ onMounted(loadQuota)
         <p>识别和图片整理合计算一次；本地透明图不计入额度。</p>
       </header>
       <p class="quota-numbers">
-        <strong>{{ remaining }}</strong>
-        <span> / {{ quota.limit }} 次还可以使用</span>
+        <span>今天还剩 </span><strong>{{ remaining }}</strong><span> 次</span>
       </p>
       <a-progress :percent="usedPercent" :show-info="false" :stroke-color="progressColors.stroke" :trail-color="progressColors.trail" />
       <div class="quota-legend">
         <span>已使用 {{ quota.used }} 次</span>
-        <span>{{ remaining }} 次可用</span>
+        <span>总共 {{ quota.limit }} 次</span>
       </div>
       <p class="quota-reset">每日按北京时间重置 · 下次重置 {{ new Date(quota.resetAt || Date.now()).toLocaleString('zh-CN') }}</p>
     </section>

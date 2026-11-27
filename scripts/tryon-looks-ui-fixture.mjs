@@ -30,7 +30,13 @@ const fixture = { name: 'tryon-looks-local-only', configureServer(server) { serv
   if (path === '/api/auth/me') return reply({ username: 'tryon-fixture', role: admin ? 'ADMIN' : 'USER', mustChangePassword: false })
   if (path === '/api/auth/csrf') return reply({ token: 'local-fixture-token' })
   if (path === '/api/app/analytics') return reply({ enabled: false })
-  if (path === '/api/tryon/capabilities') return reply({ enabled: true, ready: true, reason: '', quota: { limit: 600, used: 0, reserved: 0, remaining: 600 }, limits, hasHistory: false })
+  if (path === '/api/tryon/capabilities') {
+    const quota = { limit: 600, used: 0, reserved: 0, remaining: 600 }
+    const tiers = process.env.TRYON_FIXTURE_TIERS === '1'
+      ? { selectedTier: 'PREMIUM', tiers: ['STANDARD', 'PREMIUM'].map(tier => ({ tier, available: true, quota })) }
+      : {}
+    return reply({ enabled: true, ready: true, reason: '', quota, limits, hasHistory: false, ...tiers })
+  }
   if (path === '/api/tryon/looks') return reply(lookPage({ admin, category: url.searchParams.get('category') || '', empty: !withLooks }))
   const lookImage = path.match(/^\/api\/tryon\/looks\/([\w-]+)\/image$/)
   if (lookImage) { const text = lookSvg(lookImage[1]); return text ? svg(text) : reply({ message: '没有这套' }, 404) }

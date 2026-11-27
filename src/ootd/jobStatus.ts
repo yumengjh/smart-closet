@@ -14,9 +14,9 @@ export function adviceFor(job: Pick<RenderJob, 'status' | 'error' | 'mediaUrl'>)
   if (job.status === 'CANCEL_REQUESTED') return { label: '正在停止', title: '正在停止', body: '已经请求停止；已发出的请求无法保证上游停止或退还额度。', tone: 'running', canRetry: false, canCancel: false, canDelete: false }
   if (job.status === 'DELETE_PENDING') return { label: '正在清理', title: '正在清理图片', body: '清理完成后这条记录会消失。', tone: 'neutral', canRetry: false, canCancel: false, canDelete: false }
   if (job.status === 'UNKNOWN') return { label: '生成中断', title: '这次生成中断了，结果待核实',
-    body: `${job.error || '请求已经发给模型，但没有收到明确结果（常见原因：服务重启或网络中断）。'}\n为避免重复扣额度，不会自动重发。你可以手动重新生成，会再用 1 个图像额度。`, tone: 'warning', canRetry: true, canCancel: false, canDelete: true }
+    body: `${job.error || '请求已经发给模型，但没有收到明确结果（常见原因：服务重启或网络中断）。'}\n为避免重复消耗次数，不会自动重发。你可以手动重新生成。`, tone: 'warning', canRetry: true, canCancel: false, canDelete: true }
   if (job.status === 'CANCELLED') return { label: '已取消', title: '这次生成已取消', body: '没有生成图片。想要的话可以重新生成。', tone: 'neutral', canRetry: true, canCancel: false, canDelete: true }
-  if (job.status === 'FAILED') return { label: '未完成', title: '这次生成没有完成', body: `${job.error || '模型没有返回可用的图片。'}\n可以直接重新生成，会再用 1 个图像额度。`, tone: 'failed', canRetry: true, canCancel: false, canDelete: true }
+  if (job.status === 'FAILED') return { label: '未完成', title: '这次生成没有完成', body: `${job.error || '模型没有返回可用的图片。'}\n可以重新生成。`, tone: 'failed', canRetry: true, canCancel: false, canDelete: true }
   return { label: job.status, title: '状态未知', body: job.error || '', tone: 'neutral', canRetry: false, canCancel: false, canDelete: true }
 }
 

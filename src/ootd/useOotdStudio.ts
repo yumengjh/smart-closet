@@ -9,6 +9,9 @@ import { App } from 'ant-design-vue'
 import { useBillingStore } from '../billing/store'
 import { closetApi } from '../services/api'
 import { platformRequest, PlatformRequestError, type Baseline, type Capability, type PoseCatalog, type PoseChoice, type RenderJob, type RenderSubmission, type Review } from '../services/platform'
+import { renderChoice } from '../services/modelTiers'
+import { useRenderTiers } from './useRenderTiers'
+import { imageErrorMessage, offerImagePurchase } from '../billing/imageQuota'
 import type { Outfit } from '../domain/outfit'
 import { createUuid } from '../domain/id'
 import { useProcessingStore } from '../stores/processing'
@@ -26,15 +29,6 @@ export const DETAIL_OPTIONS: Record<string, { key: string; label: string; option
     { key: 'sleeves', label: '袖子', options: [{ value: '', label: '自然' }, { value: 'ROLLED', label: '挽起' }] }],
 }
 
-/** 次数用完时打开购买抽屉（收费关闭时不打开，按原报错显示）。 */
-export async function offerImagePurchase(billing: ReturnType<typeof useBillingStore>, cause: unknown) {
-  if (!(cause instanceof PlatformRequestError) || !['IMAGE_QUOTA_EXCEEDED', 'AI_DAILY_QUOTA_EXCEEDED'].includes(cause.code || '')) return false
-  await billing.refresh()
-  if (!billing.image?.enabled) return false
-  billing.purchase = 'image'
-  return true
-}
-
 export function useOotdStudio(shared: { outfitId: Ref<string>; baselineId: Ref<string>; pose: Ref<PoseChoice> }, hooks: { accepted?: (job: RenderJob) => void; reviewing?: () => boolean } = {}) {
   const billing = useBillingStore(), router = useRouter(), { modal } = App.useApp(), processing = useProcessingStore(), sendOff = useSendOffStore()
   const { outfitId, baselineId, pose } = shared
@@ -43,6 +37,7 @@ export function useOotdStudio(shared: { outfitId: Ref<string>; baselineId: Ref<s
   const wearDetails = ref<Record<string, Record<string, string>>>({}), wearNote = ref(''), suggested = ref<Record<string, Record<string, string>>>({})
   const loading = ref(true), error = ref(''), busy = ref(false)
   const preparation = ref<Preparation | null>(null), confirmOpen = ref(false), key = ref(createUuid())
+  const { renderTiers, tier, tierBlocked, tierSaving, tierLoading, tierError, loadTiers, selectTier } = useRenderTiers()
 
   const current = computed(() => outfits.value.find(o => o.id === outfitId.value))
   const person = computed(() => baselines.value.find(b => b.id === baselineId.value))
@@ -51,7 +46,7 @@ export function useOotdStudio(shared: { outfitId: Ref<string>; baselineId: Ref<s
   const garments = computed(() => [...new Map((current.value?.scene.elements || []).filter(e => e.kind !== 'PERSON_PART').map(e => [e.garmentId, e])).values()])
   const wear = useWearCheck(() => current.value ? { outfitId: current.value.id, revision: current.value.revision, selectedGarmentIds: selected.value, wearRoles: wearRoles.value } : null, () => hooks.reviewing?.() ?? false)
   const review = wear.review
-  const hint = computed(() => !current.value ? '先选一套搭配' : !person.value ? '先设置谁来穿' : !capability.value ? '暂时没有可用的生成服务' : '')
+  const hint = computed(() => !current.value ? '先选一套搭配' : !person.value ? '先设置谁来穿' : tierBlocked.value ? '当前档位暂时不可用，请换一个' : !renderTiers.value?.enabled && !capability.value ? '暂时没有可用的生成服务' : '')
   const poses = computed(() => [...(poseCatalog.value?.presets || []), ...(poseCatalog.value?.mine || [])])
   const poseName = computed(() => { const v = pose.value; if (v.mode === 'AUTO') return '自动'; return poses.value.find(p => p.id === v.id)?.name || '已选' })
   const detailGarments = computed(() => garments.value.filter(g => selected.value.includes(g.garmentId) && DETAIL_OPTIONS[g.role]))
@@ -72,38 +67,41 @@ export function useOotdStudio(shared: { outfitId: Ref<string>; baselineId: Ref<s
   async function load() {
     loading.value = true
     // 各取各的：创作效果也用这里的形象与姿势，一项失败不拖累其他项。
-    const [o, b, c, p] = await Promise.allSettled([closetApi.outfits(), platformRequest<Baseline[]>('/api/me/person-baselines'), platformRequest<Capability[]>('/api/render-capabilities'), platformRequest<PoseCatalog>('/api/ootd/poses')])
+    const [o, b, c, p] = await Promise.allSettled([closetApi.outfits(), platformRequest<Baseline[]>('/api/me/person-baselines'), platformRequest<Capability[]>('/api/render-capabilities'), platformRequest<PoseCatalog>('/api/ootd/poses'), loadTiers()])
     if (o.status === 'fulfilled') outfits.value = o.value
     if (b.status === 'fulfilled') baselines.value = b.value.filter(item => item.status === 'CONFIRMED')
     if (c.status === 'fulfilled') capabilities.value = c.value
     if (p.status === 'fulfilled') poseCatalog.value = p.value
     if (!available.value.some(item => item.provider + ':' + item.model === model.value)) model.value = available.value[0] ? available.value[0].provider + ':' + available.value[0].model : ''
     if (!baselines.value.some(m => m.id === baselineId.value)) baselineId.value = baselines.value.find(item => item.currentDefault)?.id || baselines.value[0]?.id || ''
-    const failed = [o, b, c, p].find(item => item.status === 'rejected')
+    const failed = [o, b, ...(renderTiers.value?.enabled === false ? [c] : []), p].find(item => item.status === 'rejected')
     error.value = failed ? failed.reason instanceof Error ? failed.reason.message : String(failed.reason) : ''
     loading.value = false
   }
   async function loadPoses() { try { poseCatalog.value = await platformRequest<PoseCatalog>('/api/ootd/poses') } catch { /* The picker keeps the last list. */ } }
   watch(current, () => { selected.value = garments.value.map(g => g.garmentId); wear.reset(); wearRoles.value = {}; wearDetails.value = {}; suggested.value = {}; wearNote.value = ''; void suggestDetails() })
-  watch([selected, wearRoles, wearDetails, wearNote, model, baselineId, pose], () => { preparation.value = null; confirmOpen.value = false }, { deep: true })
+  watch([selected, wearRoles, wearDetails, wearNote, model, baselineId, pose, tier], () => { preparation.value = null; confirmOpen.value = false }, { deep: true })
 
   function body(useOlderBaseline: boolean) {
-    return { outfitId: current.value!.id, revision: current.value!.revision, baselineId: person.value!.id, baselineRevision: person.value!.revision, selectedGarmentIds: selected.value, wearRoles: wearRoles.value, provider: capability.value!.provider, model: capability.value!.model, useOlderBaseline, pose: pose.value, wearDetails: chosenDetails(), note: wearNote.value.trim() || undefined }
+    return { outfitId: current.value!.id, revision: current.value!.revision, baselineId: person.value!.id, baselineRevision: person.value!.revision, selectedGarmentIds: selected.value, wearRoles: wearRoles.value, ...renderChoice(!!renderTiers.value?.enabled, tier.value, capability.value), useOlderBaseline, pose: pose.value, wearDetails: chosenDetails(), note: wearNote.value.trim() || undefined }
   }
   async function offerSubscription(cause: unknown) { const offered = await offerImagePurchase(billing, cause); if (offered) confirmOpen.value = false; return offered }
   async function prepare(useOlderBaseline = false) {
-    if (!current.value || !person.value || !capability.value) return
-    busy.value = true
+    if (!current.value || !person.value || tierSaving.value || tierBlocked.value || (!renderTiers.value?.enabled && !capability.value)) return
+    busy.value = true; error.value = ''
     try {
       await billing.refresh()
-      if (billing.image?.enabled && billing.image.freeRemainingToday <= 0) { billing.purchase = 'image'; return }
+      if (!renderTiers.value?.enabled && billing.image?.enabled && billing.image.freeRemainingToday <= 0) { billing.purchase = 'image'; return }
       // 生成前按当前选择再查一次（不等防抖）；有拦截或问题没回答时清单里已经写着原因。
       if (!reviewPassed(await wear.run())) return
       preparation.value = await platformRequest<Preparation>('/api/ootd/preparations', 'POST', body(useOlderBaseline)); key.value = createUuid(); confirmOpen.value = true
     } catch (e) {
       if (e instanceof PlatformRequestError && e.code === 'BASELINE_PROFILE_STALE') {
         modal.confirm({ title: '这位形象是按旧资料生成的', content: '个人资料改过之后，形象不会自动更新。仍用这位形象生成吗？', okText: '仍然使用', cancelText: '换一位', onOk: () => prepare(true) })
-      } else if (!await offerSubscription(e)) error.value = e instanceof Error ? e.message : String(e)
+      } else {
+        if (e instanceof PlatformRequestError && e.code === 'MODEL_POOL_EXHAUSTED') await loadTiers()
+        if (!await offerSubscription(e)) error.value = imageErrorMessage(e)
+      }
     } finally { busy.value = false }
   }
   function chosenCards() { return garments.value.filter(g => selected.value.includes(g.garmentId)).map(g => ({ image: g.assetUrl, label: g.garmentLabel })) }
@@ -133,16 +131,19 @@ export function useOotdStudio(shared: { outfitId: Ref<string>; baselineId: Ref<s
           if (original.found && original.job) { await accepted(original.job); return }
           error.value = '暂未查到这次任务。再点一次会复用原提交编号，不会重复生成。'
         } catch { error.value = '连接仍未恢复，暂时无法确认是否已提交。请先到“我的图”看看生成记录，不要关闭这个窗口重新准备。' }
-      } else if (!await offerSubscription(e)) error.value = e instanceof Error ? e.message : String(e)
+      } else {
+        if (e instanceof PlatformRequestError && e.code === 'MODEL_POOL_EXHAUSTED') { preparation.value = null; confirmOpen.value = false; await loadTiers() }
+        if (!await offerSubscription(e)) error.value = imageErrorMessage(e)
+      }
     } finally { busy.value = false }
   }
   function moreAction(name: string) { if (name === 'rehearse') rehearse(); else if (name === 'manage') void router.push('/settings?section=personal') }
 
   return reactive({
     outfits, baselines, capabilities, poseCatalog, model, selected, wearRoles, wearDetails, wearNote, suggested,
-    loading, error, busy, review, checking: wear.checking, reviewError: wear.error, preparation, confirmOpen,
+    loading, error, busy, review, checking: wear.checking, reviewError: wear.error, preparation, confirmOpen, renderTiers, tier, tierSaving, tierBlocked, tierLoading, tierError, loadTiers,
     current, person, available, capability, garments, hint, poseName, detailGarments, wearSummary,
-    detail, setDetail, load, loadPoses, check: wear.run, prepare, generate, rehearse, moreAction,
+    detail, setDetail, load, loadPoses, check: wear.run, prepare, generate, rehearse, moreAction, selectTier,
   })
 }
 export type OotdStudio = ReturnType<typeof useOotdStudio>

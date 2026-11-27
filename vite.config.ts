@@ -40,6 +40,7 @@ export default defineConfig(({ mode }) => {
           if (!id.includes('node_modules')) return
           // Keep realtime/recording optional: closed accounts must not fetch RTC engines on ordinary wardrobe pages.
           if (id.includes('/@xmaxai/')) return 'tryon-sdk'
+          if (id.includes('/@decartai/') || id.includes('/livekit-client/') || id.includes('/@livekit/') || id.includes('/jose/') || id.includes('/zod/') || id.includes('/p-retry/')) return 'tryon-premium'
           if (id.includes('/mediabunny/')) return 'tryon-recording'
           if (id.includes('agora-')) return 'tryon-agora'
           if (id.includes('/@volcengine/')) return 'tryon-volc'
