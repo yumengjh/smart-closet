@@ -8,13 +8,15 @@ import { createUuid } from '../../domain/id'
 import { modelLabel } from '../../ootd/labels'
 import { useProcessingStore } from '../../stores/processing'
 import { useSendOffStore } from '../../stores/sendOff'
+import { getModelTiers, putModelTiers, renderChoice, tierFallbackMessage, type RenderTiers, type Tier } from '../../services/modelTiers'
+import RenderTierPicker from '../../components/try/RenderTierPicker.vue'
 const { message, modal } = App.useApp(), processing = useProcessingStore(), sendOff = useSendOffStore()
 const profile = ref<Profile>({ revision: 0, sex: null, heightCm: null, weightKg: null, bodyShape: null, measurements: {}, preferences: {}, defaultBaselineId: null })
 const savedProfile=ref('');const dirty=computed(()=>JSON.stringify(profile.value)!==savedProfile.value)
 const baselines = ref<Baseline[]>([]); const photos = ref<{id:string;url:string}[]>([]); const capabilities = ref<Capability[]>([])
 const renderJobs = ref<RenderJob[]>([]); const pending = ref(false); const lookupUncertain = ref(false)
 const submissionNotice = ref<{type:'info'|'warning'|'error';text:string}|null>(null)
-const attempt = ref<{request:{profileRevision:number;provider:string;model:string;photoId?:string;name?:string;sex:'MALE'|'FEMALE'};file:File|null}|null>(null)
+const attempt = ref<{request:{profileRevision:number;provider?:string;model?:string;tier?:Tier;photoId?:string;name?:string;sex:'MALE'|'FEMALE'};file:File|null}|null>(null)
 const modelSex = ref<'MALE'|'FEMALE'>('FEMALE'); const editSex = ref<'MALE'|'FEMALE'>('FEMALE')
 const sexOptions = [{value:'MALE',label:'男'},{value:'FEMALE',label:'女'}]
 const newName = ref(''); const renaming = ref<Baseline|null>(null); const renameValue = ref('')
@@ -23,12 +25,21 @@ function jobFor(b:Baseline){return renderJobs.value.find(j=>j.baselineId===b.id&
 const error = ref(''); const loading = ref(true); const saving = ref(false); const generating = ref(false); const generateOpen = ref(false)
 const preview = ref<ProfileSnapshot | null>(null); const selectedModel = ref<string>(); const photo = ref<File | null>(null); const selectedPhoto = ref<string | undefined>(); const photoPreview = ref(''); const key = ref(createUuid())
 const choices = computed(() => capabilities.value.filter(c => c.verified && c.purpose === 'BASELINE'))
+function fallbackMessage(b:Baseline){const job=jobFor(b);return job?tierFallbackMessage(job):''}
 const capability = computed(() => choices.value.find(c => c.provider + ':' + c.model === selectedModel.value))
+const renderTiers = ref<RenderTiers | null>(null); const selectedTier = ref<Tier>('STANDARD'); const savingTier = ref(false)
+const tierBlocked = computed(() => { const option=renderTiers.value?.tiers.find(t=>t.tier===selectedTier.value); return !!renderTiers.value?.enabled && (!option || (!option.available && !(selectedTier.value==='PREMIUM' && renderTiers.value.degradeEnabled))) })
+async function selectTier(tier:Tier){
+  const previous=selectedTier.value; selectedTier.value=tier; savingTier.value=true
+  try{const result=await putModelTiers({render:tier});renderTiers.value=result.render;selectedTier.value=result.render.selected}
+  catch(e){selectedTier.value=previous;message.error(e instanceof Error?e.message:String(e))}
+  finally{savingTier.value=false}
+}
 let timer: ReturnType<typeof setInterval> | undefined
 async function load() { try { const [p,b,c,ps,j] = await Promise.all([platformRequest<Profile>('/api/me/wearer-profile'),platformRequest<Baseline[]>('/api/me/person-baselines'),platformRequest<Capability[]>('/api/render-capabilities'),platformRequest<{id:string;url:string}[]>('/api/me/reference-photos'),platformRequest<RenderJob[]>('/api/me/image-render-jobs')]);profile.value=p;savedProfile.value=JSON.stringify(p);baselines.value=b;capabilities.value=c;photos.value=ps;renderJobs.value=j;if(!choices.value.some(c=>c.provider+':'+c.model===selectedModel.value))selectedModel.value=choices.value[0]?choices.value[0].provider+':'+choices.value[0].model:undefined;error.value='' } catch(e){error.value=String(e)} finally{loading.value=false} }
 async function refreshResults(){if(document.hidden)return;try{const [b,j]=await Promise.all([platformRequest<Baseline[]>('/api/me/person-baselines'),platformRequest<RenderJob[]>('/api/me/image-render-jobs')]);baselines.value=b;renderJobs.value=j}catch{}}
 async function save(){saving.value=true;try{const input={...profile.value,measurements:Object.fromEntries(Object.entries(profile.value.measurements).filter(([,v])=>v!=null))};profile.value=await platformRequest('/api/me/wearer-profile','PUT',input);savedProfile.value=JSON.stringify(profile.value);message.success('个人资料已保存，人物不会自动重新生成。')}catch(e){error.value=String(e)}finally{saving.value=false}}
-async function prepare(){if(pending.value){generateOpen.value=true;return}submissionNotice.value=null;attempt.value=null;if(dirty.value){message.info('请先保存当前个人资料，再核对生成输入。');return}try{preview.value=await platformRequest(`/api/me/wearer-profile/render-preview?sex=${modelSex.value}`);generateOpen.value=true;key.value=createUuid()}catch(e){message.error(String(e))}}
+async function prepare(){if(pending.value){generateOpen.value=true;return}submissionNotice.value=null;attempt.value=null;if(dirty.value){message.info('请先保存当前个人资料，再核对生成输入。');return}try{const [snapshot,tiers]=await Promise.all([platformRequest<ProfileSnapshot>(`/api/me/wearer-profile/render-preview?sex=${modelSex.value}`),getModelTiers()]);preview.value=snapshot;renderTiers.value=tiers.render;selectedTier.value=tiers.render.selected;generateOpen.value=true;key.value=createUuid()}catch(e){message.error(e instanceof Error?e.message:String(e))}}
 function clearPhoto(){if(photoPreview.value)URL.revokeObjectURL(photoPreview.value);photo.value=null;photoPreview.value=''}
 function choosePhoto(file:File){if(!['image/png','image/jpeg'].includes(file.type)||file.size>20*1024*1024){message.error('请选择20MB以内的JPG或PNG照片。');return false}if(photoPreview.value)URL.revokeObjectURL(photoPreview.value);photo.value=file;selectedPhoto.value=undefined;photoPreview.value=URL.createObjectURL(file);return false}
 // The reference photo is handed off to the processing centre; an uploaded file gets its own short-lived preview URL.
@@ -58,10 +69,10 @@ async function reconcile(){
 }
 async function checkSubmission(){if(generating.value)return;generating.value=true;try{await reconcile()}finally{generating.value=false}}
 async function generate(){
-  if(generating.value||!preview.value||!capability.value)return
+  if(generating.value||savingTier.value||!preview.value||(!pending.value&&tierBlocked.value)||(!renderTiers.value?.enabled&&!capability.value))return
   if(pending.value&&lookupUncertain.value){await checkSubmission();return}
   generating.value=true;error.value='';submissionNotice.value={type:'info',text:photo.value?'正在上传照片并提交人物任务，请勿重复点击。提交成功后会自动关闭此窗口。':'正在提交人物任务，请勿重复点击。提交成功后会自动关闭此窗口。'}
-  attempt.value ||= {request:{profileRevision:preview.value.profileRevision,provider:capability.value.provider,model:capability.value.model,photoId:selectedPhoto.value,name:newName.value.trim()||undefined,sex:modelSex.value},file:photo.value}
+  attempt.value ||= {request:{profileRevision:preview.value.profileRevision,...renderChoice(!!renderTiers.value?.enabled,selectedTier.value,capability.value),photoId:selectedPhoto.value,name:newName.value.trim()||undefined,sex:modelSex.value},file:photo.value}
   try {
     let job:RenderJob
     if(attempt.value.file){const data=new FormData();data.append('file',attempt.value.file);data.append('request',new Blob([JSON.stringify(attempt.value.request)],{type:'application/json'}));job=await platformRequest('/api/me/person-baselines/upload-and-generate','POST',data,key.value,{timeoutMs:60000})}
@@ -69,7 +80,7 @@ async function generate(){
     await accepted(job)
   }catch(e){
     if(e instanceof PlatformRequestError&&e.uncertain){pending.value=true;lookupUncertain.value=true;await reconcile()}
-    else{pending.value=false;attempt.value=null;const text=e instanceof Error?e.message:String(e);error.value=text;submissionNotice.value={type:'error',text};message.error(text)}
+    else{const quota=e instanceof PlatformRequestError&&e.status===429&&e.code==='IMAGE_QUOTA_EXCEEDED'&&attempt.value?.request.tier==='PREMIUM';pending.value=false;attempt.value=null;const text=quota?'今天剩余次数不够高质量，可以换成标准':e instanceof Error?e.message:String(e);error.value=text;submissionNotice.value={type:'error',text};message.error(text)}
   }finally{generating.value=false}
 }
 async function confirm(b:Baseline,makeDefault:boolean){try{await platformRequest(`/api/me/person-baselines/${b.id}/confirm`,'POST',{revision:b.revision,makeDefault});await refreshResults();if(makeDefault){const wasDirty=dirty.value;profile.value.defaultBaselineId=b.id;if(!wasDirty)savedProfile.value=JSON.stringify(profile.value)}message.success(makeDefault?'已设为默认形象。':'形象已确认，可在 上身图 中使用。')}catch(e){message.error(e instanceof Error?e.message:String(e))}}
@@ -78,7 +89,7 @@ async function rename(){if(!renaming.value)return;try{await platformRequest(`/ap
 function isStale(b:Baseline){const p=profile.value;const h=p.heightCm??(b.profile.sex==='MALE'?170:160);const w=p.weightKg??Math.round(22*(h/100)**2*10)/10;return h!==b.profile.heightCm||w!==b.profile.weightKg||(p.bodyShape?.trim()||'标准身材')!==b.profile.bodyShape}
 function remove(b:Baseline){modal.confirm({title:`删除形象「${modelLabel(b)}」？`,content:'已生成的 上身图 和参考照片会保留；正在用这位形象生成的任务会停止。',okText:'删除',cancelText:'取消',async onOk(){await platformRequest(`/api/me/person-baselines/${b.id}`,'DELETE',{revision:b.revision});await load()}})}
 function deletePhoto(id:string){modal.confirm({title:'仅删除这张原始参考照片？',content:'这张上传照片会永久清理，已经生成的基准人物和 上身图 保留。正在直接使用此照片生成人物的任务会停止发布。',okText:'删除原照',cancelText:'取消',async onOk(){await platformRequest(`/api/me/reference-photos/${id}`,'DELETE');await load()}})}
-onMounted(()=>{void load();timer=setInterval(refreshResults,5000)})
+onMounted(()=>{void load();void getModelTiers().then(tiers=>{renderTiers.value=tiers.render;selectedTier.value=tiers.render.selected}).catch(()=>{});timer=setInterval(refreshResults,5000)})
 onUnmounted(()=>{clearInterval(timer);if(photoPreview.value)URL.revokeObjectURL(photoPreview.value)})
 </script>
 <template>
@@ -154,10 +165,10 @@ onUnmounted(()=>{clearInterval(timer);if(photoPreview.value)URL.revokeObjectURL(
         <RouterLink class="settings-group-link" to="/try">去 上身效果图 ↗</RouterLink>
       </header>
       <a-alert v-if="pending" type="warning" message="上一次提交结果尚未核对，请继续核对原任务，避免重复生成。" style="margin-bottom:12px" />
-      <a-alert v-if="!choices.length" type="info" message="暂时没有可用的生成模型，资料可以先保存。" style="margin-bottom:12px" />
+      <a-alert v-if="!choices.length && !renderTiers?.enabled" type="info" message="暂时没有可用的生成模型，资料可以先保存。" style="margin-bottom:12px" />
       <a-form-item label="新形象的性别"><a-radio-group v-model:value="modelSex" :options="sexOptions" :disabled="pending || generating" /></a-form-item>
       <a-space wrap>
-        <a-button type="primary" :disabled="!choices.length && !pending" @click="prepare">{{ pending ? '核对上次提交' : photo ? '用照片生成新形象' : '生成新形象' }}</a-button>
+        <a-button type="primary" :disabled="!choices.length && !renderTiers?.enabled && !pending" @click="prepare">{{ pending ? '核对上次提交' : photo ? '用照片生成新形象' : '生成新形象' }}</a-button>
         <a-button @click="refreshResults">刷新</a-button>
       </a-space>
       <a-empty v-if="!baselines.length" description="还没有形象，生成后在这里确认" />
@@ -171,6 +182,7 @@ onUnmounted(()=>{clearInterval(timer);if(photoPreview.value)URL.revokeObjectURL(
               <span>{{ b.profile.sex === 'MALE' ? '男性形象' : '女性形象' }}</span><span class="muted">资料版本 {{ b.profile.profileRevision }}</span>
             </div>
             <a-alert v-if="jobFor(b)?.error" type="error" :message="jobFor(b)?.error || '生成未完成'" show-icon />
+            <a-alert v-if="fallbackMessage(b)" type="info" :message="fallbackMessage(b)" show-icon />
             <a-alert v-if="isStale(b)" type="warning" message="基于旧资料生成" />
             <div class="baseline-actions">
               <a-button v-if="b.status === 'CANDIDATE'" size="small" type="primary" @click="confirm(b, false)">确认可用</a-button>
@@ -184,9 +196,9 @@ onUnmounted(()=>{clearInterval(timer);if(photoPreview.value)URL.revokeObjectURL(
     </section>
   </div>
   <a-modal v-model:open="generateOpen" title="生成新形象" :footer="null" :closable="!generating" :mask-closable="!generating" :keyboard="!generating"><template v-if="preview"><a-input v-model:value="newName" :maxlength="20" :disabled="generating || pending" placeholder="给形象起个名字（可选），例如：长发的我" aria-label="形象名称" style="margin-bottom:16px" /><a-alert v-if="submissionNotice" :type="submissionNotice.type" :message="submissionNotice.text" show-icon role="status" aria-live="polite" style="margin-bottom:16px" /><a-descriptions :column="1"><a-descriptions-item label="性别">{{ preview.sex==='MALE'?'男':'女' }}</a-descriptions-item><a-descriptions-item label="身高">{{ preview.heightCm }} cm · {{ preview.sources.heightCm==='USER_REPORTED'?'已填写':'生成默认值' }}</a-descriptions-item><a-descriptions-item label="体重">{{ preview.weightKg }} kg · {{ preview.sources.weightKg==='USER_REPORTED'?'已填写':'示意计算值' }}</a-descriptions-item><a-descriptions-item label="身材">{{ preview.bodyShape }}</a-descriptions-item></a-descriptions>
-    <p>全身自然站姿，素色短袖、及膝短裤与平底鞋。每次一张，使用 1 个图像额度。</p><a-select v-model:value="selectedModel" :disabled="generating || pending" aria-label="人物生成模型" style="width:100%" :options="choices.map(c=>({value:c.provider+':'+c.model,label:c.provider+' / '+c.model}))" placeholder="选择已验证模型" />
+    <template v-if="renderTiers?.enabled"><p>全身自然站姿，素色短袖、及膝短裤与平底鞋。每次一张。</p><RenderTierPicker :config="renderTiers" :model-value="selectedTier" :disabled="generating || pending || savingTier" @update:model-value="selectTier" /></template><template v-else><p>全身自然站姿，素色短袖、及膝短裤与平底鞋。每次一张，使用 1 个图像额度。</p><a-select v-model:value="selectedModel" :disabled="generating || pending" aria-label="人物生成模型" style="width:100%" :options="choices.map(c=>({value:c.provider+':'+c.model,label:c.provider+' / '+c.model}))" placeholder="选择已验证模型" /></template>
     <p v-if="photo || selectedPhoto">本次使用{{ photo ? photo.name : '已上传参考照片' }}。照片仅用于建立基准人物，不直接用于 上身图。</p><p v-else>本次不使用照片，根据资料与模板生成人物。</p><img v-if="photoPreview" :src="photoPreview" alt="本次照片预览" style="max-height:200px;max-width:100%" />
-    <a-button type="primary" block style="margin-top:20px" :loading="generating" :disabled="!capability || generating || (pending && lookupUncertain)" @click="generate">{{ generating ? '正在提交 / 核对，请稍候' : pending ? '重新提交同一任务' : photo ? '上传照片并生成' : '生成（1 个图像额度）' }}</a-button><a-button v-if="pending" block style="margin-top:12px" :disabled="generating" @click="checkSubmission">核对提交结果</a-button><RouterLink v-if="pending" to="/tasks" style="display:block;margin-top:12px" @click="generateOpen=false">查看任务记录</RouterLink></template></a-modal>
+    <a-button type="primary" block style="margin-top:20px" :loading="generating" :disabled="(!renderTiers?.enabled && !capability) || (!pending && tierBlocked) || generating || savingTier || (pending && lookupUncertain)" @click="generate">{{ generating ? '正在提交 / 核对，请稍候' : pending ? '重新提交同一任务' : photo ? '上传照片并生成' : renderTiers?.enabled ? '生成' : '生成（1 个图像额度）' }}</a-button><a-button v-if="pending" block style="margin-top:12px" :disabled="generating" @click="checkSubmission">核对提交结果</a-button><RouterLink v-if="pending" to="/tasks" style="display:block;margin-top:12px" @click="generateOpen=false">查看任务记录</RouterLink></template></a-modal>
   <a-modal :open="!!renaming" title="编辑形象" ok-text="保存" cancel-text="取消" width="360px" @ok="rename" @cancel="renaming=null"><a-form layout="vertical"><a-form-item label="形象名称"><a-input v-model:value="renameValue" :maxlength="20" /></a-form-item><a-form-item label="形象性别"><a-radio-group v-model:value="editSex" :options="sexOptions" /></a-form-item><p class="muted">修改性别会更新形象资料，不会重画已有图片。</p></a-form></a-modal>
 </template>
 <style scoped>

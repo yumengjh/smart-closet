@@ -1,4 +1,5 @@
 import type { PoseChoice } from '../services/platform'
+import type { Tier } from '../services/modelTiers'
 
 export type Light = 'DEFAULT' | 'WARM' | 'COOL'
 export type CreationTemplate = {
@@ -13,14 +14,16 @@ export type CreationInput = {
   pose?: PoseChoice; options: { light: Light }; note?: string; parentJobId?: string
   /** 穿前检查的回答（INNER、PART:*、ACCESSORY:*），只在需要人物的效果里带（server 设计 2026-11-21 3.1）。 */
   wearRoles?: Record<string, string>
+  tier?: Tier
 }
-export type CreationPreparation = { preparationId: string; expiresAt: number; quotaUnits: number }
+export type CreationPreparation = { preparationId: string; expiresAt: number; quotaUnits: number; tier?: Tier | null }
 export type CreationStatus = 'QUEUED' | 'WAITING_RESOURCE' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'UNKNOWN' | 'CANCELLED' | 'DELETED'
 export type CreationJob = {
   id: string; status: CreationStatus; templateId: string; templateVersion: number; templateName: string
   createdAtMs: number; updatedAtMs: number; mediaUrl: string | null; errorCode?: string; errorMessage?: string
   quotaUnits: number; parentJobId: string | null; canCancel: boolean; canExport: boolean; canRecreate: boolean
   waitReason?: string | null
+  tierRequested?: Tier | null; tierUsed?: Tier | null
 }
 export type CreationPage = { items: CreationJob[]; total: number; page: number; size: number }
 export type PendingCreation = { key: string; preparationId: string }

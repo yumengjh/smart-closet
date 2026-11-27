@@ -8,6 +8,7 @@ import { createUuid } from '../domain/id'
 import { BODY_DIMENSIONS, describeAdjustments } from './body-adjust'
 import AiBadge from '../components/AiBadge.vue'
 import RenderSource from './RenderSource.vue'
+import { tierFallbackMessage } from '../services/modelTiers'
 
 const props = withDefaults(defineProps<{ job: RenderJob | null; canAdjust: boolean; thumbs?: Map<string, string> }>(), { thumbs: () => new Map() })
 const emit = defineEmits<{ close: []; changed: []; submitted: [RenderJob]; remove: [RenderJob] }>()
@@ -59,6 +60,7 @@ async function saveFeedback() {
           <a-tag v-if="job.summary?.retryOf" color="processing">重新生成</a-tag>
         </div>
         <RenderSource :job="job" :thumbs="thumbs" />
+        <a-alert v-if="tierFallbackMessage(job)" type="info" :message="tierFallbackMessage(job)" show-icon />
 
         <template v-if="!adjusting">
           <div class="viewer-actions">

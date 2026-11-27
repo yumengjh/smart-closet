@@ -24,6 +24,7 @@ import { albumTiles, mergeWorks, workBucket, type AlbumFilter } from '../try/alb
 import { TRY_PATH } from '../try/routes'
 import { goBack } from '../shell/goBack'
 import { mediaUrl } from '../services/urls'
+import { tierFallbackMessage } from '../services/modelTiers'
 
 const route = useRoute(), router = useRouter(), { message, modal } = App.useApp()
 const records = useOotdRecords()
@@ -153,6 +154,7 @@ onUnmounted(() => stop?.())
           <div class="al-body">
             <p class="al-title" :title="recordTitle(tile.job)">{{ recordTitle(tile.job) }}</p>
             <p class="al-line">上身图 · {{ recordLine(tile.job) }}</p>
+            <p v-if="tierFallbackMessage(tile.job)" class="al-line">{{ tierFallbackMessage(tile.job) }}</p>
             <a-popover trigger="click" placement="top" title="生成时用的资料" :overlay-style="{ maxWidth: '320px' }">
               <template #content><RenderSource :job="tile.job" :thumbs="records.thumbs" /></template>
               <a-button type="link" size="small" class="al-link">用了什么</a-button>
@@ -164,7 +166,7 @@ onUnmounted(() => stop?.())
             <img :src="mediaUrl(tile.job.mediaUrl!)" :alt="`${tile.job.templateName}（AI 生成）`" loading="lazy" /><AiBadge />
           </button>
           <div class="al-body al-body-row">
-            <div><p class="al-title">{{ tile.job.templateName }}</p><p class="al-line">作品 · {{ when(tile.job.createdAtMs) }}</p></div>
+            <div><p class="al-title">{{ tile.job.templateName }}</p><p class="al-line">作品 · {{ when(tile.job.createdAtMs) }}</p><p v-if="tierFallbackMessage(tile.job)" class="al-line">{{ tierFallbackMessage(tile.job) }}</p></div>
             <a-dropdown :trigger="['click']" placement="bottomRight"><a-button type="text" size="small" shape="circle" aria-label="更多"><EllipsisOutlined /></a-button>
               <template #overlay><a-menu :items="[{ key: 'again', label: '再试一次' }, { key: 'delete', label: '删除', danger: true }]" @click="({ key }: { key: string | number }) => key === 'again' ? again(tile.job) : removeWork(tile.job)" /></template>
             </a-dropdown>

@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { goBack } from '../shell/goBack'
 import { App } from 'ant-design-vue'
 import { CameraOutlined, SwapOutlined, LeftOutlined, PictureOutlined, DownloadOutlined, DeleteOutlined, PlusOutlined, ExpandOutlined, CompressOutlined, InfoCircleOutlined, LoadingOutlined, BorderOutlined, ColumnWidthOutlined, EyeOutlined, EyeInvisibleOutlined, RightOutlined, PoweroffOutlined, CheckCircleFilled, ExclamationCircleFilled, BulbOutlined, SoundOutlined, SoundFilled, WifiOutlined, CloseOutlined, EllipsisOutlined, ClearOutlined, LayoutOutlined, UserOutlined } from '@ant-design/icons-vue'
-import { tryOnApi, emergencyStop, duration, finished, mediaUrl, type Candidate, type Capabilities, type Look, type LookCategory, type Media, type Prepared, type Selection, type Session } from '../tryon/api'
+import { tryOnApi, emergencyStop, duration, finished, mediaUrl, realtimeTierNotice, type Candidate, type Capabilities, type Look, type LookCategory, type Media, type Prepared, type Selection, type Session } from '../tryon/api'
 import { TryOnCamera } from '../tryon/camera'
 import { frameCanvas, photo, startRecording, type Recorder } from '../tryon/recording'
 import { setTryOnAccess } from '../tryon/access'
@@ -35,10 +35,22 @@ import PoseFigure from '../ootd/PoseFigure.vue'
 import { platformRequest, type Pose, type PoseCatalog } from '../services/platform'
 import { track } from '../services/analytics'
 import type { Outfit } from '../domain/outfit'
+import { putModelTiers, type Tier } from '../services/modelTiers'
 
 const route = useRoute(), router = useRouter(), { message, modal } = App.useApp()
 const host = ref<HTMLElement>(), stage = ref<HTMLElement>(), stageArea = ref<HTMLElement>(), body = ref<HTMLElement>(), topbar = ref<HTMLElement>(), dock = ref<HTMLElement>(), historySlot = ref<HTMLElement>(), freezeCanvas = ref<HTMLCanvasElement>(), cap = ref<Capabilities | null>(null)
 const loading = ref(true), cameraReady = ref(false), busy = ref(false), error = ref(''), frameReady = ref(false)
+const selectedTier = ref<Tier>('STANDARD'), savingTier = ref(false)
+const tierChoices = computed(() => cap.value?.tiers && cap.value.tiers.length > 1 ? cap.value.tiers : [])
+const selectedTierInfo = computed(() => tierChoices.value.find(item => item.tier === selectedTier.value))
+const tierNotice = computed(() => realtimeTierNotice(tierChoices.value, selectedTier.value))
+async function chooseTier(tier: Tier) {
+  if (savingTier.value || tier === selectedTier.value) return
+  savingTier.value = true
+  try { const result = await putModelTiers({ realtime: tier }); selectedTier.value = result.realtime.selected }
+  catch { message.error('保存选择失败，请重试。') }
+  finally { savingTier.value = false }
+}
 const garments = ref<Candidate[]>([]), outfits = ref<Outfit[]>([]), selected = ref<Selection[]>([])
 // 精选整套（server 设计 2026-11-22 6.2）：只能单独试；镜头里左右滑动换同一分类的上一套 / 下一套。
 const looks = ref<Look[]>([]), lookCategories = ref<LookCategory[]>([])
@@ -58,7 +70,7 @@ const reclaiming = computed(() => ['STOPPING', 'UNKNOWN'].includes(lease.value?.
 const visibleMedia = computed(() => media.value.filter(m => historyFilter.value === '全部' || m.type === (historyFilter.value === '照片' ? 'PHOTO' : 'VIDEO')))
 const remaining = computed(() => {
   const s = lease.value
-  if (!s || finished(s)) return cap.value?.quota.remaining || 0
+  if (!s || finished(s)) return selectedTierInfo.value?.quota.remaining ?? cap.value?.quota.remaining ?? 0
   if (s.connectedAtMs) return Math.max(0, s.reservedPoints - Math.floor((now.value - s.connectedAtMs) / 1000))
   return s.reservedPoints
 })
@@ -472,7 +484,7 @@ function fail(cause: unknown) {
 // 同一时刻的几次刷新（结束试穿与心跳同时发现会话结束）合并成一个请求。
 let refreshing: Promise<void> | undefined
 function refresh() {
-  refreshing ??= tryOnApi.capabilities().then(result => { cap.value = result; setTryOnAccess(result) }).finally(() => { refreshing = undefined })
+  refreshing ??= tryOnApi.capabilities().then(result => { if (!cap.value && result.selectedTier) selectedTier.value = result.selectedTier; cap.value = result; setTryOnAccess(result) }).finally(() => { refreshing = undefined })
   return refreshing
 }
 let stripDone = false, stripBusy = false
@@ -494,6 +506,7 @@ async function loadLooks() {
 }
 async function openCamera() {
   if (!cap.value?.enabled || !host.value || busy.value) return
+  if (savingTier.value || tierNotice.value) return
   busy.value = true; busyPhase.value = '正在打开摄像头，请在浏览器提示中允许访问。'; error.value = ''
   void checkNetwork()
   try {
@@ -511,6 +524,7 @@ async function build(allowLatest = false) {
 /** 上传发生在用户点击开始之后：选衣阶段图片不离开本站。 */
 async function uploaded(id: string, p: Prepared): Promise<Prepared> { return { ...p, referencePath: (await tryOnApi.upstreamReference(id, p)).referencePath } }
 async function connect(s: Session, p: Prepared) {
+  if (s.vendor === 'DECART' || s.tier === 'PREMIUM') throw new Error('高质量镜头试穿暂未开放，请选择标准后开始试穿。')
   if (!camera) throw new Error('请先打开摄像头。')
   busyPhase.value = '正在上传衣服参考图…'
   const ready = await uploaded(s.id, p)
@@ -519,12 +533,15 @@ async function connect(s: Session, p: Prepared) {
 }
 async function begin() {
   if (busy.value || preparing.value || live.value && !offered.value) return
+  if (savingTier.value) return
+  if (tierNotice.value) { error.value = tierNotice.value; return }
+  if (!tierChoices.value.length && cap.value?.selectedTier === 'PREMIUM') { error.value = '高质量镜头试穿暂未开放，请稍后再试。'; return }
   const attempt = ++action; busy.value = true; busyPhase.value = '正在准备所选衣物…'; error.value = ''; startupStage.value = undefined
   try {
     if (!cameraReady.value) throw new Error('请先打开摄像头。')
     let p: Prepared, s: Session
     if (offered.value && lease.value && prepared.value) { p = prepared.value; s = await tryOnApi.accept(lease.value.id) }
-    else { p = await build(); applyPrepared(p); busyPhase.value = '正在申请试穿名额…'; s = await tryOnApi.start(p, crypto.randomUUID()); track('try_live_start', { source: liveSource(selected.value, Boolean(selectedOutfit.value)) }) }
+    else { p = await build(); applyPrepared(p); busyPhase.value = '正在申请试穿名额…'; s = await tryOnApi.start(p, crypto.randomUUID(), tierChoices.value.length ? selectedTier.value : undefined); track('try_live_start', { source: liveSource(selected.value, Boolean(selectedOutfit.value)) }) }
     if (attempt !== action || disposed) { emergencyStop(s.id); return }
     lease.value = s
     if (s.state === 'RESERVED') await connect(s, p)
@@ -770,7 +787,7 @@ onMounted(async () => {
     lease.value = history.sessions.find(s => !finished(s)) || null
     if (lease.value && !finished(lease.value)) await stop(true)
     if (route.query.history) await openHistory()
-    else if (route.query.open && cap.value?.enabled) {
+    else if (route.query.open && cap.value?.enabled && !tierChoices.value.length) {
       // 从“镜头试穿”点“打开镜头”进来：直接打开本地预览（免费、不计时），不用再点一次。
       const rest = { ...route.query }; delete rest.open
       void router.replace({ query: rest })
@@ -824,8 +841,14 @@ onBeforeUnmount(() => { disposed = true; action++; stopPose(); if (importPreview
                   <li><b>3</b>开始试穿 · 计时</li>
                 </ol>
                 <p v-else>由管理员开通，你仍可查看已保存的拍摄结果。</p>
+                <div v-if="cap?.enabled && tierChoices.length" class="tryon-tier-picker">
+                  <a-radio-group :value="selectedTier" :disabled="savingTier" aria-label="选择试穿画质" @update:value="chooseTier">
+                    <a-radio-button v-for="item in tierChoices" :key="item.tier" :value="item.tier">{{ item.tier === 'STANDARD' ? '标准' : '高质量' }} · 今日剩余 {{ duration(item.quota.remaining) }}</a-radio-button>
+                  </a-radio-group>
+                  <p v-if="tierNotice" role="status">{{ tierNotice }}</p>
+                </div>
                 <div class="tryon-cover-actions">
-                  <a-button v-if="cap?.enabled" type="primary" size="large" :loading="busy" @click="openCamera"><template #icon><CameraOutlined /></template>{{ busy ? '正在打开相机' : '打开相机' }}</a-button>
+                  <a-button v-if="cap?.enabled" type="primary" size="large" :loading="busy" :disabled="savingTier || !!tierNotice" @click="openCamera"><template #icon><CameraOutlined /></template>{{ busy ? '正在打开相机' : '打开相机' }}</a-button>
                   <a-button size="large" @click="openHistory"><template #icon><PictureOutlined /></template>拍摄历史</a-button>
                 </div>
               </div>
@@ -1067,6 +1090,10 @@ onBeforeUnmount(() => { disposed = true; action++; stopPose(); if (importPreview
 .tryon-cover-frame i:nth-child(3) { left: 0; bottom: 0; border-right: 0; border-top: 0; border-radius: 0 0 0 10px; }
 .tryon-cover-frame i:nth-child(4) { right: 0; bottom: 0; border-left: 0; border-top: 0; border-radius: 0 0 10px; }
 .tryon-cover-body { position: relative; display: flex; flex-direction: column; align-items: center; gap: 14px; max-width: 420px; }
+.tryon-tier-picker { display: grid; justify-items: center; gap: 8px; max-width: 100%; text-align: center; }
+.tryon-tier-picker :deep(.ant-radio-group) { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+.tryon-tier-picker :deep(.ant-radio-button-wrapper) { border-radius: 4px; border-inline-start-width: 1px; }
+.tryon-tier-picker :deep(.ant-radio-button-wrapper::before) { display: none; }
 .tryon-camera-symbol { display: grid; place-items: center; width: 64px; height: 64px; font-size: 26px; color: var(--accent); background: var(--accent-soft); border-radius: 50%; }
 .tryon-stage-cover h2 { margin: 6px 0 0; font-size: 22px; font-weight: 600; letter-spacing: .02em; }
 .tryon-stage-cover p { max-width: 32ch; margin: 0; line-height: 1.8; color: var(--muted-strong); }

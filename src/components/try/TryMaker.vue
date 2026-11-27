@@ -44,6 +44,8 @@ import ModelPicker from '../../ootd/ModelPicker.vue'
 import PosePicker from '../../ootd/PosePicker.vue'
 import OotdMore from '../../ootd/OotdMore.vue'
 import OotdConfirmModal from '../../ootd/OotdConfirmModal.vue'
+import RenderTierPicker from './RenderTierPicker.vue'
+import { withRenderTier } from '../../services/modelTiers'
 import { modelLabel } from '../../ootd/labels'
 
 const route = useRoute(), router = useRouter(), { message } = App.useApp(), billing = useBillingStore(), closet = useClosetStore(), processing = useProcessingStore()
@@ -62,13 +64,14 @@ const loading = ref(true), busy = ref(false), error = ref(''), sourceError = ref
 const step = ref<StepKey>('effect'), pickerOpen = ref(false), sheet = ref<'' | 'person' | 'pose'>('')
 // 需要人物的创作效果：这次不穿的（skipped，不随提交带上）与穿前检查的回答（wearRoles，随提交带上）。
 const skipped = ref<string[]>([]), creationRoles = ref<Record<string, string>>({}), partList = ref<InstanceType<typeof PartList>>()
+const creationPreparation = ref<{ preparationId: string; quotaUnits: number } | null>(null), creationConfirmOpen = ref(false)
 
 const effects = computed(() => effectsFor(creationCatalog.value))
 const chooseEffect = computed(() => canChooseEffect(creationCatalog.value))
 const template = computed(() => effects.value.find(item => item.id === templateId.value))
 const outfitMode = computed(() => isOutfitEffect(template.value))
 const person = computed(() => studio.person)
-const locked = computed(() => busy.value || studio.busy || !!pending.value)
+const locked = computed(() => busy.value || studio.busy || studio.tierSaving || !!pending.value || creationConfirmOpen.value)
 const maxGarments = computed(() => Math.min(12, template.value?.maxGarments || 12))
 const steps = computed(() => stepsFor(template.value, chooseEffect.value))
 const stepIndex = computed(() => Math.max(0, steps.value.indexOf(step.value)))
@@ -80,7 +83,7 @@ const state = computed(() => outfitMode.value
 const block = computed(() => {
   if (!isLast.value) return stepBlock(step.value, state.value)
   // 不能生成时只写一句：最先是检查的拦截，其次“有 N 件要你选”，再其次页面自己的原因（如先设置谁来穿）。
-  return barReason(fitReview.value, generateBlock(state.value) || (outfitMode.value && !studio.capability ? '暂时没有可用的生成服务' : ''))
+  return barReason(fitReview.value, generateBlock(state.value) || (studio.renderTiers?.enabled && studio.tierBlocked ? '当前档位暂时不可用，请换一个' : outfitMode.value && !studio.renderTiers?.enabled && !studio.capability ? '暂时没有可用的生成服务' : ''))
 })
 const personStep = computed(() => step.value === 'person' && Boolean(template.value?.personRequired))
 const wornIds = computed(() => selected.value.map(item => item.id).filter(id => !skipped.value.includes(id)))
@@ -110,6 +113,7 @@ watch([templateId, selected, baselineId, light, pose, note, outfitId], () => {
 watch(templateId, () => { if (ready.value) light.value = 'DEFAULT' })
 watch(steps, list => { if (!list.includes(step.value)) step.value = list[list.length - 1] })
 watch(pending, value => store('pending', value ? JSON.stringify(value) : null), { deep: true })
+watch(() => studio.tier, () => { creationPreparation.value = null; creationConfirmOpen.value = false })
 watch(baselineId, (_value, old) => { if (old && sheet.value === 'person') sheet.value = '' })
 // 挑的衣服变了：只保留仍在的衣服的“这次不穿”与穿法。
 watch(selected, list => { const ids = list.map(item => item.id); skipped.value = skipped.value.filter(id => ids.includes(id)); creationRoles.value = pruneWear(creationRoles.value, ids) })
@@ -192,7 +196,7 @@ async function settle() {
     await router.push(ALBUM_PATH)
   } catch (cause) {
     if (cause instanceof PlatformRequestError && !cause.uncertain) pending.value = null
-    error.value = describe(cause)
+    error.value = studio.renderTiers?.enabled && studio.tier === 'PREMIUM' && cause instanceof PlatformRequestError && cause.code === 'IMAGE_QUOTA_EXCEEDED' ? '今天剩余次数不够高质量，可以换成标准' : describe(cause)
   } finally { busy.value = false }
 }
 async function generate() {
@@ -207,10 +211,18 @@ async function generate() {
     if (checked && !reviewPassed(checked)) { busy.value = false; partList.value?.focusFirst(); return }
     const garments = personal ? selected.value.filter(item => wornIds.value.includes(item.id)) : selected.value
     const source = personal && skipped.value.length ? undefined : sourceOutfit.value || undefined
-    const preparation = await creationApi.prepare(creationInput(template.value, garments, person.value, light.value, pose.value, note.value, source, parentJobId.value, personal ? creationRoles.value : {}))
+    const input = creationInput(template.value, garments, person.value, light.value, pose.value, note.value, source, parentJobId.value, personal ? creationRoles.value : {})
+    const preparation = await creationApi.prepare(withRenderTier(input, !!studio.renderTiers?.enabled, studio.tier))
+    if (studio.renderTiers?.enabled) { creationPreparation.value = preparation; creationConfirmOpen.value = true; return }
     pending.value = { key: createUuid(), preparationId: preparation.preparationId }
-  } catch (cause) { error.value = describe(cause); busy.value = false; return }
-  busy.value = false
+  } catch (cause) { error.value = studio.renderTiers?.enabled && studio.tier === 'PREMIUM' && cause instanceof PlatformRequestError && cause.code === 'IMAGE_QUOTA_EXCEEDED' ? '今天剩余次数不够高质量，可以换成标准' : describe(cause); return }
+  finally { busy.value = false }
+  await settle()
+}
+async function confirmCreation() {
+  if (!creationPreparation.value || busy.value) return
+  pending.value = { key: createUuid(), preparationId: creationPreparation.value.preparationId }
+  creationPreparation.value = null; creationConfirmOpen.value = false
   await settle()
 }
 /** 部位清单的改动：上身图写回 useOotdStudio，创作效果记在本页。 */
@@ -321,16 +333,17 @@ onUnmounted(() => wideQuery.removeEventListener('change', onWide))
     </main>
 
     <aside class="tm-bar">
+      <RenderTierPicker v-if="isLast && studio.renderTiers?.enabled" :config="studio.renderTiers" :model-value="studio.tier" :multiplier="outfitMode ? 1 : null" :disabled="locked" @update:model-value="studio.selectTier" />
       <p v-if="block" class="tm-block" role="status">{{ block }}</p>
       <div class="tm-bar-row">
         <a-button v-if="stepIndex > 0" size="large" :disabled="locked" @click="back">上一步</a-button>
         <a-button v-if="!isLast" type="primary" size="large" :disabled="!!block" @click="go(nextStep(steps, step))">下一步</a-button>
         <!-- 禁用的按钮收不到点击：外面这层接住，滚到第一个要处理的地方。 -->
-        <span v-else-if="outfitMode" class="tm-go" @click="nudge"><a-button type="primary" size="large" :loading="studio.busy" :disabled="!!block || !!pending" @click="studio.prepare()">{{ imageActionLabel(billing.image) }}</a-button></span>
-        <span v-else class="tm-go" @click="!pending && nudge()"><a-button type="primary" size="large" :loading="busy" :disabled="(!!block && !pending)" @click="generate">{{ pending ? '核对结果' : '生成 · 1 次' }}</a-button></span>
+        <span v-else-if="outfitMode" class="tm-go" @click="nudge"><a-button type="primary" size="large" :loading="studio.busy" :disabled="!!block || !!pending || studio.tierSaving" @click="studio.prepare()">{{ imageActionLabel(billing.image) }}</a-button></span>
+        <span v-else class="tm-go" @click="!pending && nudge()"><a-button type="primary" size="large" :loading="busy" :disabled="(!!block && !pending) || studio.tierSaving" @click="generate">{{ pending ? '核对结果' : studio.renderTiers?.enabled ? '生成' : '生成 · 1 次' }}</a-button></span>
       </div>
-      <p v-if="isLast && outfitMode" class="tm-cost">每张用 1 次图像额度 · 约 30 秒，可以先离开</p>
-      <p v-else-if="isLast" class="tm-cost">与上身图共用次数
+      <p v-if="isLast && outfitMode && !studio.renderTiers?.enabled" class="tm-cost">每张用 1 次图像额度 · 约 30 秒，可以先离开</p>
+      <p v-else-if="isLast && !outfitMode && !studio.renderTiers?.enabled" class="tm-cost">与上身图共用次数
         <a-popover placement="top" trigger="click">
           <template #content><div class="tm-rules">生成一次用 1 次，与上身图共用。<br />发出后失败、取消或结果待确认，也会用掉 1 次，不自动返还。<br />图片可能与实物有差异，完成后请核对衣服细节。<br /><a @click="router.push('/help?article=08-creation')">了解更多</a></div></template>
           <a-button type="text" size="small" shape="circle" aria-label="次数规则"><QuestionCircleOutlined /></a-button>
@@ -349,6 +362,9 @@ onUnmounted(() => wideQuery.removeEventListener('change', onWide))
     <template #footer><a-button type="primary" block @click="sheet = ''">好了 · {{ studio.poseName }}</a-button></template>
   </a-drawer>
   <OotdConfirmModal :studio="studio" />
+  <a-modal v-model:open="creationConfirmOpen" title="生成这张图？" ok-text="生成" cancel-text="再想想" :confirm-loading="busy" @ok="confirmCreation">
+    <p v-if="creationPreparation">消耗 {{ creationPreparation.quotaUnits }} 次</p>
+  </a-modal>
 </template>
 
 <style scoped>

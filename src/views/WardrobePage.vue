@@ -147,7 +147,7 @@ async function confirmBatch(mode: BatchMode) {
   if (!runnable.length) { batchResult.value = { type: 'warning', message: '没有可提交的衣物', description: '所选衣物都在处理中，请等当前任务结束后再试。' }; return }
   const unit = mode === 'reprocess' ? 2 : 1
   let quotaLine = ''
-  try { const quota = await closetApi.quota(); const left = Math.max(0, quota.limit - quota.used); quotaLine = `今日剩余 ${left} 次。${left < runnable.length * unit ? '额度不够时，后面的衣物不会提交。' : ''}` } catch { quotaLine = '' }
+  try { const quota = await closetApi.quota(); const left = Math.max(0, quota.limit - quota.used); quotaLine = `今天还剩 ${left} 次。${left < runnable.length * unit ? '额度不够时，后面的衣物不会提交。' : ''}` } catch { quotaLine = '' }
   const skipped = targets.length - runnable.length
   modal.confirm({
     title: `${batchLabels[mode]}（${runnable.length} 件）？`,

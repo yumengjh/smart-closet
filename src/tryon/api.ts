@@ -3,15 +3,25 @@ import { apiUrl } from '../services/urls'
 import { accountHeaders } from '../domain/accountSession'
 import type { Outfit } from '../domain/outfit'
 import type { ConnectionDiagnostic } from './diagnostic'
+import type { Tier } from '../services/modelTiers'
 
 export type Limits = { dailySeconds: number; sessionSeconds: number; startupSeconds: number; firstFrameSeconds: number; queueSeconds: number; offerSeconds: number; recordingSeconds: number; recordingBytes: number; storageBytes: number }
-export type Capabilities = { enabled: boolean; ready: boolean; reason: string; quota: { limit: number; used: number; reserved: number; remaining: number }; points?: { paidSeconds: number; milliPointsPerSecond: number }; limits: Limits; hasHistory: boolean }
+export type RealtimeTier = { tier: Tier; available: boolean; reason?: string | null; quota: { limit: number; used: number; reserved: number; remaining: number } }
+export type Capabilities = { enabled: boolean; ready: boolean; reason: string; quota: { limit: number; used: number; reserved: number; remaining: number }; points?: { paidSeconds: number; milliPointsPerSecond: number }; limits: Limits; hasHistory: boolean; tiers?: RealtimeTier[]; selectedTier?: Tier }
+export function realtimeTierNotice(tiers: RealtimeTier[], selected: Tier): string {
+  if (tiers.length <= 1) return ''
+  const item = tiers.find(entry => entry.tier === selected)
+  if (!item) return '当前档位暂不可用，请选择其他档位。'
+  if (!item.available) return item.reason === 'QUOTA' ? '今天这个档位的时长已用完，请选择其他档位。' : item.reason === 'DISABLED' ? '这个档位暂未开放，请选择其他档位。' : '这个档位暂时不可用，请选择其他档位。'
+  return item.tier === 'PREMIUM' ? '高质量镜头试穿暂未开放，请选择标准后开始试穿。' : ''
+}
+export function sessionStartBody(p: Prepared, tier?: Tier) { return { preparationId: p.id, revision: p.revision, ...(tier ? { tier } : {}) } }
 /** role：用户从固定列表里选的穿戴位置，不填则按衣物分类自动判断。LOOK 是精选整套，只能单独试，不传 role。 */
 export type Selection = { type: 'GARMENT' | 'TEMPORARY' | 'LOOK'; id: string; revision?: number; assetId?: string; role?: string }
 export type Item = Selection & { assetId: string; hash: string; name: string; wearingRole?: string | null }
 export type Prepared = { id: string; revision: number; items: Item[]; previewUrl: string; referencePath?: string; expiresAtMs: number }
 export type Candidate = { id: string; revision: number; name: string; ready: boolean; reason: string; imageUrl: string; assetId?: string; wearingRole?: string | null; wanted?: boolean }
-export type Session = { id: string; state: string; preparationId: string; reservedPoints: number; consumedPoints: number; userSeconds: number; firstFrame: boolean; createdAtMs: number; connectedAtMs: number | null; deadlineAtMs: number; remainingSeconds: number; reason: string | null; environment: 'china' | 'global'; rtcConnectedAtMs?: number | null; diagnostic?: ConnectionDiagnostic | null }
+export type Session = { id: string; state: string; preparationId: string; reservedPoints: number; consumedPoints: number; userSeconds: number; firstFrame: boolean; createdAtMs: number; connectedAtMs: number | null; deadlineAtMs: number; remainingSeconds: number; reason: string | null; environment: 'china' | 'global'; rtcConnectedAtMs?: number | null; diagnostic?: ConnectionDiagnostic | null; tier?: Tier | null; vendor?: 'XMAX' | 'DECART' | null }
 export type Media = { id: string; type: 'PHOTO' | 'VIDEO'; state: string; mimeType: string; sessionId: string; hasAudio: boolean; durationMs: number; bytes: number; createdAtMs: number; url: string; downloadUrl: string }
 /** 精选整套（server 设计 2026-11-22 3.3）：管理员维护的整套平铺图；preview 只出现在管理员账号上，表示未上架。 */
 export type LookCoverage = 'FULL' | 'UPPER' | 'LOWER'
@@ -35,7 +45,7 @@ export const tryOnApi = {
   outfits: () => request<Outfit[]>('/api/outfits'),
   looks: (params: LookQuery = {}) => request<LookPage>(`/api/tryon/looks${lookQuery(params)}`),
   prepare: (items: Selection[], outfitId?: string, allowLatest = false) => post<Prepared>('/api/tryon/preparations', { items, outfitId, allowLatest }),
-  start: (p: Prepared, key: string) => post<Session>('/api/tryon/sessions', { preparationId: p.id, revision: p.revision }, { headers: { 'Idempotency-Key': key } }),
+  start: (p: Prepared, key: string, tier?: Tier) => post<Session>('/api/tryon/sessions', sessionStartBody(p, tier), { headers: { 'Idempotency-Key': key } }),
   session: (id: string) => request<Session>(`/api/tryon/sessions/${id}`),
   accept: (id: string) => post<Session>(`/api/tryon/sessions/${id}/accept`),
   pulse: (id: string, firstFrame = false, diagnostic?: ConnectionDiagnostic) => post<Session>(`/api/tryon/sessions/${id}/heartbeat`, { firstFrame, diagnostic }),
