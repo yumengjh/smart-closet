@@ -3,7 +3,10 @@
 // 搭配原来只能从“我的”的计数进，穿搭收藏藏在衣柜工具栏里）。底部胶囊里三者都算“衣柜”。
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+// Tabs 没有在 main.ts 全局注册（组件按需注册），这里本地引入，否则 <a-tabs> 不会渲染。
+import { Tabs as ATabs } from 'ant-design-vue'
 
+const ATabPane = ATabs.TabPane
 const route = useRoute()
 const router = useRouter()
 const tabs = [
