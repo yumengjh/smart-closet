@@ -16,6 +16,7 @@ import TaskInbox from './TaskInbox.vue'
 import NavGlyph from '../shell/NavGlyph.vue'
 import AddLauncher from '../shell/AddLauncher.vue'
 import { revealing } from '../shell/revealNavigate'
+import { dismissBootSplash } from '../shell/bootSplash'
 import TaskToast from './TaskToast.vue'
 import GuideTour from '../shell/GuideTour.vue'
 import WaitingGame from './WaitingGame.vue'
@@ -69,6 +70,9 @@ const frameStyle = { '--sidebar-w': '0px' }
 // 注册后问询 /welcome 也是全屏页，但需要已登录（路由守卫负责）。
 const isLogin = computed(() => ['/login', '/register', '/forgot'].includes(route.path) || route.path === '/welcome' && closet.isSignedIn || route.path === '/feedback' && !closet.isSignedIn)
 const isOutfitEditor = computed(() => route.path.startsWith('/outfits/'))
+// 启动画面（index.html #boot）一直盖在最上面，直到第一次显示登录页或主界面才淡出；下面的 boot-screen 只在之后重新进入等待时兜底。
+const showsApp = computed(() => closet.isSignedIn && (!closet.user?.mustChangePassword || route.path === '/settings'))
+watch(() => isLogin.value || showsApp.value, (ready) => { if (ready) void nextTick(() => requestAnimationFrame(() => dismissBootSplash())) }, { immediate: true })
 const tryonMediaQuery = window.matchMedia(CAMERA_LAYOUT_QUERY)
 const tryonNarrow = ref(tryonMediaQuery.matches)
 const updateTryonNarrow = () => { tryonNarrow.value = tryonMediaQuery.matches }
@@ -219,7 +223,7 @@ async function signOut() {
       </a-modal>
       <div class="route-progress" :class="{ active: showProgress }" role="progressbar" aria-label="页面加载中" :aria-hidden="!showProgress"><span></span></div>
       <div v-if="isLogin" class="login-frame"><RouterView /></div>
-      <div v-else-if="closet.isSignedIn && (!closet.user?.mustChangePassword || route.path === '/settings')" class="app-frame" :class="{ 'outfit-editing': isOutfitEditor, 'tryon-camera-mode': tryonRoute }" :style="frameStyle">
+      <div v-else-if="showsApp" class="app-frame" :class="{ 'outfit-editing': isOutfitEditor, 'tryon-camera-mode': tryonRoute }" :style="frameStyle">
         <main class="main-area">
           <div v-if="usingMocks" class="mock-banner"><span class="mock-pulse"></span><span>界面演示 · 示例数据不是 AI 结果，演示模式禁止提交模型任务</span><span class="mock-banner-end">{{ closet.user?.displayName || closet.user?.username }} 的衣橱</span></div>
           <header class="topbar">

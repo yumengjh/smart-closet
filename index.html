@@ -13,6 +13,7 @@
     <meta name="apple-mobile-web-app-title" content="鱼搭" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <title>鱼搭 · 数字衣柜</title>
+    <link rel="preload" as="image" href="/yuda-logo-320.png" />
     <script>
       try {
         const theme = localStorage.getItem('yuda.theme.v1') === 'dark' ? 'dark' : 'light'
@@ -21,8 +22,150 @@
         document.querySelector('meta[name="theme-color"]').setAttribute('content', theme === 'dark' ? '#0d0d0d' : '#fafaf9')
       } catch {}
     </script>
+    <style>
+      /* 启动画面「衣柜吐不停」（鱼搭 #304）：只用 CSS，脚本加载前就会动；应用就绪后由 src/shell/bootSplash.ts 淡出移除。
+         一轮 6 秒：0–18% 憋气胀大，18% 门从图标中缝甩开，18–66% 衣服往外喷，66–71% 关门夹住袜子，71–100% 安静亮出完整图标。 */
+      #boot { --yb-bg: #fafaf9; --yb-muted: #6b6b6b; --yb-alt: #f3f3f1; --yb-feet: #151515; --yb-shadow: rgba(20,20,20,.12); --yb-rope: #cfcfca; --yb-ink: #151515;
+        position: fixed; inset: 0; z-index: 2147483000; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; overflow: hidden;
+        background: var(--yb-bg); color: var(--yb-muted); font: 14px/1.6 -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei", sans-serif; transition: opacity .22s ease; }
+      :root[data-theme="dark"] #boot { --yb-bg: #0d0d0d; --yb-muted: #a3a3a0; --yb-alt: #1e1e1d; --yb-feet: #d8d8d4; --yb-shadow: rgba(0,0,0,.5); --yb-rope: #3a3a38; }
+      #boot.yb-out { opacity: 0; pointer-events: none; }
+      #boot i { font-style: normal; }
+      .yb-scene { position: relative; display: flex; flex-direction: column; align-items: center; }
+      .yb-drop { position: relative; transform-origin: 50% 100%; animation: yb-drop .9s both; }
+      .yb-cab { position: relative; width: 124px; height: 124px; perspective: 460px; transform-origin: 50% 100%; animation: yb-cab 6s 1s infinite; }
+      .yb-crown, .yb-plinth { position: absolute; z-index: 1; border: 2.5px solid var(--yb-ink); background: #fffdf7; }
+      .yb-crown { top: -9px; left: -7px; right: -7px; height: 10px; border-radius: 5px 5px 2px 2px; animation: yb-crown 6s 1s infinite; }
+      .yb-plinth { bottom: -8px; left: -3px; right: -3px; height: 9px; border-radius: 2px 2px 3px 3px; }
+      .yb-plinth::before, .yb-plinth::after { content: ""; position: absolute; bottom: -7px; width: 10px; height: 5px; border-radius: 0 0 3px 3px; background: var(--yb-feet); }
+      .yb-plinth::before { left: 8px; } .yb-plinth::after { right: 8px; }
+      .yb-body { position: absolute; inset: 0; border: 2.5px solid var(--yb-ink); background: #2c3142; overflow: hidden; }
+      .yb-glow { position: absolute; inset: 0; background: radial-gradient(circle at 50% 62%, rgba(255,236,170,.8), rgba(255,236,170,0) 62%); opacity: 0; animation: yb-glow 6s 1s infinite; }
+      .yb-rod { position: absolute; top: 14px; left: 6px; right: 6px; height: 2.5px; border-radius: 2px; background: #9aa3b8; }
+      .yb-hg { position: absolute; top: 13px; width: 22px; height: 14px; margin-left: -11px; fill: none; stroke: #c9cfdc; stroke-width: 1.6; stroke-linejoin: round; transform-origin: 50% 0; animation: yb-hg .9s ease-in-out infinite alternate; }
+      .yb-h1 { left: 28%; } .yb-h2 { left: 50%; animation-delay: -.3s; } .yb-h3 { left: 72%; animation-delay: -.6s; }
+      .yb-door { position: absolute; z-index: 2; top: 0; bottom: 0; width: 50%; transform-style: preserve-3d; animation: yb-door 6s 1s infinite; }
+      .yb-l { left: 0; --dir: -1; transform-origin: 0 50%; } .yb-r { right: 0; --dir: 1; transform-origin: 100% 50%; }
+      .yb-front, .yb-back { position: absolute; inset: 0; border: 2.5px solid var(--yb-ink); -webkit-backface-visibility: hidden; backface-visibility: hidden; }
+      .yb-front { background: url(/yuda-logo-320.png) no-repeat, #fffdf7; background-size: 108px auto, auto; background-origin: border-box; }
+      .yb-l .yb-front { border-right-width: 1.2px; background-position: 8px 46%, 0 0; }
+      .yb-r .yb-front { border-left-width: 1.2px; background-position: -54px 46%, 0 0; }
+      .yb-front::after { content: ""; position: absolute; bottom: 7px; width: 4px; height: 11px; border-radius: 3px; background: #2f6fe8; border: 1.5px solid var(--yb-ink); }
+      .yb-l .yb-front::after { right: 4px; } .yb-r .yb-front::after { left: 4px; }
+      .yb-back { transform: rotateY(180deg); background: #ece5d3; box-shadow: inset 0 0 0 5px #ece5d3, inset 0 0 0 6.5px rgba(21,21,21,.25); }
+      .yb-l .yb-back::after { content: ""; position: absolute; inset: 14px 11px 18px; border: 1.5px solid var(--yb-ink); border-radius: 12px; background: linear-gradient(135deg, #dfeaff 0 38%, #fff 38% 48%, #cfe0ff 48%); }
+      .yb-r .yb-back::after { content: ""; position: absolute; top: 18px; left: 50%; width: 6px; height: 6px; margin-left: -3px; border-radius: 50%; background: #9aa3b8; border: 1.5px solid var(--yb-ink); box-shadow: 0 22px 0 -1.5px #9aa3b8, 0 22px 0 0 var(--yb-ink); }
+      .yb-vib { position: absolute; z-index: 1; top: 40px; width: 3px; height: 36px; opacity: 0; animation: yb-vib 6s 1s infinite; }
+      .yb-vib::before, .yb-vib::after { content: ""; position: absolute; width: 2.5px; border-radius: 2px; background: var(--yb-muted); }
+      .yb-vib::before { top: 0; height: 15px; } .yb-vib::after { top: 20px; height: 16px; }
+      .yb-vl { left: -16px; rotate: -8deg; } .yb-vr { right: -16px; rotate: 8deg; }
+      .yb-spew { position: absolute; z-index: 3; left: 50%; top: 58%; width: 0; height: 0; }
+      .yb-gx { position: absolute; left: -13px; top: -13px; width: 26px; height: 26px; opacity: 0; animation: yb-x 6s linear calc(1s + var(--d)) infinite; }
+      .yb-gy { display: block; width: 100%; height: 100%; stroke: var(--yb-ink); stroke-width: 1.5; stroke-linejoin: round; animation: yb-y 6s calc(1s + var(--d)) infinite; }
+      .yb-caught { position: absolute; z-index: 3; left: 50%; top: 96px; width: 20px; height: 24px; margin-left: -6px; opacity: 0; transform-origin: 30% 0; animation: yb-caught 6s 1s infinite; }
+      .yb-caught svg { display: block; width: 100%; height: 100%; fill: #c7b2f2; stroke: var(--yb-ink); stroke-width: 1.5; stroke-linejoin: round; }
+      .yb-shadow { width: 150px; height: 9px; margin-top: 16px; border-radius: 50%; background: var(--yb-shadow); animation: yb-shadow .9s both; }
+      .yb-puff { position: absolute; bottom: 0; width: 16px; height: 10px; border-radius: 50%; background: var(--yb-alt); border: 1.5px solid var(--yb-rope); opacity: 0; animation: yb-puff .5s .34s ease-out both; }
+      .yb-pl { left: 0; --dx: -26px; } .yb-pr { right: 0; --dx: 26px; }
+      .yb-text { position: relative; z-index: 5; margin: 6px 0 0; padding: 0 10px; border-radius: 999px; background: var(--yb-bg); white-space: nowrap; }
+      .yb-dots b { display: inline-block; width: 3px; height: 3px; margin-left: 3px; border-radius: 50%; background: currentColor; vertical-align: middle; animation: yb-dot 1.2s infinite both; }
+      .yb-dots b:nth-child(2) { animation-delay: .2s; } .yb-dots b:nth-child(3) { animation-delay: .4s; }
+      @keyframes yb-dot { 0%, 60%, 100% { opacity: .25; transform: none } 30% { opacity: 1; transform: translateY(-3px) } }
+      @keyframes yb-drop {
+        0% { transform: translateY(-190px) scale(.9, 1.1); opacity: 0; animation-timing-function: cubic-bezier(.55,0,1,.45) } 8% { opacity: 1 }
+        38% { transform: translateY(0) scale(1.2, .78); animation-timing-function: cubic-bezier(.2,.6,.4,1) }
+        54% { transform: translateY(-28px) scale(.94, 1.07); animation-timing-function: cubic-bezier(.6,0,.8,.4) }
+        68% { transform: translateY(0) scale(1.08, .92); animation-timing-function: ease-out } 80% { transform: translateY(-6px) scale(.98, 1.02) }
+        90% { transform: translateY(0) scale(1.02, .98) } 100% { transform: none; opacity: 1 }
+      }
+      @keyframes yb-shadow { 0% { transform: scale(.3); opacity: 0 } 38% { transform: scale(1.18); opacity: 1 } 54% { transform: scale(.78) } 68% { transform: scale(1.05) } 80% { transform: scale(.96) } 100% { transform: none; opacity: 1 } }
+      @keyframes yb-puff { 0% { opacity: .9; transform: scale(.3) } 100% { opacity: 0; transform: translateX(var(--dx)) translateY(-6px) scale(1.25) } }
+      @keyframes yb-cab {
+        0% { transform: none }
+        3% { transform: rotate(-1.5deg) scale(1.02, 1.02) } 6% { transform: rotate(1.5deg) scale(1.04, 1.05) } 9% { transform: rotate(-2.5deg) scale(1.06, 1.08) }
+        12% { transform: rotate(2.5deg) scale(1.08, 1.11) } 14.5% { transform: rotate(-3deg) scale(1.11, 1.14) } 16.5% { transform: rotate(1deg) scale(1.13, 1.16) } 17.5% { transform: scale(1.15, 1.18) }
+        20% { transform: scale(.9, 1.06) } 23% { transform: scale(1.04, .96) } 26% { transform: none }
+        30% { transform: scale(1.03, .97) } 33% { transform: none } 37% { transform: scale(1.03, .97) } 40% { transform: none } 44% { transform: scale(1.03, .97) } 47% { transform: none }
+        51% { transform: scale(1.03, .97) } 54% { transform: none } 58% { transform: scale(1.03, .97) } 61% { transform: none }
+        71% { transform: scale(1.07, .91) } 74% { transform: scale(.98, 1.03) } 77%, 100% { transform: none }
+      }
+      @keyframes yb-crown { 0%, 10%, 20%, 100% { transform: none } 12% { transform: translateY(-2px) rotate(-2deg) } 14% { transform: translateY(-3px) rotate(2deg) } 16% { transform: translateY(-5px) rotate(-3deg) } 17.5% { transform: translateY(-7px) } }
+      @keyframes yb-door {
+        0%, 5%, 10%, 15%, 18% { transform: none }
+        3% { transform: rotateY(calc(var(--dir) * 5deg)) } 8% { transform: rotateY(calc(var(--dir) * 9deg)) } 13% { transform: rotateY(calc(var(--dir) * 13deg)) }
+        16.5% { transform: rotateY(calc(var(--dir) * 18deg)); animation-timing-function: cubic-bezier(.5,0,.9,.5) }
+        18% { animation-timing-function: cubic-bezier(.15,.8,.3,1) }
+        21% { transform: rotateY(calc(var(--dir) * 122deg)) } 25% { transform: rotateY(calc(var(--dir) * 96deg)) } 29% { transform: rotateY(calc(var(--dir) * 110deg)) }
+        33% { transform: rotateY(calc(var(--dir) * 101deg)) } 37% { transform: rotateY(calc(var(--dir) * 109deg)) } 41% { transform: rotateY(calc(var(--dir) * 101deg)) }
+        45% { transform: rotateY(calc(var(--dir) * 109deg)) } 49% { transform: rotateY(calc(var(--dir) * 101deg)) } 53% { transform: rotateY(calc(var(--dir) * 109deg)) }
+        57% { transform: rotateY(calc(var(--dir) * 102deg)) } 61% { transform: rotateY(calc(var(--dir) * 107deg)) }
+        65% { transform: rotateY(calc(var(--dir) * 105deg)); animation-timing-function: cubic-bezier(.6,0,1,.6) }
+        71% { transform: none } 73% { transform: rotateY(calc(var(--dir) * 9deg)) } 75% { transform: none } 76.5% { transform: rotateY(calc(var(--dir) * 3deg)) } 78%, 100% { transform: none }
+      }
+      @keyframes yb-glow { 0%, 18%, 70%, 100% { opacity: 0 } 21% { opacity: 1 } 30% { opacity: .7 } 40% { opacity: 1 } 50% { opacity: .7 } 60% { opacity: 1 } 66% { opacity: .8 } }
+      @keyframes yb-vib { 0%, 18.5%, 100% { opacity: 0 } 6%, 10%, 14%, 17% { opacity: 1; translate: -1px 0 } 8%, 12%, 16% { opacity: .5; translate: 1px 0 } }
+      @keyframes yb-hg { from { transform: rotate(-10deg) } to { transform: rotate(10deg) } }
+      @keyframes yb-x { 0% { transform: translateX(var(--ox)); opacity: 0 } 1% { opacity: 1 } 26.6% { transform: translateX(calc(var(--ox) + var(--x))); opacity: 1 } 26.7%, 100% { transform: translateX(calc(var(--ox) + var(--x))); opacity: 0 } }
+      @keyframes yb-y {
+        0% { transform: translateY(8px) scale(.25); animation-timing-function: cubic-bezier(.15,.7,.35,1) }
+        9% { transform: translateY(calc(var(--h) * -1)) rotate(calc(var(--r) * .4)) scale(var(--s)); animation-timing-function: cubic-bezier(.55,0,.85,.4) }
+        26.6%, 100% { transform: translateY(max(320px, 62vh)) rotate(var(--r)) scale(var(--s)) }
+      }
+      @keyframes yb-caught {
+        0%, 70% { opacity: 0; transform: scale(.5) }
+        71% { opacity: 1; transform: rotate(28deg) } 74% { transform: rotate(-18deg) } 77% { transform: rotate(12deg) } 80% { transform: rotate(-7deg) } 83% { transform: rotate(4deg) }
+        88% { transform: none } 90% { transform: rotate(-6deg) } 92% { transform: rotate(6deg) }
+        95% { opacity: 1; transform: translateY(-10px) scale(.7, .2) } 96%, 100% { opacity: 0; transform: translateY(-10px) scale(.5, 0) }
+      }
+      @media (prefers-reduced-motion: reduce) { #boot, #boot *, #boot *::before, #boot *::after { animation: none !important; transition: none !important; } }
+    </style>
   </head>
   <body>
+    <div id="boot" role="status" aria-label="正在打开衣橱">
+      <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+        <symbol id="yb-tee" viewBox="0 0 24 24"><path d="M8.5 3 4 5.2 1.8 9.6l3.3 1.6L6.2 9.6V21h11.6V9.6l1.1 1.6 3.3-1.6L20 5.2 15.5 3c-.8 1.6-2 2.4-3.5 2.4S9.3 4.6 8.5 3Z"/></symbol>
+        <symbol id="yb-pants" viewBox="0 0 24 24"><path d="M6 3h12l1.6 18h-5.4L12 10l-2.2 11H4.4L6 3Z"/></symbol>
+        <symbol id="yb-dress" viewBox="0 0 24 24"><path d="M9.2 2.5h5.6l-.6 4.2 5.3 14.8H4.5L9.8 6.7 9.2 2.5Z"/></symbol>
+        <symbol id="yb-sock" viewBox="0 0 24 24"><path d="M8.5 2.5h6v9.4l4 3.2c1.7 1.4 1 5.4-1.9 5.4h-5.2c-1.8 0-2.9-1.3-2.9-3V2.5Z"/></symbol>
+        <symbol id="yb-cap" viewBox="0 0 24 24"><path d="M4 15.5c0-5.4 3.4-8.6 7.8-8.6s7.8 3.2 7.8 8.6H4Zm0 0h18.2v2.4H4z"/></symbol>
+        <symbol id="yb-shoe" viewBox="0 0 24 24"><path d="M2.5 10.5v7.8h19c0-2.6-1.8-3.8-4.6-4.3l-4.1-3-2.6 1.9c-2.4.2-5-.6-7.7-2.4Z"/></symbol>
+      </svg>
+      <div class="yb-scene" aria-hidden="true">
+        <div class="yb-drop"><div class="yb-cab">
+          <i class="yb-crown"></i><i class="yb-plinth"></i>
+          <div class="yb-body"><i class="yb-glow"></i><i class="yb-rod"></i><svg class="yb-hg yb-h1" viewBox="0 0 22 14"><path d="M11 5V3.5c0-1 1.4-1.2 1.4-2.3a1.4 1.4 0 0 0-2.8 0M11 5 2 12h18Z"/></svg><svg class="yb-hg yb-h2" viewBox="0 0 22 14"><path d="M11 5V3.5c0-1 1.4-1.2 1.4-2.3a1.4 1.4 0 0 0-2.8 0M11 5 2 12h18Z"/></svg><svg class="yb-hg yb-h3" viewBox="0 0 22 14"><path d="M11 5V3.5c0-1 1.4-1.2 1.4-2.3a1.4 1.4 0 0 0-2.8 0M11 5 2 12h18Z"/></svg></div>
+          <div class="yb-door yb-l"><i class="yb-front"></i><i class="yb-back"></i></div>
+          <div class="yb-door yb-r"><i class="yb-front"></i><i class="yb-back"></i></div>
+          <i class="yb-vib yb-vl"></i><i class="yb-vib yb-vr"></i>
+          <i class="yb-caught"><svg viewBox="0 0 24 24"><use href="#yb-sock"/></svg></i>
+          <div class="yb-spew">
+            <i class="yb-gx" style="--x:-104px;--h:190px;--r:-302deg;--s:0.91;--ox:0px;--d:1.08s"><svg class="yb-gy" viewBox="0 0 24 24" style="fill:#fbf3dc"><use href="#yb-dress"/></svg></i>
+            <i class="yb-gx" style="--x:59px;--h:219px;--r:373deg;--s:0.85;--ox:12px;--d:1.11s"><svg class="yb-gy" viewBox="0 0 24 24" style="fill:#2f6fe8"><use href="#yb-sock"/></svg></i>
+            <i class="yb-gx" style="--x:-122px;--h:147px;--r:-299deg;--s:0.99;--ox:-15px;--d:1.14s"><svg class="yb-gy" viewBox="0 0 24 24" style="fill:#9cc3ff"><use href="#yb-cap"/></svg></i>
+            <i class="yb-gx" style="--x:112px;--h:184px;--r:-221deg;--s:1.08;--ox:21px;--d:1.17s"><svg class="yb-gy" viewBox="0 0 24 24" style="fill:#c7b2f2"><use href="#yb-shoe"/></svg></i>
+            <i class="yb-gx" style="--x:-63px;--h:180px;--r:279deg;--s:0.90;--ox:2px;--d:1.20s"><svg class="yb-gy" viewBox="0 0 24 24" style="fill:#3b4f7a"><use href="#yb-tee"/></svg></i>
+            <i class="yb-gx" style="--x:124px;--h:165px;--r:-614deg;--s:0.91;--ox:-12px;--d:1.23s"><svg class="yb-gy" viewBox="0 0 24 24" style="fill:#fbf3dc"><use href="#yb-pants"/></svg></i>
+            <i class="yb-gx" style="--x:-110px;--h:170px;--r:-525deg;--s:0.87;--ox:-7px;--d:1.26s"><svg class="yb-gy" viewBox="0 0 24 24" style="fill:#2f6fe8"><use href="#yb-dress"/></svg></i>
+            <i class="yb-gx" style="--x:-42px;--h:216px;--r:-571deg;--s:0.91;--ox:-12px;--d:1.30s"><svg class="yb-gy" viewBox="0 0 24 24" style="fill:#c7b2f2"><use href="#yb-tee"/></svg></i>
+            <i class="yb-gx" style="--x:117px;--h:150px;--r:474deg;--s:0.80;--ox:-12px;--d:1.49s"><svg class="yb-gy" viewBox="0 0 24 24" style="fill:#3b4f7a"><use href="#yb-pants"/></svg></i>
+            <i class="yb-gx" style="--x:-95px;--h:111px;--r:-373deg;--s:0.99;--ox:6px;--d:1.68s"><svg class="yb-gy" viewBox="0 0 24 24" style="fill:#fbf3dc"><use href="#yb-dress"/></svg></i>
+            <i class="yb-gx" style="--x:169px;--h:141px;--r:-408deg;--s:0.90;--ox:15px;--d:1.87s"><svg class="yb-gy" viewBox="0 0 24 24" style="fill:#2f6fe8"><use href="#yb-sock"/></svg></i>
+            <i class="yb-gx" style="--x:-95px;--h:155px;--r:-299deg;--s:1.01;--ox:-16px;--d:2.06s"><svg class="yb-gy" viewBox="0 0 24 24" style="fill:#9cc3ff"><use href="#yb-cap"/></svg></i>
+            <i class="yb-gx" style="--x:69px;--h:196px;--r:607deg;--s:1.07;--ox:16px;--d:2.25s"><svg class="yb-gy" viewBox="0 0 24 24" style="fill:#c7b2f2"><use href="#yb-shoe"/></svg></i>
+            <i class="yb-gx" style="--x:-138px;--h:180px;--r:210deg;--s:0.86;--ox:-6px;--d:2.44s"><svg class="yb-gy" viewBox="0 0 24 24" style="fill:#3b4f7a"><use href="#yb-tee"/></svg></i>
+            <i class="yb-gx" style="--x:61px;--h:149px;--r:510deg;--s:0.84;--ox:20px;--d:2.63s"><svg class="yb-gy" viewBox="0 0 24 24" style="fill:#fbf3dc"><use href="#yb-pants"/></svg></i>
+            <i class="yb-gx" style="--x:-31px;--h:145px;--r:385deg;--s:0.78;--ox:22px;--d:2.82s"><svg class="yb-gy" viewBox="0 0 24 24" style="fill:#2f6fe8"><use href="#yb-dress"/></svg></i>
+            <i class="yb-gx" style="--x:96px;--h:209px;--r:397deg;--s:0.79;--ox:13px;--d:3.01s"><svg class="yb-gy" viewBox="0 0 24 24" style="fill:#9cc3ff"><use href="#yb-sock"/></svg></i>
+            <i class="yb-gx" style="--x:-160px;--h:133px;--r:-265deg;--s:1.00;--ox:9px;--d:3.20s"><svg class="yb-gy" viewBox="0 0 24 24" style="fill:#c7b2f2"><use href="#yb-cap"/></svg></i>
+            <i class="yb-gx" style="--x:126px;--h:209px;--r:-549deg;--s:0.81;--ox:-20px;--d:3.39s"><svg class="yb-gy" viewBox="0 0 24 24" style="fill:#3b4f7a"><use href="#yb-shoe"/></svg></i>
+            <i class="yb-gx" style="--x:-42px;--h:103px;--r:549deg;--s:1.05;--ox:-16px;--d:3.58s"><svg class="yb-gy" viewBox="0 0 24 24" style="fill:#fbf3dc"><use href="#yb-tee"/></svg></i>
+            <i class="yb-gx" style="--x:102px;--h:107px;--r:-405deg;--s:0.77;--ox:-6px;--d:3.77s"><svg class="yb-gy" viewBox="0 0 24 24" style="fill:#2f6fe8"><use href="#yb-pants"/></svg></i>
+          </div>
+        </div></div>
+        <i class="yb-shadow"></i><i class="yb-puff yb-pl"></i><i class="yb-puff yb-pr"></i>
+      </div>
+      <p class="yb-text">正在打开衣橱<span class="yb-dots"><b></b><b></b><b></b></span></p>
+    </div>
     <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
