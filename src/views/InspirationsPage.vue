@@ -1,15 +1,15 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import ClosetTabs from '../shell/ClosetTabs.vue'
 import { useRoute, useRouter } from 'vue-router'
 import { App } from 'ant-design-vue'
-import { ArrowLeftOutlined, CheckOutlined, DeleteOutlined, FolderAddOutlined, PictureOutlined, PlusOutlined, RightOutlined, SearchOutlined } from '@ant-design/icons-vue'
+import { CheckOutlined, DeleteOutlined, FolderAddOutlined, PictureOutlined, PlusOutlined, RightOutlined, SearchOutlined } from '@ant-design/icons-vue'
 import CollectionCover from '../components/collections/CollectionCover.vue'
 import CollectionPicker from '../components/collections/CollectionPicker.vue'
 import '../inspiration/select-bar.css'
 import { closetApi } from '../services/api'
 import type { Outfit } from '../domain/outfit'
 import PageTitle from '../shell/PageTitle.vue'
-import { goBack } from '../shell/goBack'
 import { collectionApi, inspirationApi, type Collection, type Inspiration } from '../services/inspirations'
 import { mediaUrl } from '../services/urls'
 import { track } from '../services/analytics'
@@ -162,9 +162,9 @@ onUnmounted(() => { window.removeEventListener('paste', pasted); window.clearTim
 
 <template>
   <PageTitle title="穿搭收藏" :count="total || null" unit="张" hint="刷到喜欢的穿搭，截图存进来。只有你自己看得到，整张图不会拿去生图。" />
+  <ClosetTabs />
   <div class="insp" :class="{ dragging, selecting }" @dragover.prevent="dragging = true" @dragleave.self="dragging = false" @drop.prevent="dropped">
     <header class="insp-head">
-      <a-button type="text" shape="circle" aria-label="返回" @click="goBack(router, '/wardrobe')"><ArrowLeftOutlined /></a-button>
       <a-input v-model:value="q" allow-clear class="insp-search" placeholder="搜单品、穿法或备注" aria-label="搜穿搭收藏"><template #prefix><SearchOutlined /></template></a-input>
       <a-button v-if="items.length" :type="selecting ? 'primary' : 'text'" class="insp-select" @click="toggleSelecting">{{ selecting ? '完成' : '选择' }}</a-button>
       <input ref="fileInput" type="file" accept="image/*" multiple hidden @change="picked" />

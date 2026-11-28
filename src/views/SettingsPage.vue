@@ -13,6 +13,7 @@ import {
 import { useClosetStore } from '../stores/closet'
 import { useThemeStore } from '../stores/theme'
 import { closetApi } from '../services/api'
+import { inspirationApi } from '../services/inspirations'
 import { formatBuildTime, formatVersion, type ServerInfo } from '../domain/app-version'
 import { serverBuild, webBuild } from '../services/version'
 
@@ -85,10 +86,11 @@ if (!adminMode.value && isAdmin.value && typeof route.query.section === 'string'
 function back() { void router.replace({ query: { ...route.query, section: undefined } }) }
 async function signOut() { await closet.signOut(); await router.replace('/login') }
 
-const counts = ref<{ garments: number | null; outfits: number | null }>({ garments: null, outfits: null })
+// 三个数对应衣柜页的三个标签：衣服、搭配、穿搭收藏（server#303）；试穿已在底部胶囊里，不再重复。
+const counts = ref<{ garments: number | null; outfits: number | null; inspirations: number | null }>({ garments: null, outfits: null, inspirations: null })
 async function loadCounts() {
-  const [g, o] = await Promise.allSettled([closetApi.list({ status: 'ACTIVE', q: '', category: '', color: '', season: '', page: 1, size: 1 }), closetApi.outfits()])
-  counts.value = { garments: g.status === 'fulfilled' ? g.value.total : null, outfits: o.status === 'fulfilled' ? o.value.length : null }
+  const [g, o, i] = await Promise.allSettled([closetApi.list({ status: 'ACTIVE', q: '', category: '', color: '', season: '', page: 1, size: 1 }), closetApi.outfits(), inspirationApi.list({ limit: 1 })])
+  counts.value = { garments: g.status === 'fulfilled' ? g.value.total : null, outfits: o.status === 'fulfilled' ? o.value.length : null, inspirations: i.status === 'fulfilled' ? i.value.total : null }
 }
 const name = computed(() => closet.user?.displayName || closet.user?.username || '')
 onMounted(async () => { wideQuery.addEventListener('change', onWide); if (!firstLogin.value && !adminMode.value) void loadCounts(); server.value = await serverBuild() })
@@ -115,7 +117,7 @@ onUnmounted(() => wideQuery.removeEventListener('change', onWide))
       <div v-if="!adminMode" class="me-stats">
         <RouterLink to="/wardrobe"><b>{{ counts.garments ?? '–' }}</b><small>件衣服</small></RouterLink>
         <RouterLink to="/outfits"><b>{{ counts.outfits ?? '–' }}</b><small>套搭配</small></RouterLink>
-        <RouterLink to="/try"><b><SkinOutlined /></b><small>去试穿</small></RouterLink>
+        <RouterLink to="/inspirations"><b>{{ counts.inspirations ?? '–' }}</b><small>张穿搭收藏</small></RouterLink>
       </div>
       <BillingSummary v-if="!adminMode" />
       <nav class="me-groups" aria-label="我的">

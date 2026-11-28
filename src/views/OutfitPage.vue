@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import QuickMix from '../outfit/QuickMix.vue'
+import ClosetTabs from '../shell/ClosetTabs.vue'
 import PageTitle from '../shell/PageTitle.vue'
 import { thumbUrl } from '../services/urls'
 import { tryOnAccess } from '../tryon/access'
@@ -1044,6 +1045,7 @@ defineExpose({ flush: persistDraft, exportPng })
 <template>
   <div v-if="!editing" class="outfit-library-page">
     <PageTitle title="搭配" :count="saved.length || null" unit="套" hint="从自己的衣柜选单品，保存一套随时可以穿的搭配；“今天穿什么”按天气和场合推荐，不花次数。" />
+    <ClosetTabs />
     <!-- Saved outfits are the page's main job; "今天穿什么" is its own tab, opened on demand (and by ?with= from a garment page). -->
     <div class="outfit-library-bar">
       <a-segmented v-model:value="libraryTab" class="outfit-library-tabs" aria-label="搭配视图" :options="[{ value: 'mix', label: '快速搭' }, { value: 'mine', label: saved.length ? `我的搭配 · ${saved.length}` : '我的搭配' }, { value: 'today', label: '今天穿什么' }]" />
