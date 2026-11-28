@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { App as AntApp } from 'ant-design-vue'
-import { ExclamationCircleOutlined, SearchOutlined, SlidersOutlined, PlusOutlined, QuestionCircleOutlined, CheckSquareOutlined, CameraOutlined, CloseOutlined, AppstoreAddOutlined, MoreOutlined, SwapOutlined, PictureOutlined } from '@ant-design/icons-vue'
+import { ExclamationCircleOutlined, SearchOutlined, SlidersOutlined, PlusOutlined, QuestionCircleOutlined, CheckSquareOutlined, CameraOutlined, CloseOutlined, AppstoreAddOutlined, MoreOutlined, SwapOutlined } from '@ant-design/icons-vue'
+import ClosetTabs from '../shell/ClosetTabs.vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { closetApi, type Garment, type ListQuery, type SearchResult } from '../services/api'
 import { quickApi } from '../services/quickIntake'
@@ -345,6 +346,7 @@ watch(() => route.query.presets, value => { if (value !== '1') return; presetsOp
     <span class="closet-title" :title="searching ? '搜索结果按相关度排序' : `按“${sortLabel(query.sort || DEFAULT_SORT)}”排序`"><b>我的衣柜</b><em>{{ searching || wantedTotal < 0 ? total : ownedTotal }}</em><small>{{ searching ? '件符合' : wantedTotal < 0 ? `件${wantedLabel}` : '件' }}</small><small v-if="!searching && wantedTotal > 0" class="closet-title-wanted">· {{ wantedLabel }} {{ wantedTotal }}</small></span>
   </Teleport>
   <h1 class="closet-h1">我的衣柜</h1>
+  <ClosetTabs />
   <section class="closet-toolbar" aria-label="搜索和筛选衣物" @dragover.prevent @drop.prevent="dropped">
     <input ref="picker" type="file" accept="image/jpeg,image/png,image/webp" hidden @change="picked" />
     <a-input v-model:value="query.q" class="closet-search" allow-clear :placeholder="queryImage ? '可再加文字，例如：红色、上衣' : '搜颜色、品类、描述…'" @input="debounceLoad" @paste="pasted"><template #prefix><SearchOutlined /><span v-if="queryPreview" class="query-image"><img :src="queryPreview" alt="用来搜索的图片" /><a-button type="text" size="small" class="query-image-remove" aria-label="去掉图片" @click="detach"><CloseOutlined /></a-button></span></template>
@@ -393,7 +395,6 @@ watch(() => route.query.presets, value => { if (value !== '1') return; presetsOp
       <a-slider class="closet-spread-slider" :value="spread" :min="0" :max="100" :step="1" :tooltip-open="false" aria-label="衣架松紧：左边叠放，右边散开" @change="chooseSpread" />
       <svg class="closet-spread-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="1.5" y="6" width="6" height="12" rx="1.5" /><rect x="9" y="6" width="6" height="12" rx="1.5" /><rect x="16.5" y="6" width="6" height="12" rx="1.5" /></svg>
     </div>
-    <a-tooltip title="刷到喜欢的穿搭，截图存进来"><a-button class="closet-soft" @click="router.push('/inspirations')"><PictureOutlined /><em>穿搭收藏</em></a-button></a-tooltip>
     <a-tooltip title="从常见单品添加：有类似的点一下，直接放进衣柜"><a-button class="closet-soft" @click="presetsOpen = true"><AppstoreAddOutlined /><em>常见单品</em></a-button></a-tooltip>
     <a-dropdown :trigger="['click']" placement="bottomRight">
       <a-button class="closet-round" type="text" aria-label="更多衣柜操作"><MoreOutlined /><i v-if="reviewCount" class="closet-round-dot" aria-hidden="true"></i></a-button>
@@ -401,7 +402,6 @@ watch(() => route.query.presets, value => { if (value !== '1') return; presetsOp
         <a-menu-item @click="picker?.click()"><CameraOutlined /> 用图片搜</a-menu-item>
         <a-menu-item :disabled="!items.length" @click="selecting = true; batchResult = null"><CheckSquareOutlined /> 批量处理</a-menu-item>
         <a-menu-item @click="presetsOpen = true"><AppstoreAddOutlined /> 从常见单品添加</a-menu-item>
-        <a-menu-item @click="router.push('/inspirations')"><PictureOutlined /> 穿搭收藏</a-menu-item>
         <a-menu-item v-if="reviewCount" @click="router.push('/review')"><ExclamationCircleOutlined /> 等你确认 {{ reviewCount }} 件</a-menu-item>
       </a-menu></template>
     </a-dropdown>
